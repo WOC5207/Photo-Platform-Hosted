@@ -7,10 +7,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model AdminUser {
+// A person with an account. Replaces the old single AdminUser: the platform
+// admin is now just a User with role "admin", so there is one identity model
+// rather than a privileged special case.
+//
+// Content models do not point here yet — owner FKs land in the next phase, so
+// for now every account still sees the same single site.
+model User {
   id           String   @id @default(cuid())
+  // Doubles as the public URL identity (/u/<username>), so it stays globally
+  // unique even once content is scoped per owner.
   username     String   @unique
   passwordHash String
+  // "user" | "admin". Plain strings to match Booking.status, which is a string
+  // because SQLite had no enums; Postgres does, so converting them all is a
+  // worthwhile follow-up, but not this phase's business.
+  role         String   @default("user")
+  // "active" | "suspended". Never cached in the session cookie — see
+  // getCurrentUser in src/lib/auth.ts for why.
+  status       String   @default("active")
   createdAt    DateTime @default(now())
 }
 

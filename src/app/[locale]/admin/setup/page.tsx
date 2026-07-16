@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import {
   getSiteSettings,
@@ -11,22 +10,21 @@ import {
 import { siteImageUrl } from "@/lib/images";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import SetupWizard from "@/components/admin/SetupWizard";
-import { logout } from "../login/actions";
+import { logout } from "../../login/actions";
 
 // Reads the session cookie and live settings — never prerender.
 export const dynamic = "force-dynamic";
 
 export default async function SetupPage() {
   const locale = await getLocale();
-  await requireAdmin(locale);
+  const admin = await requireAdmin(locale);
 
   const settings = await getSiteSettings();
   if (settings.setupCompleted) redirect(`/${locale}/admin`);
 
   const t = await getTranslations("setup");
   const tc = await getTranslations("common");
-  const [admin, contactMethods, personalLinks] = await Promise.all([
-    prisma.adminUser.findFirst({ select: { username: true } }),
+  const [contactMethods, personalLinks] = await Promise.all([
     getContactMethods(),
     getPersonalLinks()
   ]);
@@ -53,7 +51,7 @@ export default async function SetupPage() {
       </div>
 
       <SetupWizard
-        initialUsername={admin?.username ?? ""}
+        initialUsername={admin.username}
         settings={{
           siteTitleEn: settings.siteTitleEn,
           siteTitleZh: settings.siteTitleZh,

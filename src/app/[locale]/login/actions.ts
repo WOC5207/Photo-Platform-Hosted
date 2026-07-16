@@ -5,9 +5,10 @@ import { redirect } from "next/navigation";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
 import {
-  ensureAdminSeeded,
+  ensureOwnerSeeded,
   getSession,
-  verifyAdminCredentials
+  homePathFor,
+  verifyCredentials
 } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 
@@ -41,28 +42,27 @@ export async function login(
   if (!parsed.success) return { error: "invalid" };
 
   try {
-    await ensureAdminSeeded();
+    await ensureOwnerSeeded();
   } catch {
     return { error: "notConfigured" };
   }
 
-  const ok = await verifyAdminCredentials(
-    parsed.data.username,
-    parsed.data.password
-  );
-  if (!ok) return { error: "invalid" };
+  const user = await verifyCredentials(parsed.data.username, parsed.data.password);
+  // A suspended account fails as "invalid" rather than announcing its status:
+  // whoever is typing the password may not be the account's owner.
+  if (!user) return { error: "invalid" };
 
   const session = await getSession();
-  session.isAdmin = true;
+  session.userId = user.id;
   await session.save();
 
   const locale = await getLocale();
-  redirect(`/${locale}/admin`);
+  redirect(homePathFor(user, locale));
 }
 
 export async function logout(): Promise<void> {
   const session = await getSession();
   session.destroy();
   const locale = await getLocale();
-  redirect(`/${locale}/admin/login`);
+  redirect(`/${locale}/login`);
 }

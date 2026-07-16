@@ -7,14 +7,15 @@ import { getLocale } from "next-intl/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { isAdmin } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { SITE_SETTINGS_ID, getSiteSettings } from "@/lib/settings";
 import { slugify, uniqueEventSlug } from "@/lib/slug";
+import type { User } from "@prisma/client";
 
-async function guard(): Promise<string> {
+async function guard(): Promise<{ locale: string; user: User }> {
   const locale = await getLocale();
-  if (!(await isAdmin())) redirect(`/${locale}/admin/login`);
-  return locale;
+  const user = await requireAdmin(locale);
+  return { locale, user };
 }
 
 export type CredentialsState = {
@@ -29,17 +30,20 @@ const credentialsSchema = z.object({
 });
 
 /**
- * Replaces the single AdminUser's username/password. Called from setup step
- * 1 so the real admin stops relying on the ADMIN_USERNAME/ADMIN_PASSWORD
- * placeholder that seeded the account on first login (see ensureAdminSeeded
- * in src/lib/auth.ts) — those env vars are only ever consulted for that
- * initial seed, so this is the one place a durable password gets set.
+ * Replaces the signed-in user's username/password. Called from setup step 1 so
+ * the admin stops relying on the ADMIN_USERNAME/ADMIN_PASSWORD placeholder that
+ * seeded the account on first login (see ensureOwnerSeeded in src/lib/auth.ts)
+ * — those env vars are only ever consulted for that initial seed, so this is
+ * the one place a durable password gets set.
+ *
+ * Targets the current user rather than the first row in the table: with more
+ * than one account, findFirst() would have rewritten a stranger's credentials.
  */
 export async function setupUpdateCredentials(
   _prev: CredentialsState,
   formData: FormData
 ): Promise<CredentialsState> {
-  await guard();
+  const { user } = await guard();
   const parsed = credentialsSchema.safeParse({
     username: formData.get("username") ?? "",
     password: formData.get("password") ?? "",
@@ -49,18 +53,16 @@ export async function setupUpdateCredentials(
   const d = parsed.data;
   if (d.password !== d.confirmPassword) return { error: "mismatch" };
 
-  const admin = await prisma.adminUser.findFirst();
-  if (!admin) return { error: "unknown" };
-
   try {
-    await prisma.adminUser.update({
-      where: { id: admin.id },
+    await prisma.user.update({
+      where: { id: user.id },
       data: {
         username: d.username,
         passwordHash: await bcrypt.hash(d.password, 12)
       }
     });
   } catch {
+    // Most likely the username is taken — it is unique across the platform.
     return { error: "unknown" };
   }
   return { ok: true };
@@ -156,7 +158,7 @@ export async function setupUpdateFeatures(
  * the (protected) layout stops redirecting here.
  */
 export async function completeSetup(): Promise<void> {
-  const locale = await guard();
+  const { locale } = await guard();
   const settings = await getSiteSettings();
 
   const albumSlug = await uniqueEventSlug(

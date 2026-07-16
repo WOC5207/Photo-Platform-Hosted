@@ -17,7 +17,7 @@ export type SlotFormState = { error?: "validation"; ok?: boolean };
 
 async function guard(): Promise<string> {
   const locale = await getLocale();
-  if (!(await isAdmin())) redirect(`/${locale}/admin/login`);
+  if (!(await isAdmin())) redirect(`/${locale}/login`);
   return locale;
 }
 
