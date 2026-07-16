@@ -1,9 +1,65 @@
 # Changelog
 
+## v2.0.0 — multi-tenant
+
+Turns the single-photographer site below into a platform: many photographers,
+each with their own site, all hosted from one NAS. Breaking in every sense —
+different database, different URLs, different account model. There is no upgrade
+path from v1.0.0 and none is intended; this fork starts from an empty database.
+
+### Platform
+
+- **Many accounts, one deployment.** Every photographer gets their own site at
+  `/u/<username>` — homepage, gallery, albums, booking, branding and feature
+  toggles, all their own. The root of the domain is a directory of everyone
+  hosted there. The admin's own photography lives at `/u/<their-username>` like
+  anyone else's; there is no privileged site.
+- **Invite-only registration.** No public signup form exists. The admin issues a
+  single-use link from Admin → Invites; redemption is row-locked, so a shared
+  link cannot be redeemed twice.
+- **Per-account storage quotas.** The admin sets an allowance per account;
+  photographers see their usage against it and uploads are refused once it is
+  reached. Deleting frees it again. The counter is checked and claimed in one
+  statement, so concurrent uploads cannot both slip under the same limit.
+- **Account isolation.** Content is owned. One photographer cannot read or touch
+  another's albums, bookings, credit profiles, originals or unpublished work.
+  Suspending an account takes its public site down and ends its session on the
+  next request rather than whenever its cookie expires.
+- **Platform administration** at `/admin`: accounts (suspend, delete, set
+  quota), invites, and storage across every account. The only place a role
+  decides anything.
+
+### Under the hood
+
+- **SQLite → PostgreSQL**, as a second container in the same compose project.
+  The NAS deployment story is unchanged; the database simply stops serialising
+  every write in the whole application through one connection.
+- **Explicit row locks** where correctness used to ride on that serialisation.
+  Booking capacity, lottery prize stock and invite redemption are all
+  check-then-write, and all now take `SELECT ... FOR UPDATE`. These failures
+  were silent and only appeared under real simultaneous load.
+- **Storage is per owner**: `<PHOTOS_DIR>/u/<userId>/...`, keyed on the account
+  id so a username change never moves a file. Deleting an account now removes
+  its files too.
+- **Four test suites** — `test:concurrency`, `test:isolation`, `test:quota`,
+  `test:http` — each verified to fail when the protection it covers is removed.
+
+### Breaking
+
+- Login moved from `/admin/login` to `/login`. The per-user admin area moved
+  from `/admin` to `/dashboard`; `/admin` is now platform-only.
+- Public pages moved from `/gallery`, `/booking` to `/u/<username>/...`.
+  Token-addressed links (`/book/<token>`, `/draw/<token>`,
+  `/my-booking/<token>`) are unchanged, so links already shared keep working.
+- `DATABASE_URL` is now set by compose and `POSTGRES_PASSWORD` must be set in
+  `.env` before the first start. `data/db` is replaced by `data/pg`; back up
+  that folder instead (see the README — a live file copy of it may not restore).
+
 ## v1.0.0
 
-First tagged release. Everything below has been running end-to-end and is
-considered stable enough for real use on a self-hosted NAS.
+First tagged release of the single-photographer site this was forked from.
+Everything below has been running end-to-end and is considered stable enough for
+real use on a self-hosted NAS.
 
 ### Features
 
