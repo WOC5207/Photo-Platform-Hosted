@@ -56,7 +56,7 @@
     "noSearchResults": "没有找到匹配结果。"
   },
   "auth": {
-    "loginTitle": "管理员登录",
+    "loginTitle": "登录以管理你的账号",
     "username": "用户名",
     "password": "密码",
     "signIn": "登录",
