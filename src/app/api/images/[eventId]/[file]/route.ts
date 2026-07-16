@@ -30,9 +30,30 @@ export async function GET(
 
   const photo = await prisma.photo.findUnique({
     where: { id: photoId },
-    include: { event: { select: { id: true, published: true, ownerId: true } } }
+    include: {
+      event: {
+        select: {
+          id: true,
+          published: true,
+          ownerId: true,
+          owner: { select: { status: true } }
+        }
+      }
+    }
   });
   if (!photo || photo.event.id !== eventId) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
+  // A suspended account's files go with its pages, for everyone — no owner or
+  // admin exception, matching resolveOwner and the /u/ layout.
+  //
+  // Without this, suspending only hid the gallery page: a published photo takes
+  // neither branch below, so it kept serving at a URL that is public, already
+  // shared, and cached immutable for a year. Suspension is what you reach for
+  // when something has to come down, which is exactly when that fails. An admin
+  // who needs to see the content again can unsuspend.
+  if (photo.event.owner.status !== "active") {
     return new NextResponse("Not found", { status: 404 });
   }
 

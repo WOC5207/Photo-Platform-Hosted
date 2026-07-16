@@ -23,8 +23,9 @@ path from v1.0.0 and none is intended; this fork starts from an empty database.
   statement, so concurrent uploads cannot both slip under the same limit.
 - **Account isolation.** Content is owned. One photographer cannot read or touch
   another's albums, bookings, credit profiles, originals or unpublished work.
-  Suspending an account takes its public site down and ends its session on the
-  next request rather than whenever its cookie expires.
+  Suspending an account takes its public site down — pages and images alike,
+  including image URLs already shared — and ends its session on the next request
+  rather than whenever its cookie expires.
 - **Platform administration** at `/admin`: accounts (suspend, delete, set
   quota), invites, and storage across every account. The only place a role
   decides anything.
