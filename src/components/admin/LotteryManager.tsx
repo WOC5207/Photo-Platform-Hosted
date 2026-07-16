@@ -12,7 +12,7 @@ import {
   updateLotteryPrize,
   type LotteryPrizeState,
   type SpinResult
-} from "@/app/[locale]/admin/(protected)/bookings/lottery-actions";
+} from "@/app/[locale]/dashboard/(protected)/bookings/lottery-actions";
 import LotteryWheel from "./LotteryWheel";
 
 type LotteryWinner = Extract<SpinResult, { ok: true }>["winner"];

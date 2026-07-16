@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
-import type { BookingEventFormState } from "@/app/[locale]/admin/(protected)/bookings/actions";
+import type { BookingEventFormState } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
 
 export interface BookingEventFormValues {
   id?: string;

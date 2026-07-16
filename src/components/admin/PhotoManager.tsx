@@ -11,7 +11,7 @@ import {
   toggleHomeHighlight,
   updatePhotoCredits,
   updatePhotoExif
-} from "@/app/[locale]/admin/(protected)/events/actions";
+} from "@/app/[locale]/dashboard/(protected)/events/actions";
 import SocialLinksEditor, {
   emptySocialLink,
   type SocialLinkValue

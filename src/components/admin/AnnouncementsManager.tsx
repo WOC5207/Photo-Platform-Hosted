@@ -8,7 +8,7 @@ import {
   moveAnnouncement,
   updateAnnouncement,
   type AnnouncementState
-} from "@/app/[locale]/admin/(protected)/settings/actions";
+} from "@/app/[locale]/dashboard/(protected)/settings/actions";
 import AnnouncementImageUploader from "./AnnouncementImageUploader";
 import { FORM_ID } from "./SiteSettingsForm";
 

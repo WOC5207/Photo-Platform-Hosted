@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { removeAnnouncementImage } from "@/app/[locale]/admin/(protected)/settings/actions";
+import { removeAnnouncementImage } from "@/app/[locale]/dashboard/(protected)/settings/actions";
 
 /** Compact image upload/remove control for one Announcement row's optional image. */
 export default function AnnouncementImageUploader({

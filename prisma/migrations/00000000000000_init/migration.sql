@@ -8,9 +8,24 @@ CREATE TABLE "User" (
     "passwordHash" TEXT NOT NULL,
     "role" TEXT NOT NULL DEFAULT 'user',
     "status" TEXT NOT NULL DEFAULT 'active',
+    "displayName" TEXT NOT NULL DEFAULT '',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Invite" (
+    "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "issuedById" TEXT NOT NULL,
+    "note" TEXT NOT NULL DEFAULT '',
+    "expiresAt" TIMESTAMP(3),
+    "redeemedAt" TIMESTAMP(3),
+    "redeemedById" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Invite_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -269,6 +284,15 @@ CREATE TABLE "LotteryPrize" (
 CREATE UNIQUE INDEX "User_username_key" ON "User"("username");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Invite_code_key" ON "Invite"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Invite_redeemedById_key" ON "Invite"("redeemedById");
+
+-- CreateIndex
+CREATE INDEX "Invite_issuedById_idx" ON "Invite"("issuedById");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Event_coverPhotoId_key" ON "Event"("coverPhotoId");
 
 -- CreateIndex
@@ -315,6 +339,12 @@ CREATE UNIQUE INDEX "LotteryEntry_bookingId_key" ON "LotteryEntry"("bookingId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "LotteryEntry_drawId_token_key" ON "LotteryEntry"("drawId", "token");
+
+-- AddForeignKey
+ALTER TABLE "Invite" ADD CONSTRAINT "Invite_issuedById_fkey" FOREIGN KEY ("issuedById") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Invite" ADD CONSTRAINT "Invite_redeemedById_fkey" FOREIGN KEY ("redeemedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Event" ADD CONSTRAINT "Event_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
