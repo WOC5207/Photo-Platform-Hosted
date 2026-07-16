@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { ensureLotteryDraw } from "@/lib/lottery";
 import { getSiteSettings } from "@/lib/settings";
@@ -15,12 +16,15 @@ export default async function LotteryPage({
   params: Promise<{ id: string; locale: string }>;
 }) {
   const { id, locale } = await params;
+  const user = await requireUser(locale);
   const t = await getTranslations("adminLottery");
 
-  const settings = await getSiteSettings();
+  const settings = await getSiteSettings(user.id);
   if (!settings.lotteryEnabled) redirect(`/${locale}/admin/bookings/${id}`);
 
-  const bookingEvent = await prisma.bookingEvent.findUnique({ where: { id } });
+  const bookingEvent = await prisma.bookingEvent.findFirst({
+    where: { id, ownerId: user.id }
+  });
   if (!bookingEvent) notFound();
   if (!bookingEvent.lotteryEnabled) redirect(`/${locale}/admin/bookings/${id}`);
 
@@ -28,8 +32,8 @@ export default async function LotteryPage({
   // the admin opens this page, even before any prize or entry has been added.
   await ensureLotteryDraw(id);
 
-  const event = await prisma.bookingEvent.findUnique({
-    where: { id },
+  const event = await prisma.bookingEvent.findFirst({
+    where: { id, ownerId: user.id },
     include: {
       slots: {
         include: {

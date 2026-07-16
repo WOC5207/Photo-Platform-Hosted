@@ -1,15 +1,21 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
+import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { isAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
+import {
+  filterOwnedPhotoIds,
+  findOwnedEvent,
+  findOwnedPhoto
+} from "@/lib/ownership";
 import { deleteEventFiles, deletePhotoFiles } from "@/lib/images";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
 import { parseShutterSpeed } from "@/lib/exif";
 import { slugify, uniqueEventSlug } from "@/lib/slug";
+import { redirect } from "next/navigation";
 
 export type EventFormState = { error?: "validation" | "unknown"; ok?: boolean };
 
@@ -46,10 +52,16 @@ function parseEventForm(formData: FormData) {
   });
 }
 
-async function guard(): Promise<string> {
+/**
+ * Every action below edits "my site", so the guard yields the signed-in user
+ * and each action scopes its writes to user.id. Being signed in is not enough:
+ * the ids these actions act on come from the form body, so an authenticated
+ * user could otherwise name someone else's album or photo and have it obeyed.
+ */
+async function guard(): Promise<{ locale: string; user: User }> {
   const locale = await getLocale();
-  if (!(await isAdmin())) redirect(`/${locale}/login`);
-  return locale;
+  const user = await requireUser(locale);
+  return { locale, user };
 }
 
 function toDate(value: string): Date | null {
@@ -73,16 +85,20 @@ export async function createEvent(
   _prev: EventFormState,
   formData: FormData
 ): Promise<EventFormState> {
-  const locale = await guard();
+  const { locale, user } = await guard();
   const parsed = parseEventForm(formData);
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
   const range = parseDateRange(d.dateStart, d.dateEnd);
   if (!range) return { error: "validation" };
 
-  const slug = await uniqueEventSlug(d.slug || slugify(d.titleEn || d.titleZh));
+  const slug = await uniqueEventSlug(
+    user.id,
+    d.slug || slugify(d.titleEn || d.titleZh)
+  );
   const event = await prisma.event.create({
     data: {
+      ownerId: user.id,
       slug,
       titleEn: d.titleEn,
       titleZh: d.titleZh,
@@ -103,7 +119,7 @@ export async function updateEvent(
   _prev: EventFormState,
   formData: FormData
 ): Promise<EventFormState> {
-  await guard();
+  const { user } = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return { error: "unknown" };
   const parsed = parseEventForm(formData);
@@ -112,15 +128,16 @@ export async function updateEvent(
   const range = parseDateRange(d.dateStart, d.dateEnd);
   if (!range) return { error: "validation" };
 
-  const existing = await prisma.event.findUnique({ where: { id } });
+  const existing = await findOwnedEvent(id, user);
   if (!existing) return { error: "unknown" };
 
   const slug = await uniqueEventSlug(
+    user.id,
     d.slug || slugify(d.titleEn || d.titleZh),
     id
   );
   await prisma.event.update({
-    where: { id },
+    where: { id: existing.id },
     data: {
       slug,
       titleEn: d.titleEn,
@@ -139,15 +156,15 @@ export async function updateEvent(
 }
 
 export async function deleteEvent(formData: FormData): Promise<void> {
-  const locale = await guard();
+  const { locale, user } = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
 
-  const event = await prisma.event.findUnique({ where: { id } });
+  const event = await findOwnedEvent(id, user);
   if (!event) return;
 
-  await prisma.event.delete({ where: { id } });
-  await deleteEventFiles(id);
+  await prisma.event.delete({ where: { id: event.id } });
+  await deleteEventFiles(event.id);
 
   revalidatePath("/", "layout");
   redirect(`/${locale}/admin/events`);
@@ -161,9 +178,12 @@ export async function deleteEvent(formData: FormData): Promise<void> {
  * inside the transaction instead.
  */
 export async function updatePhotoCredits(formData: FormData): Promise<void> {
-  await guard();
+  const { user } = await guard();
   const photoId = formData.get("photoId");
   if (typeof photoId !== "string") return;
+  // Verify the photo is ours before touching it: this action previously did no
+  // lookup at all and deleted straight from the submitted id.
+  if (!(await findOwnedPhoto(photoId, user))) return;
 
   const credits = parseCreditsJson(formData.get("creditsJson"));
 
@@ -187,7 +207,7 @@ export async function updatePhotoCredits(formData: FormData): Promise<void> {
       })
     )
   ]);
-  await syncCreditProfiles(credits);
+  await syncCreditProfiles(user.id, credits);
   revalidatePath("/", "layout");
 }
 
@@ -198,9 +218,10 @@ export async function updatePhotoCredits(formData: FormData): Promise<void> {
  * rather than leaving the old value in place.
  */
 export async function updatePhotoExif(formData: FormData): Promise<void> {
-  await guard();
+  const { user } = await guard();
   const photoId = formData.get("photoId");
   if (typeof photoId !== "string") return;
+  if (!(await findOwnedPhoto(photoId, user))) return;
 
   function numberOrNull(name: string): number | null {
     const raw = String(formData.get(name) ?? "").trim();
@@ -240,14 +261,14 @@ export async function updatePhotoExif(formData: FormData): Promise<void> {
 }
 
 export async function deletePhoto(formData: FormData): Promise<void> {
-  await guard();
+  const { user } = await guard();
   const photoId = formData.get("photoId");
   if (typeof photoId !== "string") return;
 
-  const photo = await prisma.photo.findUnique({ where: { id: photoId } });
+  const photo = await findOwnedPhoto(photoId, user);
   if (!photo) return;
 
-  await prisma.photo.delete({ where: { id: photoId } });
+  await prisma.photo.delete({ where: { id: photo.id } });
   await deletePhotoFiles(photo.eventId, photo.id, photo.filename);
   revalidatePath("/", "layout");
 }
@@ -257,8 +278,12 @@ function bulkPhotoIds(formData: FormData): string[] {
 }
 
 export async function bulkDeletePhotos(formData: FormData): Promise<void> {
-  await guard();
-  const photoIds = bulkPhotoIds(formData);
+  const { user } = await guard();
+  // Narrow the client-supplied list to what we actually own BEFORE reading or
+  // deleting anything. The unscoped version of this deleted rows and their
+  // files straight from the posted ids, so one crafted request wiped another
+  // photographer's album off the disk.
+  const photoIds = await filterOwnedPhotoIds(bulkPhotoIds(formData), user);
   if (photoIds.length === 0) return;
 
   const photos = await prisma.photo.findMany({ where: { id: { in: photoIds } } });
@@ -279,14 +304,16 @@ export async function bulkDeletePhotos(formData: FormData): Promise<void> {
  * as the per-photo editor does when a known name is typed.
  */
 export async function bulkSetPhotoCredit(formData: FormData): Promise<void> {
-  await guard();
-  const photoIds = bulkPhotoIds(formData);
+  const { user } = await guard();
+  const photoIds = await filterOwnedPhotoIds(bulkPhotoIds(formData), user);
   const creditName = String(formData.get("creditName") ?? "").trim().slice(0, 200);
   if (photoIds.length === 0 || !creditName) return;
   const subject = String(formData.get("subject") ?? "").trim().slice(0, 200);
 
+  // Our own remembered links for this name, not someone else's: credit
+  // profiles are a private address book, unique per owner.
   const profile = await prisma.creditProfile.findUnique({
-    where: { creditName },
+    where: { ownerId_creditName: { ownerId: user.id, creditName } },
     include: { socialLinks: { orderBy: { sortOrder: "asc" } } }
   });
   const socialLinks = profile?.socialLinks ?? [];
@@ -315,11 +342,11 @@ export async function bulkSetPhotoCredit(formData: FormData): Promise<void> {
 }
 
 export async function setCoverPhoto(formData: FormData): Promise<void> {
-  await guard();
+  const { user } = await guard();
   const photoId = formData.get("photoId");
   if (typeof photoId !== "string") return;
 
-  const photo = await prisma.photo.findUnique({ where: { id: photoId } });
+  const photo = await findOwnedPhoto(photoId, user);
   if (!photo) return;
 
   await prisma.event.update({
@@ -330,28 +357,28 @@ export async function setCoverPhoto(formData: FormData): Promise<void> {
 }
 
 export async function toggleHomeHighlight(formData: FormData): Promise<void> {
-  await guard();
+  const { user } = await guard();
   const photoId = formData.get("photoId");
   if (typeof photoId !== "string") return;
 
-  const photo = await prisma.photo.findUnique({ where: { id: photoId } });
+  const photo = await findOwnedPhoto(photoId, user);
   if (!photo) return;
 
   await prisma.photo.update({
-    where: { id: photoId },
+    where: { id: photo.id },
     data: { homeHighlight: !photo.homeHighlight }
   });
   revalidatePath("/", "layout");
 }
 
 export async function movePhoto(formData: FormData): Promise<void> {
-  await guard();
+  const { user } = await guard();
   const photoId = formData.get("photoId");
   const direction = formData.get("direction");
   if (typeof photoId !== "string" || (direction !== "up" && direction !== "down"))
     return;
 
-  const photo = await prisma.photo.findUnique({ where: { id: photoId } });
+  const photo = await findOwnedPhoto(photoId, user);
   if (!photo) return;
 
   await prisma.$transaction(async (tx) => {

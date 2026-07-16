@@ -22,10 +22,14 @@ export default async function AdminLayout({
   // Sends a signed-out visitor to the login page but a signed-in non-admin to
   // the public site — bouncing someone who is already authenticated back to a
   // login form tells them nothing and only loops.
-  await requireAdmin(locale);
+  //
+  // Still admin-only: this dashboard becomes every user's "my site" in the
+  // routing phase, but until ordinary accounts have somewhere to live, the
+  // admin is the only one with anything to manage here.
+  const user = await requireAdmin(locale);
 
   const t = await getTranslations();
-  const settings = await getSiteSettings();
+  const settings = await getSiteSettings(user.id);
   if (!settings.setupCompleted) redirect(`/${locale}/admin/setup`);
   const logoUrl = siteImageUrl(settings.logo);
   const siteTitle = resolveSiteTitle(settings, locale, t("common.siteName"));

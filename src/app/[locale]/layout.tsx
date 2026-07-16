@@ -8,6 +8,7 @@ import {
 } from "next-intl/server";
 import { routing } from "@/i18n/routing";
 import { getSiteSettings, resolveSiteTitle } from "@/lib/settings";
+import { findSiteOwner } from "@/lib/owner";
 import "../globals.css";
 
 export async function generateMetadata({
@@ -17,9 +18,15 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "common" });
-  const settings = await getSiteSettings();
+  // findSiteOwner, not getSiteOwner: this layout wraps the login page too, and
+  // on a fresh deployment no admin exists until someone logs in. A 404 here
+  // would hide the login page and make the site impossible to ever set up.
+  const owner = await findSiteOwner();
+  const settings = owner ? await getSiteSettings(owner.id) : null;
   return {
-    title: resolveSiteTitle(settings, locale, t("siteName"))
+    title: settings
+      ? resolveSiteTitle(settings, locale, t("siteName"))
+      : t("siteName")
   };
 }
 

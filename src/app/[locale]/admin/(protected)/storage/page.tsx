@@ -1,11 +1,13 @@
 import { getTranslations, getLocale } from "next-intl/server";
+import { requireUser } from "@/lib/auth";
 import { getStorageStats, formatBytes } from "@/lib/storage";
 import { pickText } from "@/lib/content";
 
 export default async function ResourceMonitorPage() {
   const t = await getTranslations("adminStorage");
   const locale = await getLocale();
-  const stats = await getStorageStats();
+  const user = await requireUser(locale);
+  const stats = await getStorageStats(user.id);
 
   const overview = [
     { label: t("totalLabel"), bytes: stats.totalBytes, emphasize: true },

@@ -1,13 +1,15 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isAdmin } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { findOwnedEvent } from "@/lib/ownership";
 import { config } from "@/lib/config";
 import { ALLOWED_UPLOAD_TYPES, processAndStorePhoto } from "@/lib/images";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
 
 export async function POST(req: NextRequest) {
-  if (!(await isAdmin())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -19,7 +21,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "badRequest" }, { status: 400 });
   }
 
-  const event = await prisma.event.findUnique({ where: { id: eventId } });
+  // Ours, not just any event: this took the posted eventId on trust, so any
+  // signed-in user could upload into another photographer's album.
+  const event = await findOwnedEvent(eventId, user);
   if (!event) {
     return NextResponse.json({ error: "eventNotFound" }, { status: 404 });
   }
@@ -85,7 +89,7 @@ export async function POST(req: NextRequest) {
     }
   });
 
-  await syncCreditProfiles(credits);
+  await syncCreditProfiles(user.id, credits);
 
   return NextResponse.json({ id: photo.id });
 }

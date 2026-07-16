@@ -3,10 +3,9 @@ import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { pickText } from "@/lib/content";
 
-export const SITE_SETTINGS_ID = "site";
-
 export interface SiteSettings {
   id: string;
+  ownerId: string;
   siteTitleEn: string;
   siteTitleZh: string;
   homeTitleEn: string;
@@ -36,8 +35,7 @@ export interface SiteSettings {
   setupCompleted: boolean;
 }
 
-const DEFAULTS: SiteSettings = {
-  id: SITE_SETTINGS_ID,
+const DEFAULTS: Omit<SiteSettings, "id" | "ownerId"> = {
   siteTitleEn: "",
   siteTitleZh: "",
   homeTitleEn: "",
@@ -68,16 +66,20 @@ const DEFAULTS: SiteSettings = {
 };
 
 /**
- * The single settings row, cached per-request so the layout and page can both
- * read it without a duplicate query. Returns sensible defaults before the
- * admin has saved anything.
+ * One user's settings row, cached per-request so a layout and its page can both
+ * read it without a duplicate query. cache() keys on the argument, so asking
+ * for two different owners in one request still does the right thing.
+ *
+ * Returns defaults before the owner has saved anything — the row is created
+ * with the account, but a user who has never opened Settings still has every
+ * field at its default, and callers want a usable object either way.
  */
-export const getSiteSettings = cache(async (): Promise<SiteSettings> => {
-  const row = await prisma.siteSettings.findUnique({
-    where: { id: SITE_SETTINGS_ID }
-  });
-  return row ?? DEFAULTS;
-});
+export const getSiteSettings = cache(
+  async (ownerId: string): Promise<SiteSettings> => {
+    const row = await prisma.siteSettings.findUnique({ where: { ownerId } });
+    return row ?? { id: "", ownerId, ...DEFAULTS };
+  }
+);
 
 /**
  * Resolve the site's brand title for a locale, falling back to the other
@@ -178,34 +180,39 @@ export function resolveContactQrToken(settings: SiteSettings, locale: string): s
   return locale === "zh" ? settings.contactQrImageZh : settings.contactQrImageEn;
 }
 
-/** Admin-configured options for the booking form's contact-method dropdown. */
-export const getContactMethods = cache(async () => {
+/** One owner's options for the booking form's contact-method dropdown. */
+export const getContactMethods = cache(async (ownerId: string) => {
   return prisma.contactMethod.findMany({
+    where: { ownerId },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
   });
 });
 
-/** Admin-configured links to the photographer's other sites/profiles. */
-export const getPersonalLinks = cache(async () => {
+/** One owner's links to their other sites/profiles. */
+export const getPersonalLinks = cache(async (ownerId: string) => {
   return prisma.personalLink.findMany({
+    where: { ownerId },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
   });
 });
 
-/** Admin-authored notices shown in the homepage panel's Announcements tab. */
-export const getAnnouncements = cache(async () => {
+/** One owner's notices, shown in their homepage panel's Announcements tab. */
+export const getAnnouncements = cache(async (ownerId: string) => {
   return prisma.announcement.findMany({
+    where: { ownerId },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
   });
 });
 
 /**
- * Remembered credited-person social-link profiles (see syncCreditProfiles in
- * src/lib/photoCredits.ts), used to prefill the photo-credit editors so the
- * admin doesn't have to retype a person's links on every new photo.
+ * One owner's remembered credited-person social-link profiles (see
+ * syncCreditProfiles in src/lib/photoCredits.ts), used to prefill their
+ * photo-credit editors so they don't retype a person's links on every photo.
+ * Scoped per owner: this is a private address book, not a shared directory.
  */
-export const getCreditProfiles = cache(async () => {
+export const getCreditProfiles = cache(async (ownerId: string) => {
   return prisma.creditProfile.findMany({
+    where: { ownerId },
     include: { socialLinks: { orderBy: { sortOrder: "asc" } } },
     orderBy: { creditName: "asc" }
   });

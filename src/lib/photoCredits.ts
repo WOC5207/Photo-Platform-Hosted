@@ -97,13 +97,16 @@ export function parseCreditsJson(raw: FormDataEntryValue | null): CreditInput[] 
  * Skips credits with no social links, so re-saving a photo without links
  * (e.g. editing just the subject) never wipes a previously saved profile.
  */
-export async function syncCreditProfiles(credits: CreditInput[]): Promise<void> {
+export async function syncCreditProfiles(
+  ownerId: string,
+  credits: CreditInput[]
+): Promise<void> {
   for (const c of credits) {
     if (!c.creditName || c.socialLinks.length === 0) continue;
 
     const profile = await prisma.creditProfile.upsert({
-      where: { creditName: c.creditName },
-      create: { creditName: c.creditName },
+      where: { ownerId_creditName: { ownerId, creditName: c.creditName } },
+      create: { ownerId, creditName: c.creditName },
       update: {}
     });
     await prisma.$transaction([

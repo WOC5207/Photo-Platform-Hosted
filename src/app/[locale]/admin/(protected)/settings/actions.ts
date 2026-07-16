@@ -3,18 +3,27 @@
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
+import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { isAdmin, requireAdmin } from "@/lib/auth";
+import { getCurrentUser, requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { SITE_SETTINGS_ID } from "@/lib/settings";
 import { deleteSiteImageFile } from "@/lib/images";
 
 export type SiteSettingsState = { error?: "validation"; ok?: boolean };
 
-async function guard(): Promise<void> {
-  const locale = await getLocale();
-  await requireAdmin(locale);
+/** See the note in the events actions: signed in is not the same as owns it. */
+async function guard(): Promise<User> {
+  return requireUser(await getLocale());
 }
+
+/**
+ * The update/delete actions below use updateMany/deleteMany with an ownerId in
+ * the where clause rather than update/delete by id. Both are deliberate: the
+ * ids arrive in the form body, and the *Many variants are the only ones whose
+ * where clause can carry the owner predicate, so the check rides inside the
+ * write instead of being a separate step that can be skipped. A foreign id
+ * simply matches zero rows.
+ */
 
 const settingsSchema = z.object({
   siteTitleEn: z.string().trim().max(120),
@@ -49,7 +58,7 @@ export async function updateSiteSettings(
   _prev: SiteSettingsState,
   formData: FormData
 ): Promise<SiteSettingsState> {
-  await guard();
+  const user = await guard();
 
   const parsed = settingsSchema.safeParse({
     siteTitleEn: formData.get("siteTitleEn") ?? "",
@@ -79,9 +88,9 @@ export async function updateSiteSettings(
   const d = parsed.data;
 
   await prisma.siteSettings.upsert({
-    where: { id: SITE_SETTINGS_ID },
+    where: { ownerId: user.id },
     create: {
-      id: SITE_SETTINGS_ID,
+      ownerId: user.id,
       siteTitleEn: d.siteTitleEn,
       siteTitleZh: d.siteTitleZh,
       homeTitleEn: d.homeTitleEn,
@@ -155,16 +164,18 @@ export async function addPersonalLink(
   _prev: PersonalLinkState,
   formData: FormData
 ): Promise<PersonalLinkState> {
-  await guard();
+  const user = await guard();
   const parsed = parsePersonalLinkForm(formData);
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
 
   const maxOrder = await prisma.personalLink.aggregate({
+    where: { ownerId: user.id },
     _max: { sortOrder: true }
   });
   await prisma.personalLink.create({
     data: {
+      ownerId: user.id,
       labelEn: d.labelEn,
       labelZh: d.labelZh,
       url: d.url,
@@ -177,7 +188,7 @@ export async function addPersonalLink(
 }
 
 export async function updatePersonalLink(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
   const parsed = parsePersonalLinkForm(formData);
@@ -185,8 +196,8 @@ export async function updatePersonalLink(formData: FormData): Promise<void> {
   const d = parsed.data;
 
   await prisma.personalLink
-    .update({
-      where: { id },
+    .updateMany({
+      where: { id, ownerId: user.id },
       data: { labelEn: d.labelEn, labelZh: d.labelZh, url: d.url }
     })
     .catch(() => {});
@@ -194,15 +205,15 @@ export async function updatePersonalLink(formData: FormData): Promise<void> {
 }
 
 export async function deletePersonalLink(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
-  await prisma.personalLink.delete({ where: { id } }).catch(() => {});
+  await prisma.personalLink.deleteMany({ where: { id, ownerId: user.id } }).catch(() => {});
   revalidatePath("/", "layout");
 }
 
 export async function movePersonalLink(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   const direction = formData.get("direction");
   if (typeof id !== "string" || (direction !== "up" && direction !== "down"))
@@ -210,6 +221,9 @@ export async function movePersonalLink(formData: FormData): Promise<void> {
 
   await prisma.$transaction(async (tx) => {
     const links = await tx.personalLink.findMany({
+      // Our rows only: an unscoped findMany here renumbered every
+      // owner's list whenever anyone moved one of their own.
+      where: { ownerId: user.id },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       select: { id: true }
     });
@@ -249,16 +263,18 @@ export async function addContactMethod(
   _prev: ContactMethodState,
   formData: FormData
 ): Promise<ContactMethodState> {
-  await guard();
+  const user = await guard();
   const parsed = parseContactMethodForm(formData);
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
 
   const maxOrder = await prisma.contactMethod.aggregate({
+    where: { ownerId: user.id },
     _max: { sortOrder: true }
   });
   await prisma.contactMethod.create({
     data: {
+      ownerId: user.id,
       labelEn: d.labelEn,
       labelZh: d.labelZh,
       sortOrder: (maxOrder._max.sortOrder ?? 0) + 1
@@ -270,7 +286,7 @@ export async function addContactMethod(
 }
 
 export async function updateContactMethod(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
   const parsed = parseContactMethodForm(formData);
@@ -278,8 +294,8 @@ export async function updateContactMethod(formData: FormData): Promise<void> {
   const d = parsed.data;
 
   await prisma.contactMethod
-    .update({
-      where: { id },
+    .updateMany({
+      where: { id, ownerId: user.id },
       data: { labelEn: d.labelEn, labelZh: d.labelZh }
     })
     .catch(() => {});
@@ -287,15 +303,15 @@ export async function updateContactMethod(formData: FormData): Promise<void> {
 }
 
 export async function deleteContactMethod(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
-  await prisma.contactMethod.delete({ where: { id } }).catch(() => {});
+  await prisma.contactMethod.deleteMany({ where: { id, ownerId: user.id } }).catch(() => {});
   revalidatePath("/", "layout");
 }
 
 export async function moveContactMethod(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   const direction = formData.get("direction");
   if (typeof id !== "string" || (direction !== "up" && direction !== "down"))
@@ -303,6 +319,9 @@ export async function moveContactMethod(formData: FormData): Promise<void> {
 
   await prisma.$transaction(async (tx) => {
     const methods = await tx.contactMethod.findMany({
+      // Our rows only: an unscoped findMany here renumbered every
+      // owner's list whenever anyone moved one of their own.
+      where: { ownerId: user.id },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       select: { id: true }
     });
@@ -346,16 +365,18 @@ export async function addAnnouncement(
   _prev: AnnouncementState,
   formData: FormData
 ): Promise<AnnouncementState> {
-  await guard();
+  const user = await guard();
   const parsed = parseAnnouncementForm(formData);
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
 
   const maxOrder = await prisma.announcement.aggregate({
+    where: { ownerId: user.id },
     _max: { sortOrder: true }
   });
   await prisma.announcement.create({
     data: {
+      ownerId: user.id,
       titleEn: d.titleEn,
       titleZh: d.titleZh,
       bodyEn: d.bodyEn,
@@ -369,7 +390,7 @@ export async function addAnnouncement(
 }
 
 export async function updateAnnouncement(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
   const parsed = parseAnnouncementForm(formData);
@@ -377,8 +398,8 @@ export async function updateAnnouncement(formData: FormData): Promise<void> {
   const d = parsed.data;
 
   await prisma.announcement
-    .update({
-      where: { id },
+    .updateMany({
+      where: { id, ownerId: user.id },
       data: { titleEn: d.titleEn, titleZh: d.titleZh, bodyEn: d.bodyEn, bodyZh: d.bodyZh }
     })
     .catch(() => {});
@@ -386,15 +407,15 @@ export async function updateAnnouncement(formData: FormData): Promise<void> {
 }
 
 export async function deleteAnnouncement(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
-  await prisma.announcement.delete({ where: { id } }).catch(() => {});
+  await prisma.announcement.deleteMany({ where: { id, ownerId: user.id } }).catch(() => {});
   revalidatePath("/", "layout");
 }
 
 export async function moveAnnouncement(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   const direction = formData.get("direction");
   if (typeof id !== "string" || (direction !== "up" && direction !== "down"))
@@ -402,6 +423,9 @@ export async function moveAnnouncement(formData: FormData): Promise<void> {
 
   await prisma.$transaction(async (tx) => {
     const items = await tx.announcement.findMany({
+      // Our rows only: an unscoped findMany here renumbered every
+      // owner's list whenever anyone moved one of their own.
+      where: { ownerId: user.id },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       select: { id: true }
     });
@@ -422,17 +446,22 @@ export async function moveAnnouncement(formData: FormData): Promise<void> {
 }
 
 export async function removeAnnouncementImage(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
 
-  const existing = await prisma.announcement.findUnique({
-    where: { id },
+  // Scoped read before the file delete: an unscoped findUnique here would hand
+  // us another owner's image token and we would erase their file from disk.
+  const existing = await prisma.announcement.findFirst({
+    where: { id, ownerId: user.id },
     select: { image: true }
   });
-  if (existing?.image) await deleteSiteImageFile(existing.image);
+  if (!existing) return;
+  if (existing.image) await deleteSiteImageFile(existing.image);
 
-  await prisma.announcement.update({ where: { id }, data: { image: "" } }).catch(() => {});
+  await prisma.announcement
+    .updateMany({ where: { id, ownerId: user.id }, data: { image: "" } })
+    .catch(() => {});
   revalidatePath("/", "layout");
 }
 
@@ -446,11 +475,14 @@ const SITE_IMAGE_COLUMN = {
 export async function removeSiteImage(
   kind: "background" | "logo" | "contactQrEn" | "contactQrZh"
 ): Promise<void> {
-  if (!(await isAdmin())) return;
+  // Not guard(): this one is called from a client component rather than a form
+  // action, so it returns quietly instead of redirecting.
+  const user = await getCurrentUser();
+  if (!user) return;
 
   const column = SITE_IMAGE_COLUMN[kind];
   const existing = await prisma.siteSettings.findUnique({
-    where: { id: SITE_SETTINGS_ID },
+    where: { ownerId: user.id },
     select: {
       backgroundImage: true,
       logo: true,
@@ -463,8 +495,8 @@ export async function removeSiteImage(
 
   const cleared = { [column]: "" };
   await prisma.siteSettings.upsert({
-    where: { id: SITE_SETTINGS_ID },
-    create: { id: SITE_SETTINGS_ID, ...cleared },
+    where: { ownerId: user.id },
+    create: { ownerId: user.id, ...cleared },
     update: cleared
   });
 

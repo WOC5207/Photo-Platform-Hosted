@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getLocale } from "next-intl/server";
+import { requireUser } from "@/lib/auth";
 import { getSiteSettings } from "@/lib/settings";
 
 export default async function BookingsLayout({
@@ -7,9 +8,10 @@ export default async function BookingsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const settings = await getSiteSettings();
+  const locale = await getLocale();
+  const user = await requireUser(locale);
+  const settings = await getSiteSettings(user.id);
   if (!settings.bookingEnabled) {
-    const locale = await getLocale();
     redirect(`/${locale}/admin`);
   }
   return children;

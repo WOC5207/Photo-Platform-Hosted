@@ -57,13 +57,18 @@ export interface StorageStats {
 }
 
 /**
- * Walks the photos directory (per event) and the site-images directory on
- * disk to report actual space used, and asks Postgres for its own size.
- * There's no cheaper source of truth for the files — nothing in the DB
- * tracks file sizes.
+ * Walks one owner's event directories on disk to report actual space used, and
+ * asks Postgres for its own size. There's no cheaper source of truth for the
+ * files — nothing in the DB tracks file sizes.
+ *
+ * Note the two site-wide numbers below are NOT owner-scoped, which is fine
+ * while the platform admin is the only one who can open this page. Splitting
+ * this into "my usage vs quota" for users and a platform-wide view for the
+ * admin belongs with the storage/quota work, along with per-owner file paths.
  */
-export async function getStorageStats(): Promise<StorageStats> {
+export async function getStorageStats(ownerId: string): Promise<StorageStats> {
   const events = await prisma.event.findMany({
+    where: { ownerId },
     select: {
       id: true,
       titleEn: true,

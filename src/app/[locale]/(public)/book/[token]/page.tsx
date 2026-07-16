@@ -18,12 +18,12 @@ export default async function BookPage({
   const locale = await getLocale();
   const t = await getTranslations("booking");
   const tc = await getTranslations("common");
-  const settings = await getSiteSettings();
-  const subjectTerm = resolveSubjectTerm(settings, locale, tc("subjectTerm"));
-
-  if (!settings.bookingEnabled) notFound();
   if (!/^[a-z0-9]+$/.test(token)) notFound();
 
+  // The token identifies the event and, through it, the owner — which is why
+  // this route needs no owner in its path. Look the event up FIRST: whether
+  // booking is on, and the vocabulary shown, are that owner's settings, so
+  // they cannot be read before we know whose event this is.
   const event = await prisma.bookingEvent.findUnique({
     where: { token },
     include: {
@@ -39,6 +39,10 @@ export default async function BookPage({
   });
   if (!event) notFound();
 
+  const settings = await getSiteSettings(event.ownerId);
+  const subjectTerm = resolveSubjectTerm(settings, locale, tc("subjectTerm"));
+  if (!settings.bookingEnabled) notFound();
+
   const slots: PublicSlot[] = event.slots.map((s) => ({
     id: s.id,
     start: s.startTime.toISOString(),
@@ -48,7 +52,7 @@ export default async function BookPage({
   }));
 
   const description = pickText(locale, event.descriptionEn, event.descriptionZh);
-  const contactMethods = (await getContactMethods()).map((m) => ({
+  const contactMethods = (await getContactMethods(event.ownerId)).map((m) => ({
     id: m.id,
     label: pickText(locale, m.labelEn, m.labelZh)
   }));

@@ -1,4 +1,5 @@
 import { getTranslations, getLocale } from "next-intl/server";
+import { requireUser } from "@/lib/auth";
 import { Link } from "@/i18n/navigation";
 import { getSiteSettings, resolveCreditTerm } from "@/lib/settings";
 
@@ -6,7 +7,8 @@ export default async function AdminDashboardPage() {
   const t = await getTranslations("admin");
   const tc = await getTranslations("common");
   const locale = await getLocale();
-  const settings = await getSiteSettings();
+  const user = await requireUser(locale);
+  const settings = await getSiteSettings(user.id);
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
 
   return (

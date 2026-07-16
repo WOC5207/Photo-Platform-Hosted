@@ -31,6 +31,24 @@ const prisma = new PrismaClient();
 const CONCURRENCY = 20;
 let failures = 0;
 
+/**
+ * Booking events need an owner now. The races under test are per-slot and
+ * per-draw, so one throwaway owner is enough — cleaned up at the end along with
+ * everything hanging off it.
+ */
+let ownerId: string;
+
+async function createOwner() {
+  const user = await prisma.user.create({
+    data: {
+      username: `concurrency-test-${randomUUID().slice(0, 8)}`,
+      passwordHash: "not-a-real-hash-this-account-cannot-log-in",
+      role: "user"
+    }
+  });
+  ownerId = user.id;
+}
+
 function report(name: string, ok: boolean, detail: string) {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      ${detail}`);
   if (!ok) failures++;
@@ -57,6 +75,7 @@ function booking(i: number) {
 async function makeSlot(capacity: number) {
   const event = await prisma.bookingEvent.create({
     data: {
+      ownerId,
       token: randomUUID().replace(/-/g, ""),
       titleEn: "concurrency test",
       titleZh: "concurrency test",
@@ -146,6 +165,7 @@ async function testBookingStampede() {
 async function makeDraw() {
   const event = await prisma.bookingEvent.create({
     data: {
+      ownerId,
       token: randomUUID().replace(/-/g, ""),
       titleEn: "lottery concurrency test",
       titleZh: "lottery concurrency test",
@@ -260,11 +280,14 @@ async function testLotteryPrizeStock() {
 
 async function main() {
   console.log(`Running with ${CONCURRENCY}x concurrency\n`);
+  await createOwner();
   await testBookingLockIsHonoured();
   await testBookingStampede();
   await testLotteryLockIsHonoured();
   await testLotteryPrizeStock();
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);
+  // Cascades to anything the tests left behind.
+  await prisma.user.delete({ where: { id: ownerId } });
   await prisma.$disconnect();
   process.exit(failures === 0 ? 0 : 1);
 }

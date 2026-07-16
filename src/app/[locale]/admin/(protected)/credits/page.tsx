@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getTranslations, getLocale } from "next-intl/server";
+import { requireUser } from "@/lib/auth";
 import { getCreditProfiles, getSiteSettings, resolveCreditTerm } from "@/lib/settings";
 import CreditProfilesManager, {
   type AdminCreditProfile
@@ -9,10 +10,11 @@ export default async function CreditProfilesPage() {
   const t = await getTranslations("adminCredits");
   const tc = await getTranslations("common");
   const locale = await getLocale();
-  const settings = await getSiteSettings();
+  const user = await requireUser(locale);
+  const settings = await getSiteSettings(user.id);
   if (!settings.creditProfilesEnabled) redirect(`/${locale}/admin`);
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
-  const roster = await getCreditProfiles();
+  const roster = await getCreditProfiles(user.id);
 
   const creditProfiles: AdminCreditProfile[] = roster.map((c) => ({
     id: c.id,

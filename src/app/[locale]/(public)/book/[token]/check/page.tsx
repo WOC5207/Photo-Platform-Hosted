@@ -16,10 +16,12 @@ export default async function CheckBookingPage({
   const locale = await getLocale();
   const t = await getTranslations("booking");
 
-  if (!(await getSiteSettings()).bookingEnabled) notFound();
   if (!/^[a-z0-9]+$/.test(token)) notFound();
 
   const event = await prisma.bookingEvent.findUnique({ where: { token } });
+  // Booking-enabled is the event owner's setting, so it can only be checked
+  // once the token has told us whose event this is.
+  if (event && !(await getSiteSettings(event.ownerId)).bookingEnabled) notFound();
   if (!event) notFound();
 
   return (
