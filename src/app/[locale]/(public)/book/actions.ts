@@ -13,6 +13,7 @@ import { pickText } from "@/lib/content";
 import { formatSlotRange } from "@/lib/datetime";
 import { notifyBookingCreated } from "@/lib/notify";
 import { getSiteSettings } from "@/lib/settings";
+import { reserveSlot } from "@/lib/booking";
 import { spinForEntry, uniqueEntryToken } from "@/lib/lottery";
 
 export type BookingFormState = {
@@ -58,37 +59,17 @@ export async function createBooking(
 
   const cancelToken = randomUUID().replace(/-/g, "");
 
-  // Atomic capacity check + insert. With SQLite's serialized writes
-  // (connection_limit=1) two concurrent attempts on the last spot cannot
-  // both pass the count check.
-  const result = await prisma.$transaction(async (tx) => {
-    const slot = await tx.timeSlot.findUnique({
-      where: { id: d.slotId },
-      include: { bookingEvent: true }
-    });
-    if (!slot) return { error: "slotUnavailable" as const };
-    if (!slot.bookingEvent.open) return { error: "closed" as const };
-
-    const confirmed = await tx.booking.count({
-      where: { timeSlotId: slot.id, status: "confirmed" }
-    });
-    if (confirmed >= slot.capacity) return { error: "slotFull" as const };
-
-    await tx.booking.create({
-      data: {
-        timeSlotId: slot.id,
-        name: d.name,
-        subject: d.subject,
-        contactMethod: d.contactMethod,
-        contactValue: d.contactValue,
-        notes: d.notes,
-        cancelToken
-      }
-    });
-    return { slot };
+  // Atomic capacity check + insert; see reserveSlot for why it's locked.
+  const result = await reserveSlot(d.slotId, {
+    name: d.name,
+    subject: d.subject,
+    contactMethod: d.contactMethod,
+    contactValue: d.contactValue,
+    notes: d.notes,
+    cancelToken
   });
 
-  if ("error" in result) return { error: result.error };
+  if (!result.ok) return { error: result.error };
 
   const locale = await getLocale();
   const manageUrl = `${config.appBaseUrl()}/${locale}/my-booking/${cancelToken}`;

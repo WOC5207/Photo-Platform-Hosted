@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(curl -s -o /dev/null -w \"zh/gallery: %{http_code}\\\\n\" http://localhost:3000/zh/gallery)",
-      "Bash(curl -s -o /dev/null -w \"root redirect: %{http_code}\\\\n\" http://localhost:3000/)"
-    ]
-  }
-}

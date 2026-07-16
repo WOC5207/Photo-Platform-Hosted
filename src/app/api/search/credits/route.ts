@@ -27,9 +27,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
+  // `mode: "insensitive"` is required on Postgres, where `contains` maps to a
+  // case-SENSITIVE LIKE. (It was implicitly case-insensitive under SQLite, so
+  // dropping this silently degrades the search rather than breaking it.)
   const credits = await prisma.photoCredit.findMany({
     where: {
-      OR: [{ creditName: { contains: q } }, { subject: { contains: q } }],
+      OR: [
+        { creditName: { contains: q, mode: "insensitive" } },
+        { subject: { contains: q, mode: "insensitive" } }
+      ],
       photo: { event: { published: true } }
     },
     take: MAX_RESULTS,
