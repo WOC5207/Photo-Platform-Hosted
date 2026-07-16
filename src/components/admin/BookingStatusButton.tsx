@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import {
   setBookingStatus,
   type BookingStatusState
-} from "@/app/[locale]/admin/(protected)/bookings/actions";
+} from "@/app/[locale]/dashboard/(protected)/bookings/actions";
 
 export default function BookingStatusButton({
   bookingId,

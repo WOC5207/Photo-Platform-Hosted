@@ -1,6 +1,6 @@
 "use client";
 
-import { updateLotteryDrawOpen } from "@/app/[locale]/admin/(protected)/bookings/lottery-actions";
+import { updateLotteryDrawOpen } from "@/app/[locale]/dashboard/(protected)/bookings/lottery-actions";
 
 export default function LotteryOpenToggle({
   drawId,

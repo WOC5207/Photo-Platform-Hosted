@@ -7,34 +7,39 @@ import { prisma } from "./db";
 /**
  * Resolves which user's site a public request is for.
  *
- * SCAFFOLDING. Right now the public routes are still un-prefixed (/gallery,
- * /booking, ...) with nowhere to name an owner, so they all resolve to the
- * platform admin — the deployment behaves exactly like the single-photographer
- * site it grew out of, while the data underneath is fully owner-scoped.
- *
- * The routing phase replaces this with resolution from the /u/<username> path
- * segment. Everything owner-scoped already reads its owner from this module, so
- * that change lands here rather than in twenty pages — and layering subdomains
- * on later stays a middleware rewrite instead of a rewrite of everything.
+ * Every owner-scoped page gets its owner from here and nowhere else. That is
+ * the point: adding subdomains later (alice.pinhaoshe.ca) becomes a middleware
+ * rewrite to /u/alice with no page changes, whereas pages resolving owners ad
+ * hoc would make it a rewrite of everything.
  */
-export const findSiteOwner = cache(async (): Promise<User | null> => {
-  return prisma.user.findFirst({
-    where: { role: "admin", status: "active" },
-    orderBy: { createdAt: "asc" }
-  });
-});
 
 /**
- * The owner, or a 404 — for pages whose entire content belongs to them.
+ * The owner behind a /u/<username> segment, or null.
  *
- * Do NOT use this in anything that wraps the login page. The admin account is
- * seeded by the first successful login, so on a fresh deployment there is no
- * owner yet; a 404 in shared chrome would take the login page down with
- * everything else, leaving no way to ever seed the admin and no way in. Use
- * findSiteOwner() and fall back to defaults there instead.
+ * Suspended accounts resolve to null, so suspending someone takes their public
+ * site down immediately rather than only locking them out of their dashboard.
  */
-export const getSiteOwner = cache(async (): Promise<User> => {
-  const owner = await findSiteOwner();
+export const findOwner = cache(async (username: string): Promise<User | null> => {
+  const user = await prisma.user.findUnique({ where: { username } });
+  return user && user.status === "active" ? user : null;
+});
+
+/** The owner, or a 404 — for pages whose entire content is theirs. */
+export const resolveOwner = cache(async (username: string): Promise<User> => {
+  const owner = await findOwner(username);
   if (!owner) notFound();
   return owner;
 });
+
+/** Display name for the directory and chrome; never blank. */
+export function ownerName(owner: Pick<User, "displayName" | "username">): string {
+  return owner.displayName || owner.username;
+}
+
+/**
+ * Root of one owner's public site. Locale is added separately by the i18n
+ * Link/redirect helpers, so this must NOT include it.
+ */
+export function ownerBasePath(username: string): string {
+  return `/u/${username}`;
+}

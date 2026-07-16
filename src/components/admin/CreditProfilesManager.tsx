@@ -7,7 +7,7 @@ import {
   updateCreditProfile,
   deleteCreditProfile,
   type CreditProfileState
-} from "@/app/[locale]/admin/(protected)/credits/actions";
+} from "@/app/[locale]/dashboard/(protected)/credits/actions";
 import SocialLinksEditor, {
   emptySocialLink,
   type SocialLinkValue

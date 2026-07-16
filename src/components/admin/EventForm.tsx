@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
-import type { EventFormState } from "@/app/[locale]/admin/(protected)/events/actions";
+import type { EventFormState } from "@/app/[locale]/dashboard/(protected)/events/actions";
 
 export interface EventFormValues {
   id?: string;

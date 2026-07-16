@@ -25,8 +25,11 @@ export interface StreamEvent {
  * clicking in. See the layout note on the <ul> below for how the mosaic works.
  */
 export default function EventPhotoStream({
+  basePath,
   events
 }: {
+  /** Root of the owner's site, e.g. "/u/alice" — locale is added by Link. */
+  basePath: string;
   events: StreamEvent[];
 }) {
   if (events.length === 0) return null;
@@ -36,7 +39,7 @@ export default function EventPhotoStream({
       {events.map((event) => (
         <section key={event.slug} className="flex flex-col gap-3">
           <Link
-            href={`/gallery/${event.slug}`}
+            href={`${basePath}/gallery/${event.slug}`}
             className="group flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
           >
             <h3 className="text-xl font-semibold group-hover:underline">
@@ -68,7 +71,7 @@ export default function EventPhotoStream({
                   }}
                 >
                   <Link
-                    href={`/gallery/${event.slug}`}
+                    href={`${basePath}/gallery/${event.slug}`}
                     className="group relative block h-full"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}

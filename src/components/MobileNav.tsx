@@ -16,11 +16,14 @@ export interface MobileNavLabels {
 }
 
 export default function MobileNav({
+  basePath,
   labels,
   showBooking = true,
   showContact = false,
   contact
 }: {
+  /** Root of the owner's site, e.g. "/u/alice" — locale is added by Link. */
+  basePath: string;
   labels: MobileNavLabels;
   showBooking?: boolean;
   showContact?: boolean;
@@ -71,11 +74,11 @@ export default function MobileNav({
       </button>
       {open && (
         <div className="absolute right-0 top-full z-50 mt-2 flex w-48 flex-col gap-1 rounded-xl border border-fg/10 bg-page/95 p-2 text-sm shadow-2xl backdrop-blur-xl">
-          <Link href="/gallery" onClick={() => setOpen(false)} className={linkClass}>
+          <Link href={`${basePath}/gallery`} onClick={() => setOpen(false)} className={linkClass}>
             {labels.gallery}
           </Link>
           {showBooking && (
-            <Link href="/booking" onClick={() => setOpen(false)} className={linkClass}>
+            <Link href={`${basePath}/booking`} onClick={() => setOpen(false)} className={linkClass}>
               {labels.booking}
             </Link>
           )}
@@ -88,7 +91,7 @@ export default function MobileNav({
               className={`${linkClass} text-left`}
             />
           )}
-          <Link href="/admin" onClick={() => setOpen(false)} className={linkClass}>
+          <Link href="/" onClick={() => setOpen(false)} className={linkClass}>
             {labels.admin}
           </Link>
           <div className="mt-1 flex items-center justify-between border-t border-fg/10 px-3 pt-2">

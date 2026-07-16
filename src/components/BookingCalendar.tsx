@@ -14,8 +14,11 @@ export interface CalendarSession {
 type Cell = { day: number; dateStr: string };
 
 export default function BookingCalendar({
+  basePath,
   sessions
 }: {
+  /** Root of the owner's site, e.g. "/u/alice" — locale is added by Link. */
+  basePath: string;
   sessions: CalendarSession[];
 }) {
   const locale = useLocale();
@@ -176,7 +179,7 @@ export default function BookingCalendar({
       )}
 
       <Link
-        href="/booking"
+        href={`${basePath}/booking`}
         className="mt-3 block text-center text-xs text-fg-subtle hover:text-fg"
       >
         {t("calendarViewAll")}

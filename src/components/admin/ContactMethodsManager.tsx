@@ -8,7 +8,7 @@ import {
   moveContactMethod,
   updateContactMethod,
   type ContactMethodState
-} from "@/app/[locale]/admin/(protected)/settings/actions";
+} from "@/app/[locale]/dashboard/(protected)/settings/actions";
 
 export interface AdminContactMethod {
   id: string;
