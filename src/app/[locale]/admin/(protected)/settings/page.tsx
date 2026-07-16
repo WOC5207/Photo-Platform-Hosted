@@ -1,4 +1,5 @@
 import { getTranslations, getLocale } from "next-intl/server";
+import { requireUser } from "@/lib/auth";
 import { siteImageUrl } from "@/lib/images";
 import {
   getSiteSettings,
@@ -17,11 +18,12 @@ export default async function SiteSettingsPage() {
   const t = await getTranslations("adminSite");
   const tc = await getTranslations("common");
   const locale = await getLocale();
+  const user = await requireUser(locale);
 
-  const settings = await getSiteSettings();
-  const personalLinks = await getPersonalLinks();
-  const announcements = await getAnnouncements();
-  const contactMethods = await getContactMethods();
+  const settings = await getSiteSettings(user.id);
+  const personalLinks = await getPersonalLinks(user.id);
+  const announcements = await getAnnouncements(user.id);
+  const contactMethods = await getContactMethods(user.id);
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
 
   return (

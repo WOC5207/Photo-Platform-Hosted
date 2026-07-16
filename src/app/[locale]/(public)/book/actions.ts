@@ -38,8 +38,6 @@ export async function createBooking(
   _prev: BookingFormState,
   formData: FormData
 ): Promise<BookingFormState> {
-  if (!(await getSiteSettings()).bookingEnabled) return { error: "closed" };
-
   const h = await headers();
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
   if (!rateLimit(`book:${ip}`, { limit: 8, windowMs: 60 * 60 * 1000 })) {
@@ -56,6 +54,19 @@ export async function createBooking(
   });
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
+
+  // "Booking enabled" is the slot owner's setting, so the slot has to be
+  // resolved before it can be read — it is no longer one switch for the whole
+  // deployment. reserveSlot re-reads the slot inside its lock; this lookup only
+  // answers whose it is.
+  const slot = await prisma.timeSlot.findUnique({
+    where: { id: d.slotId },
+    select: { bookingEvent: { select: { ownerId: true } } }
+  });
+  if (!slot) return { error: "slotUnavailable" };
+  if (!(await getSiteSettings(slot.bookingEvent.ownerId)).bookingEnabled) {
+    return { error: "closed" };
+  }
 
   const cancelToken = randomUUID().replace(/-/g, "");
 

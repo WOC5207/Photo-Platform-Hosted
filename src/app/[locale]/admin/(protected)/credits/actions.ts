@@ -3,13 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
+import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { parseSocialLinksJson } from "@/lib/photoCredits";
 
-async function guard(): Promise<void> {
-  const locale = await getLocale();
-  await requireAdmin(locale);
+/** See the note in the events actions: signed in is not the same as owns it. */
+async function guard(): Promise<User> {
+  return requireUser(await getLocale());
+}
+
+/** One of our own credit profiles, or null. */
+async function findOwned(id: string, user: User) {
+  return prisma.creditProfile.findFirst({ where: { id, ownerId: user.id } });
 }
 
 export type CreditProfileState = { error?: "validation" | "duplicate"; ok?: boolean };
@@ -22,16 +28,19 @@ export async function addCreditProfile(
   _prev: CreditProfileState,
   formData: FormData
 ): Promise<CreditProfileState> {
-  await guard();
+  const user = await guard();
   const parsed = creditProfileSchema.safeParse({
     creditName: formData.get("creditName") ?? ""
   });
   if (!parsed.success) return { error: "validation" };
 
   try {
-    await prisma.creditProfile.create({ data: { creditName: parsed.data.creditName } });
+    await prisma.creditProfile.create({
+      data: { ownerId: user.id, creditName: parsed.data.creditName }
+    });
   } catch {
-    // Unique constraint on creditName.
+    // Unique constraint on (ownerId, creditName) — a duplicate only within our
+    // own address book; another owner having the same name is fine.
     return { error: "duplicate" };
   }
   revalidatePath("/", "layout");
@@ -45,11 +54,12 @@ export async function addCreditProfile(
  * crashing the page.
  */
 export async function updateCreditProfile(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
   const creditName = String(formData.get("creditName") ?? "").trim().slice(0, 200);
   if (!creditName) return;
+  if (!(await findOwned(id, user))) return;
   const socialLinks = parseSocialLinksJson(formData.get("socialLinksJson"));
 
   try {
@@ -72,9 +82,13 @@ export async function updateCreditProfile(formData: FormData): Promise<void> {
 }
 
 export async function deleteCreditProfile(formData: FormData): Promise<void> {
-  await guard();
+  const user = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
-  await prisma.creditProfile.delete({ where: { id } }).catch(() => {});
+
+  const profile = await findOwned(id, user);
+  if (!profile) return;
+
+  await prisma.creditProfile.delete({ where: { id: profile.id } }).catch(() => {});
   revalidatePath("/", "layout");
 }

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
+import { getSiteOwner } from "@/lib/owner";
 import { pickText, formatCredits } from "@/lib/content";
 import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
@@ -19,8 +20,12 @@ export default async function AlbumPage({
   const locale = await getLocale();
   const t = await getTranslations("gallery");
 
-  const event = await prisma.event.findUnique({
-    where: { slug },
+  const owner = await getSiteOwner();
+  // findFirst, not findUnique: slugs are unique per owner now, so this must
+  // name whose gallery it is — otherwise it could serve another photographer's
+  // album under this one's URL.
+  const event = await prisma.event.findFirst({
+    where: { ownerId: owner.id, slug },
     include: {
       photos: {
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
+import { getSiteOwner } from "@/lib/owner";
 import { pickText } from "@/lib/content";
 import { formatDate } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
@@ -12,10 +13,11 @@ export default async function BookingListPage() {
   const locale = await getLocale();
   const t = await getTranslations("booking");
 
-  if (!(await getSiteSettings()).bookingEnabled) notFound();
+  const owner = await getSiteOwner();
+  if (!(await getSiteSettings(owner.id)).bookingEnabled) notFound();
 
   const events = await prisma.bookingEvent.findMany({
-    where: { open: true },
+    where: { ownerId: owner.id, open: true },
     orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     include: {
       slots: {

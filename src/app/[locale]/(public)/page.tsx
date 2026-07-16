@@ -1,5 +1,6 @@
 import { getTranslations, getLocale } from "next-intl/server";
 import { prisma } from "@/lib/db";
+import { getSiteOwner } from "@/lib/owner";
 import { pickText, formatCredits } from "@/lib/content";
 import { photoUrls, siteImageUrl } from "@/lib/images";
 import { formatDate, formatDateRange } from "@/lib/datetime";
@@ -36,7 +37,8 @@ export default async function HomePage() {
   const t = await getTranslations("home");
   const tc = await getTranslations("common");
   const locale = await getLocale();
-  const settings = await getSiteSettings();
+  const owner = await getSiteOwner();
+  const settings = await getSiteSettings(owner.id);
 
   const heroTitle = resolveHomeTitle(settings, locale, t("title"));
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
@@ -48,7 +50,7 @@ export default async function HomePage() {
 
   const [events, bookingEvents, personalLinks, announcements] = await Promise.all([
     prisma.event.findMany({
-      where: { published: true },
+      where: { ownerId: owner.id, published: true },
       orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
       include: {
         photos: {
@@ -59,7 +61,7 @@ export default async function HomePage() {
     }),
     settings.bookingEnabled
       ? prisma.bookingEvent.findMany({
-          where: { open: true, date: { gte: today } },
+          where: { ownerId: owner.id, open: true, date: { gte: today } },
           orderBy: [{ date: "asc" }, { createdAt: "asc" }],
           include: {
             slots: {
@@ -72,8 +74,8 @@ export default async function HomePage() {
           }
         })
       : Promise.resolve([]),
-    getPersonalLinks(),
-    getAnnouncements()
+    getPersonalLinks(owner.id),
+    getAnnouncements(owner.id)
   ]);
 
   // Derived from the already-loaded published events rather than extra count

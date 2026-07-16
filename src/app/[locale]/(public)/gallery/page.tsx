@@ -1,5 +1,6 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
+import { getSiteOwner } from "@/lib/owner";
 import { pickText } from "@/lib/content";
 import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
@@ -11,8 +12,9 @@ export default async function GalleryPage() {
   const locale = await getLocale();
   const t = await getTranslations("gallery");
 
+  const owner = await getSiteOwner();
   const events = await prisma.event.findMany({
-    where: { published: true },
+    where: { ownerId: owner.id, published: true },
     orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
     include: {
       coverPhoto: true,

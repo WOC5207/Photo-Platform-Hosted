@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { getSiteSettings } from "@/lib/settings";
 import { pickText } from "@/lib/content";
@@ -24,12 +25,13 @@ export default async function EditBookingEventPage({
   params: Promise<{ id: string; locale: string }>;
 }) {
   const { id, locale } = await params;
+  const user = await requireUser(locale);
   const t = await getTranslations("adminBookings");
   const tc = await getTranslations("common");
-  const settings = await getSiteSettings();
+  const settings = await getSiteSettings(user.id);
 
-  const event = await prisma.bookingEvent.findUnique({
-    where: { id },
+  const event = await prisma.bookingEvent.findFirst({
+    where: { id, ownerId: user.id },
     include: {
       slots: {
         orderBy: { startTime: "asc" },

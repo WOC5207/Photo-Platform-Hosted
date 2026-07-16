@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getTranslations, getLocale } from "next-intl/server";
 import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { photoUrls } from "@/lib/images";
 import { formatShutterSpeedInput } from "@/lib/exif";
 import {
@@ -25,12 +26,13 @@ export default async function EditEventPage({
   const t = await getTranslations("adminEvents");
   const tc = await getTranslations("common");
   const locale = await getLocale();
-  const settings = await getSiteSettings();
+  const user = await requireUser(locale);
+  const settings = await getSiteSettings(user.id);
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
   const subjectTerm = resolveSubjectTerm(settings, locale, tc("subjectTerm"));
 
-  const event = await prisma.event.findUnique({
-    where: { id },
+  const event = await prisma.event.findFirst({
+    where: { id, ownerId: user.id },
     include: {
       photos: {
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -45,7 +47,7 @@ export default async function EditEventPage({
   });
   if (!event) notFound();
 
-  const creditProfiles = (await getCreditProfiles()).map((c) => ({
+  const creditProfiles = (await getCreditProfiles(user.id)).map((c) => ({
     creditName: c.creditName,
     socialLinks: c.socialLinks.map((s) => ({ platform: s.platform, url: s.url }))
   }));

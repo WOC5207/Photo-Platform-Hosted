@@ -14,6 +14,7 @@ import {
   resolveSiteTitle
 } from "@/lib/settings";
 import { siteImageUrl } from "@/lib/images";
+import { getSiteOwner } from "@/lib/owner";
 
 export default async function PublicLayout({
   children
@@ -22,7 +23,8 @@ export default async function PublicLayout({
 }) {
   const t = await getTranslations();
   const locale = await getLocale();
-  const settings = await getSiteSettings();
+  const owner = await getSiteOwner();
+  const settings = await getSiteSettings(owner.id);
 
   const siteTitle = resolveSiteTitle(settings, locale, t("common.siteName"));
   const bgImage = siteImageUrl(settings.backgroundImage);

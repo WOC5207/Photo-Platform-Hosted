@@ -8,11 +8,11 @@ datasource db {
 }
 
 // A person with an account. Replaces the old single AdminUser: the platform
-// admin is now just a User with role "admin", so there is one identity model
+// admin is just a User with role "admin", so there is one identity model
 // rather than a privileged special case.
 //
-// Content models do not point here yet — owner FKs land in the next phase, so
-// for now every account still sees the same single site.
+// Every content model points back here via ownerId. Nothing is globally
+// scoped any more: a query without an owner filter is a cross-tenant read.
 model User {
   id           String   @id @default(cuid())
   // Doubles as the public URL identity (/u/<username>), so it stays globally
@@ -27,12 +27,27 @@ model User {
   // getCurrentUser in src/lib/auth.ts for why.
   status       String   @default("active")
   createdAt    DateTime @default(now())
+
+  // Everything this account owns. Cascade means deleting a User removes all of
+  // it in one statement — but NOT their files on disk, which must be removed
+  // first and separately (see the storage phase).
+  settings       SiteSettings?
+  events         Event[]
+  bookingEvents  BookingEvent[]
+  announcements  Announcement[]
+  personalLinks  PersonalLink[]
+  contactMethods ContactMethod[]
+  creditProfiles CreditProfile[]
 }
 
 // A gallery event = one photo album (a con, a shoot, etc.)
 model Event {
   id            String    @id @default(cuid())
-  slug          String    @unique
+  ownerId       String
+  owner         User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Unique per owner, not globally: two photographers must both be able to
+  // have /u/alice/gallery/fanexpo-2025 and /u/bob/gallery/fanexpo-2025.
+  slug          String
   titleEn       String
   titleZh       String
   descriptionEn String    @default("")
@@ -46,6 +61,9 @@ model Event {
   photos        Photo[]   @relation("EventPhotos")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  @@unique([ownerId, slug])
+  @@index([ownerId])
 }
 
 model Photo {
@@ -115,10 +133,18 @@ model SocialLink {
 // only consulted for autofill.
 model CreditProfile {
   id          String                    @id @default(cuid())
-  creditName  String                    @unique
+  ownerId     String
+  owner       User                      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Unique per owner, not globally: this is one photographer's private address
+  // book. Two of them can both remember a "Jane", and Alice's links for her
+  // must never autofill into Bob's editor.
+  creditName  String
   socialLinks CreditProfileSocialLink[]
   createdAt   DateTime                  @default(now())
   updatedAt   DateTime                  @updatedAt
+
+  @@unique([ownerId, creditName])
+  @@index([ownerId])
 }
 
 model CreditProfileSocialLink {
@@ -133,7 +159,11 @@ model CreditProfileSocialLink {
 // A bookable photoshoot event with time slots (separate from gallery events)
 model BookingEvent {
   id            String     @id @default(cuid())
-  // Unguessable token used in the shareable public URL
+  ownerId       String
+  owner         User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Unguessable token used in the shareable public URL. Stays globally unique:
+  // the token alone identifies the event *and* resolves its owner, which is
+  // why /book/[token] needs no /u/<username> prefix.
   token         String     @unique
   titleEn       String
   titleZh       String
@@ -150,6 +180,8 @@ model BookingEvent {
   lotteryDraw   LotteryDraw?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+
+  @@index([ownerId])
 }
 
 model TimeSlot {
@@ -167,9 +199,14 @@ model TimeSlot {
   bookings       Booking[]
 }
 
-// Singleton row (id is always "site") holding admin-customizable site content.
+// One row per user, holding everything they can customise about their own
+// site. Was a singleton (id was always "site") back when the deployment was
+// one photographer's portfolio; now each account gets its own row, which is
+// what makes per-user homepages, branding and feature toggles possible.
 model SiteSettings {
-  id                  String   @id @default("site")
+  id                  String   @id @default(cuid())
+  ownerId             String   @unique
+  owner               User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   siteTitleEn         String   @default("")
   siteTitleZh         String   @default("")
   // Homepage hero headline/subtitle. Empty = use the built-in default copy.
@@ -232,11 +269,15 @@ model SiteSettings {
 // the homepage sidebar below the quick-stats card.
 model PersonalLink {
   id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   labelEn   String
   labelZh   String
   url       String   @default("")
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
+
+  @@index([ownerId])
 }
 
 // Admin-configured options for the booking form's contact-method dropdown
@@ -245,10 +286,14 @@ model PersonalLink {
 // never changes past bookings.
 model ContactMethod {
   id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   labelEn   String
   labelZh   String
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
+
+  @@index([ownerId])
 }
 
 // Short admin-authored notices shown in the homepage panel's Announcements
@@ -256,6 +301,8 @@ model ContactMethod {
 // PersonalLink/ContactMethod, an announcement is live as soon as it's saved.
 model Announcement {
   id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   titleEn   String
   titleZh   String
   bodyEn    String   @default("")
@@ -266,6 +313,8 @@ model Announcement {
   image     String   @default("")
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
+
+  @@index([ownerId])
 }
 
 model Booking {

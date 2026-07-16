@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSiteOwner } from "@/lib/owner";
 import { photoUrls } from "@/lib/images";
 
 const MAX_RESULTS = 8;
@@ -27,6 +28,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
+  // Scoped to whose site is being searched: without ownerId this searches every
+  // photographer's photos at once, so one site's search box surfaces another's
+  // credited people and links straight through to their albums.
+  const owner = await getSiteOwner();
+
   // `mode: "insensitive"` is required on Postgres, where `contains` maps to a
   // case-SENSITIVE LIKE. (It was implicitly case-insensitive under SQLite, so
   // dropping this silently degrades the search rather than breaking it.)
@@ -36,7 +42,7 @@ export async function GET(req: NextRequest) {
         { creditName: { contains: q, mode: "insensitive" } },
         { subject: { contains: q, mode: "insensitive" } }
       ],
-      photo: { event: { published: true } }
+      photo: { event: { ownerId: owner.id, published: true } }
     },
     take: MAX_RESULTS,
     orderBy: { photo: { createdAt: "desc" } },

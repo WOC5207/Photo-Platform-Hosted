@@ -5,8 +5,14 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
+import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { isAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
+import {
+  findOwnedBooking,
+  findOwnedBookingEvent,
+  findOwnedSlot
+} from "@/lib/ownership";
 import { parseNaiveDateTime } from "@/lib/datetime";
 
 export type BookingEventFormState = {
@@ -15,10 +21,11 @@ export type BookingEventFormState = {
 };
 export type SlotFormState = { error?: "validation"; ok?: boolean };
 
-async function guard(): Promise<string> {
+/** See the note in the events actions: signed in is not the same as owns it. */
+async function guard(): Promise<{ locale: string; user: User }> {
   const locale = await getLocale();
-  if (!(await isAdmin())) redirect(`/${locale}/login`);
-  return locale;
+  const user = await requireUser(locale);
+  return { locale, user };
 }
 
 const bookingEventSchema = z
@@ -54,13 +61,14 @@ export async function createBookingEvent(
   _prev: BookingEventFormState,
   formData: FormData
 ): Promise<BookingEventFormState> {
-  const locale = await guard();
+  const { locale, user } = await guard();
   const parsed = parseBookingEventForm(formData);
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
 
   const event = await prisma.bookingEvent.create({
     data: {
+      ownerId: user.id,
       token: randomUUID().replace(/-/g, ""),
       titleEn: d.titleEn,
       titleZh: d.titleZh,
@@ -80,16 +88,19 @@ export async function updateBookingEvent(
   _prev: BookingEventFormState,
   formData: FormData
 ): Promise<BookingEventFormState> {
-  await guard();
+  const { user } = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return { error: "unknown" };
   const parsed = parseBookingEventForm(formData);
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
 
+  const existing = await findOwnedBookingEvent(id, user);
+  if (!existing) return { error: "unknown" };
+
   try {
     await prisma.bookingEvent.update({
-      where: { id },
+      where: { id: existing.id },
       data: {
         titleEn: d.titleEn,
         titleZh: d.titleZh,
@@ -109,11 +120,16 @@ export async function updateBookingEvent(
 }
 
 export async function deleteBookingEvent(formData: FormData): Promise<void> {
-  const locale = await guard();
+  const { locale, user } = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
 
-  await prisma.bookingEvent.delete({ where: { id } }).catch(() => {});
+  // Was an unscoped delete straight from the posted id — it took any event,
+  // and its slots, bookings and lottery draw down with it via cascade.
+  const event = await findOwnedBookingEvent(id, user);
+  if (!event) return;
+
+  await prisma.bookingEvent.delete({ where: { id: event.id } }).catch(() => {});
   revalidatePath("/", "layout");
   redirect(`/${locale}/admin/bookings`);
 }
@@ -131,7 +147,7 @@ export async function addSlots(
   _prev: SlotFormState,
   formData: FormData
 ): Promise<SlotFormState> {
-  await guard();
+  const { user } = await guard();
   const eventId = formData.get("eventId");
   if (typeof eventId !== "string") return { error: "validation" };
 
@@ -148,9 +164,7 @@ export async function addSlots(
   const start = parseNaiveDateTime(parsed.data.firstSlotStart);
   if (!start) return { error: "validation" };
 
-  const event = await prisma.bookingEvent.findUnique({
-    where: { id: eventId }
-  });
+  const event = await findOwnedBookingEvent(eventId, user);
   if (!event) return { error: "validation" };
 
   const { slotMinutes, slotCount, capacity, descriptionEn, descriptionZh } =
@@ -174,10 +188,14 @@ export async function addSlots(
 }
 
 export async function deleteSlot(formData: FormData): Promise<void> {
-  await guard();
+  const { user } = await guard();
   const slotId = formData.get("slotId");
   if (typeof slotId !== "string") return;
-  await prisma.timeSlot.delete({ where: { id: slotId } }).catch(() => {});
+
+  const slot = await findOwnedSlot(slotId, user);
+  if (!slot) return;
+
+  await prisma.timeSlot.delete({ where: { id: slot.id } }).catch(() => {});
   revalidatePath("/", "layout");
 }
 
@@ -187,7 +205,7 @@ export async function setBookingStatus(
   _prev: BookingStatusState,
   formData: FormData
 ): Promise<BookingStatusState> {
-  await guard();
+  const { user } = await guard();
   const bookingId = formData.get("bookingId");
   const status = formData.get("status");
   if (
@@ -196,21 +214,30 @@ export async function setBookingStatus(
   )
     return {};
 
+  const owned = await findOwnedBooking(bookingId, user);
+  if (!owned) return {};
+
   // Cancelling always frees capacity, so it never conflicts. Restoring must
   // respect the slot's capacity — otherwise the freed spot may have been
-  // re-booked, and restoring would overbook (the public booking flow already
-  // guards this transactionally; see book/actions.ts:createBooking).
+  // re-booked, and restoring would overbook.
   if (status === "cancelled") {
     await prisma.booking
-      .update({ where: { id: bookingId }, data: { status: "cancelled" } })
+      .update({ where: { id: owned.id }, data: { status: "cancelled" } })
       .catch(() => {});
     revalidatePath("/", "layout");
     return { ok: true };
   }
 
   const result: BookingStatusState = await prisma.$transaction(async (tx) => {
+    // Same lock, and for the same reason, as the public booking path (see
+    // reserveSlot in src/lib/booking.ts): this counts confirmed bookings and
+    // then writes, so without holding the slot an admin restore racing a
+    // visitor's booking — or another restore — lets both through on a stale
+    // count and overbooks the slot.
+    await tx.$queryRaw`SELECT id FROM "TimeSlot" WHERE id = ${owned.timeSlotId} FOR UPDATE`;
+
     const booking = await tx.booking.findUnique({
-      where: { id: bookingId },
+      where: { id: owned.id },
       include: { timeSlot: true }
     });
     if (!booking) return {};
@@ -222,7 +249,7 @@ export async function setBookingStatus(
     if (confirmed >= booking.timeSlot.capacity) return { error: "slotFull" };
 
     await tx.booking.update({
-      where: { id: bookingId },
+      where: { id: booking.id },
       data: { status: "confirmed" }
     });
     return { ok: true };

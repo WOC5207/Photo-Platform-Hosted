@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isAdmin } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
-import { SITE_SETTINGS_ID } from "@/lib/settings";
 import {
   ALLOWED_UPLOAD_TYPES,
   processAndStoreSiteImage,
@@ -33,7 +32,8 @@ const COLUMN: Record<
 };
 
 export async function POST(req: NextRequest) {
-  if (!(await isAdmin())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   const column = COLUMN[validKind];
   const previous = await prisma.siteSettings.findUnique({
-    where: { id: SITE_SETTINGS_ID },
+    where: { ownerId: user.id },
     select: {
       backgroundImage: true,
       logo: true,
@@ -77,8 +77,8 @@ export async function POST(req: NextRequest) {
 
   const next = { [column]: token };
   await prisma.siteSettings.upsert({
-    where: { id: SITE_SETTINGS_ID },
-    create: { id: SITE_SETTINGS_ID, ...next },
+    where: { ownerId: user.id },
+    create: { ownerId: user.id, ...next },
     update: next
   });
 

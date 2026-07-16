@@ -22,9 +22,6 @@ export default async function MyBookingPage({
   const locale = await getLocale();
   const t = await getTranslations("booking");
   const tc = await getTranslations("common");
-  const settings = await getSiteSettings();
-  const subjectTerm = resolveSubjectTerm(settings, locale, tc("subjectTerm"));
-
   if (!/^[a-z0-9]+$/.test(cancelToken)) notFound();
 
   const booking = await prisma.booking.findUnique({
@@ -52,6 +49,11 @@ export default async function MyBookingPage({
   if (!booking) notFound();
 
   const event = booking.timeSlot.bookingEvent;
+  // Settings come from the event's owner (reached via the cancel token), not
+  // from any site-wide row: this booking belongs to one photographer, and it is
+  // their vocabulary and feature toggles that apply.
+  const settings = await getSiteSettings(event.ownerId);
+  const subjectTerm = resolveSubjectTerm(settings, locale, tc("subjectTerm"));
   const cancelled = booking.status === "cancelled";
 
   // The wheel shows whenever the site + event have lottery on and a draw

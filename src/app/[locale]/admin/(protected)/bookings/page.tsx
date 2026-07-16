@@ -1,5 +1,6 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { pickText } from "@/lib/content";
 import { formatDate } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
@@ -7,8 +8,10 @@ import { Link } from "@/i18n/navigation";
 export default async function AdminBookingsPage() {
   const locale = await getLocale();
   const t = await getTranslations("adminBookings");
+  const user = await requireUser(locale);
 
   const events = await prisma.bookingEvent.findMany({
+    where: { ownerId: user.id },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     include: {
       slots: {

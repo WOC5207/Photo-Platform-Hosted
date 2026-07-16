@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
-import { SITE_SETTINGS_ID, getSiteSettings } from "@/lib/settings";
+import { getSiteSettings } from "@/lib/settings";
 import { slugify, uniqueEventSlug } from "@/lib/slug";
 import type { User } from "@prisma/client";
 
@@ -74,7 +74,7 @@ export async function setupUpdateBrand(
   _prev: BrandState,
   formData: FormData
 ): Promise<BrandState> {
-  await guard();
+  const { user } = await guard();
   const siteTitleEn = String(formData.get("siteTitleEn") ?? "")
     .trim()
     .slice(0, 120);
@@ -83,8 +83,8 @@ export async function setupUpdateBrand(
     .slice(0, 120);
 
   await prisma.siteSettings.upsert({
-    where: { id: SITE_SETTINGS_ID },
-    create: { id: SITE_SETTINGS_ID, siteTitleEn, siteTitleZh },
+    where: { ownerId: user.id },
+    create: { ownerId: user.id, siteTitleEn, siteTitleZh },
     update: { siteTitleEn, siteTitleZh }
   });
   revalidatePath("/", "layout");
@@ -97,7 +97,7 @@ export async function setupUpdateHomeText(
   _prev: HomeTextState,
   formData: FormData
 ): Promise<HomeTextState> {
-  await guard();
+  const { user } = await guard();
   const homeTitleEn = String(formData.get("homeTitleEn") ?? "")
     .trim()
     .slice(0, 200);
@@ -112,9 +112,9 @@ export async function setupUpdateHomeText(
     .slice(0, 300);
 
   await prisma.siteSettings.upsert({
-    where: { id: SITE_SETTINGS_ID },
+    where: { ownerId: user.id },
     create: {
-      id: SITE_SETTINGS_ID,
+      ownerId: user.id,
       homeTitleEn,
       homeTitleZh,
       homeSubtitleEn,
@@ -132,15 +132,15 @@ export async function setupUpdateFeatures(
   _prev: FeaturesState,
   formData: FormData
 ): Promise<FeaturesState> {
-  await guard();
+  const { user } = await guard();
   const bookingEnabled = formData.get("bookingEnabled") === "on";
   const lotteryEnabled = formData.get("lotteryEnabled") === "on";
   const creditProfilesEnabled = formData.get("creditProfilesEnabled") === "on";
 
   await prisma.siteSettings.upsert({
-    where: { id: SITE_SETTINGS_ID },
+    where: { ownerId: user.id },
     create: {
-      id: SITE_SETTINGS_ID,
+      ownerId: user.id,
       bookingEnabled,
       lotteryEnabled,
       creditProfilesEnabled
@@ -158,14 +158,16 @@ export async function setupUpdateFeatures(
  * the (protected) layout stops redirecting here.
  */
 export async function completeSetup(): Promise<void> {
-  const { locale } = await guard();
-  const settings = await getSiteSettings();
+  const { locale, user } = await guard();
+  const settings = await getSiteSettings(user.id);
 
   const albumSlug = await uniqueEventSlug(
+    user.id,
     slugify("my-first-album") || "my-first-album"
   );
   await prisma.event.create({
     data: {
+      ownerId: user.id,
       slug: albumSlug,
       titleEn: "My First Album",
       titleZh: "我的第一个相册",
@@ -181,6 +183,7 @@ export async function completeSetup(): Promise<void> {
     date.setUTCDate(date.getUTCDate() + 14);
     await prisma.bookingEvent.create({
       data: {
+        ownerId: user.id,
         token: randomUUID().replace(/-/g, ""),
         titleEn: "Sample Photoshoot",
         titleZh: "示例场照活动",
@@ -194,7 +197,7 @@ export async function completeSetup(): Promise<void> {
   }
 
   await prisma.siteSettings.update({
-    where: { id: SITE_SETTINGS_ID },
+    where: { ownerId: user.id },
     data: { setupCompleted: true }
   });
 

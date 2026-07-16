@@ -1,5 +1,6 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { pickText } from "@/lib/content";
 import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
@@ -8,8 +9,10 @@ import { Link } from "@/i18n/navigation";
 export default async function AdminEventsPage() {
   const locale = await getLocale();
   const t = await getTranslations("adminEvents");
+  const user = await requireUser(locale);
 
   const events = await prisma.event.findMany({
+    where: { ownerId: user.id },
     orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
     include: {
       coverPhoto: true,

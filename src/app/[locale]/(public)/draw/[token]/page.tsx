@@ -17,7 +17,6 @@ export default async function LotteryEntryPage({
   const locale = await getLocale();
   const t = await getTranslations("lotteryEntry");
 
-  if (!(await getSiteSettings()).lotteryEnabled) notFound();
   if (!/^[a-z0-9]+$/.test(token)) notFound();
 
   const draw = await prisma.lotteryDraw.findUnique({
@@ -34,8 +33,12 @@ export default async function LotteryEntryPage({
   if (!draw || !draw.bookingEvent.lotteryEnabled) notFound();
 
   const event = draw.bookingEvent;
+  // The site-wide lottery toggle belongs to this event's owner, so it can only
+  // be read once the token has told us whose draw this is.
+  if (!(await getSiteSettings(event.ownerId)).lotteryEnabled) notFound();
+
   const description = pickText(locale, event.descriptionEn, event.descriptionZh);
-  const contactMethods = (await getContactMethods()).map((m) => ({
+  const contactMethods = (await getContactMethods(event.ownerId)).map((m) => ({
     id: m.id,
     label: pickText(locale, m.labelEn, m.labelZh)
   }));

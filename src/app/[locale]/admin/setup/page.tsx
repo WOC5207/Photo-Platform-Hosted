@@ -19,14 +19,14 @@ export default async function SetupPage() {
   const locale = await getLocale();
   const admin = await requireAdmin(locale);
 
-  const settings = await getSiteSettings();
+  const settings = await getSiteSettings(admin.id);
   if (settings.setupCompleted) redirect(`/${locale}/admin`);
 
   const t = await getTranslations("setup");
   const tc = await getTranslations("common");
   const [contactMethods, personalLinks] = await Promise.all([
-    getContactMethods(),
-    getPersonalLinks()
+    getContactMethods(admin.id),
+    getPersonalLinks(admin.id)
   ]);
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
 

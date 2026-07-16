@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isAdmin } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import {
   ALLOWED_UPLOAD_TYPES,
@@ -18,12 +18,14 @@ const IMAGE_OPTIONS = {
 
 /**
  * Uploads an image for one Announcement row, identified by announcementId.
- * Unlike /api/admin/site-image (which always targets the single SiteSettings
- * row), this targets an arbitrary row in a list, so the id has to travel
- * with the upload instead of being implied by a fixed "kind".
+ * Unlike /api/admin/site-image (which always targets the uploader's own
+ * settings row), this targets an arbitrary row in a list, so the id has to
+ * travel with the upload instead of being implied by a fixed "kind" — which is
+ * exactly why the row is re-checked against the uploader below.
  */
 export async function POST(req: NextRequest) {
-  if (!(await isAdmin())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -44,8 +46,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "tooLarge" }, { status: 413 });
   }
 
-  const existing = await prisma.announcement.findUnique({
-    where: { id: announcementId },
+  const existing = await prisma.announcement.findFirst({
+    where: { id: announcementId, ownerId: user.id },
     select: { image: true }
   });
   if (!existing) {
@@ -60,8 +62,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalidImage" }, { status: 400 });
   }
 
-  await prisma.announcement.update({
-    where: { id: announcementId },
+  await prisma.announcement.updateMany({
+    where: { id: announcementId, ownerId: user.id },
     data: { image: token }
   });
 

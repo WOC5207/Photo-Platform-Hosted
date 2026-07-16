@@ -16,6 +16,7 @@ CREATE TABLE "User" (
 -- CreateTable
 CREATE TABLE "Event" (
     "id" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
     "titleEn" TEXT NOT NULL,
     "titleZh" TEXT NOT NULL,
@@ -79,6 +80,7 @@ CREATE TABLE "SocialLink" (
 -- CreateTable
 CREATE TABLE "CreditProfile" (
     "id" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
     "creditName" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -100,6 +102,7 @@ CREATE TABLE "CreditProfileSocialLink" (
 -- CreateTable
 CREATE TABLE "BookingEvent" (
     "id" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
     "token" TEXT NOT NULL,
     "titleEn" TEXT NOT NULL,
     "titleZh" TEXT NOT NULL,
@@ -130,7 +133,8 @@ CREATE TABLE "TimeSlot" (
 
 -- CreateTable
 CREATE TABLE "SiteSettings" (
-    "id" TEXT NOT NULL DEFAULT 'site',
+    "id" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
     "siteTitleEn" TEXT NOT NULL DEFAULT '',
     "siteTitleZh" TEXT NOT NULL DEFAULT '',
     "homeTitleEn" TEXT NOT NULL DEFAULT '',
@@ -166,6 +170,7 @@ CREATE TABLE "SiteSettings" (
 -- CreateTable
 CREATE TABLE "PersonalLink" (
     "id" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
     "labelEn" TEXT NOT NULL,
     "labelZh" TEXT NOT NULL,
     "url" TEXT NOT NULL DEFAULT '',
@@ -178,6 +183,7 @@ CREATE TABLE "PersonalLink" (
 -- CreateTable
 CREATE TABLE "ContactMethod" (
     "id" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
     "labelEn" TEXT NOT NULL,
     "labelZh" TEXT NOT NULL,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
@@ -189,6 +195,7 @@ CREATE TABLE "ContactMethod" (
 -- CreateTable
 CREATE TABLE "Announcement" (
     "id" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
     "titleEn" TEXT NOT NULL,
     "titleZh" TEXT NOT NULL,
     "bodyEn" TEXT NOT NULL DEFAULT '',
@@ -262,16 +269,37 @@ CREATE TABLE "LotteryPrize" (
 CREATE UNIQUE INDEX "User_username_key" ON "User"("username");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Event_slug_key" ON "Event"("slug");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Event_coverPhotoId_key" ON "Event"("coverPhotoId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "CreditProfile_creditName_key" ON "CreditProfile"("creditName");
+CREATE INDEX "Event_ownerId_idx" ON "Event"("ownerId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Event_ownerId_slug_key" ON "Event"("ownerId", "slug");
+
+-- CreateIndex
+CREATE INDEX "CreditProfile_ownerId_idx" ON "CreditProfile"("ownerId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CreditProfile_ownerId_creditName_key" ON "CreditProfile"("ownerId", "creditName");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "BookingEvent_token_key" ON "BookingEvent"("token");
+
+-- CreateIndex
+CREATE INDEX "BookingEvent_ownerId_idx" ON "BookingEvent"("ownerId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "SiteSettings_ownerId_key" ON "SiteSettings"("ownerId");
+
+-- CreateIndex
+CREATE INDEX "PersonalLink_ownerId_idx" ON "PersonalLink"("ownerId");
+
+-- CreateIndex
+CREATE INDEX "ContactMethod_ownerId_idx" ON "ContactMethod"("ownerId");
+
+-- CreateIndex
+CREATE INDEX "Announcement_ownerId_idx" ON "Announcement"("ownerId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Booking_cancelToken_key" ON "Booking"("cancelToken");
@@ -289,6 +317,9 @@ CREATE UNIQUE INDEX "LotteryEntry_bookingId_key" ON "LotteryEntry"("bookingId");
 CREATE UNIQUE INDEX "LotteryEntry_drawId_token_key" ON "LotteryEntry"("drawId", "token");
 
 -- AddForeignKey
+ALTER TABLE "Event" ADD CONSTRAINT "Event_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Event" ADD CONSTRAINT "Event_coverPhotoId_fkey" FOREIGN KEY ("coverPhotoId") REFERENCES "Photo"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -301,10 +332,28 @@ ALTER TABLE "PhotoCredit" ADD CONSTRAINT "PhotoCredit_photoId_fkey" FOREIGN KEY 
 ALTER TABLE "SocialLink" ADD CONSTRAINT "SocialLink_creditId_fkey" FOREIGN KEY ("creditId") REFERENCES "PhotoCredit"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "CreditProfile" ADD CONSTRAINT "CreditProfile_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "CreditProfileSocialLink" ADD CONSTRAINT "CreditProfileSocialLink_creditProfileId_fkey" FOREIGN KEY ("creditProfileId") REFERENCES "CreditProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "BookingEvent" ADD CONSTRAINT "BookingEvent_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "TimeSlot" ADD CONSTRAINT "TimeSlot_bookingEventId_fkey" FOREIGN KEY ("bookingEventId") REFERENCES "BookingEvent"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SiteSettings" ADD CONSTRAINT "SiteSettings_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PersonalLink" ADD CONSTRAINT "PersonalLink_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ContactMethod" ADD CONSTRAINT "ContactMethod_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Announcement" ADD CONSTRAINT "Announcement_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Booking" ADD CONSTRAINT "Booking_timeSlotId_fkey" FOREIGN KEY ("timeSlotId") REFERENCES "TimeSlot"("id") ON DELETE CASCADE ON UPDATE CASCADE;

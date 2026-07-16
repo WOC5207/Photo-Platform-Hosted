@@ -3,7 +3,7 @@ import path from "path";
 import { Readable } from "stream";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isAdmin } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { eventDir } from "@/lib/images";
 
 const FILE_PATTERN = /^([a-z0-9]+)-(thumb|med|full|orig)\.(webp|jpg|jpeg|png)$/;
@@ -30,15 +30,25 @@ export async function GET(
 
   const photo = await prisma.photo.findUnique({
     where: { id: photoId },
-    include: { event: { select: { id: true, published: true } } }
+    include: { event: { select: { id: true, published: true, ownerId: true } } }
   });
   if (!photo || photo.event.id !== eventId) {
     return new NextResponse("Not found", { status: 404 });
   }
 
-  // Originals are admin-only; web sizes of unpublished events are admin-only.
+  // Originals, and any size of an unpublished album, are for that album's owner
+  // (or the platform admin) only. This used to ask merely "is an admin signed
+  // in" — which, once anyone can hold an account, would have let every user
+  // fetch every other user's originals and unpublished work. The ids are right
+  // there in the HTML of pages they can already see, so nothing needs guessing.
+  //
+  // Still 404 rather than 403: it is the existing convention here and it does
+  // not confirm that the photo exists.
   if (variant === "orig" || !photo.event.published) {
-    if (!(await isAdmin())) return new NextResponse("Not found", { status: 404 });
+    const user = await getCurrentUser();
+    const allowed =
+      user && (user.id === photo.event.ownerId || user.role === "admin");
+    if (!allowed) return new NextResponse("Not found", { status: 404 });
   }
 
   const filePath = path.join(eventDir(eventId), file);
