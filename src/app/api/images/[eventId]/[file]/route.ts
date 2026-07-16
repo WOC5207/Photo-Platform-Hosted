@@ -51,7 +51,9 @@ export async function GET(
     if (!allowed) return new NextResponse("Not found", { status: 404 });
   }
 
-  const filePath = path.join(eventDir(eventId), file);
+  // Path from the record's owner, not the URL: the URL carries no owner, so
+  // there is nothing here that could disagree with the row.
+  const filePath = path.join(eventDir(photo.event.ownerId, eventId), file);
   let stat;
   try {
     stat = await fs.stat(filePath);

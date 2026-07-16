@@ -5,9 +5,10 @@ import { config } from "@/lib/config";
 import {
   ALLOWED_UPLOAD_TYPES,
   processAndStoreSiteImage,
-  deleteSiteImageFile,
   siteImageUrl
 } from "@/lib/images";
+import { adjustReservation, releaseBytes, reserveBytes } from "@/lib/quota";
+import { discardSiteImage } from "@/lib/siteImages";
 
 const IMAGE_OPTIONS = {
   prefix: "ann",
@@ -54,21 +55,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "notFound" }, { status: 404 });
   }
 
+  const reserved = file.size;
+  if (!(await reserveBytes(user.id, reserved))) {
+    return NextResponse.json({ error: "quotaExceeded" }, { status: 413 });
+  }
+
   const buffer = Buffer.from(await file.arrayBuffer());
-  let token: string;
+  let stored;
   try {
-    token = await processAndStoreSiteImage(buffer, IMAGE_OPTIONS);
+    stored = await processAndStoreSiteImage(user.id, buffer, IMAGE_OPTIONS);
   } catch {
+    await releaseBytes(user.id, reserved);
     return NextResponse.json({ error: "invalidImage" }, { status: 400 });
   }
 
-  await prisma.announcement.updateMany({
-    where: { id: announcementId, ownerId: user.id },
-    data: { image: token }
-  });
+  const { token, bytes } = stored;
+  await prisma.$transaction([
+    prisma.siteImage.create({
+      data: { ownerId: user.id, token, purpose: "announcement", bytes }
+    }),
+    prisma.announcement.updateMany({
+      where: { id: announcementId, ownerId: user.id },
+      data: { image: token }
+    })
+  ]);
+  await adjustReservation(user.id, reserved, bytes);
 
-  // Remove the file the token replaced (best-effort).
-  if (existing.image) await deleteSiteImageFile(existing.image);
+  // Retire the image this one replaced (file, row and its bytes).
+  if (existing.image) await discardSiteImage(user.id, existing.image);
 
   return NextResponse.json({ token, url: siteImageUrl(token) });
 }

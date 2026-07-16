@@ -1,22 +1,31 @@
 import { getTranslations, getLocale } from "next-intl/server";
 import { requireUser } from "@/lib/auth";
-import { getStorageStats, formatBytes } from "@/lib/storage";
+import { getOwnerStorage, formatBytes } from "@/lib/storage";
 import { pickText } from "@/lib/content";
 
 export default async function ResourceMonitorPage() {
   const t = await getTranslations("adminStorage");
   const locale = await getLocale();
   const user = await requireUser(locale);
-  const stats = await getStorageStats(user.id);
+  const stats = await getOwnerStorage(user.id);
 
   const overview = [
-    { label: t("totalLabel"), bytes: stats.totalBytes, emphasize: true },
+    { label: t("totalLabel"), bytes: stats.usedBytes, emphasize: true },
     { label: t("photosLabel"), bytes: stats.photosBytes, emphasize: false },
-    { label: t("siteImagesLabel"), bytes: stats.siteImagesBytes, emphasize: false },
-    { label: t("databaseLabel"), bytes: stats.databaseBytes, emphasize: false }
+    { label: t("siteImagesLabel"), bytes: stats.siteImagesBytes, emphasize: false }
   ];
 
   const maxEventBytes = Math.max(1, ...stats.events.map((e) => e.bytes));
+
+  // The quota bar is the point of this page now: a photographer needs to know
+  // how much room is left before an upload fails, not just what they have used.
+  const usedPct =
+    stats.quotaBytes > 0
+      ? Math.min(100, (stats.usedBytes / stats.quotaBytes) * 100)
+      : 0;
+  const remaining = Math.max(0, stats.quotaBytes - stats.usedBytes);
+  const full = remaining === 0;
+  const nearlyFull = !full && usedPct >= 90;
 
   return (
     <div className="flex flex-col gap-8">
@@ -25,7 +34,36 @@ export default async function ResourceMonitorPage() {
         <p className="mt-1 text-fg-subtle">{t("intro")}</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-4">
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">{t("quotaTitle")}</h2>
+          <span className="text-sm text-fg-muted">
+            {t("quotaUsed", {
+              used: formatBytes(stats.usedBytes),
+              total: formatBytes(stats.quotaBytes)
+            })}
+          </span>
+        </div>
+        <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-fg/10">
+          <div
+            className={`h-full rounded-full ${
+              full ? "bg-danger" : nearlyFull ? "bg-amber-500" : "bg-fg/60"
+            }`}
+            style={{ width: `${usedPct}%` }}
+          />
+        </div>
+        <p
+          className={`mt-2 text-xs ${full || nearlyFull ? "text-danger" : "text-fg-subtle"}`}
+        >
+          {full
+            ? t("quotaFull")
+            : nearlyFull
+              ? t("quotaNearlyFull")
+              : t("quotaRemaining", { remaining: formatBytes(remaining) })}
+        </p>
+      </section>
+
+      <div className="grid gap-4 sm:grid-cols-3">
         {overview.map((item) => (
           <div
             key={item.label}

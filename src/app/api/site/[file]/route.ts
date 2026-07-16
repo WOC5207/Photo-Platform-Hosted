@@ -2,6 +2,7 @@ import { createReadStream, promises as fs } from "fs";
 import path from "path";
 import { Readable } from "stream";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
 import { siteDir } from "@/lib/images";
 
 // Only tokenised webp names; also serves as path-traversal protection.
@@ -16,7 +17,20 @@ export async function GET(
     return new NextResponse("Not found", { status: 404 });
   }
 
-  const filePath = path.join(siteDir(), file);
+  // Site images live under their owner's directory now, and the URL is only a
+  // token — so the owner has to be looked up before the file can be found.
+  // Stays unauthenticated: these are logos, backgrounds and QR codes shown on
+  // public pages, and the token is random.
+  const token = file.replace(/\.webp$/, "");
+  const image = await prisma.siteImage.findUnique({
+    where: { token },
+    select: { ownerId: true }
+  });
+  if (!image) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
+  const filePath = path.join(siteDir(image.ownerId), file);
   let stat;
   try {
     stat = await fs.stat(filePath);

@@ -147,7 +147,9 @@
     "noFilesSelected": "No photos selected yet.",
     "moveUp": "Move earlier",
     "moveDown": "Move later",
-    "viewPublic": "View public page"
+    "viewPublic": "View public page",
+    "uploadStopped": "Stopped after {done} of {total}.",
+    "uploadQuotaExceeded": "You are out of storage. Delete some photos, or ask the site admin for more space."
   },
   "adminCredits": {
     "title": "{term}s",
@@ -272,7 +274,21 @@
     "noEvents": "No events yet.",
     "untitledEvent": "Untitled event",
     "photoCount": "{count, plural, =1 {1 photo} other {# photos}}",
-    "shareOfPhotos": "{pct}% of photo storage"
+    "shareOfPhotos": "{pct}% of photo storage",
+    "quotaTitle": "Storage",
+    "quotaUsed": "{used} of {total} used",
+    "quotaRemaining": "{remaining} remaining",
+    "quotaFull": "Your storage is full — delete some photos to upload more.",
+    "quotaNearlyFull": "You are nearly out of storage.",
+    "colAccount": "Account",
+    "colUsed": "Used",
+    "colQuota": "Quota",
+    "colPhotos": "Photos",
+    "setQuota": "Set",
+    "quotaGib": "GiB",
+    "reconcile": "Recalculate",
+    "reconcileHint": "Recount this account's usage from its photos and site images. Use if the number looks wrong.",
+    "platformTotal": "Total used by all accounts"
   },
   "gallery": {
     "title": "Gallery",

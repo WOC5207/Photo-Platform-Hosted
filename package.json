@@ -11,7 +11,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "test:concurrency": "tsx --env-file=.env --conditions=react-server scripts/test-concurrency.ts",
-    "test:isolation": "tsx --env-file=.env --conditions=react-server scripts/test-tenant-isolation.ts"
+    "test:isolation": "tsx --env-file=.env --conditions=react-server scripts/test-tenant-isolation.ts",
+    "test:quota": "tsx --env-file=.env --conditions=react-server scripts/test-quota.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.16.0",

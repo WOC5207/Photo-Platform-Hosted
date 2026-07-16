@@ -29,6 +29,19 @@ model User {
   // Human-readable name for the directory listing. Empty = fall back to
   // username, so an account is never nameless.
   displayName  String   @default("")
+
+  // Storage allowance, in bytes, set per account by the platform admin.
+  // BigInt because a 32-bit Int caps at ~2.1GB, which is under one photoshoot.
+  // Default 5 GiB.
+  quotaBytes   BigInt   @default(5368709120)
+  // Live running total of everything this account has on disk. A denormalised
+  // counter rather than a SUM() because the check has to be atomic: SUM ->
+  // compare -> write leaves a window where two concurrent uploads both pass a
+  // check they should not. See src/lib/quota.ts.
+  //
+  // The cost is drift, which reconcileQuota() exists to correct.
+  usedBytes    BigInt   @default(0)
+
   createdAt    DateTime @default(now())
 
   // Everything this account owns. Cascade means deleting a User removes all of
@@ -41,9 +54,32 @@ model User {
   personalLinks  PersonalLink[]
   contactMethods ContactMethod[]
   creditProfiles CreditProfile[]
+  siteImages     SiteImage[]
 
   invitesIssued  Invite[] @relation("InviteIssuer")
   invite         Invite?  @relation("InviteRedeemer")
+}
+
+// One uploaded site-level image (logo, background, contact QR, announcement
+// picture). The file itself lives at <PHOTOS_DIR>/u/<ownerId>/_site/<token>.webp.
+//
+// The rows exist for two reasons the filesystem cannot answer: quota has to
+// count these bytes, and the public serving route only has a token to go on and
+// needs to know whose directory to read from.
+//
+// The token stays the row's identity rather than the id, because the token is
+// already what the URL and the SiteSettings columns carry.
+model SiteImage {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  // "bg" | "logo" | "qr" | "announcement" — for the admin storage breakdown.
+  purpose   String
+  bytes     Int
+  createdAt DateTime @default(now())
+
+  @@index([ownerId])
 }
 
 // Registration is invite-only: there is no public signup form, so an account
@@ -103,6 +139,11 @@ model Photo {
   originalName String
   width        Int
   height       Int
+  // Total on-disk size of this photo: the original plus all three renditions.
+  // Recorded at upload because nothing else knows it — sizing the files later
+  // means an fs.stat per photo, which is what the storage page used to do.
+  // Int (2GB) is ample for one photo; only the per-user totals need BigInt.
+  bytes        Int      @default(0)
   // One or more (credited person, subject) credits — most photos have one,
   // group shots have several.
   credits      PhotoCredit[]

@@ -147,7 +147,9 @@
     "noFilesSelected": "还未选择照片。",
     "moveUp": "前移",
     "moveDown": "后移",
-    "viewPublic": "查看公开页面"
+    "viewPublic": "查看公开页面",
+    "uploadStopped": "已在第 {done}/{total} 张后停止。",
+    "uploadQuotaExceeded": "存储空间不足。请删除部分照片，或向站点管理员申请更多空间。"
   },
   "adminCredits": {
     "title": "{term}管理",
@@ -272,7 +274,21 @@
     "noEvents": "还没有活动。",
     "untitledEvent": "未命名活动",
     "photoCount": "{count} 张照片",
-    "shareOfPhotos": "占照片存储的 {pct}%"
+    "shareOfPhotos": "占照片存储的 {pct}%",
+    "quotaTitle": "存储空间",
+    "quotaUsed": "已使用 {used} / {total}",
+    "quotaRemaining": "剩余 {remaining}",
+    "quotaFull": "存储空间已满——请删除部分照片后再上传。",
+    "quotaNearlyFull": "存储空间即将用尽。",
+    "colAccount": "账号",
+    "colUsed": "已用",
+    "colQuota": "配额",
+    "colPhotos": "照片",
+    "setQuota": "设置",
+    "quotaGib": "GiB",
+    "reconcile": "重新计算",
+    "reconcileHint": "根据该账号的照片和站点图片重新统计用量。数值有误时使用。",
+    "platformTotal": "所有账号已用合计"
   },
   "gallery": {
     "title": "作品集",
