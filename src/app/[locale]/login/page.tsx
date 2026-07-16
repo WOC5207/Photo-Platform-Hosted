@@ -3,7 +3,7 @@ import { getTranslations } from "next-intl/server";
 
 // Reads the session cookie — never prerender.
 export const dynamic = "force-dynamic";
-import { isAdmin } from "@/lib/auth";
+import { getCurrentUser, homePathFor } from "@/lib/auth";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import LoginForm from "./LoginForm";
 
@@ -13,7 +13,12 @@ export default async function LoginPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  if (await isAdmin()) redirect(`/${locale}/admin`);
+  // Any signed-in account, not just an admin: ordinary users get accounts from
+  // the next phase on, and none of them should be shown a login form again.
+  // Must route via homePathFor — sending a non-admin to /admin would bounce
+  // them straight back here, forever.
+  const current = await getCurrentUser();
+  if (current) redirect(homePathFor(current, locale));
   const t = await getTranslations("auth");
 
   return (
