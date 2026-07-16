@@ -171,9 +171,12 @@ service needs this; Postgres pulls its own official image.)
    5 GiB. Lowering it below what someone already uses does not delete anything —
    they simply cannot upload more until they free space.
 
-**Admin → Accounts** lists everyone. *Suspend* hides an account's public site
-and ends its session immediately; *Delete* removes the account, its content and
-its files permanently. You cannot suspend or delete yourself.
+**Admin → Accounts** lists everyone. *Suspend* takes an account's public site
+down — its pages and its photos, including image links already shared — and ends
+its session immediately. It is reversible: nothing is deleted, so setting the
+account back to active brings the site back as it was. *Delete* removes the
+account, its content and its files permanently. You cannot suspend or delete
+yourself.
 
 ### 6. HTTPS via DSM reverse proxy
 
