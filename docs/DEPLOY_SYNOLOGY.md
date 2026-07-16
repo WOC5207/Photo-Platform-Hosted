@@ -79,7 +79,7 @@ Either way you should end up with a folder containing `Dockerfile`,
 
 | Variable | What to set |
 |---|---|
-| `DATABASE_URL` | Leave as-is: `file:/data/db/app.db?connection_limit=1` |
+| `POSTGRES_PASSWORD` | A long random password for the database container. **Set this before the first start** — Postgres only reads it when it initialises `data/pg`, and changing it later silently does nothing. |
 | `PHOTOS_DIR` | Leave as-is: `/data/photos` |
 | `ADMIN_USERNAME` | Your admin login name |
 | `ADMIN_PASSWORD` | A long, unique password — stored only as a bcrypt hash, never in plaintext |
@@ -87,6 +87,9 @@ Either way you should end up with a folder containing `Dockerfile`,
 | `APP_BASE_URL` | Your public HTTPS address, e.g. `https://photos.example.com`. Used to build shareable booking links, so it must match whatever domain you land on in [step 6](#6-connect-a-domain) |
 | `STRIP_ORIGINAL_EXIF` | `false` keeps uploaded originals untouched on disk; `true` re-encodes uploads so even the stored original has no EXIF/GPS (displayed images always have EXIF stripped either way) |
 | `UPLOAD_MAX_MB` | Max size per uploaded photo, default `100` |
+
+`DATABASE_URL` is **not** in `.env` — `docker-compose.yml` sets it to point at
+the database container, which is reachable only from the app.
 
 To generate a good `SESSION_SECRET`:
 
@@ -114,11 +117,19 @@ To generate a good `SESSION_SECRET`:
    Node.js base images and compiles the app — expect **5–15 minutes** on a
    DS920+. Subsequent rebuilds (after updates) are faster since most layers
    are cached.
-4. Once running, the app listens on **port 3000** inside the container, which
-   `docker-compose.yml` maps to port **3000** on the NAS too. The
-   `data/photos` and `data/db` folders (created automatically next to the
-   compose file) are your persistent volumes — the container itself can be
-   destroyed and recreated freely without losing data.
+4. Two containers start: `photo-platform-db` (Postgres) and `photo-platform`
+   (the app). The app listens on **port 3000** inside the container, which
+   `docker-compose.yml` maps to port **3000** on the NAS too; the database
+   publishes no port at all and is reachable only from the app. The app waits
+   for the database to report healthy, then applies migrations automatically
+   before serving.
+5. The `data/photos` and `data/pg` folders (created automatically next to the
+   compose file) are your persistent volumes — the containers themselves can
+   be destroyed and recreated freely without losing data.
+
+   > **Never put a file in `data/pg` by hand** (not even `.gitkeep`). Postgres
+   > refuses to initialise into a non-empty directory, and the error does not
+   > point at the cause.
 
 **If the build fails, or the NAS struggles (low RAM, build gets killed):**
 build the image on a regular PC with Docker installed instead, then import
@@ -138,7 +149,7 @@ step 1 above (it will use the imported image instead of building).
 
 ## 5. First run
 
-1. Visit `http://<nas-ip>:3000/en/admin/login` (or `/zh/admin/login` for
+1. Visit `http://<nas-ip>:3000/en/login` (or `/zh/login` for
    Chinese) from a browser on your local network.
 2. Log in with the `ADMIN_USERNAME` / `ADMIN_PASSWORD` you set in `.env` —
    this first successful login is what creates the admin account in the
@@ -299,7 +310,7 @@ This is the piece that maps `https://photos.yourstudio.com` (public, port
 2. In Container Manager, select the `photo-platform` project → **Action →
    Build/Recreate** so the container picks up the new environment variable.
    (This just recreates the container with the new `.env` values — your data
-   in `data/photos` and `data/db` is untouched.)
+   in `data/photos` and `data/pg` is untouched.)
 
 ### 6.8 Test it
 
@@ -323,18 +334,35 @@ valid padlock. Check a few things:
 
 Everything that matters lives in two folders next to the compose file:
 
-- `data/photos` — originals + generated web sizes (thumb/med/full) for every
-  photo, plus site images (logo, background, contact QR code).
-- `data/db` — the SQLite database: events, captions, bookings, settings,
-  everything else.
+- `data/photos` — every account's originals and generated web sizes
+  (thumb/med/full), plus their site images (logo, background, contact QR),
+  under `u/<account-id>/`.
+- `data/pg` — the database: accounts, albums, captions, bookings, settings,
+  quotas, everything else.
+
+**Back up both, or neither.** They only mean anything together: photos without
+the database are a heap of unattributed files, and the database without the
+photos is a platform full of broken images.
 
 Use **Hyper Backup** to back both up on a schedule — nightly is plenty for a
-personal/small-studio site. The database is a single file; a backup taken
-while someone is actively uploading photos or making a booking could in
-theory catch it mid-write, so either schedule backups for a quiet time (e.g.
-4 am) or stop the Container Manager project first for a guaranteed
-consistent snapshot. Restoring is just putting both folders back and
-starting the project again.
+small platform.
+
+> **A file copy of `data/pg` taken while Postgres is running may not restore.**
+> It is a live database, not a single file, and a copy can catch it mid-write.
+> For a backup you can rely on, either stop the Container Manager project
+> first, or dump the database instead — a dump is consistent by design and safe
+> to take while the site is live:
+>
+> ```
+> docker compose exec db pg_dump -U photo photo > backup.sql
+> ```
+>
+> Keep the dump alongside a `data/photos` backup. Restoring is then: restore
+> `data/photos`, start a fresh project, and replay the dump with
+> `docker compose exec -T db psql -U photo photo < backup.sql`.
+
+Restoring from folder copies is just putting both back and starting the project
+again — but see the warning above about when that is safe to take.
 
 ---
 
@@ -385,11 +413,22 @@ first, then retry the certificate.
 `.env` is wrong, or the container wasn't rebuilt after changing it — see
 [6.7](#67-point-the-app-at-its-real-address).
 
-**Forgot the admin password.** Stop the project, delete `data/db/app.db`,
-update `ADMIN_PASSWORD` in `.env`, start the project again, and log in once
-to reseed the account. **This wipes all events, bookings, and settings** —
-only do this on a fresh install, or restore from a backup instead if you
-have real data.
+**Forgot the admin password.** `ADMIN_USERNAME`/`ADMIN_PASSWORD` are only
+consulted to seed the very first account, so changing them in `.env` does
+nothing afterwards. On a platform with real accounts on it, do NOT wipe the
+database to get back in — that destroys every photographer's work, not just
+yours. Set a new password hash directly instead:
+
+```
+# Generate a hash (any machine with Node and this repo):
+node -e "console.log(require('bcryptjs').hashSync('your-new-password', 12))"
+
+# Apply it:
+docker compose exec db psql -U photo photo   -c "UPDATE \"User\" SET \"passwordHash\" = '<the-hash>' WHERE username = '<you>';"
+```
+
+Only on a genuinely fresh install (no accounts you care about) is it simpler to
+stop the project, delete `data/pg`, update `.env` and start again.
 
 ---
 
@@ -403,7 +442,7 @@ have real data.
 - Keep DSM itself updated (**Control Panel → Update & Restore**) and enable
   2-factor authentication for your DSM login — a compromised DSM account is a
   bigger risk than anything in this app.
-- Login attempts to `/admin/login` are rate-limited (10 attempts / 15 min per
+- Login attempts to `/login` are rate-limited (10 attempts / 15 min per
   IP) and the admin password is bcrypt-hashed — but this is in-memory rate
   limiting that resets on container restart, not a substitute for a strong
   password.

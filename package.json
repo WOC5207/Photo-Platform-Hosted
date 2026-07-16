@@ -1,7 +1,7 @@
 {
   "name": "photo-platform",
-  "version": "1.0.0",
-  "description": "Self-hosted, bilingual photo gallery and photoshoot booking platform.",
+  "version": "2.0.0",
+  "description": "Self-hosted, bilingual multi-tenant photo gallery and photoshoot booking platform.",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -12,7 +12,8 @@
     "db:deploy": "prisma migrate deploy",
     "test:concurrency": "tsx --env-file=.env --conditions=react-server scripts/test-concurrency.ts",
     "test:isolation": "tsx --env-file=.env --conditions=react-server scripts/test-tenant-isolation.ts",
-    "test:quota": "tsx --env-file=.env --conditions=react-server scripts/test-quota.ts"
+    "test:quota": "tsx --env-file=.env --conditions=react-server scripts/test-quota.ts",
+    "test:http": "tsx --env-file=.env --conditions=react-server scripts/test-http-isolation.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.16.0",

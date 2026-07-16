@@ -1,3 +1,18 @@
+// MIGRATIONS ARE ADDITIVE FROM HERE ON.
+//
+// While this fork was being built and nothing was deployed, the single
+// 00000000000000_init migration was regenerated from scratch after every schema
+// change. That was legitimate only because every database started empty.
+//
+// Once this has run anywhere real, that stops being true: `prisma migrate
+// deploy` replays migrations it has not seen, so rewriting init means asking a
+// live database to create tables it already has — the deploy fails, and the
+// container restart-loops. Add a new migration instead:
+//
+//   npx prisma migrate dev --name what_changed
+//
+// and never edit or regenerate a migration that has been applied.
+
 generator client {
   provider = "prisma-client-js"
 }

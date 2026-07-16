@@ -1,44 +1,65 @@
 # Photo Platform
 
-A self-hosted, bilingual (简体中文 / English) photography portfolio and photoshoot
-booking site, designed to run on a Synology NAS via Container Manager (or any
-Docker host).
+A self-hosted, bilingual (简体中文 / English) photography **platform**: many
+photographers, each with their own site, gallery and booking system, all running
+from one Synology NAS (or any Docker host).
+
+Forked from a single-photographer portfolio. The deployment story is inverted:
+instead of every photographer running their own NAS, one person runs this and
+invites the rest — they get a site without ever touching Docker.
 
 > **Deploying to a Synology NAS?** The
 > [step-by-step guide below](#deploying-on-a-synology-nas-dsm-72-container-manager)
 > covers the basics; **[docs/DEPLOY_SYNOLOGY.md](docs/DEPLOY_SYNOLOGY.md)**
 > goes further, including connecting a custom domain with HTTPS end to end.
 
+## How it is organised
+
+| URL | What it is |
+|---|---|
+| `/` | Directory of every photographer hosted here |
+| `/u/<username>` | One photographer's public site — home, gallery, albums, booking |
+| `/dashboard` | "My site" — every account manages their own content here |
+| `/admin` | Platform administration: accounts, invites, storage. Admin only. |
+| `/book/<token>` | A shareable booking link. The token identifies the event *and* its owner, so these carry no username and keep working forever. |
+
+The admin's own photography lives at `/u/<their-username>` like everyone else's;
+there is no privileged site.
+
 ## Features
 
-- **Photo gallery** grouped by event/album: bulk upload, reordering, per-language
-  captions, cover selection, publish/unpublish. Thumbnails are pre-generated at
-  upload time with `sharp`; **all EXIF (including GPS) is stripped** from every
-  displayed image. Optionally scrub the stored originals too. Credited people's
-  social links are remembered across photos, so the admin only has to type
-  them once and gets autofill afterwards.
-- **Booking system**: create bookable events with configurable time slots
-  (length, count, capacity). Each event gets an unguessable shareable link — no
-  visitor account needed. Double-booking is prevented with transactional
-  capacity checks. Visitors get a private link to view/cancel their booking.
-  Optional per-event prize-draw tool for picking winners among bookings.
+- **Invite-only registration.** There is no public signup form. The admin issues
+  a link from **Admin → Invites**; only someone holding one can create an
+  account. Each invite works exactly once.
+- **Per-account storage quotas.** The admin sets an allowance per account
+  (**Admin → Storage**). Photographers see their own usage against it on their
+  dashboard; uploads are refused once it is reached, and deleting frees it
+  again.
+- **Photo gallery** grouped by event/album: bulk upload, reordering,
+  per-language captions, cover selection, publish/unpublish. Thumbnails are
+  pre-generated at upload time with `sharp`; **all EXIF (including GPS) is
+  stripped** from every displayed image. Optionally scrub the stored originals
+  too. Credited people's social links are remembered across photos, per account.
+- **Booking system**: bookable events with configurable time slots (length,
+  count, capacity). Each gets an unguessable shareable link — no visitor account
+  needed. Double-booking is prevented with row-locked capacity checks. Visitors
+  get a private link to view/cancel. Optional per-event prize draw.
 - **Bilingual everywhere**: locale-prefixed URLs (`/zh/...`, `/en/...`),
-  language switcher, and per-language content fields for events, descriptions
-  and captions (with fallback to the other language when one is empty).
-- **Fully brandable, no code changes needed**: site title, homepage headline/
-  subtitle, background color/image and logo are all edited from Admin →
-  Settings and take effect immediately. The vocabulary used for photo credits
-  (e.g. "Credit"/"Subject" vs. a niche-specific pair like "Cosplayer"/
-  "Character") is also configurable there, so the same codebase fits any
-  photography niche.
-- **Single admin account**, seeded from environment variables on first login.
-  Session cookie auth, bcrypt-hashed password, rate-limited login.
-- Modest resource use: one container, SQLite, no runtime image optimizer.
+  language switcher, per-language content fields with fallback.
+- **Every account brands its own site**, no code changes: title, homepage
+  headline/subtitle, background, logo, and the vocabulary used for photo credits
+  (e.g. "Credit"/"Subject" vs "Cosplayer"/"Character") are all per account, from
+  **Dashboard → Site**.
+- **Accounts are isolated.** Content is owned; one photographer cannot see or
+  touch another's albums, bookings, originals or unpublished work. Suspending an
+  account takes its public site down and ends its session on the next request.
 
 ## Stack
 
-Next.js 15 (App Router, TypeScript) · SQLite + Prisma · sharp · Tailwind CSS 4
-· next-intl · iron-session
+Next.js 15 (App Router, TypeScript) · **PostgreSQL** + Prisma · sharp ·
+Tailwind CSS 4 · next-intl · iron-session
+
+Two containers: the app, and Postgres. Everything persistent lives in `./data`.
 
 ---
 
@@ -46,6 +67,11 @@ Next.js 15 (App Router, TypeScript) · SQLite + Prisma · sharp · Tailwind CSS 
 
 Tested target: DS920+ (x86-64). Everything below happens in DSM. The same
 `docker-compose.yml` works on any Docker host — adjust paths accordingly.
+
+> **Bandwidth, not disk, is the real limit.** Every visitor to every
+> photographer's gallery pulls full-size images through your home upload link.
+> That — not the database — is what will bite first if the platform gets busy.
+> Invite-only registration is what keeps it predictable.
 
 ### 1. Copy the project to the NAS
 
@@ -62,23 +88,32 @@ Tested target: DS920+ (x86-64). Everything below happens in DSM. The same
 
 | Variable | What to set |
 |---|---|
-| `DATABASE_URL` | Leave as-is (`file:/data/db/app.db?connection_limit=1`) |
+| `POSTGRES_PASSWORD` | A long random password for the database container. **Set this before the first start** — see the warning below. |
 | `PHOTOS_DIR` | Leave as-is (`/data/photos`) |
 | `ADMIN_USERNAME` | Your admin login name |
 | `ADMIN_PASSWORD` | A long, unique password (stored only as a hash) |
 | `SESSION_SECRET` | 32+ random characters — see below |
-| `APP_BASE_URL` | Your public HTTPS address, e.g. `https://photos.example.com` (used to build shareable booking links) |
+| `APP_BASE_URL` | Your public HTTPS address, e.g. `https://photos.example.com` (used to build shareable booking and invite links) |
 | `STRIP_ORIGINAL_EXIF` | `false` keeps originals untouched on disk; `true` re-encodes uploads so even the stored original has no EXIF/GPS |
 | `UPLOAD_MAX_MB` | Max size per uploaded photo (default 100) |
 
-To generate a good `SESSION_SECRET`, SSH into the NAS (or use any terminal)
-and run: `openssl rand -base64 32`
+`DATABASE_URL` is **not** in `.env` — `docker-compose.yml` sets it for you, to
+point at the database container.
+
+To generate good secrets, SSH into the NAS (or use any terminal) and run
+`openssl rand -base64 32` — once for `SESSION_SECRET`, once for
+`POSTGRES_PASSWORD`.
+
+> **`POSTGRES_PASSWORD` is only read the first time the database starts.**
+> Postgres bakes it in when it initialises `./data/pg`. Changing it in `.env`
+> afterwards silently does nothing — the old password still works and the new
+> one does not. To genuinely change it, either use `ALTER USER` inside the
+> database container, or delete `./data/pg` and start over (which erases
+> everything).
 
 > The admin credentials are written into the database on the **first login
 > attempt**. After that, changing `ADMIN_PASSWORD` in `.env` has no effect —
-> the DB copy wins. (To reset: stop the container, delete `data/db/app.db`,
-> update `.env`, start again — this wipes events/bookings, so only do it on a
-> fresh install.)
+> the DB copy wins. The first-run wizard prompts you to replace them anyway.
 
 ### 3. Build and start with Container Manager
 
@@ -87,10 +122,20 @@ and run: `openssl rand -base64 32`
    (`/volume1/docker/photo-platform`). It will detect `docker-compose.yml`.
 3. Click through and **Build**. The first build downloads images and compiles
    the app — expect **5–15 minutes** on a DS920+. Later rebuilds are faster.
-4. When the project is running, the app listens on **port 3000**. The
-   `data/photos` and `data/db` folders (already present next to the compose
-   file from the repo) are your persistent volumes; the container itself is
-   disposable.
+4. Two containers start: `photo-platform-db` (Postgres) and `photo-platform`
+   (the app, on **port 3000**). The app waits for the database to report
+   healthy, then applies migrations automatically before serving.
+
+Your persistent data is two folders next to the compose file:
+
+- `data/photos` — originals + generated web sizes, per account
+- `data/pg` — the database
+
+Both are created on first start. The containers themselves are disposable.
+
+> **Never put a file in `data/pg` by hand** (not even `.gitkeep`). Postgres
+> refuses to initialise into a directory that is not empty, and the error it
+> gives does not point at the cause.
 
 **If the build fails or the NAS struggles** (low RAM): build the image on a PC
 with Docker instead:
@@ -102,19 +147,35 @@ docker save photo-platform:latest -o photo-platform.tar
 
 Upload `photo-platform.tar` via Container Manager → **Image** → **Add → From
 file**, then in `docker-compose.yml` replace `build: .` with
-`image: photo-platform:latest` and create the project as above.
+`image: photo-platform:latest` and create the project as above. (Only the `app`
+service needs this; Postgres pulls its own official image.)
 
 ### 4. First run
 
-1. Visit `http://<NAS-IP>:3000/zh/admin/login` (or `/en/admin/login`).
+1. Visit `http://<NAS-IP>:3000/en/login` (or `/zh/login`).
 2. Log in with `ADMIN_USERNAME` / `ADMIN_PASSWORD` — this first login creates
-   the admin account.
-3. In **Admin → Settings**, set your site title, homepage text, logo,
-   background and photo-credit terminology to fit your brand and niche.
-4. Create a gallery event, upload photos, publish. Create a booking event, add
-   time slots, and share its public link.
+   your account.
+3. The setup wizard walks you through replacing those placeholder credentials,
+   naming your site, and choosing which features you want.
+4. Create an album, upload photos, publish. Your site is at
+   `/u/<your-username>`, and it now appears in the directory at `/`.
 
-### 5. HTTPS via DSM reverse proxy
+### 5. Inviting photographers
+
+1. **Admin → Invites → Create invite**. Add a note so you remember who it was
+   for.
+2. Copy the link and send it to them. It works once.
+3. They pick their own username (their site becomes `/u/<username>`), display
+   name and password, then land in their own setup wizard.
+4. **Admin → Storage** sets how much space each account gets. The default is
+   5 GiB. Lowering it below what someone already uses does not delete anything —
+   they simply cannot upload more until they free space.
+
+**Admin → Accounts** lists everyone. *Suspend* hides an account's public site
+and ends its session immediately; *Delete* removes the account, its content and
+its files permanently. You cannot suspend or delete yourself.
+
+### 6. HTTPS via DSM reverse proxy
 
 DSM handles the domain, certificate and HTTPS; the app just needs to know its
 public URL (`APP_BASE_URL`).
@@ -128,58 +189,89 @@ public URL (`APP_BASE_URL`).
    Container Manager select the project → **Action → Build/Recreate** so the
    new value is picked up.
 
+Only port 3000 is published, and only the app publishes it — the database is
+reachable only from the app, over the compose network. **Never forward port
+3000 from your router**; DSM's reverse proxy is the front door.
+
 Don't have a domain pointed at the NAS yet, or unsure how DDNS, port
 forwarding and Let's Encrypt fit together? See
 **[docs/DEPLOY_SYNOLOGY.md](docs/DEPLOY_SYNOLOGY.md)** for the full
-walkthrough, including connecting a custom domain end to end.
+walkthrough.
 
-### 6. Backups (do this!)
+### 7. Backups (do this!)
 
 Everything that matters lives in two folders next to the compose file:
 
-- `data/photos` — originals + generated web sizes
-- `data/db` — the SQLite database (events, captions, bookings)
+- `data/photos` — every account's originals and generated sizes
+- `data/pg` — the database (accounts, albums, captions, bookings, settings)
 
-Use **Hyper Backup** to back both up on a schedule (nightly is plenty). The
-database is a single file; a backup taken while someone is actively uploading
-or booking could in theory catch it mid-write, so prefer a backup time when
-the site is quiet (e.g. 4 am), or stop the project first for a guaranteed
-consistent copy. Restoring = putting both folders back and starting the
-project.
+**Both, or neither.** Photos without the database are unattributed files; the
+database without the photos is a site full of broken images.
 
-### 7. Updating the app
+Use **Hyper Backup** to back both up on a schedule (nightly is plenty).
+
+> Copying `data/pg` while Postgres is running can capture it mid-write, and such
+> a copy may not restore. For a backup you can rely on, either stop the project
+> first, or dump the database instead:
+>
+> ```
+> docker compose exec db pg_dump -U photo photo > backup.sql
+> ```
+>
+> A dump is consistent by design and safe to take while the site is live.
+
+Restoring = putting both folders back and starting the project (or restoring
+`data/photos` and replaying the dump into a fresh database).
+
+### 8. Updating the app
 
 Replace the project files (keep `.env` and `data/`!), then Container Manager →
-project → **Action → Build/Recreate**. Database migrations run automatically
-at container startup.
+project → **Action → Build/Recreate**. Database migrations run automatically at
+container startup.
 
 ---
 
-## Branding your instance
-
-Everything needed to make this look like your own site is in **Admin →
-Settings** — no code changes or rebuild required:
-
-- Site title, homepage headline/subtitle (per language)
-- Background color and background image
-- Logo (shown in the admin header, links back to the homepage)
-- Photo-credit terminology — what to call the credited person and the
-  subject/character/theme they're depicted as, so the wording fits your
-  niche (portraits, events, cosplay, product photography, ...)
-
-This project is licensed under the terms in [LICENSE](LICENSE).
-
 ## Local development
 
-Requirements: Node.js 22+.
+Requirements: Node.js 22+, and Docker for the database.
 
 ```
 npm install
-npx prisma migrate dev   # creates ./data/db/app.db
+
+# A disposable Postgres for development:
+docker run -d --name photo-dev-pg -p 5432:5432 \
+  -e POSTGRES_USER=photo -e POSTGRES_PASSWORD=photo -e POSTGRES_DB=photo \
+  postgres:17-alpine
+
+# Point .env at it (see .env.example), then:
+npx prisma migrate deploy
 npm run dev              # http://localhost:3000
 ```
 
-Dev credentials live in `.env` (already set to `admin` / `dev-password-123`).
+### Tests
+
+Each suite needs a disposable Postgres and a `.env`. **They write to whatever
+`DATABASE_URL` points at** — never run them against real data.
+
+| Command | What it proves |
+|---|---|
+| `npm run test:concurrency` | Booking capacity and lottery prize stock hold under simultaneous requests |
+| `npm run test:isolation` | The ownership helpers refuse another account's ids; invites redeem once; usernames are reserved |
+| `npm run test:quota` | The storage cap holds under concurrent uploads; reconcile recovers drift |
+| `npm run test:http` | Cross-tenant pen pass over real HTTP (needs `npm run dev` running) |
+
+> These suites are worth their weight only because each has been checked to
+> **fail** when the protection it covers is removed. If you change one, verify
+> it still fails against a deliberately broken implementation — a test that
+> cannot fail proves nothing. The reasons each is shaped the way it is are in
+> the file headers; `test-concurrency.ts` in particular explains why a "fire N
+> concurrent requests" test can pass against code with no lock at all.
+
+### Migrations
+
+**Migrations are additive.** Add one with `npx prisma migrate dev --name
+what_changed`; never edit or regenerate one that has been applied. See the note
+at the top of [prisma/schema.prisma](prisma/schema.prisma).
 
 ## Adding email confirmations later
 
@@ -193,10 +285,19 @@ vars, and rebuild. Nothing else has to change.
 ## Notes & limits
 
 - Uploads: JPEG, PNG, WebP (HEIC is not supported — export/convert first).
-- Unpublished gallery events are fully hidden (404) for non-admins, and their
-  images are blocked too. Original files are only ever served to the admin.
+- Unpublished albums are fully hidden (404) from everyone but their owner, and
+  their images are blocked too. Original files are only ever served to the
+  photo's owner.
+- The storage cap is a firm backstop rather than an exact ceiling: an accepted
+  upload can finish slightly over quota, because the renditions' size is only
+  known after they are written. Everything is refused afterwards, so it cannot
+  compound. See the comment in `src/app/api/admin/photos/route.ts`.
 - Slot times are stored and shown exactly as typed (no timezone conversion),
   which is the sane behaviour when photographer and clients are in the same
   city.
-- Rate limits: 10 login attempts / 15 min, 8 bookings / hour per IP
-  (in-memory; resets when the container restarts).
+- Rate limits: 10 login attempts / 15 min, 10 registrations / 15 min, 8
+  bookings / hour per IP. These are in-memory, which assumes a single app
+  container — the last such assumption in the codebase, and the first thing to
+  revisit if the app is ever run as more than one replica.
+
+This project is licensed under the terms in [LICENSE](LICENSE).
