@@ -3,13 +3,13 @@ import { getTranslations } from "next-intl/server";
 
 // Auth depends on the request cookie — never prerender admin pages.
 export const dynamic = "force-dynamic";
-import { isAdmin } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { Link } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
 import { getSiteSettings, resolveCreditTerm, resolveSiteTitle } from "@/lib/settings";
 import { siteImageUrl } from "@/lib/images";
-import { logout } from "../login/actions";
+import { logout } from "../../login/actions";
 
 export default async function AdminLayout({
   children,
@@ -19,7 +19,10 @@ export default async function AdminLayout({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  if (!(await isAdmin())) redirect(`/${locale}/admin/login`);
+  // Sends a signed-out visitor to the login page but a signed-in non-admin to
+  // the public site — bouncing someone who is already authenticated back to a
+  // login form tells them nothing and only loops.
+  await requireAdmin(locale);
 
   const t = await getTranslations();
   const settings = await getSiteSettings();
