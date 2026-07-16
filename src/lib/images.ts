@@ -24,8 +24,20 @@ const SIZES = [
   { suffix: "full", width: 2560, quality: 85 }
 ] as const;
 
-export function eventDir(eventId: string): string {
-  return path.join(config.photosDir(), eventId);
+/**
+ * Storage is keyed by owner id, never username: usernames are renameable, and a
+ * rename must not mean moving files or rewriting URLs.
+ *
+ * Note the served URLs deliberately do NOT carry the owner — the serving routes
+ * look it up from the row instead. That keeps URLs stable across a rename and
+ * removes any chance of the path's owner disagreeing with the record's.
+ */
+export function userDir(ownerId: string): string {
+  return path.join(config.photosDir(), "u", ownerId);
+}
+
+export function eventDir(ownerId: string, eventId: string): string {
+  return path.join(userDir(ownerId), eventId);
 }
 
 export interface ProcessedUpload {
@@ -33,6 +45,8 @@ export interface ProcessedUpload {
   height: number;
   origFilename: string;
   exif: PhotoExif;
+  /** Total bytes written: the original plus all three renditions. */
+  bytes: number;
 }
 
 export interface PhotoExif {
@@ -103,12 +117,13 @@ async function extractExif(buffer: Buffer): Promise<PhotoExif> {
  * shooting EXIF read from the original before it's stripped.
  */
 export async function processAndStorePhoto(
+  ownerId: string,
   eventId: string,
   photoId: string,
   buffer: Buffer,
   ext: string
 ): Promise<ProcessedUpload> {
-  const dir = eventDir(eventId);
+  const dir = eventDir(ownerId, eventId);
   await fs.mkdir(dir, { recursive: true });
 
   const meta = await sharp(buffer).metadata();
@@ -140,15 +155,28 @@ export async function processAndStorePhoto(
     await fs.writeFile(origPath, buffer);
   }
 
-  return { width, height, origFilename, exif };
+  // Measured rather than estimated, and measured here because this is the only
+  // place that knows what was actually written — webp compression means the
+  // renditions bear no fixed relation to the upload's size.
+  const written = [
+    origPath,
+    ...SIZES.map((size) => path.join(dir, `${photoId}-${size.suffix}.webp`))
+  ];
+  const sizes = await Promise.all(
+    written.map((f) => fs.stat(f).then((st) => st.size).catch(() => 0))
+  );
+  const bytes = sizes.reduce((sum, n) => sum + n, 0);
+
+  return { width, height, origFilename, exif, bytes };
 }
 
 export async function deletePhotoFiles(
+  ownerId: string,
   eventId: string,
   photoId: string,
   origFilename: string
 ): Promise<void> {
-  const dir = eventDir(eventId);
+  const dir = eventDir(ownerId, eventId);
   const files = [
     origFilename,
     ...SIZES.map((s) => `${photoId}-${s.suffix}.webp`)
@@ -158,8 +186,20 @@ export async function deletePhotoFiles(
   );
 }
 
-export async function deleteEventFiles(eventId: string): Promise<void> {
-  await fs.rm(eventDir(eventId), { recursive: true, force: true });
+export async function deleteEventFiles(
+  ownerId: string,
+  eventId: string
+): Promise<void> {
+  await fs.rm(eventDir(ownerId, eventId), { recursive: true, force: true });
+}
+
+/**
+ * Everything one account has on disk. For account deletion, which must remove
+ * the files BEFORE the row: the row is how the paths are found, so deleting it
+ * first orphans the files permanently.
+ */
+export async function deleteUserFiles(ownerId: string): Promise<void> {
+  await fs.rm(userDir(ownerId), { recursive: true, force: true });
 }
 
 export function photoUrls(eventId: string, photoId: string) {
@@ -172,12 +212,12 @@ export function photoUrls(eventId: string, photoId: string) {
 }
 
 // --- Site-level images (background, logo) -------------------------------
-// These are not tied to a gallery event; they live under a "_site" folder
-// (the leading underscore keeps them out of the event-image route, whose
-// eventId must match /^[a-z0-9]+$/).
+// Not tied to a gallery event; they live under a per-owner "_site" folder (the
+// leading underscore keeps them out of the event-image route, whose eventId
+// must match /^[a-z0-9]+$/).
 
-export function siteDir(): string {
-  return path.join(config.photosDir(), "_site");
+export function siteDir(ownerId: string): string {
+  return path.join(userDir(ownerId), "_site");
 }
 
 export interface SiteImageOptions {
@@ -195,17 +235,19 @@ export interface SiteImageOptions {
  * be cached immutably.
  */
 export async function processAndStoreSiteImage(
+  ownerId: string,
   buffer: Buffer,
   opts: SiteImageOptions
-): Promise<string> {
-  const dir = siteDir();
+): Promise<{ token: string; bytes: number }> {
+  const dir = siteDir(ownerId);
   await fs.mkdir(dir, { recursive: true });
 
   const meta = await sharp(buffer).metadata();
   if (!meta.width || !meta.height) throw new Error("Unreadable image");
 
   const token = `${opts.prefix}${randomUUID().replace(/-/g, "")}`;
-  await sharp(buffer, { failOn: "none" })
+  const file = path.join(dir, `${token}.webp`);
+  const out = await sharp(buffer, { failOn: "none" })
     .rotate()
     .resize({
       width: opts.maxWidth,
@@ -214,13 +256,16 @@ export async function processAndStoreSiteImage(
       withoutEnlargement: true
     })
     .webp({ quality: opts.quality })
-    .toFile(path.join(dir, `${token}.webp`));
-  return token;
+    .toFile(file);
+  return { token, bytes: out.size };
 }
 
-export async function deleteSiteImageFile(token: string): Promise<void> {
+export async function deleteSiteImageFile(
+  ownerId: string,
+  token: string
+): Promise<void> {
   if (!token) return;
-  await fs.rm(path.join(siteDir(), `${token}.webp`), { force: true });
+  await fs.rm(path.join(siteDir(ownerId), `${token}.webp`), { force: true });
 }
 
 export function siteImageUrl(token: string): string {

@@ -1,27 +1,6 @@
 import "server-only";
-import path from "path";
-import { promises as fs } from "fs";
-import { config } from "./config";
 import { prisma } from "./db";
-
-async function dirSize(dir: string): Promise<number> {
-  let entries;
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    return 0;
-  }
-  let total = 0;
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      total += await dirSize(full);
-    } else if (entry.isFile()) {
-      total += (await fs.stat(full)).size;
-    }
-  }
-  return total;
-}
+import { getQuotaUsage, type QuotaUsage } from "./quota";
 
 // On-disk size of the whole database, including indexes and bloat. Ask
 // Postgres rather than measuring files: the data lives in the db container's
@@ -48,59 +27,110 @@ export interface EventStorage {
   bytes: number;
 }
 
-export interface StorageStats {
+export interface OwnerStorage extends QuotaUsage {
   photosBytes: number;
   siteImagesBytes: number;
-  databaseBytes: number;
-  totalBytes: number;
   events: EventStorage[];
 }
 
 /**
- * Walks one owner's event directories on disk to report actual space used, and
- * asks Postgres for its own size. There's no cheaper source of truth for the
- * files — nothing in the DB tracks file sizes.
+ * One owner's usage, for their own dashboard.
  *
- * Note the two site-wide numbers below are NOT owner-scoped, which is fine
- * while the platform admin is the only one who can open this page. Splitting
- * this into "my usage vs quota" for users and a platform-wide view for the
- * admin belongs with the storage/quota work, along with per-owner file paths.
+ * Summed from Photo.bytes and SiteImage.bytes rather than walked from disk.
+ * This used to fs.stat every file on every page load — the docstring even said
+ * there was no cheaper source of truth, which stopped being true once uploads
+ * started recording their own size.
+ *
+ * The database's own size is deliberately absent: it is one shared Postgres for
+ * the whole platform, so it is not any single owner's usage and does not count
+ * against their quota.
  */
-export async function getStorageStats(ownerId: string): Promise<StorageStats> {
-  const events = await prisma.event.findMany({
-    where: { ownerId },
-    select: {
-      id: true,
-      titleEn: true,
-      titleZh: true,
-      _count: { select: { photos: true } }
-    },
-    orderBy: { createdAt: "asc" }
-  });
+export async function getOwnerStorage(ownerId: string): Promise<OwnerStorage> {
+  const [events, siteImages, usage] = await Promise.all([
+    prisma.event.findMany({
+      where: { ownerId },
+      select: {
+        id: true,
+        titleEn: true,
+        titleZh: true,
+        _count: { select: { photos: true } },
+        photos: { select: { bytes: true } }
+      },
+      orderBy: { createdAt: "asc" }
+    }),
+    prisma.siteImage.aggregate({
+      where: { ownerId },
+      _sum: { bytes: true }
+    }),
+    getQuotaUsage(ownerId)
+  ]);
 
-  const events_ = await Promise.all(
-    events.map(async (e): Promise<EventStorage> => ({
+  const perEvent: EventStorage[] = events
+    .map((e) => ({
       id: e.id,
       titleEn: e.titleEn,
       titleZh: e.titleZh,
       photoCount: e._count.photos,
-      bytes: await dirSize(path.join(config.photosDir(), e.id))
+      bytes: e.photos.reduce((sum, p) => sum + p.bytes, 0)
     }))
-  );
-  events_.sort((a, b) => b.bytes - a.bytes);
-
-  const [siteImagesBytes, databaseBytes] = await Promise.all([
-    dirSize(path.join(config.photosDir(), "_site")),
-    databaseSize()
-  ]);
-  const photosBytes = events_.reduce((sum, e) => sum + e.bytes, 0);
+    .sort((a, b) => b.bytes - a.bytes);
 
   return {
-    photosBytes,
-    siteImagesBytes,
-    databaseBytes,
-    totalBytes: photosBytes + siteImagesBytes + databaseBytes,
-    events: events_
+    ...usage,
+    photosBytes: perEvent.reduce((sum, e) => sum + e.bytes, 0),
+    siteImagesBytes: siteImages._sum.bytes ?? 0,
+    events: perEvent
+  };
+}
+
+export interface PlatformAccountStorage {
+  id: string;
+  username: string;
+  displayName: string;
+  usedBytes: number;
+  quotaBytes: number;
+  photoCount: number;
+}
+
+export interface PlatformStorage {
+  accounts: PlatformAccountStorage[];
+  totalUsedBytes: number;
+  databaseBytes: number;
+}
+
+/** Every account's usage, for the platform admin. */
+export async function getPlatformStorage(): Promise<PlatformStorage> {
+  const [users, databaseBytes] = await Promise.all([
+    prisma.user.findMany({
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        usedBytes: true,
+        quotaBytes: true,
+        events: { select: { _count: { select: { photos: true } } } }
+      }
+    }),
+    databaseSize()
+  ]);
+
+  const accounts: PlatformAccountStorage[] = users
+    .map((u) => ({
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName,
+      // BigInt cannot cross into a client component or JSON.stringify.
+      usedBytes: Number(u.usedBytes),
+      quotaBytes: Number(u.quotaBytes),
+      photoCount: u.events.reduce((n, e) => n + e._count.photos, 0)
+    }))
+    .sort((a, b) => b.usedBytes - a.usedBytes);
+
+  return {
+    accounts,
+    totalUsedBytes: accounts.reduce((sum, a) => sum + a.usedBytes, 0),
+    databaseBytes
   };
 }
 

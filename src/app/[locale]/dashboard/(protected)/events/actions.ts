@@ -12,6 +12,7 @@ import {
   findOwnedPhoto
 } from "@/lib/ownership";
 import { deleteEventFiles, deletePhotoFiles } from "@/lib/images";
+import { releaseBytes } from "@/lib/quota";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
 import { parseShutterSpeed } from "@/lib/exif";
 import { slugify, uniqueEventSlug } from "@/lib/slug";
@@ -163,8 +164,16 @@ export async function deleteEvent(formData: FormData): Promise<void> {
   const event = await findOwnedEvent(id, user);
   if (!event) return;
 
+  // Total the photos BEFORE deleting the event — the cascade takes their rows
+  // with it, and with them any way to know how much to hand back.
+  const total = await prisma.photo.aggregate({
+    where: { eventId: event.id },
+    _sum: { bytes: true }
+  });
+
   await prisma.event.delete({ where: { id: event.id } });
-  await deleteEventFiles(event.id);
+  await deleteEventFiles(user.id, event.id);
+  await releaseBytes(user.id, total._sum.bytes ?? 0);
 
   revalidatePath("/", "layout");
   redirect(`/${locale}/dashboard/events`);
@@ -269,7 +278,8 @@ export async function deletePhoto(formData: FormData): Promise<void> {
   if (!photo) return;
 
   await prisma.photo.delete({ where: { id: photo.id } });
-  await deletePhotoFiles(photo.eventId, photo.id, photo.filename);
+  await deletePhotoFiles(user.id, photo.eventId, photo.id, photo.filename);
+  await releaseBytes(user.id, photo.bytes);
   revalidatePath("/", "layout");
 }
 
@@ -289,10 +299,14 @@ export async function bulkDeletePhotos(formData: FormData): Promise<void> {
   const photos = await prisma.photo.findMany({ where: { id: { in: photoIds } } });
   if (photos.length === 0) return;
 
+  // Sum the rows we are actually about to delete, not the ids that were posted.
+  const freed = photos.reduce((sum, p) => sum + p.bytes, 0);
+
   await prisma.photo.deleteMany({ where: { id: { in: photoIds } } });
   await Promise.all(
-    photos.map((p) => deletePhotoFiles(p.eventId, p.id, p.filename))
+    photos.map((p) => deletePhotoFiles(user.id, p.eventId, p.id, p.filename))
   );
+  await releaseBytes(user.id, freed);
   revalidatePath("/", "layout");
 }
 

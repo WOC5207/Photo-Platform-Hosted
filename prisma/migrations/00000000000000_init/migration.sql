@@ -9,9 +9,23 @@ CREATE TABLE "User" (
     "role" TEXT NOT NULL DEFAULT 'user',
     "status" TEXT NOT NULL DEFAULT 'active',
     "displayName" TEXT NOT NULL DEFAULT '',
+    "quotaBytes" BIGINT NOT NULL DEFAULT 5368709120,
+    "usedBytes" BIGINT NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SiteImage" (
+    "id" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "purpose" TEXT NOT NULL,
+    "bytes" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "SiteImage_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -56,6 +70,7 @@ CREATE TABLE "Photo" (
     "originalName" TEXT NOT NULL,
     "width" INTEGER NOT NULL,
     "height" INTEGER NOT NULL,
+    "bytes" INTEGER NOT NULL DEFAULT 0,
     "exifFocalLengthMm" DOUBLE PRECISION,
     "exifAperture" DOUBLE PRECISION,
     "exifExposureTime" DOUBLE PRECISION,
@@ -284,6 +299,12 @@ CREATE TABLE "LotteryPrize" (
 CREATE UNIQUE INDEX "User_username_key" ON "User"("username");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "SiteImage_token_key" ON "SiteImage"("token");
+
+-- CreateIndex
+CREATE INDEX "SiteImage_ownerId_idx" ON "SiteImage"("ownerId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Invite_code_key" ON "Invite"("code");
 
 -- CreateIndex
@@ -339,6 +360,9 @@ CREATE UNIQUE INDEX "LotteryEntry_bookingId_key" ON "LotteryEntry"("bookingId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "LotteryEntry_drawId_token_key" ON "LotteryEntry"("drawId", "token");
+
+-- AddForeignKey
+ALTER TABLE "SiteImage" ADD CONSTRAINT "SiteImage_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Invite" ADD CONSTRAINT "Invite_issuedById_fkey" FOREIGN KEY ("issuedById") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

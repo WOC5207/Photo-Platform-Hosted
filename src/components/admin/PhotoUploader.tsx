@@ -13,7 +13,13 @@ export interface CreditProfile {
   socialLinks: { platform: string; url: string }[];
 }
 
-type UploadStatus = { total: number; done: number; failed: string[] };
+type UploadStatus = {
+  total: number;
+  done: number;
+  failed: string[];
+  /** Set when the batch stopped early because the quota ran out. */
+  quotaExceeded?: boolean;
+};
 type Mode = "single" | "multiple";
 interface Row {
   key: number;
@@ -125,6 +131,7 @@ export default function PhotoUploader({
     setStatus({ total, done: 0, failed });
 
     // One at a time: keeps sharp's memory use low on the NAS.
+    let quotaExceeded = false;
     for (let i = 0; i < total; i++) {
       const file = files[i];
       try {
@@ -133,11 +140,23 @@ export default function PhotoUploader({
         body.append("file", file);
         body.append("credits", JSON.stringify(credits));
         const res = await fetch("/api/admin/photos", { method: "POST", body });
-        if (!res.ok) failed.push(file.name);
+        if (!res.ok) {
+          failed.push(file.name);
+          const data = await res.json().catch(() => null);
+          if (data?.error === "quotaExceeded") {
+            // Stop the batch. Every remaining file would fail the same way, and
+            // grinding through fifty of them to say so is just slow and
+            // confusing — the user needs to free space, not watch a progress
+            // bar fill with errors.
+            quotaExceeded = true;
+            setStatus({ total, done: i + 1, failed: [...failed], quotaExceeded });
+            break;
+          }
+        }
       } catch {
         failed.push(file.name);
       }
-      setStatus({ total, done: i + 1, failed: [...failed] });
+      setStatus({ total, done: i + 1, failed: [...failed], quotaExceeded });
     }
 
     setBusy(false);
@@ -256,10 +275,15 @@ export default function PhotoUploader({
       {status && (
         <div className="text-sm">
           <p className="text-fg-muted">
-            {status.done < status.total
-              ? t("uploading", { done: status.done, total: status.total })
-              : t("uploadDone")}
+            {status.quotaExceeded
+              ? t("uploadStopped", { done: status.done, total: status.total })
+              : status.done < status.total
+                ? t("uploading", { done: status.done, total: status.total })
+                : t("uploadDone")}
           </p>
+          {status.quotaExceeded && (
+            <p className="mt-1 font-medium text-danger">{t("uploadQuotaExceeded")}</p>
+          )}
           {status.failed.map((name) => (
             <p key={name} className="text-danger">
               {t("uploadFailedFile", { name })}

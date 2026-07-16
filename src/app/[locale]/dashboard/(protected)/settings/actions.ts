@@ -7,7 +7,7 @@ import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { deleteSiteImageFile } from "@/lib/images";
+import { discardSiteImage } from "@/lib/siteImages";
 
 export type SiteSettingsState = { error?: "validation"; ok?: boolean };
 
@@ -410,7 +410,21 @@ export async function deleteAnnouncement(formData: FormData): Promise<void> {
   const user = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
-  await prisma.announcement.deleteMany({ where: { id, ownerId: user.id } }).catch(() => {});
+
+  // Read the image token first: deleting the row is the only reference to it,
+  // so afterwards the file would sit on disk with its bytes still counted
+  // against the owner's quota and nothing left pointing at them.
+  const existing = await prisma.announcement.findFirst({
+    where: { id, ownerId: user.id },
+    select: { image: true }
+  });
+  if (!existing) return;
+
+  await prisma.announcement
+    .deleteMany({ where: { id, ownerId: user.id } })
+    .catch(() => {});
+  if (existing.image) await discardSiteImage(user.id, existing.image);
+
   revalidatePath("/", "layout");
 }
 
@@ -457,7 +471,9 @@ export async function removeAnnouncementImage(formData: FormData): Promise<void>
     select: { image: true }
   });
   if (!existing) return;
-  if (existing.image) await deleteSiteImageFile(existing.image);
+  // Retires the file, its row and its bytes together — releasing the quota is
+  // the part that is easy to forget and impossible to notice.
+  if (existing.image) await discardSiteImage(user.id, existing.image);
 
   await prisma.announcement
     .updateMany({ where: { id, ownerId: user.id }, data: { image: "" } })
@@ -491,7 +507,7 @@ export async function removeSiteImage(
     }
   });
   const token = existing?.[column];
-  if (token) await deleteSiteImageFile(token);
+  if (token) await discardSiteImage(user.id, token);
 
   const cleared = { [column]: "" };
   await prisma.siteSettings.upsert({
