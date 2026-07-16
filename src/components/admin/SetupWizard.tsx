@@ -12,7 +12,7 @@ import {
   type BrandState,
   type HomeTextState,
   type FeaturesState
-} from "@/app/[locale]/dashboard/setup/actions";
+} from "@/app/[locale]/admin/setup/actions";
 import SiteImageUploader from "@/components/admin/SiteImageUploader";
 import PersonalLinksManager, {
   type AdminPersonalLink
@@ -32,14 +32,8 @@ type StepId =
   | "links"
   | "finish";
 
-function computeSteps(bookingEnabled: boolean, needsCredentials: boolean): StepId[] {
-  // The credentials step only exists to get the seeded admin off the
-  // ADMIN_USERNAME/ADMIN_PASSWORD placeholders from the server's env file.
-  // Invited users chose their own username and password when they redeemed
-  // their invite, so for them the step is not just redundant — its copy is
-  // actively wrong about how they signed in.
-  const steps: StepId[] = needsCredentials ? ["credentials"] : [];
-  steps.push("brand", "hometext", "features");
+function computeSteps(bookingEnabled: boolean): StepId[] {
+  const steps: StepId[] = ["credentials", "brand", "hometext", "features"];
   if (bookingEnabled) steps.push("contact");
   steps.push("logo", "background", "links", "finish");
   return steps;
@@ -65,7 +59,6 @@ interface WizardSettings {
 }
 
 export default function SetupWizard({
-  needsCredentials,
   initialUsername,
   settings,
   creditTerm,
@@ -74,8 +67,6 @@ export default function SetupWizard({
   logoUrl,
   backgroundUrl
 }: {
-  /** True only for the env-seeded admin; see computeSteps. */
-  needsCredentials: boolean;
   initialUsername: string;
   settings: WizardSettings;
   // Resolved display term (e.g. "Cosplayer"), used to phrase the credit
@@ -91,7 +82,7 @@ export default function SetupWizard({
   // automatically after each step's server action revalidates), not from a
   // separately-tracked copy — that would need manual resyncing and could
   // drift from what's actually saved.
-  const steps = computeSteps(settings.bookingEnabled, needsCredentials);
+  const steps = computeSteps(settings.bookingEnabled);
   const [stepIndex, setStepIndex] = useState(0);
   const step = steps[Math.min(stepIndex, steps.length - 1)];
 

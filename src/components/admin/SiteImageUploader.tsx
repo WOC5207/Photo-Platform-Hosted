@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { removeSiteImage } from "@/app/[locale]/dashboard/(protected)/settings/actions";
+import { removeSiteImage } from "@/app/[locale]/admin/(protected)/settings/actions";
 
 type Kind = "background" | "logo" | "contactQrEn" | "contactQrZh";
 

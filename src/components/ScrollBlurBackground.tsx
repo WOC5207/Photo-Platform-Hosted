@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type CSSProperties } from "react";
 
-// Matches the content pane's backdrop-blur-xl (see SiteChrome), so
+// Matches the content pane's backdrop-blur-xl (see (public)/layout.tsx), so
 // the background eventually looks exactly as soft as what you see through
 // the glass panels.
 const MAX_BLUR_PX = 24;

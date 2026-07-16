@@ -23,8 +23,7 @@
     "admin": "Admin",
     "menu": "Menu",
     "contact": "Contact us",
-    "contactVisitLink": "Open link",
-    "directory": "All photographers"
+    "contactVisitLink": "Open link"
   },
   "languageSwitcher": {
     "label": "Language"
@@ -77,8 +76,7 @@
     "site": "Site settings",
     "siteCardHint": "Customize the site title, homepage text, background and logo.",
     "resourceMonitor": "Resource monitor",
-    "resourceMonitorCardHint": "See how much storage your photos, site images and database are using.",
-    "platform": "Platform"
+    "resourceMonitorCardHint": "See how much storage your photos, site images and database are using."
   },
   "adminEvents": {
     "listTitle": "Gallery events",
@@ -469,67 +467,5 @@
     "linksTitle": "Link your other profiles",
     "finishTitle": "You're all set!",
     "finishHint": "We'll create a draft album (and a draft booking event, if enabled) so you have something to explore. Publish or delete them anytime from the admin."
-  },
-  "directory": {
-    "title": "Photographers",
-    "subtitle": "Browse the photographers hosted here.",
-    "searchPlaceholder": "Search photographers…",
-    "empty": "No photographers yet.",
-    "emptyHint": "Once accounts are invited, their sites appear here.",
-    "noMatches": "No photographers match that search.",
-    "albums": "{count, plural, =1 {# album} other {# albums}}",
-    "photos": "{count, plural, =1 {# photo} other {# photos}}",
-    "visit": "Visit site"
-  },
-  "platform": {
-    "usersTitle": "Accounts",
-    "usersSubtitle": "Everyone with an account on this platform.",
-    "invitesTitle": "Invites",
-    "invitesSubtitle": "Registration is invite-only — generate a link to let someone in.",
-    "colUser": "Account",
-    "colRole": "Role",
-    "colStatus": "Status",
-    "colAlbums": "Albums",
-    "colJoined": "Joined",
-    "roleAdmin": "Admin",
-    "roleUser": "User",
-    "statusActive": "Active",
-    "statusSuspended": "Suspended",
-    "suspend": "Suspend",
-    "unsuspend": "Unsuspend",
-    "deleteUser": "Delete",
-    "deleteUserConfirm": "Delete this account and everything on it? This cannot be undone.",
-    "viewSite": "View site",
-    "newInvite": "Create invite",
-    "inviteNote": "Note (who is this for?)",
-    "inviteLink": "Invite link",
-    "inviteCopy": "Copy",
-    "inviteCopied": "Copied",
-    "inviteRevoke": "Revoke",
-    "inviteRedeemed": "Redeemed by {name}",
-    "inviteUnused": "Not used yet",
-    "inviteExpired": "Expired",
-    "noInvites": "No invites yet.",
-    "cannotSuspendSelf": "You cannot suspend or delete your own account."
-  },
-  "register": {
-    "title": "Create your account",
-    "subtitle": "You have been invited to host your photography here.",
-    "username": "Username",
-    "usernameHint": "Your site will live at /u/your-username. Lowercase letters, numbers and hyphens.",
-    "displayName": "Display name",
-    "displayNameHint": "Shown in the photographer directory. Defaults to your username.",
-    "password": "Password",
-    "confirmPassword": "Confirm password",
-    "submit": "Create account",
-    "invalidInvite": "This invite link is not valid.",
-    "invalidInviteHint": "It may have been used already, revoked, or expired. Ask for a new one.",
-    "errorValidation": "Please check the fields above.",
-    "errorMismatch": "The passwords do not match.",
-    "errorUsernameTaken": "That username is taken.",
-    "errorUsernameReserved": "That username is reserved.",
-    "errorUsernameInvalid": "Use 2–31 lowercase letters, numbers or hyphens, starting with a letter or number.",
-    "errorBadInvite": "This invite is no longer valid.",
-    "errorRateLimited": "Too many attempts. Try again later."
   }
 }

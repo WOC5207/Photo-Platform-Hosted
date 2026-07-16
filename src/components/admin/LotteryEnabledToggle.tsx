@@ -1,6 +1,6 @@
 "use client";
 
-import { updateLotteryEnabled } from "@/app/[locale]/dashboard/(protected)/bookings/lottery-actions";
+import { updateLotteryEnabled } from "@/app/[locale]/admin/(protected)/bookings/lottery-actions";
 
 export default function LotteryEnabledToggle({
   bookingEventId,

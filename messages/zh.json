@@ -23,8 +23,7 @@
     "admin": "管理",
     "menu": "菜单",
     "contact": "联系我们",
-    "contactVisitLink": "打开链接",
-    "directory": "全部摄影师"
+    "contactVisitLink": "打开链接"
   },
   "languageSwitcher": {
     "label": "语言"
@@ -77,8 +76,7 @@
     "site": "网站设置",
     "siteCardHint": "自定义站点标题、首页文案、背景和 Logo。",
     "resourceMonitor": "资源监控",
-    "resourceMonitorCardHint": "查看照片、网站图片和数据库占用的存储空间。",
-    "platform": "平台"
+    "resourceMonitorCardHint": "查看照片、网站图片和数据库占用的存储空间。"
   },
   "adminEvents": {
     "listTitle": "相册管理",
@@ -469,67 +467,5 @@
     "linksTitle": "关联你的其他主页",
     "finishTitle": "设置完成！",
     "finishHint": "我们会为你创建一个草稿相册（如果启用了预约功能，还会创建一个草稿预约活动），方便你熟悉后台。你可以随时在后台发布或删除它们。"
-  },
-  "directory": {
-    "title": "摄影师",
-    "subtitle": "浏览本站的摄影师。",
-    "searchPlaceholder": "搜索摄影师…",
-    "empty": "还没有摄影师。",
-    "emptyHint": "邀请账号后，他们的站点会显示在这里。",
-    "noMatches": "没有匹配的摄影师。",
-    "albums": "{count} 个相册",
-    "photos": "{count} 张照片",
-    "visit": "访问站点"
-  },
-  "platform": {
-    "usersTitle": "账号",
-    "usersSubtitle": "本平台上的所有账号。",
-    "invitesTitle": "邀请",
-    "invitesSubtitle": "注册仅限邀请——生成链接以邀请他人加入。",
-    "colUser": "账号",
-    "colRole": "角色",
-    "colStatus": "状态",
-    "colAlbums": "相册",
-    "colJoined": "加入时间",
-    "roleAdmin": "管理员",
-    "roleUser": "用户",
-    "statusActive": "正常",
-    "statusSuspended": "已停用",
-    "suspend": "停用",
-    "unsuspend": "恢复",
-    "deleteUser": "删除",
-    "deleteUserConfirm": "删除该账号及其全部内容？此操作无法撤销。",
-    "viewSite": "查看站点",
-    "newInvite": "创建邀请",
-    "inviteNote": "备注（邀请给谁？）",
-    "inviteLink": "邀请链接",
-    "inviteCopy": "复制",
-    "inviteCopied": "已复制",
-    "inviteRevoke": "撤销",
-    "inviteRedeemed": "已被 {name} 使用",
-    "inviteUnused": "尚未使用",
-    "inviteExpired": "已过期",
-    "noInvites": "还没有邀请。",
-    "cannotSuspendSelf": "不能停用或删除自己的账号。"
-  },
-  "register": {
-    "title": "创建账号",
-    "subtitle": "你已被邀请在此展示你的摄影作品。",
-    "username": "用户名",
-    "usernameHint": "你的站点地址为 /u/你的用户名。仅限小写字母、数字和连字符。",
-    "displayName": "显示名称",
-    "displayNameHint": "显示在摄影师目录中。默认使用用户名。",
-    "password": "密码",
-    "confirmPassword": "确认密码",
-    "submit": "创建账号",
-    "invalidInvite": "该邀请链接无效。",
-    "invalidInviteHint": "它可能已被使用、撤销或过期。请索取新的链接。",
-    "errorValidation": "请检查以上内容。",
-    "errorMismatch": "两次输入的密码不一致。",
-    "errorUsernameTaken": "该用户名已被使用。",
-    "errorUsernameReserved": "该用户名为保留名称。",
-    "errorUsernameInvalid": "请使用 2–31 位小写字母、数字或连字符，并以字母或数字开头。",
-    "errorBadInvite": "该邀请已失效。",
-    "errorRateLimited": "尝试次数过多，请稍后再试。"
   }
 }

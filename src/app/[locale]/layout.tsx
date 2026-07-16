@@ -7,18 +7,10 @@ import {
   setRequestLocale
 } from "next-intl/server";
 import { routing } from "@/i18n/routing";
+import { getSiteSettings, resolveSiteTitle } from "@/lib/settings";
+import { findSiteOwner } from "@/lib/owner";
 import "../globals.css";
 
-/**
- * Platform-wide default title. This layout wraps every route — the directory,
- * the login page, the dashboard — so it must NOT assume an owner: there is no
- * single site owner any more, and a page under /u/<username> overrides this
- * with that photographer's own title.
- *
- * It must also never depend on an owner existing at all: on a fresh deployment
- * no account exists until someone logs in, and failing here would hide the
- * login page and leave no way to ever create one.
- */
 export async function generateMetadata({
   params
 }: {
@@ -26,7 +18,16 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "common" });
-  return { title: t("siteName") };
+  // findSiteOwner, not getSiteOwner: this layout wraps the login page too, and
+  // on a fresh deployment no admin exists until someone logs in. A 404 here
+  // would hide the login page and make the site impossible to ever set up.
+  const owner = await findSiteOwner();
+  const settings = owner ? await getSiteSettings(owner.id) : null;
+  return {
+    title: settings
+      ? resolveSiteTitle(settings, locale, t("siteName"))
+      : t("siteName")
+  };
 }
 
 export function generateStaticParams() {

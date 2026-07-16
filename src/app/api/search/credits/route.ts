@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { findOwner } from "@/lib/owner";
+import { getSiteOwner } from "@/lib/owner";
 import { photoUrls } from "@/lib/images";
 
 const MAX_RESULTS = 8;
@@ -28,13 +28,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
-  // Whose site is being searched. API routes are not locale- or owner-prefixed,
-  // so unlike a page this has no path to infer it from and the caller must say.
-  // Without it the search spans every photographer's photos at once, and one
-  // site's search box surfaces another's people and links into their albums.
-  const username = (req.nextUrl.searchParams.get("owner") ?? "").trim();
-  const owner = username ? await findOwner(username) : null;
-  if (!owner) return NextResponse.json({ results: [] });
+  // Scoped to whose site is being searched: without ownerId this searches every
+  // photographer's photos at once, so one site's search box surfaces another's
+  // credited people and links straight through to their albums.
+  const owner = await getSiteOwner();
 
   // `mode: "insensitive"` is required on Postgres, where `contains` maps to a
   // case-SENSITIVE LIKE. (It was implicitly case-insensitive under SQLite, so

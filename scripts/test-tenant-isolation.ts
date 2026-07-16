@@ -30,8 +30,6 @@ import {
 import { uniqueEventSlug } from "../src/lib/slug";
 import { syncCreditProfiles } from "../src/lib/photoCredits";
 import { getSiteSettings } from "../src/lib/settings";
-import { redeemInvite } from "../src/lib/invite";
-import { usernameError } from "../src/lib/username";
 
 const prisma = new PrismaClient();
 let failures = 0;
@@ -39,104 +37,6 @@ let failures = 0;
 function report(name: string, ok: boolean, detail: string) {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      ${detail}`);
   if (!ok) failures++;
-}
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/**
- * Registration is invite-only, so "one invite, one account" is the whole of the
- * platform's admission control. It is a check-then-write under a shared link,
- * i.e. exactly the booking race — and just as silent.
- *
- * Deterministic, not a stampede: holding the row from outside and asserting the
- * code under test blocks on it. A Promise.all stampede can pass with the lock
- * removed purely because Node issues BEGINs sequentially (see the header of
- * test-concurrency.ts).
- */
-async function testInviteRedeemedOnce(issuer: User) {
-  const invite = await prisma.invite.create({
-    data: { code: randomUUID().replace(/-/g, ""), issuedById: issuer.id }
-  });
-
-  let release!: () => void;
-  const mayCommit = new Promise<void>((r) => (release = r));
-
-  // Hold the invite locked and mark it redeemed, without committing.
-  const holder = prisma.$transaction(
-    async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "Invite" WHERE id = ${invite.id} FOR UPDATE`;
-      await tx.invite.update({
-        where: { id: invite.id },
-        data: { redeemedAt: new Date() }
-      });
-      await mayCommit;
-    },
-    { timeout: 15_000 }
-  );
-
-  await sleep(300);
-
-  let settled = false;
-  const contender = redeemInvite(invite.code, {
-    username: `racer-${randomUUID().slice(0, 8)}`,
-    displayName: "Racer",
-    passwordHash: "not-a-real-hash"
-  }).then((r) => {
-    settled = true;
-    return r;
-  });
-
-  await sleep(700);
-  const blocked = !settled;
-
-  release();
-  await holder;
-  const result = await contender;
-
-  report(
-    "invite: redeemInvite blocks on a held invite lock, then sees it is spent",
-    blocked && !result.ok && result.error === "badInvite",
-    blocked
-      ? `blocked as expected, then returned ${result.ok ? "ok (WRONG — invite reused)" : result.error}`
-      : "returned while the invite was locked — the FOR UPDATE is missing, so one invite would create two accounts"
-  );
-
-  if (result.ok) await prisma.user.delete({ where: { id: result.user.id } });
-  await prisma.invite.delete({ where: { id: invite.id } }).catch(() => {});
-}
-
-/** The reserved list is what stops an account shadowing a platform route. */
-function testReservedUsernames() {
-  const mustReject = ["admin", "api", "u", "login", "register", "dashboard", "www", "en", "zh"];
-  // Asserts they cannot be CLAIMED, not which rule catches them: "u" is a
-  // single character, so the length rule rejects it before the reserved list is
-  // consulted. Either way it is unclaimable, and that is the invariant.
-  const rejected = mustReject.filter((n) => usernameError(n) !== null);
-  report(
-    "usernames: platform routes cannot be claimed",
-    rejected.length === mustReject.length,
-    `${rejected.length}/${mustReject.length} rejected` +
-      (rejected.length === mustReject.length
-        ? ""
-        : ` — ALLOWED: ${mustReject.filter((n) => !rejected.includes(n)).join(", ")}`)
-  );
-
-  const badShapes = ["-nope", "a", "Nope", "no_underscores", "way-too-long-".repeat(4)];
-  const caught = badShapes.filter((n) => usernameError(n) === "invalid");
-  report(
-    "usernames: malformed names rejected",
-    caught.length === badShapes.length,
-    `${caught.length}/${badShapes.length} rejected`
-  );
-
-  const ok = ["bob", "alice-2", "x9"];
-  const allowed = ok.filter((n) => usernameError(n) === null);
-  report(
-    "usernames: ordinary names still allowed",
-    allowed.length === ok.length,
-    `${allowed.length}/${ok.length} allowed` +
-      (allowed.length === ok.length ? "" : " — the rule is too strict, not safe")
-  );
 }
 
 async function makeUser(name: string): Promise<User> {
@@ -301,9 +201,6 @@ async function main() {
     aliceSettings.siteTitleEn === "Alice Photography" && bobSettings.siteTitleEn === "",
     `Alice: '${aliceSettings.siteTitleEn}', Bob: '${bobSettings.siteTitleEn}' (Bob must be empty)`
   );
-
-  await testInviteRedeemedOnce(bob);
-  testReservedUsernames();
 
   // Deleting an owner must take their content with them.
   await prisma.user.delete({ where: { id: alice.id } });

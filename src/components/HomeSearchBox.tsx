@@ -18,13 +18,10 @@ export interface HomeSearchLabels {
  * being one more piece of HomeHighlightsPanel.
  */
 export default function HomeSearchBox({
-  owner,
   locale,
   labels,
   className
 }: {
-  /** Whose site is being searched — the API has no path to infer it from. */
-  owner: string;
   locale: string;
   labels: HomeSearchLabels;
   className?: string;
@@ -44,16 +41,14 @@ export default function HomeSearchBox({
     }
     setSearching(true);
     const handle = setTimeout(() => {
-      fetch(
-        `/api/search/credits?owner=${encodeURIComponent(owner)}&q=${encodeURIComponent(trimmedQuery)}`
-      )
+      fetch(`/api/search/credits?q=${encodeURIComponent(trimmedQuery)}`)
         .then((res) => res.json())
         .then((data) => setResults(data.results ?? []))
         .catch(() => setResults([]))
         .finally(() => setSearching(false));
     }, 300);
     return () => clearTimeout(handle);
-  }, [trimmedQuery, owner]);
+  }, [trimmedQuery]);
 
   useEffect(() => {
     if (trimmedQuery.length === 0) return;
@@ -102,7 +97,7 @@ export default function HomeSearchBox({
               {results.map((r) => (
                 <li key={r.photoId}>
                   <Link
-                    href={`/u/${owner}/gallery/${r.eventSlug}`}
+                    href={`/gallery/${r.eventSlug}`}
                     onClick={() => setQuery("")}
                     className="flex items-center gap-3 p-2 transition hover:bg-fg/5"
                   >

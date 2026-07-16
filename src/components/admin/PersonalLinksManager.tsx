@@ -8,7 +8,7 @@ import {
   movePersonalLink,
   updatePersonalLink,
   type PersonalLinkState
-} from "@/app/[locale]/dashboard/(protected)/settings/actions";
+} from "@/app/[locale]/admin/(protected)/settings/actions";
 
 export interface AdminPersonalLink {
   id: string;

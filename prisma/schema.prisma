@@ -26,9 +26,6 @@ model User {
   // "active" | "suspended". Never cached in the session cookie — see
   // getCurrentUser in src/lib/auth.ts for why.
   status       String   @default("active")
-  // Human-readable name for the directory listing. Empty = fall back to
-  // username, so an account is never nameless.
-  displayName  String   @default("")
   createdAt    DateTime @default(now())
 
   // Everything this account owns. Cascade means deleting a User removes all of
@@ -41,30 +38,6 @@ model User {
   personalLinks  PersonalLink[]
   contactMethods ContactMethod[]
   creditProfiles CreditProfile[]
-
-  invitesIssued  Invite[] @relation("InviteIssuer")
-  invite         Invite?  @relation("InviteRedeemer")
-}
-
-// Registration is invite-only: there is no public signup form, so an account
-// can only exist because an admin handed out one of these.
-model Invite {
-  id           String    @id @default(cuid())
-  // Random, unguessable — it is the whole of the /register/<code> URL.
-  code         String    @unique
-  issuedById   String
-  issuedBy     User      @relation("InviteIssuer", fields: [issuedById], references: [id], onDelete: Cascade)
-  // Free-text reminder of who it was meant for; admin-only, never public.
-  note         String    @default("")
-  expiresAt    DateTime?
-  redeemedAt   DateTime?
-  // One account per invite, enforced by the DB rather than by a check —
-  // redemption also locks the row, so a shared link cannot be used twice.
-  redeemedById String?   @unique
-  redeemedBy   User?     @relation("InviteRedeemer", fields: [redeemedById], references: [id], onDelete: SetNull)
-  createdAt    DateTime  @default(now())
-
-  @@index([issuedById])
 }
 
 // A gallery event = one photo album (a con, a shoot, etc.)

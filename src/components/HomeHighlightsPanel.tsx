@@ -38,12 +38,9 @@ const tabCls = (active: boolean) =>
 
 /** One event's photos, paged through with prev/next arrows and dot indicators. */
 function EventCarousel({
-  basePath,
   event,
   labels
 }: {
-  /** Root of the owner's site, e.g. "/u/alice" — locale is added by Link. */
-  basePath: string;
   event: HighlightEventGroup;
   labels: HomeHighlightsLabels;
 }) {
@@ -54,7 +51,7 @@ function EventCarousel({
   return (
     <div className="flex flex-col gap-3">
       <div className="group relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-surface sm:aspect-video">
-        <Link href={`${basePath}/gallery/${event.slug}`} className="block h-full w-full">
+        <Link href={`/gallery/${event.slug}`} className="block h-full w-full">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={photo.url}
@@ -110,7 +107,7 @@ function EventCarousel({
           ))}
         </div>
         <Link
-          href={`${basePath}/gallery/${event.slug}`}
+          href={`/gallery/${event.slug}`}
           className="rounded-full border border-border-strong px-4 py-1.5 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg"
         >
           {labels.viewGallery}
@@ -127,14 +124,11 @@ function EventCarousel({
  * event tab is active.
  */
 export default function HomeHighlightsPanel({
-  basePath,
   events,
   announcements,
   announcementsEnabled,
   labels
 }: {
-  /** Root of the owner's site, e.g. "/u/alice" — locale is added by Link. */
-  basePath: string;
   events: HighlightEventGroup[];
   announcements: HighlightAnnouncement[];
   announcementsEnabled: boolean;
@@ -219,7 +213,6 @@ export default function HomeHighlightsPanel({
             activeEvent && (
               <EventCarousel
                 key={activeEvent.slug}
-                basePath={basePath}
                 event={activeEvent}
                 labels={labels}
               />

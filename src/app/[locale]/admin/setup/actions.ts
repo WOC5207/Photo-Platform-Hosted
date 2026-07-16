@@ -1,0 +1,206 @@
+"use server";
+
+import { randomUUID } from "crypto";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { getLocale } from "next-intl/server";
+import bcrypt from "bcryptjs";
+import { z } from "zod";
+import { prisma } from "@/lib/db";
+import { requireAdmin } from "@/lib/auth";
+import { getSiteSettings } from "@/lib/settings";
+import { slugify, uniqueEventSlug } from "@/lib/slug";
+import type { User } from "@prisma/client";
+
+async function guard(): Promise<{ locale: string; user: User }> {
+  const locale = await getLocale();
+  const user = await requireAdmin(locale);
+  return { locale, user };
+}
+
+export type CredentialsState = {
+  error?: "validation" | "mismatch" | "unknown";
+  ok?: boolean;
+};
+
+const credentialsSchema = z.object({
+  username: z.string().trim().min(1).max(200),
+  password: z.string().min(8).max(500),
+  confirmPassword: z.string().min(1).max(500)
+});
+
+/**
+ * Replaces the signed-in user's username/password. Called from setup step 1 so
+ * the admin stops relying on the ADMIN_USERNAME/ADMIN_PASSWORD placeholder that
+ * seeded the account on first login (see ensureOwnerSeeded in src/lib/auth.ts)
+ * — those env vars are only ever consulted for that initial seed, so this is
+ * the one place a durable password gets set.
+ *
+ * Targets the current user rather than the first row in the table: with more
+ * than one account, findFirst() would have rewritten a stranger's credentials.
+ */
+export async function setupUpdateCredentials(
+  _prev: CredentialsState,
+  formData: FormData
+): Promise<CredentialsState> {
+  const { user } = await guard();
+  const parsed = credentialsSchema.safeParse({
+    username: formData.get("username") ?? "",
+    password: formData.get("password") ?? "",
+    confirmPassword: formData.get("confirmPassword") ?? ""
+  });
+  if (!parsed.success) return { error: "validation" };
+  const d = parsed.data;
+  if (d.password !== d.confirmPassword) return { error: "mismatch" };
+
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        username: d.username,
+        passwordHash: await bcrypt.hash(d.password, 12)
+      }
+    });
+  } catch {
+    // Most likely the username is taken — it is unique across the platform.
+    return { error: "unknown" };
+  }
+  return { ok: true };
+}
+
+export type BrandState = { ok?: boolean };
+
+export async function setupUpdateBrand(
+  _prev: BrandState,
+  formData: FormData
+): Promise<BrandState> {
+  const { user } = await guard();
+  const siteTitleEn = String(formData.get("siteTitleEn") ?? "")
+    .trim()
+    .slice(0, 120);
+  const siteTitleZh = String(formData.get("siteTitleZh") ?? "")
+    .trim()
+    .slice(0, 120);
+
+  await prisma.siteSettings.upsert({
+    where: { ownerId: user.id },
+    create: { ownerId: user.id, siteTitleEn, siteTitleZh },
+    update: { siteTitleEn, siteTitleZh }
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export type HomeTextState = { ok?: boolean };
+
+export async function setupUpdateHomeText(
+  _prev: HomeTextState,
+  formData: FormData
+): Promise<HomeTextState> {
+  const { user } = await guard();
+  const homeTitleEn = String(formData.get("homeTitleEn") ?? "")
+    .trim()
+    .slice(0, 200);
+  const homeTitleZh = String(formData.get("homeTitleZh") ?? "")
+    .trim()
+    .slice(0, 200);
+  const homeSubtitleEn = String(formData.get("homeSubtitleEn") ?? "")
+    .trim()
+    .slice(0, 300);
+  const homeSubtitleZh = String(formData.get("homeSubtitleZh") ?? "")
+    .trim()
+    .slice(0, 300);
+
+  await prisma.siteSettings.upsert({
+    where: { ownerId: user.id },
+    create: {
+      ownerId: user.id,
+      homeTitleEn,
+      homeTitleZh,
+      homeSubtitleEn,
+      homeSubtitleZh
+    },
+    update: { homeTitleEn, homeTitleZh, homeSubtitleEn, homeSubtitleZh }
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export type FeaturesState = { ok?: boolean };
+
+export async function setupUpdateFeatures(
+  _prev: FeaturesState,
+  formData: FormData
+): Promise<FeaturesState> {
+  const { user } = await guard();
+  const bookingEnabled = formData.get("bookingEnabled") === "on";
+  const lotteryEnabled = formData.get("lotteryEnabled") === "on";
+  const creditProfilesEnabled = formData.get("creditProfilesEnabled") === "on";
+
+  await prisma.siteSettings.upsert({
+    where: { ownerId: user.id },
+    create: {
+      ownerId: user.id,
+      bookingEnabled,
+      lotteryEnabled,
+      creditProfilesEnabled
+    },
+    update: { bookingEnabled, lotteryEnabled, creditProfilesEnabled }
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/**
+ * Final wizard step: seeds a draft album (and a draft booking event, if the
+ * booking feature was enabled) so the admin lands on a dashboard with
+ * something to look at instead of an empty shell, then marks setup done so
+ * the (protected) layout stops redirecting here.
+ */
+export async function completeSetup(): Promise<void> {
+  const { locale, user } = await guard();
+  const settings = await getSiteSettings(user.id);
+
+  const albumSlug = await uniqueEventSlug(
+    user.id,
+    slugify("my-first-album") || "my-first-album"
+  );
+  await prisma.event.create({
+    data: {
+      ownerId: user.id,
+      slug: albumSlug,
+      titleEn: "My First Album",
+      titleZh: "我的第一个相册",
+      descriptionEn:
+        "A draft album to get you started — add photos, then publish when ready.",
+      descriptionZh: "示例相册，帮助你快速上手——添加照片后即可发布。",
+      published: false
+    }
+  });
+
+  if (settings.bookingEnabled) {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() + 14);
+    await prisma.bookingEvent.create({
+      data: {
+        ownerId: user.id,
+        token: randomUUID().replace(/-/g, ""),
+        titleEn: "Sample Photoshoot",
+        titleZh: "示例场照活动",
+        descriptionEn:
+          "A draft booking event to get you started — add time slots, then open it when ready.",
+        descriptionZh: "示例预约活动，帮助你快速上手——添加时间段后即可开放预约。",
+        date,
+        open: false
+      }
+    });
+  }
+
+  await prisma.siteSettings.update({
+    where: { ownerId: user.id },
+    data: { setupCompleted: true }
+  });
+
+  revalidatePath("/", "layout");
+  redirect(`/${locale}/admin`);
+}

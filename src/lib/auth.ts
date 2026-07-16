@@ -57,19 +57,17 @@ export async function isAdmin(): Promise<boolean> {
 }
 
 /**
- * Where a signed-in user belongs after logging in.
+ * Where a signed-in user belongs. Both the login form and the login page's
+ * already-signed-in check route through this, because they must agree: if the
+ * login page sends someone to a page that bounces them back to the login page,
+ * the two redirects loop forever and the user just sees a blank screen.
  *
- * Both the login form and the login page's already-signed-in check route
- * through this, because they must agree: if the login page sends someone to a
- * page that bounces them back to the login page, the two redirects loop forever
- * and the user just sees a blank screen.
- *
- * Every account now goes to the same place — the dashboard is "my site" for
- * whoever is signed in, and the admin's platform tools live separately under
- * /admin.
+ * Ordinary accounts have nowhere of their own to land yet — /admin is
+ * admin-only — so they go to the public homepage. That becomes their dashboard
+ * once the routing split lands.
  */
-export function homePathFor(_user: User, locale: string): string {
-  return `/${locale}/dashboard`;
+export function homePathFor(user: User, locale: string): string {
+  return user.role === "admin" ? `/${locale}/admin` : `/${locale}`;
 }
 
 /**
