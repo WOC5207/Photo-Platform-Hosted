@@ -9,7 +9,8 @@
     "start": "next start",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "test:concurrency": "tsx --env-file=.env --conditions=react-server scripts/test-concurrency.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.16.0",
@@ -29,7 +30,9 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "prisma": "^6.16.0",
+    "server-only": "^0.0.1",
     "tailwindcss": "^4.1.0",
+    "tsx": "^4.23.1",
     "typescript": "^5.9.0"
   },
   "allowScripts": {

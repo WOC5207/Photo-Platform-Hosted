@@ -55,22 +55,41 @@ export type SpinResult =
  * so remaining odds are always renormalized over what's left — this is a
  * "live weighted draw", not a pre-shuffled/guaranteed-fair sequence, so
  * visitors who spin earlier do get better odds at scarce prizes than ones
- * who spin after they run out), then persists the result. Runs inside a
- * transaction so two concurrent spins can't both claim the last unit of the
- * same prize. `expectedDrawId`, when passed, scopes the entry to a specific
- * draw (the public spin action uses this so a visitor can't reference an
- * entry from an unrelated draw).
+ * who spin after they run out), then persists the result. Prize stock is
+ * derived by counting winners, so the whole draw is locked for the duration
+ * of the transaction (see below) to stop two concurrent spins both counting
+ * the last unit as available and both awarding it. `expectedDrawId`, when
+ * passed, scopes the entry to a specific draw (the public spin action uses
+ * this so a visitor can't reference an entry from an unrelated draw).
  */
 export async function spinForEntry(
   entryId: string,
   expectedDrawId?: string
 ): Promise<SpinResult> {
   return prisma.$transaction(async (tx) => {
-    const entry = await tx.lotteryEntry.findUnique({ where: { id: entryId } });
-    if (!entry) return { ok: false, error: "not_found" } as const;
-    if (expectedDrawId && entry.drawId !== expectedDrawId) {
+    // Unlocked peek, purely to learn which draw to lock.
+    const target = await tx.lotteryEntry.findUnique({
+      where: { id: entryId },
+      select: { drawId: true }
+    });
+    if (!target) return { ok: false, error: "not_found" } as const;
+    if (expectedDrawId && target.drawId !== expectedDrawId) {
       return { ok: false, error: "not_found" } as const;
     }
+
+    // Serializes every spin in this draw for the rest of the transaction.
+    // Both races below need it: prize stock is derived by counting winners,
+    // so two concurrent spins would each see wonCount < quantity for the
+    // last unit and both award it; and two spins of the *same* entry would
+    // each read wonPrizeId as null and the second would overwrite the
+    // first's win. Locking the draw rather than the prize covers the whole
+    // weighted selection, which reads every prize's stock before choosing.
+    // Spins in other draws are unaffected. Every read that a decision
+    // depends on must therefore happen *after* this line.
+    await tx.$queryRaw`SELECT id FROM "LotteryDraw" WHERE id = ${target.drawId} FOR UPDATE`;
+
+    const entry = await tx.lotteryEntry.findUnique({ where: { id: entryId } });
+    if (!entry) return { ok: false, error: "not_found" } as const;
     if (entry.wonPrizeId) return { ok: false, error: "already_spun" } as const;
 
     const prizes = await tx.lotteryPrize.findMany({ where: { drawId: entry.drawId } });

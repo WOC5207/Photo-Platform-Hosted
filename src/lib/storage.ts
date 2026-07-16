@@ -23,40 +23,21 @@ async function dirSize(dir: string): Promise<number> {
   return total;
 }
 
-async function fileSize(filePath: string): Promise<number> {
+// On-disk size of the whole database, including indexes and bloat. Ask
+// Postgres rather than measuring files: the data lives in the db container's
+// volume, which this process cannot see.
+async function databaseSize(): Promise<number> {
   try {
-    return (await fs.stat(filePath)).size;
-  } catch {
+    const rows = await prisma.$queryRaw<
+      { size: bigint }[]
+    >`SELECT pg_database_size(current_database()) AS size`;
+    // pg_database_size returns bigint; Number is safe well past any plausible
+    // size here (2^53 bytes = 9 PB) and the callers all expect number.
+    return rows.length > 0 ? Number(rows[0].size) : 0;
+  } catch (err) {
+    console.error("Failed to read database size:", err);
     return 0;
   }
-}
-
-// DATABASE_URL is a SQLite connection string, e.g.
-// "file:/data/db/app.db?connection_limit=1" (prod, absolute) or
-// "file:./data/db/app.db" (dev, relative). Prisma resolves a relative path
-// against the schema.prisma file's directory rather than the process cwd —
-// match that so this finds the same file the app is actually using. An
-// absolute `raw` short-circuits path.resolve regardless of the base, so
-// this is a no-op in prod.
-function databaseFilePath(): string | null {
-  const url = process.env.DATABASE_URL;
-  if (!url || !url.startsWith("file:")) return null;
-  const raw = url.slice("file:".length).split("?")[0];
-  return path.resolve(process.cwd(), "prisma", raw);
-}
-
-// WAL mode (see src/lib/db.ts) keeps recently-written pages in sidecar
-// files until they're checkpointed back into the main one; count those too
-// so the number reflects actual disk usage.
-async function databaseSize(): Promise<number> {
-  const dbPath = databaseFilePath();
-  if (!dbPath) return 0;
-  const [main, wal, shm] = await Promise.all([
-    fileSize(dbPath),
-    fileSize(`${dbPath}-wal`),
-    fileSize(`${dbPath}-shm`)
-  ]);
-  return main + wal + shm;
 }
 
 export interface EventStorage {
@@ -77,8 +58,9 @@ export interface StorageStats {
 
 /**
  * Walks the photos directory (per event) and the site-images directory on
- * disk, plus the SQLite file(s), to report actual space used. There's no
- * cheaper source of truth for this — nothing in the DB tracks file sizes.
+ * disk to report actual space used, and asks Postgres for its own size.
+ * There's no cheaper source of truth for the files — nothing in the DB
+ * tracks file sizes.
  */
 export async function getStorageStats(): Promise<StorageStats> {
   const events = await prisma.event.findMany({

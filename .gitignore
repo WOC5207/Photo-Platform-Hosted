@@ -5,21 +5,19 @@ node_modules/
 .next/
 out/
 
-# local data (dev database + uploaded photos) — the photos/ and db/
-# folders themselves are tracked (as empty placeholders, see data/*/.gitkeep)
-# so Docker's bind mounts always have somewhere to mount on a fresh clone;
-# only their actual contents are ignored.
+# local data (uploaded photos + the Postgres volume) — the photos/ folder
+# itself is tracked (as an empty placeholder, see data/photos/.gitkeep) so
+# Docker's bind mount always has somewhere to mount on a fresh clone; only
+# its actual contents are ignored.
+#
+# data/pg (the Postgres volume) is deliberately NOT tracked, not even a
+# .gitkeep: Postgres refuses to initialise into a non-empty data directory,
+# so a placeholder file there would break the first `docker compose up` with
+# a misleading "directory not empty" error. Docker creates it on demand.
 data/*
 !data/photos
 data/photos/*
 !data/photos/.gitkeep
-!data/db
-data/db/*
-!data/db/.gitkeep
-
-# local dev database (created under prisma/ because DATABASE_URL in .env is a
-# relative path resolved against schema.prisma's directory, not the repo root)
-prisma/data/
 
 # env files — commit only .env.example
 .env

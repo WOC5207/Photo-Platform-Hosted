@@ -1,21 +1,45 @@
 services:
+  db:
+    image: postgres:17-alpine
+    container_name: photo-platform-db
+    restart: unless-stopped
+    # No `ports:` on purpose — the database is reachable only from the `app`
+    # container over the compose network, never from the NAS LAN.
+    environment:
+      POSTGRES_USER: photo
+      POSTGRES_DB: photo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      # The database lives here. Back this folder up (Hyper Backup) alongside
+      # ./data/photos — together they are the whole site.
+      - ./data/pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U photo -d photo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   app:
     build: .
     container_name: photo-platform
     restart: unless-stopped
+    depends_on:
+      db:
+        # The entrypoint runs `prisma migrate deploy` immediately on start;
+        # waiting for the healthcheck is what stops it racing Postgres' boot.
+        condition: service_healthy
     ports:
       # DSM reverse proxy should forward HTTPS traffic to this port.
       - "3000:3000"
     env_file:
       - .env
     environment:
-      # Paths inside the container — do not change; edit the volume
-      # mappings below instead.
-      DATABASE_URL: "file:/data/db/app.db?connection_limit=1"
+      # Paths/hosts inside the container — do not change; edit the volume
+      # mappings below instead. `db` is the service name above.
+      DATABASE_URL: "postgresql://photo:${POSTGRES_PASSWORD}@db:5432/photo?schema=public&connection_limit=10"
       PHOTOS_DIR: "/data/photos"
     volumes:
       # Left side = folder on the NAS (created automatically next to this
       # compose file). Point these at shared-folder paths if you prefer,
       # e.g. /volume1/docker/photo-platform/photos:/data/photos
       - ./data/photos:/data/photos
-      - ./data/db:/data/db
