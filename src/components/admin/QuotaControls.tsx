@@ -21,8 +21,8 @@ export default function QuotaControls({
   labels: { set: string; unit: string; reconcile: string; reconcileHint: string };
 }) {
   return (
-    <div className="flex items-center justify-end gap-2">
-      <form action={setUserQuota} className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-2">
+      <form action={setUserQuota} className="flex flex-wrap items-center gap-2">
         <input type="hidden" name="id" value={userId} />
         <input
           name="quotaGib"
@@ -30,12 +30,13 @@ export default function QuotaControls({
           min={0}
           step="0.5"
           defaultValue={quotaGib}
-          className="w-20 rounded-lg border border-border-strong bg-page px-2 py-1 text-xs outline-none focus:border-fg-faint"
+          aria-label={`${labels.set} (${labels.unit})`}
+          className="min-h-10 w-24 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm outline-none focus-visible:border-fg-faint focus-visible:ring-2 focus-visible:ring-fg/20"
         />
-        <span className="text-xs text-fg-subtle">{labels.unit}</span>
+        <span className="text-sm text-fg-subtle">{labels.unit}</span>
         <button
           type="submit"
-          className="rounded-lg border border-border-strong px-2.5 py-1 text-xs text-fg-muted hover:border-fg-faint hover:text-fg"
+          className="min-h-10 rounded-lg border border-border-strong px-3 py-2 text-sm font-medium text-fg-muted hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11"
         >
           {labels.set}
         </button>
@@ -45,7 +46,7 @@ export default function QuotaControls({
         <button
           type="submit"
           title={labels.reconcileHint}
-          className="rounded-lg border border-border-strong px-2.5 py-1 text-xs text-fg-muted hover:border-fg-faint hover:text-fg"
+          className="min-h-10 rounded-lg border border-border-strong px-3 py-2 text-sm font-medium text-fg-muted hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11"
         >
           {labels.reconcile}
         </button>

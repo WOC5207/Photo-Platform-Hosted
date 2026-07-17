@@ -1,8 +1,12 @@
 import { getTranslations } from "next-intl/server";
 import { requireAdmin } from "@/lib/auth";
-import { Link } from "@/i18n/navigation";
-import LanguageSwitcher from "@/components/LanguageSwitcher";
-import ThemeToggle from "@/components/ThemeToggle";
+import ManagementShell, {
+  type ManagementNavItem
+} from "@/components/management/ManagementShell";
+import { getSiteSettings, resolveSiteTitle } from "@/lib/settings";
+import { siteImageUrl } from "@/lib/images";
+import { ownerBasePath, ownerName } from "@/lib/owner";
+import { logout } from "../../login/actions";
 
 // Auth depends on the request cookie — never prerender.
 export const dynamic = "force-dynamic";
@@ -23,41 +27,59 @@ export default async function PlatformAdminLayout({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  await requireAdmin(locale);
+  const user = await requireAdmin(locale);
   const t = await getTranslations();
+  const settings = await getSiteSettings(user.id);
+  const siteTitle = resolveSiteTitle(settings, locale, t("common.siteName"));
+  const navigation: ManagementNavItem[] = [
+    {
+      href: "/admin",
+      label: t("platform.usersTitle"),
+      icon: "accounts",
+      exact: true,
+      activePrefixes: ["/admin/accounts"]
+    },
+    {
+      href: "/admin/invites",
+      label: t("platform.invitesTitle"),
+      icon: "invites"
+    },
+    {
+      href: "/admin/tiers",
+      label: t("admin.storagePlans"),
+      icon: "tiers"
+    },
+    {
+      href: "/admin/storage",
+      label: t("admin.platformHealth"),
+      icon: "health"
+    }
+  ];
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <nav className="flex flex-wrap items-center gap-4 text-sm">
-            <span className="font-semibold">{t("admin.platform")}</span>
-            <Link href="/admin" className="text-fg-muted hover:text-fg">
-              {t("platform.usersTitle")}
-            </Link>
-            <Link href="/admin/invites" className="text-fg-muted hover:text-fg">
-              {t("platform.invitesTitle")}
-            </Link>
-            <Link href="/admin/tiers" className="text-fg-muted hover:text-fg">
-              {t("adminTiers.title")}
-            </Link>
-            <Link href="/admin/storage" className="text-fg-muted hover:text-fg">
-              {t("adminStorage.title")}
-            </Link>
-          </nav>
-          <div className="flex items-center gap-4">
-            <LanguageSwitcher />
-            <ThemeToggle label={t("common.toggleTheme")} />
-            <Link
-              href="/dashboard"
-              className="rounded-lg border border-border-strong px-3 py-1.5 text-sm text-fg-muted hover:border-fg-faint hover:text-fg"
-            >
-              {t("admin.dashboard")}
-            </Link>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
-    </div>
+    <ManagementShell
+      workspace="platform"
+      navigation={navigation}
+      labels={{
+        workspaceSite: t("admin.mySite"),
+        workspacePlatform: t("admin.platformAdmin"),
+        account: t("admin.account"),
+        viewSite: t("platform.viewSite"),
+        language: t("languageSwitcher.label"),
+        theme: t("common.toggleTheme"),
+        logout: t("auth.logout"),
+        menu: t("nav.menu"),
+        close: t("common.close")
+      }}
+      username={user.username}
+      displayName={ownerName(user)}
+      siteTitle={siteTitle}
+      logoUrl={siteImageUrl(settings.logo)}
+      publicSiteHref={ownerBasePath(user.username)}
+      isAdmin
+      logoutAction={logout}
+    >
+      {children}
+    </ManagementShell>
   );
 }

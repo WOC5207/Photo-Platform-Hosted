@@ -28,11 +28,13 @@ export default async function EditBookingEventPage({
   const user = await requireUser(locale);
   const t = await getTranslations("adminBookings");
   const tc = await getTranslations("common");
+  const ts = await getTranslations("adminSite");
   const settings = await getSiteSettings(user.id);
 
   const event = await prisma.bookingEvent.findFirst({
     where: { id, ownerId: user.id },
     include: {
+      lotteryDraw: { select: { id: true } },
       slots: {
         orderBy: { startTime: "asc" },
         include: {
@@ -44,38 +46,40 @@ export default async function EditBookingEventPage({
   if (!event) notFound();
 
   const shareUrl = `${config.appBaseUrl()}/${locale}/book/${event.token}`;
+  const showLotteryManagement =
+    settings.lotteryEnabled || event.lotteryEnabled || !!event.lotteryDraw;
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <Link
+          href="/dashboard/bookings"
+          className="mb-2 inline-flex min-h-10 items-center text-sm text-fg-subtle underline-offset-4 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/20"
+        >
+          {tc("back")} · {t("listTitle")}
+        </Link>
         <h1 className="text-2xl font-bold">{t("editEvent")}</h1>
-        <div className="flex items-center gap-3">
-          {settings.lotteryEnabled && (
-            <>
-              <LotteryEnabledToggle
-                bookingEventId={event.id}
-                defaultEnabled={event.lotteryEnabled}
-                label={t("lotteryEnabledLabel")}
-              />
-              {event.lotteryEnabled && (
-                <Link
-                  href={`/dashboard/bookings/${event.id}/lottery`}
-                  className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-muted transition hover:border-fg-faint hover:text-fg"
-                >
-                  {t("lotteryTool")}
-                </Link>
-              )}
-            </>
-          )}
-          <form action={deleteBookingEvent}>
-            <input type="hidden" name="id" value={event.id} />
-            <ConfirmSubmit
-              label={t("deleteEvent")}
-              confirmText={t("confirmDeleteEvent")}
-            />
-          </form>
-        </div>
       </div>
+
+      {!settings.bookingEnabled && (
+        <p
+          role="status"
+          className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-fg-subtle"
+        >
+          <strong className="font-semibold text-fg-muted">{t("offPublicly")}.</strong>{" "}
+          {ts("groupBookingHint")}
+        </p>
+      )}
+
+      {!settings.lotteryEnabled && showLotteryManagement && (
+        <p
+          role="status"
+          className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-fg-subtle"
+        >
+          <strong className="font-semibold text-fg-muted">{t("offPublicly")}.</strong>{" "}
+          {ts("groupLotteryHint")}
+        </p>
+      )}
 
       <div className="rounded-xl border border-border bg-surface p-4">
         <p className="text-sm font-semibold">{t("shareLink")}</p>
@@ -83,7 +87,7 @@ export default async function EditBookingEventPage({
           <code className="break-all rounded-md bg-page px-3 py-2 text-xs text-success">
             {shareUrl}
           </code>
-          <CopyButton text={shareUrl} />
+          <CopyButton text={shareUrl} label={tc("copyLink")} copiedLabel={tc("copied")} />
         </div>
         <p className="mt-2 text-xs text-fg-subtle">{t("shareLinkHint")}</p>
       </div>
@@ -91,6 +95,7 @@ export default async function EditBookingEventPage({
       <BookingEventForm
         action={updateBookingEvent}
         submitLabel={tc("save")}
+        cancelHref="/dashboard/bookings"
         initial={{
           id: event.id,
           titleEn: event.titleEn,
@@ -103,8 +108,34 @@ export default async function EditBookingEventPage({
         }}
       />
 
+      {showLotteryManagement && (
+        <section className="rounded-xl border border-border bg-surface p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">{t("lotteryTool")}</h2>
+              <p className="mt-1 text-sm text-fg-subtle">{ts("groupLotteryHint")}</p>
+            </div>
+            {(event.lotteryEnabled || event.lotteryDraw) && (
+              <Link
+                href={`/dashboard/bookings/${event.id}/lottery`}
+                className="inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-4 py-2 text-sm font-semibold text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11"
+              >
+                {t("lotteryTool")}
+              </Link>
+            )}
+          </div>
+          <div className="mt-4 border-t border-border pt-4">
+            <LotteryEnabledToggle
+              bookingEventId={event.id}
+              defaultEnabled={event.lotteryEnabled}
+              label={t("lotteryEnabledLabel")}
+            />
+          </div>
+        </section>
+      )}
+
       <section className="flex flex-col gap-4 border-t border-border pt-6">
-        <h2 className="text-xl font-semibold">{t("slots")}</h2>
+        <h2 className="text-lg font-semibold">{t("slots")}</h2>
 
         {event.slots.length === 0 ? (
           <p className="text-sm text-fg-subtle">{t("noSlots")}</p>
@@ -194,6 +225,18 @@ export default async function EditBookingEventPage({
         )}
 
         <SlotAdder eventId={event.id} />
+      </section>
+
+      <section className="rounded-xl border border-danger-border bg-danger-surface/40 p-5">
+        <h2 className="text-lg font-semibold text-danger-strong">{tc("dangerZone")}</h2>
+        <p className="mt-1 text-sm text-fg-subtle">{t("confirmDeleteEvent")}</p>
+        <form action={deleteBookingEvent} className="mt-4">
+          <input type="hidden" name="id" value={event.id} />
+          <ConfirmSubmit
+            label={t("deleteEvent")}
+            confirmText={t("confirmDeleteEvent")}
+          />
+        </form>
       </section>
     </div>
   );

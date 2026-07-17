@@ -35,13 +35,16 @@ export default function DirectorySearch({ owners }: { owners: DirectoryOwner[] }
 
   return (
     <div className="flex flex-col gap-6">
-      <input
-        type="search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder={t("searchPlaceholder")}
-        className="w-full max-w-md rounded-xl border border-border-strong bg-page/85 px-4 py-2.5 text-sm outline-none transition focus:border-fg-faint"
-      />
+      <label className="flex w-full max-w-md flex-col gap-1.5 text-sm font-medium text-fg-muted">
+        <span>{t("searchPlaceholder")}</span>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("searchPlaceholder")}
+          className="min-h-11 w-full rounded-xl border border-border-strong bg-page/85 px-4 py-2.5 text-sm outline-none transition focus-visible:border-fg-faint focus-visible:ring-2 focus-visible:ring-fg/20"
+        />
+      </label>
 
       {matches.length === 0 ? (
         <p className="py-16 text-center text-fg-subtle">{t("noMatches")}</p>

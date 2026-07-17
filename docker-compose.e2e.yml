@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: photo
+      POSTGRES_DB: photo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - e2e-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U photo -d photo"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://photo:${POSTGRES_PASSWORD}@db:5432/photo?schema=public&connection_limit=10"
+      PHOTOS_DIR: "/data/photos"
+    volumes:
+      - e2e-photos:/data/photos
+
+volumes:
+  e2e-db:
+  e2e-photos:

@@ -45,15 +45,15 @@ function emptyRow(): Row {
 }
 
 const inputCls =
-  "min-w-0 flex-1 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-fg-subtle";
+  "min-h-10 min-w-0 w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
 const modeBtnCls = (active: boolean) =>
-  `rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+  `inline-flex min-h-10 items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11 ${
     active
       ? "bg-fg text-page"
       : "border border-border-strong text-fg-muted hover:border-fg-faint hover:text-fg"
   }`;
 const btnCls =
-  "rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted transition hover:border-fg-faint hover:text-fg disabled:opacity-40";
+  "inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-3 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40 max-sm:min-h-11";
 
 export default function PhotoUploader({
   eventId,
@@ -174,7 +174,7 @@ export default function PhotoUploader({
         ))}
       </datalist>
       <div className="flex flex-wrap items-center gap-3">
-        <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-border-strong px-4 py-2 text-sm text-fg-muted transition hover:border-fg-subtle hover:text-fg">
+        <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-border-strong px-4 py-2 text-sm font-medium text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-within:ring-2 focus-within:ring-fg/40">
           <input
             ref={inputRef}
             type="file"
@@ -182,7 +182,7 @@ export default function PhotoUploader({
             accept="image/jpeg,image/png,image/webp"
             disabled={busy}
             onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-            className="hidden"
+            className="sr-only"
           />
           <span>+ {t("upload")}</span>
         </label>
@@ -197,6 +197,7 @@ export default function PhotoUploader({
       <div className="flex items-center gap-2">
         <button
           type="button"
+          aria-pressed={mode === "single"}
           onClick={() => switchMode("single")}
           className={modeBtnCls(mode === "single")}
         >
@@ -204,6 +205,7 @@ export default function PhotoUploader({
         </button>
         <button
           type="button"
+          aria-pressed={mode === "multiple"}
           onClick={() => switchMode("multiple")}
           className={modeBtnCls(mode === "multiple")}
         >
@@ -217,23 +219,27 @@ export default function PhotoUploader({
             key={row.key}
             className="flex flex-col gap-2 rounded-lg border border-border-strong/50 p-2"
           >
-            <div className="flex gap-2">
-              <input
-                value={row.creditName}
-                onChange={(e) => updateRow(row.key, { creditName: e.target.value })}
-                onBlur={(e) => syncLinksToName(row.key, e.target.value)}
-                placeholder={t("creditName", { term: creditTerm })}
-                maxLength={200}
-                list="known-credits"
-                className={inputCls}
-              />
-              <input
-                value={row.subject}
-                onChange={(e) => updateRow(row.key, { subject: e.target.value })}
-                placeholder={subjectTerm}
-                maxLength={200}
-                className={inputCls}
-              />
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+              <label className="flex min-w-0 flex-col gap-1 text-xs text-fg-subtle">
+                {t("creditName", { term: creditTerm })}
+                <input
+                  value={row.creditName}
+                  onChange={(e) => updateRow(row.key, { creditName: e.target.value })}
+                  onBlur={(e) => syncLinksToName(row.key, e.target.value)}
+                  maxLength={200}
+                  list="known-credits"
+                  className={inputCls}
+                />
+              </label>
+              <label className="flex min-w-0 flex-col gap-1 text-xs text-fg-subtle">
+                {subjectTerm}
+                <input
+                  value={row.subject}
+                  onChange={(e) => updateRow(row.key, { subject: e.target.value })}
+                  maxLength={200}
+                  className={inputCls}
+                />
+              </label>
               {mode === "multiple" && rows.length > 1 && (
                 <button
                   type="button"
@@ -273,7 +279,7 @@ export default function PhotoUploader({
       </button>
 
       {status && (
-        <div className="text-sm">
+        <div role="status" aria-live="polite" className="text-sm">
           <p className="text-fg-muted">
             {status.quotaExceeded
               ? t("uploadStopped", { done: status.done, total: status.total })

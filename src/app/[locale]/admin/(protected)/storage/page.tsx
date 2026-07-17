@@ -30,8 +30,8 @@ export default async function PlatformStoragePage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">{t("title")}</h1>
-        <p className="mt-1 text-sm text-fg-subtle">{t("intro")}</p>
+        <h1 className="text-2xl font-bold">{t("platformHealthTitle")}</h1>
+        <p className="mt-1 text-sm text-fg-subtle">{t("platformHealthIntro")}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -50,22 +50,27 @@ export default async function PlatformStoragePage() {
       </div>
 
       <div className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-semibold">{t("nearLimitTitle")}</h2>
+        <h2 className="text-lg font-semibold">{t("nearLimitTitle")}</h2>
         {nearLimit.length === 0 ? (
           <p className="mt-1 text-sm text-fg-subtle">{t("nearLimitNone")}</p>
         ) : (
           <ul className="mt-3 flex flex-col gap-2">
             {nearLimit.map((a) => (
-              <li key={a.id} className="flex items-center justify-between gap-4">
-                <span className="text-sm">
-                  {a.displayName || a.username}
-                  <span className="ml-2 text-xs text-fg-subtle">
-                    /u/{a.username}
+              <li key={a.id}>
+                <Link
+                  href={`/admin/accounts/${a.id}`}
+                  className="flex items-center justify-between gap-4 rounded-lg px-2 py-1.5 transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg"
+                >
+                  <span className="text-sm">
+                    {a.displayName || a.username}
+                    <span className="ml-2 text-xs text-fg-subtle">
+                      /u/{a.username}
+                    </span>
                   </span>
-                </span>
-                <span className="text-sm text-fg-muted">
-                  {formatBytes(a.usedBytes)} / {formatBytes(a.quotaBytes)}
-                </span>
+                  <span className="text-sm text-fg-muted">
+                    {formatBytes(a.usedBytes)} / {formatBytes(a.quotaBytes)}
+                  </span>
+                </Link>
               </li>
             ))}
           </ul>

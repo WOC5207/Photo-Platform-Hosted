@@ -1,46 +1,56 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { createInvite, type InviteState } from "@/app/[locale]/admin/(protected)/actions";
+import Button from "@/components/ui/Button";
+import Dialog from "@/components/ui/Dialog";
+import { Field, Input } from "@/components/ui/Field";
+import StatusMessage from "@/components/ui/StatusMessage";
 
 export default function InviteForm({
   labels
 }: {
-  labels: { note: string; submit: string };
+  labels: { note: string; submit: string; cancel: string; error: string };
 }) {
   const [state, action, pending] = useActionState<InviteState, FormData>(
     createInvite,
     {}
   );
   const formRef = useRef<HTMLFormElement>(null);
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
 
   // Clear the note once the invite exists, so the next one starts blank rather
   // than looking like it kept the previous recipient's name.
   useEffect(() => {
-    if (state.ok) formRef.current?.reset();
+    if (state.ok) {
+      formRef.current?.reset();
+      setOpen(false);
+    }
   }, [state.ok]);
 
   return (
-    <form
-      ref={formRef}
-      action={action}
-      className="flex flex-wrap items-end gap-3 rounded-xl border border-border p-4"
-    >
-      <label className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-xs text-fg-subtle">{labels.note}</span>
-        <input
-          name="note"
-          maxLength={200}
-          className="w-full rounded-lg border border-border-strong bg-page px-3 py-2 text-sm outline-none focus:border-fg-faint"
-        />
-      </label>
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
-      >
-        {labels.submit}
-      </button>
-    </form>
+    <>
+      <Button type="button" variant="primary" onClick={() => setOpen(true)}>
+        + {labels.submit}
+      </Button>
+      <Dialog open={open} onClose={close} label={labels.submit} panelClassName="max-w-lg p-5 sm:p-6">
+        <h2 className="text-lg font-semibold">{labels.submit}</h2>
+        <form ref={formRef} action={action} className="mt-5 flex flex-col gap-5">
+          <Field label={labels.note} htmlFor="invite-note">
+            <Input id="invite-note" name="note" maxLength={200} autoFocus />
+          </Field>
+          {state.error && <StatusMessage kind="error">{labels.error}</StatusMessage>}
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
+            <Button type="button" variant="ghost" onClick={close}>
+              {labels.cancel}
+            </Button>
+            <Button type="submit" variant="primary" disabled={pending}>
+              {labels.submit}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+    </>
   );
 }

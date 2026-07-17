@@ -20,7 +20,7 @@ invites the rest — they get a site without ever touching Docker.
 | `/` | Directory of every photographer hosted here |
 | `/u/<username>` | One photographer's public site — home, gallery, albums, booking |
 | `/dashboard` | "My site" — every account manages their own content here |
-| `/admin` | Platform administration: accounts, invites, storage. Admin only. |
+| `/admin` | Platform administration: accounts, invites, storage plans and platform health. Admin only. |
 | `/book/<token>` | A shareable booking link. The token identifies the event *and* its owner, so these carry no username and keep working forever. |
 
 The admin's own photography lives at `/u/<their-username>` like everyone else's;
@@ -29,12 +29,14 @@ there is no privileged site.
 ## Features
 
 - **Invite-only registration.** There is no public signup form. The admin issues
-  a link from **Admin → Invites**; only someone holding one can create an
+  a link from **Platform admin → Invites**; only someone holding one can create an
   account. Each invite works exactly once.
-- **Per-account storage quotas.** The admin sets an allowance per account
-  (**Admin → Storage**). Photographers see their own usage against it on their
-  dashboard; uploads are refused once it is reached, and deleting frees it
-  again.
+- **Per-account storage plans.** The admin assigns the default tier, a named
+  tier or a custom limit under **Platform admin → Accounts → Storage plan**.
+  Named tiers live under **Storage plans**, while **Platform health** is reserved
+  for disk and database monitoring. Photographers see their own usage under
+  **My storage**; uploads are refused once the limit is reached, and deleting
+  frees it again.
 - **Photo gallery** grouped by event/album: bulk upload, reordering,
   per-language captions, cover selection, publish/unpublish. Thumbnails are
   pre-generated at upload time with `sharp`; **all EXIF (including GPS) is
@@ -43,13 +45,19 @@ there is no privileged site.
 - **Booking system**: bookable events with configurable time slots (length,
   count, capacity). Each gets an unguessable shareable link — no visitor account
   needed. Double-booking is prevented with row-locked capacity checks. Visitors
-  get a private link to view/cancel. Optional per-event prize draw.
+  get a private link to view/cancel. New events start as closed drafts and need
+  at least one time slot plus one visitor contact method before they can open
+  publicly. Optional per-event prize draw. Turning Booking or Lottery off
+  publicly does not hide existing management data from its owner.
 - **Bilingual everywhere**: locale-prefixed URLs (`/zh/...`, `/en/...`),
   language switcher, per-language content fields with fallback.
 - **Every account brands its own site**, no code changes: title, homepage
   headline/subtitle, background, logo, and the vocabulary used for photo credits
   (e.g. "Credit"/"Subject" vs "Cosplayer"/"Character") are all per account, from
-  **Dashboard → Site**.
+  **My site → Site settings**.
+- **Role-aware management shell.** Personal-site controls and platform-wide
+  administration remain separate, with a persistent desktop sidebar and a
+  compact navigation drawer on mobile and tablet layouts.
 - **Accounts are isolated.** Content is owned; one photographer cannot see or
   touch another's albums, bookings, originals or unpublished work. Suspending an
   account takes its public site down and ends its session on the next request.
@@ -155,23 +163,27 @@ service needs this; Postgres pulls its own official image.)
 1. Visit `http://<NAS-IP>:3000/en/login` (or `/zh/login`).
 2. Log in with `ADMIN_USERNAME` / `ADMIN_PASSWORD` — this first login creates
    your account.
-3. The setup wizard walks you through replacing those placeholder credentials,
-   naming your site, and choosing which features you want.
+3. You land directly in the dashboard. Open the profile menu and choose
+   **Account → Profile & security** to replace the placeholder password, then
+   configure branding and public features under **My site → Site settings**.
+   Invited photographers still complete the guided setup wizard.
 4. Create an album, upload photos, publish. Your site is at
    `/u/<your-username>`, and it now appears in the directory at `/`.
 
 ### 5. Inviting photographers
 
-1. **Admin → Invites → Create invite**. Add a note so you remember who it was
-   for.
+1. **Platform admin → Invites → Create invite**. Add a note so you remember who
+   it was for.
 2. Copy the link and send it to them. It works once.
 3. They pick their own username (their site becomes `/u/<username>`), display
    name and password, then land in their own setup wizard.
-4. **Admin → Storage** sets how much space each account gets. The default is
-   5 GiB. Lowering it below what someone already uses does not delete anything —
-   they simply cannot upload more until they free space.
+4. Open **Platform admin → Accounts**, choose the account, then use its
+   **Storage plan** card to assign the default tier, a named tier or a custom
+   limit. Named tiers are managed under **Storage plans**. Lowering a limit below
+   current usage does not delete anything — the account simply cannot upload
+   more until it frees space.
 
-**Admin → Accounts** lists everyone. *Suspend* takes an account's public site
+**Platform admin → Accounts** lists everyone. *Suspend* takes an account's public site
 down — its pages and its photos, including image links already shared — and ends
 its session immediately. It is reversible: nothing is deleted, so setting the
 account back to active brings the site back as it was. *Delete* removes the
@@ -253,8 +265,8 @@ npm run dev              # http://localhost:3000
 
 ### Tests
 
-Each suite needs a disposable Postgres and a `.env`. **They write to whatever
-`DATABASE_URL` points at** — never run them against real data.
+Database-focused scripts and mutation-enabled end-to-end tests need disposable
+data. **Never set `E2E_ALLOW_MUTATIONS=1` against a production database.**
 
 | Command | What it proves |
 |---|---|
@@ -262,6 +274,8 @@ Each suite needs a disposable Postgres and a `.env`. **They write to whatever
 | `npm run test:isolation` | The ownership helpers refuse another account's ids; invites redeem once; usernames are reserved |
 | `npm run test:quota` | The storage cap holds under concurrent uploads; reconcile recovers drift |
 | `npm run test:http` | Cross-tenant pen pass over real HTTP (needs `npm run dev` running) |
+| `npm run test:e2e` | Role-aware navigation, responsive layouts, settings and booking workflows, English/Chinese themes, and axe accessibility checks |
+| `npm run test:e2e:ui` | The same Playwright suite in its interactive runner |
 
 > These suites are worth their weight only because each has been checked to
 > **fail** when the protection it covers is removed. If you change one, verify
@@ -269,6 +283,34 @@ Each suite needs a disposable Postgres and a `.env`. **They write to whatever
 > cannot fail proves nothing. The reasons each is shaped the way it is are in
 > the file headers; `test-concurrency.ts` in particular explains why a "fire N
 > concurrent requests" test can pass against code with no lock at all.
+
+#### End-to-end tests
+
+Playwright checks the management UI at 320, 375, 768 and 1280 pixels. It uses
+the installed Chrome channel by default; set `PLAYWRIGHT_CHANNEL` to override
+it. `PLAYWRIGHT_BASE_URL` defaults to `http://127.0.0.1:3000`.
+
+For the full workflow suite, use the isolated Compose stack on port 3001 and
+provide `E2E_ADMIN_USERNAME`, `E2E_ADMIN_PASSWORD` and `E2E_SESSION_SECRET`
+with values matching its `.env`. Set `E2E_ALLOW_MUTATIONS=1` only for this
+disposable stack. Optional `E2E_USER_USERNAME` and `E2E_USER_PASSWORD` values
+exercise the regular-account role directly; otherwise the suite can derive a
+read-only regular-user session when a second account exists.
+
+```sh
+docker compose -p photo-platform-e2e -f docker-compose.e2e.yml up -d --build
+
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:3001 \
+E2E_ADMIN_USERNAME=admin \
+E2E_ADMIN_PASSWORD='replace-with-the-disposable-admin-password' \
+E2E_SESSION_SECRET='replace-with-the-disposable-session-secret' \
+E2E_ALLOW_MUTATIONS=1 \
+npm run test:e2e
+
+docker compose -p photo-platform-e2e -f docker-compose.e2e.yml down -v
+```
+
+The final `down -v` removes the isolated database and photo volumes.
 
 ### Migrations
 

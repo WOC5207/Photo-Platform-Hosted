@@ -23,13 +23,15 @@ export default async function SetupPage() {
   // therefore out of their dashboard, permanently.
   const user = await requireUser(locale);
 
+  // Platform admins configure their account directly from the dashboard.
+  // Keep the tutorial available only to invited photographer accounts.
+  if (user.role === "admin") redirect(`/${locale}/dashboard`);
+
   const settings = await getSiteSettings(user.id);
   if (settings.setupCompleted) redirect(`/${locale}/dashboard`);
 
-  // Only the account seeded from ADMIN_USERNAME/ADMIN_PASSWORD needs to be
-  // moved off those placeholders. Anyone who redeemed an invite already chose
-  // their own credentials, so keyed on the invite rather than on role — a
-  // second admin promoted later would not need the step either.
+  // Invited users normally chose their credentials during registration. Keep
+  // this check for compatibility with accounts created outside that flow.
   const redeemed = await prisma.invite.findUnique({
     where: { redeemedById: user.id },
     select: { id: true }

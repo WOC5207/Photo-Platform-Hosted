@@ -5,6 +5,7 @@ import { pickText } from "@/lib/content";
 import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
+import { buttonClasses } from "@/components/ui/Button";
 
 export default async function AdminEventsPage() {
   const locale = await getLocale();
@@ -23,11 +24,11 @@ export default async function AdminEventsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold">{t("listTitle")}</h1>
         <Link
           href="/dashboard/events/new"
-          className="rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-90"
+          className={buttonClasses({ variant: "primary" })}
         >
           + {t("newEvent")}
         </Link>
@@ -43,7 +44,7 @@ export default async function AdminEventsPage() {
               <li key={event.id}>
                 <Link
                   href={`/dashboard/events/${event.id}`}
-                  className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 transition hover:border-border-strong"
+                  className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 transition hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
                 >
                   {cover ? (
                     // eslint-disable-next-line @next/next/no-img-element

@@ -52,7 +52,83 @@ export default async function PlatformUsersPage() {
         <p className="mt-1 text-sm text-fg-subtle">{t("usersSubtitle")}</p>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <ul className="grid gap-3 xl:hidden">
+        {users.map((u) => {
+          const s = storageById.get(u.id);
+          const pct =
+            s && s.quotaBytes > 0
+              ? Math.min(100, (s.usedBytes / s.quotaBytes) * 100)
+              : 0;
+
+          return (
+            <li key={u.id} className="rounded-xl border border-border bg-surface p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <Link
+                    href={`/admin/accounts/${u.id}`}
+                    className="font-semibold underline decoration-fg/30 underline-offset-2 hover:decoration-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+                  >
+                    {ownerName(u)}
+                  </Link>
+                  <p className="truncate text-xs text-fg-subtle">/u/{u.username}</p>
+                </div>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                    u.status === "active"
+                      ? "bg-fg/5 text-fg-muted"
+                      : "bg-danger-surface text-danger"
+                  }`}
+                >
+                  {u.status === "active" ? t("statusActive") : t("statusSuspended")}
+                </span>
+              </div>
+
+              <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <div>
+                  <dt className="text-xs text-fg-subtle">{t("colRole")}</dt>
+                  <dd className="mt-0.5 text-fg-muted">
+                    {u.role === "admin" ? t("roleAdmin") : t("roleUser")}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-subtle">{t("colAlbums")}</dt>
+                  <dd className="mt-0.5 text-fg-muted">{u._count.events}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-subtle">{t("colJoined")}</dt>
+                  <dd className="mt-0.5 text-fg-muted">{formatDate(u.createdAt)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-subtle">{ts("colTier")}</dt>
+                  <dd className="mt-0.5 text-fg-muted">{s?.tierName ?? "—"}</dd>
+                </div>
+              </dl>
+
+              {s && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between gap-3 text-xs text-fg-subtle">
+                    <span>{ts("colUsed")}</span>
+                    <span>{formatBytes(s.usedBytes)} / {formatBytes(s.quotaBytes)}</span>
+                  </div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-fg/10">
+                    <div
+                      className={`h-full rounded-full ${pct >= 100 ? "bg-danger" : "bg-fg/60"}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  {(s.overridden || s.expired) && (
+                    <p className="mt-1.5 text-xs text-fg-subtle">
+                      {s.overridden ? ts("sourceOverride") : ts("expiredNote")}
+                    </p>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-border xl:block">
         <table className="w-full min-w-[820px] text-sm">
           <thead className="border-b border-border bg-surface text-left text-fg-subtle">
             <tr>
@@ -98,7 +174,7 @@ export default async function PlatformUsersPage() {
                   <td className="px-4 py-3">
                     <span
                       className={
-                        u.status === "active" ? "text-fg-muted" : "text-red-500"
+                        u.status === "active" ? "text-fg-muted" : "text-danger"
                       }
                     >
                       {u.status === "active"

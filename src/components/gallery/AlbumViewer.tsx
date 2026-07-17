@@ -25,12 +25,18 @@ export interface LightboxLabels {
 
 export default function AlbumViewer({
   photos,
+  initialPhotoId,
   labels
 }: {
   photos: AlbumPhoto[];
+  initialPhotoId?: string;
   labels: LightboxLabels;
 }) {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [openIndex, setOpenIndex] = useState<number | null>(() => {
+    if (!initialPhotoId) return null;
+    const index = photos.findIndex((photo) => photo.id === initialPhotoId);
+    return index >= 0 ? index : null;
+  });
 
   return (
     <>
@@ -53,7 +59,7 @@ export default function AlbumViewer({
               <button
                 type="button"
                 onClick={() => setOpenIndex(i)}
-                className="group relative block h-full w-full cursor-zoom-in"
+                className="group relative block h-full w-full cursor-zoom-in rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-offset-2 focus-visible:ring-offset-page"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -99,6 +105,8 @@ function Lightbox({
 }) {
   const photo = photos[index];
   const touchStartX = useRef<number | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   const prev = useCallback(
     () => onNavigate(index > 0 ? index - 1 : photos.length - 1),
@@ -110,18 +118,42 @@ function Lightbox({
   );
 
   useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
       else if (e.key === "ArrowLeft") prev();
       else if (e.key === "ArrowRight") next();
+      else if (e.key === "Tab" && dialogRef.current) {
+        const focusable = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        if (focusable.length === 0) {
+          e.preventDefault();
+          dialogRef.current.focus();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     }
     window.addEventListener("keydown", onKey);
     // Lock body scroll while open
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
+      previousFocus?.focus();
     };
   }, [prev, next, onClose]);
 
@@ -137,6 +169,11 @@ function Lightbox({
   // relative to that panel instead of the actual viewport.
   return createPortal(
     <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${index + 1} / ${photos.length}`}
+      tabIndex={-1}
       className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-black"
       onClick={onClose}
       onTouchStart={(e) => {
@@ -167,10 +204,11 @@ function Lightbox({
           {index + 1} / {photos.length}
         </span>
         <button
+          ref={closeRef}
           type="button"
           aria-label={labels.close}
           onClick={onClose}
-          className="rounded-full bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20"
+          className="min-h-11 rounded-full bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           ✕
         </button>
@@ -195,7 +233,7 @@ function Lightbox({
             e.stopPropagation();
             prev();
           }}
-          className="absolute left-2 top-1/2 hidden -translate-y-1/2 rounded-full bg-white/10 px-4 py-3 text-white hover:bg-white/20 sm:block"
+          className="absolute left-2 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 px-3 py-3 text-white hover:bg-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           ‹
         </button>
@@ -206,7 +244,7 @@ function Lightbox({
             e.stopPropagation();
             next();
           }}
-          className="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded-full bg-white/10 px-4 py-3 text-white hover:bg-white/20 sm:block"
+          className="absolute right-2 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 px-3 py-3 text-white hover:bg-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           ›
         </button>

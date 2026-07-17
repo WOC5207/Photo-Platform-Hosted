@@ -48,9 +48,9 @@ export interface AdminPhoto {
 }
 
 const btnCls =
-  "rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted transition hover:border-fg-faint hover:text-fg disabled:opacity-40";
+  "inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-3 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40 max-sm:min-h-11";
 const smallInputCls =
-  "min-w-0 flex-1 rounded-md border border-border-strong bg-page px-2 py-1 text-xs text-fg outline-none focus:border-fg-subtle";
+  "min-h-10 min-w-0 w-full rounded-lg border border-border-strong bg-page px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
 
 let rowKeySeq = 0;
 interface CreditRow {
@@ -134,23 +134,27 @@ function CreditsForm({
           key={row.key}
           className="flex flex-col gap-1 rounded-md border border-border-strong/40 p-1.5"
         >
-          <div className="flex gap-1">
-            <input
-              value={row.creditName}
-              onChange={(e) => updateRow(row.key, { creditName: e.target.value })}
-              onBlur={(e) => syncLinksToName(row.key, e.target.value)}
-              placeholder={t("creditName", { term: creditTerm })}
-              maxLength={200}
-              list="known-credits"
-              className={smallInputCls}
-            />
-            <input
-              value={row.subject}
-              onChange={(e) => updateRow(row.key, { subject: e.target.value })}
-              placeholder={subjectTerm}
-              maxLength={200}
-              className={smallInputCls}
-            />
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+            <label className="flex min-w-0 flex-col gap-1 text-xs text-fg-subtle">
+              {t("creditName", { term: creditTerm })}
+              <input
+                value={row.creditName}
+                onChange={(e) => updateRow(row.key, { creditName: e.target.value })}
+                onBlur={(e) => syncLinksToName(row.key, e.target.value)}
+                maxLength={200}
+                list="known-credits"
+                className={smallInputCls}
+              />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-xs text-fg-subtle">
+              {subjectTerm}
+              <input
+                value={row.subject}
+                onChange={(e) => updateRow(row.key, { subject: e.target.value })}
+                maxLength={200}
+                className={smallInputCls}
+              />
+            </label>
             {rows.length > 1 && (
               <button
                 type="button"
@@ -222,55 +226,35 @@ function ExifForm({
       className="flex flex-col gap-1 rounded-md border border-border-strong/40 p-1.5"
     >
       <input type="hidden" name="photoId" value={photoId} />
-      <div className="grid grid-cols-2 gap-1">
-        <input
-          name="exifCameraModel"
-          defaultValue={initial.cameraModel}
-          placeholder={t("exifCameraModel")}
-          maxLength={200}
-          className={smallInputCls}
-        />
-        <input
-          name="exifLensModel"
-          defaultValue={initial.lensModel}
-          placeholder={t("exifLensModel")}
-          maxLength={200}
-          className={smallInputCls}
-        />
-        <input
-          name="exifFocalLengthMm"
-          defaultValue={initial.focalLengthMm}
-          placeholder={t("exifFocalLength")}
-          inputMode="decimal"
-          className={smallInputCls}
-        />
-        <input
-          name="exifAperture"
-          defaultValue={initial.aperture}
-          placeholder={t("exifAperture")}
-          inputMode="decimal"
-          className={smallInputCls}
-        />
-        <input
-          name="exifExposureTime"
-          defaultValue={initial.exposureTime}
-          placeholder={t("exifExposureTime")}
-          className={smallInputCls}
-        />
-        <input
-          name="exifIso"
-          defaultValue={initial.iso}
-          placeholder={t("exifIso")}
-          inputMode="numeric"
-          className={smallInputCls}
-        />
-        <input
-          name="exifTakenAt"
-          type="date"
-          defaultValue={initial.takenAt}
-          aria-label={t("exifTakenAt")}
-          className={smallInputCls}
-        />
+      <div className="grid gap-2 sm:grid-cols-2">
+        {[
+          ["exifCameraModel", "exifCameraModel", initial.cameraModel, undefined],
+          ["exifLensModel", "exifLensModel", initial.lensModel, undefined],
+          ["exifFocalLengthMm", "exifFocalLength", initial.focalLengthMm, "decimal"],
+          ["exifAperture", "exifAperture", initial.aperture, "decimal"],
+          ["exifExposureTime", "exifExposureTime", initial.exposureTime, undefined],
+          ["exifIso", "exifIso", initial.iso, "numeric"]
+        ].map(([name, label, value, inputMode]) => (
+          <label key={name} className="flex min-w-0 flex-col gap-1 text-xs text-fg-subtle">
+            {t(label as Parameters<typeof t>[0])}
+            <input
+              name={name}
+              defaultValue={value}
+              inputMode={inputMode as "decimal" | "numeric" | undefined}
+              maxLength={200}
+              className={smallInputCls}
+            />
+          </label>
+        ))}
+        <label className="flex min-w-0 flex-col gap-1 text-xs text-fg-subtle">
+          {t("exifTakenAt")}
+          <input
+            name="exifTakenAt"
+            type="date"
+            defaultValue={initial.takenAt}
+            className={smallInputCls}
+          />
+        </label>
       </div>
       <div className="flex gap-2">
         <button type="submit" className={`${btnCls} self-start`}>

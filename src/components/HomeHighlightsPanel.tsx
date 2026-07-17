@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "@/i18n/navigation";
 
 export interface HighlightPhoto {
@@ -32,7 +32,7 @@ export interface HomeHighlightsLabels {
 }
 
 const tabCls = (active: boolean) =>
-  `shrink-0 truncate whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
+  `min-h-11 shrink-0 truncate whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 ${
     active ? "bg-fg text-page" : "text-fg-muted hover:bg-fg/5 hover:text-fg"
   }`;
 
@@ -62,7 +62,7 @@ function EventCarousel({
             className="h-full w-full object-cover"
           />
           {photo.caption && (
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent p-4 pt-10 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent p-4 pt-10 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
               <p className="truncate text-sm font-medium text-white">
                 {photo.caption}
               </p>
@@ -79,7 +79,7 @@ function EventCarousel({
                 )
               }
               aria-label={labels.carouselPrevious}
-              className="absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-page/80 text-lg text-fg shadow-lg backdrop-blur transition hover:bg-page"
+              className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-page/80 text-lg text-fg shadow-lg backdrop-blur transition hover:bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg"
             >
               ‹
             </button>
@@ -87,7 +87,7 @@ function EventCarousel({
               type="button"
               onClick={() => setIndex((i) => (i + 1) % event.photos.length)}
               aria-label={labels.carouselNext}
-              className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-page/80 text-lg text-fg shadow-lg backdrop-blur transition hover:bg-page"
+              className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-page/80 text-lg text-fg shadow-lg backdrop-blur transition hover:bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg"
             >
               ›
             </button>
@@ -103,15 +103,21 @@ function EventCarousel({
               type="button"
               onClick={() => setIndex(i)}
               aria-label={String(i + 1)}
-              className={`h-2 w-2 rounded-full transition ${
-                i === index ? "bg-fg" : "bg-fg/20 hover:bg-fg/40"
-              }`}
-            />
+              aria-current={i === index ? "true" : undefined}
+              className="group flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:h-8 sm:w-8"
+            >
+              <span
+                aria-hidden="true"
+                className={`h-2 w-2 rounded-full transition ${
+                  i === index ? "bg-fg" : "bg-fg/20 group-hover:bg-fg/40"
+                }`}
+              />
+            </button>
           ))}
         </div>
         <Link
           href={`${basePath}/gallery/${event.slug}`}
-          className="rounded-full border border-border-strong px-4 py-1.5 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg"
+          className="inline-flex min-h-11 items-center rounded-full border border-border-strong px-4 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:min-h-8"
         >
           {labels.viewGallery}
         </Link>
@@ -143,17 +149,57 @@ export default function HomeHighlightsPanel({
   const [activeTab, setActiveTab] = useState<string>(
     announcementsEnabled ? "announcements" : (events[0]?.slug ?? "")
   );
+  const tabSetId = useId();
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const activeEvent = events.find((e) => e.slug === activeTab);
   const showAnnouncements = announcementsEnabled && activeTab === "announcements";
+  const tabIds = [
+    ...(announcementsEnabled ? ["announcements"] : []),
+    ...events.map((event) => event.slug)
+  ];
+
+  if (tabIds.length === 0) return null;
+
+  function onTabKeyDown(e: KeyboardEvent<HTMLButtonElement>, id: string) {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
+      return;
+    }
+    e.preventDefault();
+    const current = tabIds.indexOf(id);
+    const nextIndex =
+      e.key === "Home"
+        ? 0
+        : e.key === "End"
+          ? tabIds.length - 1
+          : e.key === "ArrowLeft" || e.key === "ArrowUp"
+            ? (current - 1 + tabIds.length) % tabIds.length
+            : (current + 1) % tabIds.length;
+    const nextId = tabIds[nextIndex];
+    setActiveTab(nextId);
+    tabRefs.current[nextId]?.focus();
+  }
 
   return (
     <section className="overflow-hidden rounded-2xl border border-fg/10 bg-page/85">
       <div className="flex flex-col gap-6 p-6 sm:p-8 lg:flex-row lg:gap-8">
-        <div className="flex shrink-0 gap-2 overflow-x-auto lg:w-48 lg:flex-col lg:overflow-visible">
+        <div
+          role="tablist"
+          aria-orientation="horizontal"
+          className="flex shrink-0 gap-2 overflow-x-auto lg:w-48 lg:flex-col lg:overflow-visible"
+        >
           {announcementsEnabled && (
             <button
+              ref={(node) => {
+                tabRefs.current.announcements = node;
+              }}
               type="button"
+              role="tab"
+              id={`${tabSetId}-tab-announcements`}
+              aria-controls={`${tabSetId}-panel`}
+              aria-selected={activeTab === "announcements"}
+              tabIndex={activeTab === "announcements" ? 0 : -1}
               onClick={() => setActiveTab("announcements")}
+              onKeyDown={(e) => onTabKeyDown(e, "announcements")}
               className={tabCls(activeTab === "announcements")}
             >
               {labels.announcementsTab}
@@ -162,8 +208,17 @@ export default function HomeHighlightsPanel({
           {events.map((event) => (
             <button
               key={event.slug}
+              ref={(node) => {
+                tabRefs.current[event.slug] = node;
+              }}
               type="button"
+              role="tab"
+              id={`${tabSetId}-tab-${event.slug}`}
+              aria-controls={`${tabSetId}-panel`}
+              aria-selected={activeTab === event.slug}
+              tabIndex={activeTab === event.slug ? 0 : -1}
               onClick={() => setActiveTab(event.slug)}
+              onKeyDown={(e) => onTabKeyDown(e, event.slug)}
               className={tabCls(activeTab === event.slug)}
             >
               {event.title}
@@ -171,7 +226,12 @@ export default function HomeHighlightsPanel({
           ))}
         </div>
 
-        <div className="min-w-0 flex-1">
+        <div
+          id={`${tabSetId}-panel`}
+          role="tabpanel"
+          aria-labelledby={`${tabSetId}-tab-${activeTab}`}
+          className="min-w-0 flex-1"
+        >
           {showAnnouncements ? (
             announcements.length > 0 ? (
               <ul className="flex flex-col gap-3">
