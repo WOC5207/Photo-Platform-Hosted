@@ -81,6 +81,17 @@ export default async function DirectoryPage() {
         <div className="flex shrink-0 items-center gap-3">
           <LanguageSwitcher />
           <ThemeToggle label="" />
+          {/* The only way in for a photographer arriving at the root: every
+              other entrance to /login sits behind a page they cannot reach yet.
+              Shown to everyone rather than hidden once signed in — the login
+              page already redirects an existing session to its dashboard, so
+              the button lands somewhere sensible either way. */}
+          <Link
+            href="/login"
+            className="rounded-lg border border-border-strong px-3 py-1.5 text-sm text-fg-muted transition hover:border-fg-faint hover:text-fg"
+          >
+            {t("login")}
+          </Link>
         </div>
       </header>
 

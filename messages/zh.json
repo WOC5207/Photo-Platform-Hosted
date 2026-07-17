@@ -495,7 +495,8 @@
     "noMatches": "没有匹配的摄影师。",
     "albums": "{count} 个相册",
     "photos": "{count} 张照片",
-    "visit": "访问站点"
+    "visit": "访问站点",
+    "login": "摄影师登录"
   },
   "platform": {
     "usersTitle": "账号",
