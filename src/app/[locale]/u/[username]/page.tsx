@@ -62,6 +62,7 @@ export default async function HomePage({
       orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
       include: {
         photos: {
+          where: { pendingBatchId: null },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
           include: { credits: { orderBy: { sortOrder: "asc" } } }
         }

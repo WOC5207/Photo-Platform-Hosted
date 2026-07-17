@@ -215,6 +215,14 @@ model Photo {
   exifCameraModel   String?
   exifLensModel     String?
   sortOrder    Int      @default(0)
+  // Non-null while the owner is still building an upload batch. Pending
+  // photos are fully processed and count toward storage, but stay private and
+  // out of normal photo queries until the batch is finalized with credits.
+  pendingBatchId String?
+  // ready | processing | pending | deleting. Existing/directly-created photos
+  // default to ready; the database check constraint keeps this in sync with
+  // pendingBatchId so forgotten query paths fail closed.
+  uploadState String @default("ready")
   createdAt    DateTime @default(now())
   coverOf      Event?   @relation("EventCover")
   // Admin-picked for the homepage's per-event carousel. Independent of
@@ -222,6 +230,8 @@ model Photo {
   // listing thumbnails) — any number of a published event's photos can be
   // marked here, and that's what populates its homepage carousel slides.
   homeHighlight Boolean @default(false)
+
+  @@index([eventId, pendingBatchId])
 }
 
 // A single credited-person+subject credit on a photo. Shown identically on

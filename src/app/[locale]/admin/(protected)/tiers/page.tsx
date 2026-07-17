@@ -2,6 +2,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatBytes } from "@/lib/storage";
+import { getEffectiveTierAccountCounts } from "@/lib/quota";
 import NewTierForm from "@/components/admin/NewTierForm";
 import TierRow from "@/components/admin/TierRow";
 
@@ -17,10 +18,12 @@ export default async function TiersPage() {
   await requireAdmin(locale);
   const t = await getTranslations("adminTiers");
 
-  const tiers = await prisma.tier.findMany({
-    orderBy: [{ sortOrder: "asc" }, { quotaBytes: "asc" }],
-    include: { _count: { select: { users: true } } }
-  });
+  const [tiers, accountCounts] = await Promise.all([
+    prisma.tier.findMany({
+      orderBy: [{ sortOrder: "asc" }, { quotaBytes: "asc" }]
+    }),
+    getEffectiveTierAccountCounts()
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -40,33 +43,38 @@ export default async function TiersPage() {
             </tr>
           </thead>
           <tbody>
-            {tiers.map((tier) => (
-              <TierRow
-                key={tier.id}
-                tier={{
-                  id: tier.id,
-                  name: tier.name,
-                  // Two decimals so a sub-GiB tier (a trial, say) does not
-                  // round to zero and become "no storage at all" on save.
-                  quotaGib: Math.round((Number(tier.quotaBytes) / 1024 ** 3) * 100) / 100,
-                  quotaLabel: formatBytes(Number(tier.quotaBytes)),
-                  isDefault: tier.isDefault,
-                  accountCount: tier._count.users
-                }}
-                labels={{
-                  save: t("save"),
-                  unit: t("unitGib"),
-                  makeDefault: t("makeDefault"),
-                  defaultBadge: t("defaultBadge"),
-                  defaultHint: t("defaultHint"),
-                  delete: t("delete"),
-                  confirmDelete: t("confirmDelete"),
-                  errorIsDefault: t("errorIsDefault"),
-                  errorInUse: t("errorInUse"),
-                  accounts: t("accountsCount", { count: tier._count.users })
-                }}
-              />
-            ))}
+            {tiers.map((tier) => {
+              const accountCount = accountCounts.get(tier.id) ?? 0;
+              return (
+                <TierRow
+                  key={tier.id}
+                  tier={{
+                    id: tier.id,
+                    name: tier.name,
+                    // Two decimals so a sub-GiB tier (a trial, say) does not
+                    // round to zero and become "no storage at all" on save.
+                    quotaGib:
+                      Math.round((Number(tier.quotaBytes) / 1024 ** 3) * 100) /
+                      100,
+                    quotaLabel: formatBytes(Number(tier.quotaBytes)),
+                    isDefault: tier.isDefault,
+                    accountCount
+                  }}
+                  labels={{
+                    save: t("save"),
+                    unit: t("unitGib"),
+                    makeDefault: t("makeDefault"),
+                    defaultBadge: t("defaultBadge"),
+                    defaultHint: t("defaultHint"),
+                    delete: t("delete"),
+                    confirmDelete: t("confirmDelete"),
+                    errorIsDefault: t("errorIsDefault"),
+                    errorInUse: t("errorInUse"),
+                    accounts: t("accountsCount", { count: accountCount })
+                  }}
+                />
+              );
+            })}
           </tbody>
         </table>
       </div>

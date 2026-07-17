@@ -70,6 +70,7 @@ export default async function RegisterPage({
               errorUsernameTaken: t("errorUsernameTaken"),
               errorUsernameReserved: t("errorUsernameReserved"),
               errorUsernameInvalid: t("errorUsernameInvalid"),
+              errorUsernameUppercase: t("errorUsernameUppercase"),
               errorBadInvite: t("errorBadInvite"),
               errorRateLimited: t("errorRateLimited")
             }}

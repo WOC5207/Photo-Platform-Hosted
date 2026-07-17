@@ -37,6 +37,17 @@ export async function findOwnedEvent(id: string, user: User) {
 
 export async function findOwnedPhoto(id: string, user: User) {
   return prisma.photo.findFirst({
+    where: { id, pendingBatchId: null, event: { ownerId: user.id } },
+    include: { event: { select: { id: true, ownerId: true } } }
+  });
+}
+
+/**
+ * Owned photo lookup for deletion only. Unlike normal photo actions, deleting
+ * is valid for both finalized photos and private pending uploads.
+ */
+export async function findOwnedPhotoForDeletion(id: string, user: User) {
+  return prisma.photo.findFirst({
     where: { id, event: { ownerId: user.id } },
     include: { event: { select: { id: true, ownerId: true } } }
   });
@@ -85,6 +96,23 @@ export async function findOwnedPrize(id: string, user: User) {
  * people's photos instead of deleting them.
  */
 export async function filterOwnedPhotoIds(
+  ids: string[],
+  user: User
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await prisma.photo.findMany({
+    where: {
+      id: { in: ids },
+      pendingBatchId: null,
+      event: { ownerId: user.id }
+    },
+    select: { id: true }
+  });
+  return rows.map((r) => r.id);
+}
+
+/** Bulk counterpart used only by delete/discard workflows. */
+export async function filterOwnedPhotoIdsForDeletion(
   ids: string[],
   user: User
 ): Promise<string[]> {

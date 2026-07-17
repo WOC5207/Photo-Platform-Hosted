@@ -13,6 +13,7 @@ import { randomUUID } from "crypto";
 import { PrismaClient, type User } from "@prisma/client";
 import {
   adjustReservation,
+  getEffectiveTierAccountCounts,
   getQuotaUsage,
   reconcileQuota,
   releaseBytes,
@@ -383,6 +384,44 @@ async function testExpiredAssignmentFallsBackToDefault() {
   await prisma.tier.delete({ where: { id: pro.id } });
 }
 
+/** Tier-page counts must describe the tier in force, not the stored FK. */
+async function testEffectiveTierAccountCounts() {
+  const defaultTier = await prisma.tier.findFirstOrThrow({
+    where: { isDefault: true }
+  });
+  const assignedTier = await makeTier("counted", 50 * MB);
+  const before = await getEffectiveTierAccountCounts();
+
+  const inheritedDefault = await makeTieredUser({});
+  const activeAssignment = await makeTieredUser({ tierId: assignedTier.id });
+  const expiredAssignment = await makeTieredUser({
+    tierId: assignedTier.id,
+    expiresAt: new Date(Date.now() - 1000)
+  });
+
+  const after = await getEffectiveTierAccountCounts();
+  const defaultDelta =
+    (after.get(defaultTier.id) ?? 0) - (before.get(defaultTier.id) ?? 0);
+  const assignedDelta =
+    (after.get(assignedTier.id) ?? 0) - (before.get(assignedTier.id) ?? 0);
+
+  report(
+    "tier counts: inherited and expired assignments count against the default",
+    defaultDelta === 2,
+    `default gained ${defaultDelta} accounts (want 2: inherited + expired)`
+  );
+  report(
+    "tier counts: only an active assignment counts against a named tier",
+    assignedDelta === 1,
+    `assigned tier gained ${assignedDelta} accounts (want 1: active only)`
+  );
+
+  await prisma.user.delete({ where: { id: inheritedDefault.id } });
+  await prisma.user.delete({ where: { id: activeAssignment.id } });
+  await prisma.user.delete({ where: { id: expiredAssignment.id } });
+  await prisma.tier.delete({ where: { id: assignedTier.id } });
+}
+
 /**
  * The check is still one statement.
  *
@@ -463,6 +502,7 @@ async function main() {
   await testAssignedTierApplies();
   await testOverrideBeatsTier();
   await testExpiredAssignmentFallsBackToDefault();
+  await testEffectiveTierAccountCounts();
   await testConcurrentReserveAgainstTier();
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);
   await prisma.$disconnect();

@@ -28,8 +28,11 @@ export async function GET(
   }
   const [, photoId, variant, ext] = match;
 
-  const photo = await prisma.photo.findUnique({
-    where: { id: photoId },
+  const photo = await prisma.photo.findFirst({
+    // Pending uploads never receive an image response, even for their owner.
+    // Besides keeping them private, this prevents an incomplete rendition
+    // from receiving the route's one-year immutable cache header.
+    where: { id: photoId, pendingBatchId: null },
     include: {
       event: {
         select: {

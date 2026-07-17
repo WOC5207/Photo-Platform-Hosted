@@ -29,6 +29,7 @@ export interface EventStorage {
   titleEn: string;
   titleZh: string;
   photoCount: number;
+  pendingPhotoCount: number;
   bytes: number;
 }
 
@@ -58,8 +59,7 @@ export async function getOwnerStorage(ownerId: string): Promise<OwnerStorage> {
         id: true,
         titleEn: true,
         titleZh: true,
-        _count: { select: { photos: true } },
-        photos: { select: { bytes: true } }
+        photos: { select: { bytes: true, pendingBatchId: true } }
       },
       orderBy: { createdAt: "asc" }
     }),
@@ -75,7 +75,10 @@ export async function getOwnerStorage(ownerId: string): Promise<OwnerStorage> {
       id: e.id,
       titleEn: e.titleEn,
       titleZh: e.titleZh,
-      photoCount: e._count.photos,
+      photoCount: e.photos.filter((photo) => photo.pendingBatchId === null).length,
+      pendingPhotoCount: e.photos.filter(
+        (photo) => photo.pendingBatchId !== null
+      ).length,
       bytes: e.photos.reduce((sum, p) => sum + p.bytes, 0)
     }))
     .sort((a, b) => b.bytes - a.bytes);
@@ -154,9 +157,10 @@ export async function getPlatformStorage(): Promise<PlatformStorage> {
         (u."quotaBytes" IS NOT NULL) AS "overridden",
         (
           SELECT COUNT(*)::int
-            FROM "Photo" p
+           FROM "Photo" p
             JOIN "Event" e ON e.id = p."eventId"
            WHERE e."ownerId" = u.id
+             AND p."pendingBatchId" IS NULL
         ) AS "photoCount"
       FROM "User" AS u
       ORDER BY u."createdAt" ASC

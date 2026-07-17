@@ -32,6 +32,7 @@ export default async function AlbumPage({
     where: { ownerId: owner.id, slug },
     include: {
       photos: {
+        where: { pendingBatchId: null },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         include: {
           credits: {
