@@ -101,7 +101,7 @@ export default async function AccountDetailPage({
             <dt className="text-xs text-fg-subtle">{t("colStatus")}</dt>
             <dd
               className={
-                user.status === "active" ? "text-fg-muted" : "text-red-500"
+                user.status === "active" ? "text-fg-muted" : "text-danger"
               }
             >
               {user.status === "active"
@@ -121,7 +121,7 @@ export default async function AccountDetailPage({
       </div>
 
       <div className={section}>
-        <h2 className="text-sm font-semibold">{t("storageTitle")}</h2>
+        <h2 className="text-lg font-semibold">{ts("storagePlanTitle")}</h2>
         <div className="mt-3 flex flex-col gap-2">
           <span className="text-sm text-fg-muted">
             {formatBytes(usage.usedBytes)} / {formatBytes(usage.quotaBytes)}
@@ -137,47 +137,51 @@ export default async function AccountDetailPage({
               ? ts("sourceOverride")
               : ts("sourceTier", { tier: usage.tierName })}
           </span>
-          <div className="mt-1">
-            <QuotaControls
-              userId={user.id}
-              quotaGib={
-                // Round-trip through GiB for the form; the action converts
-                // back. Two decimals keeps a sub-GiB override from rounding
-                // away to zero.
-                Math.round((usage.quotaBytes / 1024 ** 3) * 100) / 100
-              }
-              labels={{
-                set: ts("setQuota"),
-                unit: ts("quotaGib"),
-                reconcile: ts("reconcile"),
-                reconcileHint: ts("reconcileHint")
-              }}
-            />
-          </div>
         </div>
-      </div>
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <section className="rounded-lg border border-border bg-page p-4">
+            <h3 className="text-sm font-semibold">{t("tierTitle")}</h3>
+            <p className="mt-1 text-xs text-fg-subtle">{ts("tierChoiceHint")}</p>
+            <div className="mt-3">
+              <TierAssignment
+                userId={user.id}
+                tiers={tiers}
+                current={{
+                  tierId: user.tierId,
+                  expiresAt: dateInputValue(usage.tierExpiresAt),
+                  expired: usage.expired,
+                  overridden: usage.overridden
+                }}
+                labels={{
+                  defaultTier: ts("defaultTierOption"),
+                  save: ts("assign"),
+                  expiresAt: ts("expiresAtHint"),
+                  expiredNote: ts("expiredNote"),
+                  overrideNote: ts("overrideNote"),
+                  clearOverride: ts("clearOverride")
+                }}
+              />
+            </div>
+          </section>
 
-      <div className={section}>
-        <h2 className="text-sm font-semibold">{t("tierTitle")}</h2>
-        <div className="mt-3">
-          <TierAssignment
-            userId={user.id}
-            tiers={tiers}
-            current={{
-              tierId: user.tierId,
-              expiresAt: dateInputValue(usage.tierExpiresAt),
-              expired: usage.expired,
-              overridden: usage.overridden
-            }}
-            labels={{
-              defaultTier: ts("defaultTierOption"),
-              save: ts("assign"),
-              expiresAt: ts("expiresAtHint"),
-              expiredNote: ts("expiredNote"),
-              overrideNote: ts("overrideNote"),
-              clearOverride: ts("clearOverride")
-            }}
-          />
+          <section className="rounded-lg border border-border bg-page p-4">
+            <h3 className="text-sm font-semibold">{ts("customLimitTitle")}</h3>
+            <p className="mt-1 text-xs text-fg-subtle">{ts("customLimitHint")}</p>
+            <div className="mt-3">
+              <QuotaControls
+                userId={user.id}
+                quotaGib={
+                  Math.round((usage.quotaBytes / 1024 ** 3) * 100) / 100
+                }
+                labels={{
+                  set: ts("setQuota"),
+                  unit: ts("quotaGib"),
+                  reconcile: ts("reconcile"),
+                  reconcileHint: ts("reconcileHint")
+                }}
+              />
+            </div>
+          </section>
         </div>
       </div>
 
@@ -188,7 +192,7 @@ export default async function AccountDetailPage({
           password for yourself is pointless when Dashboard -> Account changes
           it properly. */}
       <div className={section}>
-        <h2 className="text-sm font-semibold">{t("dangerTitle")}</h2>
+        <h2 className="text-lg font-semibold text-danger">{t("dangerTitle")}</h2>
         {isSelf ? (
           <p className="mt-2 text-sm text-fg-subtle">{t("cannotSuspendSelf")}</p>
         ) : (

@@ -385,8 +385,8 @@ model SiteSettings {
   contactUrlZh         String   @default("")
   contactQrImageEn     String   @default("")
   contactQrImageZh     String   @default("")
-  // Flips to true once the first-run setup wizard (src/app/[locale]/admin/setup)
-  // finishes. While false, every /admin/(protected) route redirects there.
+  // Flips to true once a non-admin account finishes the first-run setup wizard.
+  // Platform admins bypass onboarding and configure their site in the dashboard.
   setupCompleted       Boolean  @default(false)
   updatedAt           DateTime @updatedAt
 }

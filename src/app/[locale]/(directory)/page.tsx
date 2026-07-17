@@ -20,6 +20,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function DirectoryPage() {
   const t = await getTranslations("directory");
+  const tc = await getTranslations("common");
 
   const owners = await prisma.user.findMany({
     where: {
@@ -71,16 +72,16 @@ export default async function DirectoryPage() {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col gap-8 px-4 py-8 sm:px-6">
-      <header className="flex items-start justify-between gap-4">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
             {t("title")}
           </h1>
           <p className="text-sm text-fg-subtle">{t("subtitle")}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
           <LanguageSwitcher />
-          <ThemeToggle label="" />
+          <ThemeToggle label={tc("toggleTheme")} />
           {/* The only way in for a photographer arriving at the root: every
               other entrance to /login sits behind a page they cannot reach yet.
               Shown to everyone rather than hidden once signed in — the login

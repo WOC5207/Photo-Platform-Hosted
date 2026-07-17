@@ -46,7 +46,7 @@ export default function RegisterForm({
   );
 
   const inputClass =
-    "w-full rounded-lg border border-border-strong bg-page px-3 py-2 text-sm outline-none focus:border-fg-faint";
+    "min-h-10 w-full rounded-lg border border-border-strong bg-page px-3 py-2 text-sm outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11";
 
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -94,13 +94,13 @@ export default function RegisterForm({
       </label>
 
       {state.error && (
-        <p className="text-sm text-danger">{labels[ERROR_KEY[state.error]]}</p>
+        <p role="alert" className="text-sm text-danger">{labels[ERROR_KEY[state.error]]}</p>
       )}
 
       <button
         type="submit"
         disabled={pending}
-        className="rounded-lg bg-fg px-4 py-2.5 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
+        className="min-h-10 rounded-lg bg-fg px-4 py-2.5 text-sm font-semibold text-page transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-50 max-sm:min-h-11"
       >
         {labels.submit}
       </button>

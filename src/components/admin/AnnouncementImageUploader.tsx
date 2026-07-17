@@ -50,30 +50,39 @@ export default function AnnouncementImageUploader({
             alt=""
             className="h-16 w-16 rounded-lg border border-border object-cover"
           />
-          <form action={removeAnnouncementImage}>
+          <form
+            action={removeAnnouncementImage}
+            onSubmit={(event) => {
+              if (!confirm(t("confirmRemoveImage"))) event.preventDefault();
+            }}
+          >
             <input type="hidden" name="id" value={announcementId} />
             <button
               type="submit"
-              className="rounded-md border border-danger-border px-2 py-1 text-xs text-danger transition hover:border-danger hover:text-danger-strong"
+              className="inline-flex min-h-10 items-center rounded-lg border border-danger-border px-3 py-2 text-xs font-semibold text-danger transition hover:border-danger hover:text-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 max-sm:min-h-11"
             >
               {t("removeAnnouncementImage")}
             </button>
           </form>
         </>
       ) : (
-        <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-dashed border-border-strong px-3 py-1.5 text-xs text-fg-muted transition hover:border-fg-subtle hover:text-fg">
+        <label className="flex min-h-10 w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border-strong px-3 py-1.5 text-xs font-medium text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-within:ring-2 focus-within:ring-fg/40 max-sm:min-h-11">
           <input
             ref={inputRef}
             type="file"
             accept="image/jpeg,image/png,image/webp"
             disabled={busy}
             onChange={(e) => handleFile(e.target.files?.[0])}
-            className="hidden"
+            className="sr-only"
           />
           <span>{busy ? "…" : `+ ${t("addAnnouncementImage")}`}</span>
         </label>
       )}
-      {error && <p className="text-xs text-danger">{t("uploadAnnouncementImageError")}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-danger">
+          {t("uploadAnnouncementImageError")}
+        </p>
+      )}
     </div>
   );
 }

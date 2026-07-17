@@ -5,6 +5,10 @@ import {
   changePassword,
   type ChangePasswordState
 } from "@/app/[locale]/dashboard/(protected)/account/actions";
+import Button from "@/components/ui/Button";
+import { Field, Input } from "@/components/ui/Field";
+import SectionHeading from "@/components/ui/SectionHeading";
+import StatusMessage from "@/components/ui/StatusMessage";
 
 export default function ChangePasswordForm({
   labels
@@ -23,7 +27,7 @@ export default function ChangePasswordForm({
     errorRateLimited: string;
   };
 }) {
-  const [state, action] = useActionState<ChangePasswordState, FormData>(
+  const [state, action, pending] = useActionState<ChangePasswordState, FormData>(
     changePassword,
     {}
   );
@@ -47,58 +51,51 @@ export default function ChangePasswordForm({
             ? labels.errorValidation
             : null;
 
-  const field =
-    "w-full rounded-lg border border-border-strong bg-page px-3 py-2 text-sm outline-none focus:border-fg-faint";
-
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <h2 className="text-sm font-semibold">{labels.title}</h2>
-      <p className="mt-1 text-xs text-fg-subtle">{labels.hint}</p>
-      <form ref={formRef} action={action} className="mt-4 flex flex-col gap-3">
+    <section className="rounded-xl border border-border bg-surface p-4 sm:p-5">
+      <SectionHeading title={labels.title} description={labels.hint} />
+      <form ref={formRef} action={action} className="mt-5 flex flex-col gap-4">
         {/* autoComplete hints let a password manager offer the right thing and
             store the result, rather than saving the new password as a login. */}
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-subtle">{labels.current}</span>
-          <input
+        <Field label={labels.current} htmlFor="account-current-password">
+          <Input
+            id="account-current-password"
             name="currentPassword"
             type="password"
             autoComplete="current-password"
             required
-            className={field}
+            disabled={pending}
           />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-subtle">{labels.next}</span>
-          <input
+        </Field>
+        <Field label={labels.next} htmlFor="account-new-password">
+          <Input
+            id="account-new-password"
             name="newPassword"
             type="password"
             autoComplete="new-password"
             minLength={8}
             required
-            className={field}
+            disabled={pending}
           />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-subtle">{labels.confirm}</span>
-          <input
+        </Field>
+        <Field label={labels.confirm} htmlFor="account-confirm-password">
+          <Input
+            id="account-confirm-password"
             name="confirmPassword"
             type="password"
             autoComplete="new-password"
             required
-            className={field}
+            disabled={pending}
           />
-        </label>
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            className="rounded-lg border border-border-strong px-3 py-1.5 text-sm text-fg-muted hover:border-fg-faint hover:text-fg"
-          >
+        </Field>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" variant="primary" disabled={pending}>
             {labels.submit}
-          </button>
-          {state.ok && <p className="text-xs text-fg-subtle">{labels.ok}</p>}
-          {error && <p className="text-xs text-danger">{error}</p>}
+          </Button>
+          {state.ok && <StatusMessage kind="success">{labels.ok}</StatusMessage>}
+          {error && <StatusMessage kind="error">{error}</StatusMessage>}
         </div>
       </form>
-    </div>
+    </section>
   );
 }

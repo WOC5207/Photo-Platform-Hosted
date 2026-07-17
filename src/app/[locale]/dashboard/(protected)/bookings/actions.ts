@@ -16,7 +16,7 @@ import {
 import { parseNaiveDateTime } from "@/lib/datetime";
 
 export type BookingEventFormState = {
-  error?: "validation" | "unknown";
+  error?: "validation" | "noSlots" | "noContactMethods" | "unknown";
   ok?: boolean;
 };
 export type SlotFormState = { error?: "validation"; ok?: boolean };
@@ -76,7 +76,10 @@ export async function createBookingEvent(
       descriptionZh: d.descriptionZh,
       location: d.location,
       date: toDate(d.date),
-      open: d.open
+      // A new event cannot have slots yet, so it always starts as a closed
+      // draft. The edit action below is the only path that can publish it and
+      // enforces the public-booking prerequisites before doing so.
+      open: false
     }
   });
 
@@ -97,6 +100,19 @@ export async function updateBookingEvent(
 
   const existing = await findOwnedBookingEvent(id, user);
   if (!existing) return { error: "unknown" };
+
+  if (d.open && !existing.open) {
+    const [slotCount, contactMethodCount] = await prisma.$transaction([
+      prisma.timeSlot.count({
+        where: { bookingEventId: existing.id }
+      }),
+      prisma.contactMethod.count({
+        where: { ownerId: user.id }
+      })
+    ]);
+    if (slotCount === 0) return { error: "noSlots" };
+    if (contactMethodCount === 0) return { error: "noContactMethods" };
+  }
 
   try {
     await prisma.bookingEvent.update({

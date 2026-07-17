@@ -75,6 +75,7 @@ export default async function TiersPage() {
         labels={{
           title: t("newTitle"),
           name: t("namePlaceholder"),
+          limit: t("colLimit"),
           unit: t("unitGib"),
           create: t("create"),
           errorValidation: t("errorValidation"),

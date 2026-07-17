@@ -9,6 +9,12 @@ import { getCurrentUser, requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { discardSiteImage } from "@/lib/siteImages";
 
+export type SiteSettingsSection =
+  | "appearance"
+  | "homepage"
+  | "contact"
+  | "features";
+
 export type SiteSettingsState = { error?: "validation"; ok?: boolean };
 
 /** See the note in the events actions: signed in is not the same as owns it. */
@@ -25,28 +31,32 @@ async function guard(): Promise<User> {
  * simply matches zero rows.
  */
 
-const settingsSchema = z.object({
+const sectionSchema = z.enum([
+  "appearance",
+  "homepage",
+  "contact",
+  "features"
+]);
+
+const appearanceSchema = z.object({
   siteTitleEn: z.string().trim().max(120),
   siteTitleZh: z.string().trim().max(120),
-  homeTitleEn: z.string().trim().max(200),
-  homeTitleZh: z.string().trim().max(200),
-  homeSubtitleEn: z.string().trim().max(300),
-  homeSubtitleZh: z.string().trim().max(300),
-  creditTermEn: z.string().trim().max(60),
-  creditTermZh: z.string().trim().max(60),
-  subjectTermEn: z.string().trim().max(60),
-  subjectTermZh: z.string().trim().max(60),
-  homeCreditsLabelEn: z.string().trim().max(60),
-  homeCreditsLabelZh: z.string().trim().max(60),
   // Empty (theme default) or a #rgb / #rrggbb hex color.
   backgroundColor: z
     .string()
     .trim()
-    .regex(/^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}))?$/),
-  bookingEnabled: z.boolean(),
-  lotteryEnabled: z.boolean(),
-  creditProfilesEnabled: z.boolean(),
-  announcementsEnabled: z.boolean(),
+    .regex(/^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}))?$/)
+});
+
+const homepageSchema = z.object({
+  homeTitleEn: z.string().trim().max(200),
+  homeTitleZh: z.string().trim().max(200),
+  homeSubtitleEn: z.string().trim().max(300),
+  homeSubtitleZh: z.string().trim().max(300),
+  announcementsEnabled: z.boolean()
+});
+
+const contactSchema = z.object({
   contactEnabled: z.boolean(),
   contactTitleEn: z.string().trim().max(120),
   contactTitleZh: z.string().trim().max(120),
@@ -54,91 +64,91 @@ const settingsSchema = z.object({
   contactUrlZh: z.string().trim().max(500)
 });
 
+const featuresSchema = z.object({
+  creditTermEn: z.string().trim().max(60),
+  creditTermZh: z.string().trim().max(60),
+  subjectTermEn: z.string().trim().max(60),
+  subjectTermZh: z.string().trim().max(60),
+  homeCreditsLabelEn: z.string().trim().max(60),
+  homeCreditsLabelZh: z.string().trim().max(60),
+  bookingEnabled: z.boolean(),
+  lotteryEnabled: z.boolean(),
+  creditProfilesEnabled: z.boolean()
+});
+
 export async function updateSiteSettings(
   _prev: SiteSettingsState,
   formData: FormData
 ): Promise<SiteSettingsState> {
   const user = await guard();
+  const section = sectionSchema.safeParse(formData.get("section"));
+  if (!section.success) return { error: "validation" };
 
-  const parsed = settingsSchema.safeParse({
-    siteTitleEn: formData.get("siteTitleEn") ?? "",
-    siteTitleZh: formData.get("siteTitleZh") ?? "",
-    homeTitleEn: formData.get("homeTitleEn") ?? "",
-    homeTitleZh: formData.get("homeTitleZh") ?? "",
-    homeSubtitleEn: formData.get("homeSubtitleEn") ?? "",
-    homeSubtitleZh: formData.get("homeSubtitleZh") ?? "",
-    creditTermEn: formData.get("creditTermEn") ?? "",
-    creditTermZh: formData.get("creditTermZh") ?? "",
-    subjectTermEn: formData.get("subjectTermEn") ?? "",
-    subjectTermZh: formData.get("subjectTermZh") ?? "",
-    homeCreditsLabelEn: formData.get("homeCreditsLabelEn") ?? "",
-    homeCreditsLabelZh: formData.get("homeCreditsLabelZh") ?? "",
-    backgroundColor: formData.get("backgroundColor") ?? "",
-    bookingEnabled: formData.get("bookingEnabled") === "on",
-    lotteryEnabled: formData.get("lotteryEnabled") === "on",
-    creditProfilesEnabled: formData.get("creditProfilesEnabled") === "on",
-    announcementsEnabled: formData.get("announcementsEnabled") === "on",
-    contactEnabled: formData.get("contactEnabled") === "on",
-    contactTitleEn: formData.get("contactTitleEn") ?? "",
-    contactTitleZh: formData.get("contactTitleZh") ?? "",
-    contactUrlEn: formData.get("contactUrlEn") ?? "",
-    contactUrlZh: formData.get("contactUrlZh") ?? ""
-  });
-  if (!parsed.success) return { error: "validation" };
-  const d = parsed.data;
-
-  await prisma.siteSettings.upsert({
-    where: { ownerId: user.id },
-    create: {
-      ownerId: user.id,
-      siteTitleEn: d.siteTitleEn,
-      siteTitleZh: d.siteTitleZh,
-      homeTitleEn: d.homeTitleEn,
-      homeTitleZh: d.homeTitleZh,
-      homeSubtitleEn: d.homeSubtitleEn,
-      homeSubtitleZh: d.homeSubtitleZh,
-      creditTermEn: d.creditTermEn,
-      creditTermZh: d.creditTermZh,
-      subjectTermEn: d.subjectTermEn,
-      subjectTermZh: d.subjectTermZh,
-      homeCreditsLabelEn: d.homeCreditsLabelEn,
-      homeCreditsLabelZh: d.homeCreditsLabelZh,
-      backgroundColor: d.backgroundColor,
-      bookingEnabled: d.bookingEnabled,
-      lotteryEnabled: d.lotteryEnabled,
-      creditProfilesEnabled: d.creditProfilesEnabled,
-      announcementsEnabled: d.announcementsEnabled,
-      contactEnabled: d.contactEnabled,
-      contactTitleEn: d.contactTitleEn,
-      contactTitleZh: d.contactTitleZh,
-      contactUrlEn: d.contactUrlEn,
-      contactUrlZh: d.contactUrlZh
-    },
-    update: {
-      siteTitleEn: d.siteTitleEn,
-      siteTitleZh: d.siteTitleZh,
-      homeTitleEn: d.homeTitleEn,
-      homeTitleZh: d.homeTitleZh,
-      homeSubtitleEn: d.homeSubtitleEn,
-      homeSubtitleZh: d.homeSubtitleZh,
-      creditTermEn: d.creditTermEn,
-      creditTermZh: d.creditTermZh,
-      subjectTermEn: d.subjectTermEn,
-      subjectTermZh: d.subjectTermZh,
-      homeCreditsLabelEn: d.homeCreditsLabelEn,
-      homeCreditsLabelZh: d.homeCreditsLabelZh,
-      backgroundColor: d.backgroundColor,
-      bookingEnabled: d.bookingEnabled,
-      lotteryEnabled: d.lotteryEnabled,
-      creditProfilesEnabled: d.creditProfilesEnabled,
-      announcementsEnabled: d.announcementsEnabled,
-      contactEnabled: d.contactEnabled,
-      contactTitleEn: d.contactTitleEn,
-      contactTitleZh: d.contactTitleZh,
-      contactUrlEn: d.contactUrlEn,
-      contactUrlZh: d.contactUrlZh
-    }
-  });
+  if (section.data === "appearance") {
+    const parsed = appearanceSchema.safeParse({
+      siteTitleEn: formData.get("siteTitleEn") ?? "",
+      siteTitleZh: formData.get("siteTitleZh") ?? "",
+      backgroundColor: formData.get("backgroundColor") ?? ""
+    });
+    if (!parsed.success) return { error: "validation" };
+    await prisma.siteSettings.upsert({
+      where: { ownerId: user.id },
+      create: { ownerId: user.id, ...parsed.data },
+      update: parsed.data
+    });
+  } else if (section.data === "homepage") {
+    const parsed = homepageSchema.safeParse({
+      homeTitleEn: formData.get("homeTitleEn") ?? "",
+      homeTitleZh: formData.get("homeTitleZh") ?? "",
+      homeSubtitleEn: formData.get("homeSubtitleEn") ?? "",
+      homeSubtitleZh: formData.get("homeSubtitleZh") ?? "",
+      announcementsEnabled: formData.get("announcementsEnabled") === "on"
+    });
+    if (!parsed.success) return { error: "validation" };
+    await prisma.siteSettings.upsert({
+      where: { ownerId: user.id },
+      create: { ownerId: user.id, ...parsed.data },
+      update: parsed.data
+    });
+  } else if (section.data === "contact") {
+    const parsed = contactSchema.safeParse({
+      contactEnabled: formData.get("contactEnabled") === "on",
+      contactTitleEn: formData.get("contactTitleEn") ?? "",
+      contactTitleZh: formData.get("contactTitleZh") ?? "",
+      contactUrlEn: formData.get("contactUrlEn") ?? "",
+      contactUrlZh: formData.get("contactUrlZh") ?? ""
+    });
+    if (!parsed.success) return { error: "validation" };
+    await prisma.siteSettings.upsert({
+      where: { ownerId: user.id },
+      create: { ownerId: user.id, ...parsed.data },
+      update: parsed.data
+    });
+  } else {
+    const parsed = featuresSchema.safeParse({
+      creditTermEn: formData.get("creditTermEn") ?? "",
+      creditTermZh: formData.get("creditTermZh") ?? "",
+      subjectTermEn: formData.get("subjectTermEn") ?? "",
+      subjectTermZh: formData.get("subjectTermZh") ?? "",
+      homeCreditsLabelEn: formData.get("homeCreditsLabelEn") ?? "",
+      homeCreditsLabelZh: formData.get("homeCreditsLabelZh") ?? "",
+      bookingEnabled: formData.get("bookingEnabled") === "on",
+      lotteryEnabled: formData.get("lotteryEnabled") === "on",
+      creditProfilesEnabled: formData.get("creditProfilesEnabled") === "on"
+    });
+    if (!parsed.success) return { error: "validation" };
+    const data = {
+      ...parsed.data,
+      // Lottery is a booking-event tool, so it cannot be public while the
+      // parent booking feature is off.
+      lotteryEnabled: parsed.data.bookingEnabled && parsed.data.lotteryEnabled
+    };
+    await prisma.siteSettings.upsert({
+      where: { ownerId: user.id },
+      create: { ownerId: user.id, ...data },
+      update: data
+    });
+  }
 
   revalidatePath("/", "layout");
   return { ok: true };
@@ -518,5 +528,9 @@ export async function removeSiteImage(
 
   revalidatePath("/", "layout");
   const locale = await getLocale();
-  redirect(`/${locale}/dashboard/settings`);
+  const section =
+    kind === "contactQrEn" || kind === "contactQrZh"
+      ? "contact"
+      : "appearance";
+  redirect(`/${locale}/dashboard/settings?section=${section}`);
 }

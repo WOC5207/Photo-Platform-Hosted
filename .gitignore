@@ -29,3 +29,8 @@ data/photos/*
 .DS_Store
 next-env.d.ts
 *.tsbuildinfo
+
+# browser test artifacts and authenticated state
+e2e/.auth/
+test-results/
+playwright-report/

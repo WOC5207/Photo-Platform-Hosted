@@ -17,9 +17,9 @@ export interface AdminContactMethod {
 }
 
 const inputCls =
-  "rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-fg-subtle";
+  "min-h-10 w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
 const btnCls =
-  "rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted transition hover:border-fg-faint hover:text-fg disabled:opacity-40";
+  "min-h-10 rounded-lg border border-border-strong px-3 py-1.5 text-sm font-medium text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40 max-sm:min-h-11";
 
 export default function ContactMethodsManager({
   methods
@@ -50,20 +50,24 @@ export default function ContactMethodsManager({
                 className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
               >
                 <input type="hidden" name="id" value={method.id} />
-                <input
-                  name="labelEn"
-                  defaultValue={method.labelEn}
-                  placeholder={t("contactMethodLabelEn")}
-                  maxLength={60}
-                  className={inputCls}
-                />
-                <input
-                  name="labelZh"
-                  defaultValue={method.labelZh}
-                  placeholder={t("contactMethodLabelZh")}
-                  maxLength={60}
-                  className={inputCls}
-                />
+                <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+                  <span>{t("contactMethodLabelEn")}</span>
+                  <input
+                    name="labelEn"
+                    defaultValue={method.labelEn}
+                    maxLength={60}
+                    className={inputCls}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+                  <span>{t("contactMethodLabelZh")}</span>
+                  <input
+                    name="labelZh"
+                    defaultValue={method.labelZh}
+                    maxLength={60}
+                    className={inputCls}
+                  />
+                </label>
                 <button type="submit" className={`${btnCls} sm:col-span-3 sm:w-fit`}>
                   {tc("save")}
                 </button>
@@ -115,18 +119,14 @@ export default function ContactMethodsManager({
         action={formAction}
         className="grid gap-2 rounded-xl border border-dashed border-border-strong p-3 sm:grid-cols-[1fr_1fr_auto]"
       >
-        <input
-          name="labelEn"
-          placeholder={t("contactMethodLabelEn")}
-          maxLength={60}
-          className={inputCls}
-        />
-        <input
-          name="labelZh"
-          placeholder={t("contactMethodLabelZh")}
-          maxLength={60}
-          className={inputCls}
-        />
+        <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          <span>{t("contactMethodLabelEn")}</span>
+          <input name="labelEn" maxLength={60} className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          <span>{t("contactMethodLabelZh")}</span>
+          <input name="labelZh" maxLength={60} className={inputCls} />
+        </label>
         <button
           type="submit"
           disabled={pending}
@@ -136,7 +136,9 @@ export default function ContactMethodsManager({
         </button>
       </form>
       {state.error && (
-        <p className="text-xs text-danger">{t("contactMethodValidationError")}</p>
+        <p role="alert" className="text-xs text-danger">
+          {t("contactMethodValidationError")}
+        </p>
       )}
     </section>
   );

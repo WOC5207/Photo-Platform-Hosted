@@ -6,9 +6,10 @@ import {
   addSlots,
   type SlotFormState
 } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
+import Button from "@/components/ui/Button";
 
 const inputCls =
-  "rounded-lg border border-border-strong bg-surface px-3 py-2 text-fg outline-none focus:border-fg-subtle";
+  "min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11";
 
 export default function SlotAdder({ eventId }: { eventId: string }) {
   const t = useTranslations("adminBookings");
@@ -93,17 +94,13 @@ export default function SlotAdder({ eventId }: { eventId: string }) {
       </div>
       <p className="-mt-2 text-xs text-fg-subtle">{t("slotDescriptionHint")}</p>
       {state.error && (
-        <p className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
+        <p role="alert" className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
           {t("slotsValidationError")}
         </p>
       )}
-      <button
-        type="submit"
-        disabled={pending}
-        className="self-start rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
-      >
+      <Button type="submit" variant="primary" disabled={pending} className="self-start">
         + {t("addSlotsButton")}
-      </button>
+      </Button>
     </form>
   );
 }

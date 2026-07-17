@@ -2,6 +2,7 @@ import { getTranslations, getLocale } from "next-intl/server";
 import { requireUser } from "@/lib/auth";
 import { getOwnerStorage, formatBytes } from "@/lib/storage";
 import { pickText } from "@/lib/content";
+import { Link } from "@/i18n/navigation";
 
 export default async function ResourceMonitorPage() {
   const t = await getTranslations("adminStorage");
@@ -30,8 +31,8 @@ export default async function ResourceMonitorPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-2xl font-bold">{t("title")}</h1>
-        <p className="mt-1 text-fg-subtle">{t("intro")}</p>
+        <h1 className="text-2xl font-bold">{t("myStorageTitle")}</h1>
+        <p className="mt-1 text-fg-subtle">{t("myStorageIntro")}</p>
       </div>
 
       <section className="rounded-xl border border-border bg-surface p-5">
@@ -47,7 +48,7 @@ export default async function ResourceMonitorPage() {
         <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-fg/10">
           <div
             className={`h-full rounded-full ${
-              full ? "bg-danger" : nearlyFull ? "bg-amber-500" : "bg-fg/60"
+              full || nearlyFull ? "bg-danger" : "bg-fg/60"
             }`}
             style={{ width: `${usedPct}%` }}
           />
@@ -99,23 +100,25 @@ export default async function ResourceMonitorPage() {
                 stats.photosBytes > 0 ? (e.bytes / stats.photosBytes) * 100 : 0;
               const barPct = (e.bytes / maxEventBytes) * 100;
               return (
-                <li
-                  key={e.id}
-                  className="rounded-xl border border-border bg-surface p-3"
-                >
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                    <span className="font-medium">{title}</span>
-                    <span className="text-sm text-fg-muted">
+                <li key={e.id}>
+                  <Link
+                    href={`/dashboard/events/${e.id}#photos`}
+                    className="block rounded-xl border border-border bg-surface p-3 transition hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg"
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                      <span className="font-medium">{title}</span>
+                      <span className="text-sm text-fg-muted">
                       {formatBytes(e.bytes)} · {t("photoCount", { count: e.photoCount })} ·{" "}
                       {t("shareOfPhotos", { pct: shareOfPhotos.toFixed(1) })}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-fg/10">
-                    <div
-                      className="h-full rounded-full bg-fg/60"
-                      style={{ width: `${barPct}%` }}
-                    />
-                  </div>
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-fg/10">
+                      <div
+                        className="h-full rounded-full bg-fg/60"
+                        style={{ width: `${barPct}%` }}
+                      />
+                    </div>
+                  </Link>
                 </li>
               );
             })}

@@ -2,6 +2,8 @@
 
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
+import Button, { buttonClasses } from "@/components/ui/Button";
 import type { EventFormState } from "@/app/[locale]/dashboard/(protected)/events/actions";
 
 export interface EventFormValues {
@@ -18,16 +20,18 @@ export interface EventFormValues {
 }
 
 const inputCls =
-  "rounded-lg border border-border-strong bg-surface px-3 py-2 text-fg outline-none focus:border-fg-subtle";
+  "min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none transition focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
 
 export default function EventForm({
   action,
   initial,
-  submitLabel
+  submitLabel,
+  cancelHref
 }: {
   action: (prev: EventFormState, formData: FormData) => Promise<EventFormState>;
   initial: EventFormValues;
   submitLabel: string;
+  cancelHref: string;
 }) {
   const t = useTranslations("adminEvents");
   const tc = useTranslations("common");
@@ -133,29 +137,30 @@ export default function EventForm({
           type="checkbox"
           name="published"
           defaultChecked={initial.published}
-          className="h-4 w-4 accent-fg"
+          className="h-5 w-5 rounded border-border-strong accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
         />
         <span>{t("publishedLabel")}</span>
       </label>
 
       {state.error && (
-        <p className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
+        <p role="alert" className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
           {state.error === "validation" ? t("validationError") : tc("error")}
         </p>
       )}
       {state.ok && (
-        <p className="rounded-lg bg-success-surface px-3 py-2 text-sm text-success">
+        <p role="status" className="rounded-lg bg-success-surface px-3 py-2 text-sm text-success">
           {tc("saved")}
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="self-start rounded-lg bg-fg px-5 py-2 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
-      >
-        {submitLabel}
-      </button>
+      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+        <Button type="submit" variant="primary" disabled={pending}>
+          {submitLabel}
+        </Button>
+        <Link href={cancelHref} className={buttonClasses({ variant: "ghost" })}>
+          {tc("cancel")}
+        </Link>
+      </div>
     </form>
   );
 }

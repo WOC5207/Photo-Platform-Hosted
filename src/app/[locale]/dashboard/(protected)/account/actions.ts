@@ -1,15 +1,46 @@
 "use server";
 
 import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import {
   changeOwnPassword,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH
 } from "@/lib/password";
 import { rateLimit } from "@/lib/rate-limit";
+
+export type UpdateProfileState = {
+  error?: "validation";
+  ok?: boolean;
+  value?: string;
+};
+
+const profileSchema = z.object({
+  displayName: z.string().trim().max(80)
+});
+
+export async function updateProfile(
+  _prev: UpdateProfileState,
+  formData: FormData
+): Promise<UpdateProfileState> {
+  const user = await requireUser(await getLocale());
+  const parsed = profileSchema.safeParse({
+    displayName: formData.get("displayName") ?? ""
+  });
+  if (!parsed.success) return { error: "validation" };
+
+  await prisma.user.updateMany({
+    where: { id: user.id },
+    data: { displayName: parsed.data.displayName }
+  });
+
+  revalidatePath("/", "layout");
+  return { ok: true, value: parsed.data.displayName };
+}
 
 export type ChangePasswordState = {
   error?: "validation" | "mismatch" | "wrongCurrent" | "rateLimited";

@@ -10,6 +10,7 @@ import {
   getAnnouncements,
   getPersonalLinks,
   resolveHomeTitle,
+  resolveHomeSubtitle,
   resolveCreditTerm,
   resolveHomeCreditsLabel
 } from "@/lib/settings";
@@ -47,6 +48,7 @@ export default async function HomePage({
   const settings = await getSiteSettings(owner.id);
 
   const heroTitle = resolveHomeTitle(settings, locale, t("title"));
+  const heroSubtitle = resolveHomeSubtitle(settings, locale, t("subtitle"));
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
   const defaultCreditsLabel = locale === "zh" ? creditTerm : `${creditTerm}s`;
   const creditsLabel = resolveHomeCreditsLabel(settings, locale, defaultCreditsLabel);
@@ -169,6 +171,9 @@ export default async function HomePage({
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
             {heroTitle}
           </h1>
+          <p className="max-w-2xl text-base text-fg-subtle sm:text-lg">
+            {heroSubtitle}
+          </p>
           <div className="flex flex-wrap items-center gap-3">
             <Link
               href={`${base}/gallery`}
@@ -200,7 +205,7 @@ export default async function HomePage({
       </div>
 
       <HomeHighlightsPanel
-          basePath={base}
+        basePath={base}
         events={highlightEvents}
         announcements={announcementItems}
         announcementsEnabled={settings.announcementsEnabled}
@@ -214,16 +219,16 @@ export default async function HomePage({
       />
 
       <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-start">
-        <section className="flex flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
-          {streamEvents.length > 0 && (
-            <>
-              <h2 className="text-2xl font-bold">{t("recentWork")}</h2>
-              <EventPhotoStream basePath={base} events={streamEvents} />
-            </>
-          )}
-        </section>
+        {streamEvents.length > 0 && (
+          <section className="flex flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
+            <h2 className="text-2xl font-bold">{t("recentWork")}</h2>
+            <EventPhotoStream basePath={base} events={streamEvents} />
+          </section>
+        )}
 
-        <aside className="order-first flex flex-col gap-6 lg:order-none">
+        <aside
+          className={`flex flex-col gap-6 ${streamEvents.length === 0 ? "lg:col-span-2 lg:grid lg:grid-cols-3" : ""}`}
+        >
           {settings.bookingEnabled && (
             <BookingCalendar basePath={base} sessions={calendarSessions} />
           )}

@@ -12,11 +12,14 @@ import AlbumViewer, { type AlbumPhoto } from "@/components/gallery/AlbumViewer";
 export const dynamic = "force-dynamic";
 
 export default async function AlbumPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ slug: string; username: string }>;
+  searchParams: Promise<{ photo?: string }>;
 }) {
   const { slug, username } = await params;
+  const { photo: initialPhotoId } = await searchParams;
   const locale = await getLocale();
   const t = await getTranslations("gallery");
 
@@ -94,6 +97,7 @@ export default async function AlbumPage({
 
       <AlbumViewer
         photos={photos}
+        initialPhotoId={initialPhotoId}
         labels={{
           close: t("close"),
           previous: t("previous"),

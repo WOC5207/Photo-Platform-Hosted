@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { photoUrls } from "@/lib/images";
 import { formatShutterSpeedInput } from "@/lib/exif";
+import { ownerBasePath } from "@/lib/owner";
 import {
   getCreditProfiles,
   getSiteSettings,
@@ -75,28 +76,30 @@ export default async function EditEventPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">{t("editEvent")}</h1>
-        <div className="flex items-center gap-3">
-          {event.published && (
-            <Link
-              href={`/gallery/${event.slug}`}
-              className="text-sm text-fg-subtle underline hover:text-fg"
-            >
-              {t("viewPublic")}
-            </Link>
-          )}
-          <DeleteEventButton
-            id={event.id}
-            label={t("deleteEvent")}
-            confirmText={t("confirmDeleteEvent")}
-          />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <Link
+            href="/dashboard/events"
+            className="mb-2 inline-flex min-h-10 items-center text-sm text-fg-subtle underline-offset-4 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/20"
+          >
+            {tc("back")} · {t("listTitle")}
+          </Link>
+          <h1 className="text-2xl font-bold">{t("editEvent")}</h1>
         </div>
+        {event.published && (
+          <Link
+            href={`${ownerBasePath(user.username)}/gallery/${event.slug}`}
+            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-4 py-2 text-sm font-semibold text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11"
+          >
+            {t("viewPublic")}
+          </Link>
+        )}
       </div>
 
       <EventForm
         action={updateEvent}
         submitLabel={tc("save")}
+        cancelHref="/dashboard/events"
         initial={{
           id: event.id,
           titleEn: event.titleEn,
@@ -111,8 +114,11 @@ export default async function EditEventPage({
         }}
       />
 
-      <section className="flex flex-col gap-4 border-t border-border pt-6">
-        <h2 className="text-xl font-semibold">{t("photos")}</h2>
+      <section
+        id="photos"
+        className="scroll-mt-6 flex flex-col gap-4 border-t border-border pt-6"
+      >
+        <h2 className="text-lg font-semibold">{t("photos")}</h2>
         <PhotoUploader
           eventId={event.id}
           creditProfiles={creditProfiles}
@@ -125,6 +131,18 @@ export default async function EditEventPage({
           creditTerm={creditTerm}
           subjectTerm={subjectTerm}
         />
+      </section>
+
+      <section className="rounded-xl border border-danger-border bg-danger-surface/40 p-5">
+        <h2 className="text-lg font-semibold text-danger-strong">{tc("dangerZone")}</h2>
+        <p className="mt-1 text-sm text-fg-subtle">{t("confirmDeleteEvent")}</p>
+        <div className="mt-4">
+          <DeleteEventButton
+            id={event.id}
+            label={t("deleteEvent")}
+            confirmText={t("confirmDeleteEvent")}
+          />
+        </div>
       </section>
     </div>
   );

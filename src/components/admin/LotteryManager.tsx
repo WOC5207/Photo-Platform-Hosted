@@ -40,9 +40,9 @@ export interface AdminLotteryPrize {
 }
 
 const btnCls =
-  "rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted transition hover:border-fg-faint hover:text-fg disabled:opacity-40";
+  "inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-3 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40 max-sm:min-h-11";
 const inputCls =
-  "min-w-0 flex-1 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-fg-subtle";
+  "min-h-10 min-w-0 flex-1 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
 
 function displayName(b: { name: string; subject: string }) {
   return b.subject ? `${b.name} · ${b.subject}` : b.name;
@@ -222,7 +222,7 @@ function PrizeManager({
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
-      <h2 className="text-sm font-semibold">{t("prizesSection")}</h2>
+      <h2 className="text-lg font-semibold">{t("prizesSection")}</h2>
 
       {prizes.length > 0 && (
         <ul className="flex flex-col gap-2">
@@ -230,12 +230,15 @@ function PrizeManager({
             <li key={p.id} className="rounded-lg border border-border-strong/40 p-2">
               <form action={updateLotteryPrize} className="flex flex-col gap-1.5">
                 <input type="hidden" name="prizeId" value={p.id} />
-                <input
-                  name="name"
-                  defaultValue={p.name}
-                  maxLength={200}
-                  className={inputCls}
-                />
+                <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+                  {t("prizeName")}
+                  <input
+                    name="name"
+                    defaultValue={p.name}
+                    maxLength={200}
+                    className={inputCls}
+                  />
+                </label>
                 <div className="flex gap-2">
                   <label className="flex flex-1 items-center gap-1 text-xs text-fg-subtle">
                     {t("prizeQuantity")}
@@ -272,6 +275,9 @@ function PrizeManager({
                   <input type="hidden" name="prizeId" value={p.id} />
                   <button
                     type="submit"
+                    onClick={(event) => {
+                      if (!confirm(t("confirmDeletePrize"))) event.preventDefault();
+                    }}
                     className={`${btnCls} border-danger-border text-danger hover:border-danger hover:text-danger-strong`}
                   >
                     {tc("delete")}
@@ -288,13 +294,10 @@ function PrizeManager({
         className="flex flex-col gap-2 rounded-lg border border-dashed border-border-strong p-3"
       >
         <input type="hidden" name="bookingEventId" value={bookingEventId} />
-        <input
-          name="name"
-          placeholder={t("prizeName")}
-          maxLength={200}
-          required
-          className={inputCls}
-        />
+        <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          {t("prizeName")}
+          <input name="name" maxLength={200} required className={inputCls} />
+        </label>
         <div className="flex gap-2">
           <label className="flex flex-1 items-center gap-1 text-xs text-fg-subtle">
             {t("prizeQuantity")}
@@ -326,7 +329,7 @@ function PrizeManager({
           + {t("addPrize")}
         </button>
         {state.error && (
-          <p className="text-xs text-danger">{t("prizeValidationError")}</p>
+          <p role="alert" className="text-xs text-danger">{t("prizeValidationError")}</p>
         )}
       </form>
     </section>
@@ -346,7 +349,7 @@ function EntryManager({
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
-      <h2 className="text-sm font-semibold">{t("entriesSection")}</h2>
+      <h2 className="text-lg font-semibold">{t("entriesSection")}</h2>
       <p className="-mt-1 text-xs text-fg-subtle">{t("entriesHint")}</p>
 
       {entries.length > 0 && (
@@ -366,6 +369,9 @@ function EntryManager({
                   <button
                     type="submit"
                     aria-label={t("removeEntryAria")}
+                    onClick={(event) => {
+                      if (!confirm(t("confirmRemoveEntry"))) event.preventDefault();
+                    }}
                     className={btnCls}
                   >
                     ×

@@ -59,26 +59,31 @@ export default async function BookPage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
-      <div>
-        <h1 className="text-3xl font-bold">
-          {pickText(locale, event.titleEn, event.titleZh)}
-        </h1>
-        <p className="mt-1 text-sm text-fg-subtle">
-          {[formatDate(event.date), event.location || null]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-        {description && (
-          <p className="mt-3 whitespace-pre-line text-fg-muted">
-            {description}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">
+            {pickText(locale, event.titleEn, event.titleZh)}
+          </h1>
+          <p className="mt-1 text-sm text-fg-subtle">
+            {[formatDate(event.date), event.location || null]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
-        )}
-        <Link
-          href={`/book/${token}/check`}
-          className="mt-4 inline-block rounded-full border border-border-strong px-5 py-2 text-sm font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg"
-        >
-          {t("checkBookingButton")}
-        </Link>
+          {description && (
+            <p className="mt-3 whitespace-pre-line text-fg-muted">
+              {description}
+            </p>
+          )}
+        </div>
+        <div className="shrink-0 rounded-lg bg-surface px-3 py-2 text-xs text-fg-subtle">
+          <span>{t("alreadyBooked")} </span>
+          <Link
+            href={`/book/${token}/check`}
+            className="inline-flex min-h-8 items-center font-semibold text-fg-muted underline underline-offset-4 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+          >
+            {t("checkBookingButton")}
+          </Link>
+        </div>
       </div>
 
       {!event.open ? (

@@ -91,7 +91,7 @@ export default function BookingCalendar({
             type="button"
             aria-label={t("calendarPrevMonth")}
             onClick={() => shiftMonth(-1)}
-            className="rounded-md p-1 text-fg-subtle transition hover:bg-fg/10 hover:text-fg"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-fg/10 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:h-8 sm:w-8"
           >
             ‹
           </button>
@@ -102,14 +102,14 @@ export default function BookingCalendar({
             type="button"
             aria-label={t("calendarNextMonth")}
             onClick={() => shiftMonth(1)}
-            className="rounded-md p-1 text-fg-subtle transition hover:bg-fg/10 hover:text-fg"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-fg/10 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:h-8 sm:w-8"
           >
             ›
           </button>
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[11px] text-fg-subtle">
+      <div className="mt-3 grid grid-cols-7 gap-1 text-center text-xs text-fg-subtle">
         {weekdayLabels.map((w, i) => (
           <div key={i}>{w}</div>
         ))}
@@ -135,7 +135,7 @@ export default function BookingCalendar({
                 <span
                   className={[
                     "h-1.5 w-1.5 rounded-full",
-                    hasOpen ? "bg-emerald-400" : "bg-fg-faint"
+                    hasOpen ? "bg-success" : "bg-fg-faint"
                   ].join(" ")}
                 />
               )}
@@ -151,7 +151,7 @@ export default function BookingCalendar({
                   ? `${primary.title} +${daySessions.length - 1}`
                   : primary.title
               }
-              className="rounded-lg transition hover:bg-fg/5"
+              className="rounded-lg transition hover:bg-fg/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
             >
               {inner}
             </Link>
@@ -166,9 +166,9 @@ export default function BookingCalendar({
           {t("calendarEmpty")}
         </p>
       ) : (
-        <div className="mt-3 flex items-center justify-center gap-4 text-[11px] text-fg-subtle">
+        <div className="mt-3 flex items-center justify-center gap-4 text-xs text-fg-subtle">
           <span className="flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span className="h-1.5 w-1.5 rounded-full bg-success" />
             {t("calendarLegendOpen")}
           </span>
           <span className="flex items-center gap-1">
@@ -180,7 +180,7 @@ export default function BookingCalendar({
 
       <Link
         href={`${basePath}/booking`}
-        className="mt-3 block text-center text-xs text-fg-subtle hover:text-fg"
+        className="mt-3 flex min-h-11 items-center justify-center text-center text-xs text-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:min-h-8"
       >
         {t("calendarViewAll")}
       </Link>

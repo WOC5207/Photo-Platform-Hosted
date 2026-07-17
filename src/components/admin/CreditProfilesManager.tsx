@@ -20,9 +20,9 @@ export interface AdminCreditProfile {
 }
 
 const inputCls =
-  "rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-fg-subtle";
+  "min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
 const btnCls =
-  "rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted transition hover:border-fg-faint hover:text-fg disabled:opacity-40";
+  "inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-3 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40 max-sm:min-h-11";
 
 function CreditProfileRow({
   profile,
@@ -45,13 +45,15 @@ function CreditProfileRow({
       <form action={updateCreditProfile} className="flex flex-col gap-2">
         <input type="hidden" name="id" value={profile.id} />
         <input type="hidden" name="socialLinksJson" value={socialLinksJson} />
-        <input
-          name="creditName"
-          defaultValue={profile.creditName}
-          placeholder={t("creditNamePlaceholder", { term: creditTerm })}
-          maxLength={200}
-          className={inputCls}
-        />
+        <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          {t("creditNamePlaceholder", { term: creditTerm })}
+          <input
+            name="creditName"
+            defaultValue={profile.creditName}
+            maxLength={200}
+            className={inputCls}
+          />
+        </label>
         <SocialLinksEditor links={links} onChange={setLinks} />
         <div className="flex gap-2">
           <button type="submit" className={btnCls}>
@@ -107,21 +109,19 @@ export default function CreditProfilesManager({
         action={formAction}
         className="flex flex-wrap gap-2 rounded-xl border border-dashed border-border-strong p-3"
       >
-        <input
-          name="creditName"
-          placeholder={t("creditNamePlaceholder", { term: creditTerm })}
-          maxLength={200}
-          className={`${inputCls} flex-1`}
-        />
+        <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-fg-subtle">
+          {t("creditNamePlaceholder", { term: creditTerm })}
+          <input name="creditName" maxLength={200} className={inputCls} />
+        </label>
         <button type="submit" disabled={pending} className={btnCls}>
           + {t("addCreditProfile", { term: creditTerm })}
         </button>
       </form>
       {state.error === "validation" && (
-        <p className="text-xs text-danger">{t("validationError")}</p>
+        <p role="alert" className="text-xs text-danger">{t("validationError")}</p>
       )}
       {state.error === "duplicate" && (
-        <p className="text-xs text-danger">{t("duplicateError")}</p>
+        <p role="alert" className="text-xs text-danger">{t("duplicateError")}</p>
       )}
     </div>
   );

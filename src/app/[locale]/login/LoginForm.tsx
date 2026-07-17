@@ -28,7 +28,7 @@ export default function LoginForm() {
           name="username"
           autoComplete="username"
           required
-          className="rounded-lg border border-border-strong bg-surface px-3 py-2 text-fg outline-none focus:border-fg-subtle"
+          className="min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11"
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
@@ -38,18 +38,18 @@ export default function LoginForm() {
           type="password"
           autoComplete="current-password"
           required
-          className="rounded-lg border border-border-strong bg-surface px-3 py-2 text-fg outline-none focus:border-fg-subtle"
+          className="min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11"
         />
       </label>
       {errorMessage && (
-        <p className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
+        <p role="alert" className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
           {errorMessage}
         </p>
       )}
       <button
         type="submit"
         disabled={pending}
-        className="rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
+        className="min-h-10 rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-50 max-sm:min-h-11"
       >
         {t("signIn")}
       </button>

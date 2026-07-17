@@ -96,10 +96,15 @@ export default function SiteImageUploader({
         <div className="flex flex-wrap items-start gap-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={currentUrl} alt="" className={previewCls} />
-          <form action={removeSiteImage.bind(null, kind)}>
+          <form
+            action={removeSiteImage.bind(null, kind)}
+            onSubmit={(event) => {
+              if (!confirm(t("confirmRemoveImage"))) event.preventDefault();
+            }}
+          >
             <button
               type="submit"
-              className="rounded-lg border border-danger-border px-3 py-1.5 text-sm text-danger transition hover:border-danger hover:text-danger-strong"
+              className="inline-flex min-h-10 items-center rounded-lg border border-danger-border px-3 py-2 text-sm font-semibold text-danger transition hover:border-danger hover:text-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 max-sm:min-h-11"
             >
               {t(L.remove)}
             </button>
@@ -109,19 +114,23 @@ export default function SiteImageUploader({
         <p className="text-sm text-fg-subtle">{t(L.none)}</p>
       )}
 
-      <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border-strong px-4 py-3 text-sm text-fg-muted transition hover:border-fg-subtle hover:text-fg">
+      <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border-strong px-4 py-2 text-sm font-medium text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-within:ring-2 focus-within:ring-fg/40">
         <input
           ref={inputRef}
           type="file"
           accept="image/jpeg,image/png,image/webp"
           disabled={busy}
           onChange={(e) => handleFile(e.target.files?.[0])}
-          className="hidden"
+          className="sr-only"
         />
         <span>{busy ? "…" : `+ ${t(L.upload)}`}</span>
       </label>
 
-      {error && <p className="text-sm text-danger">{t(L.error)}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          {t(L.error)}
+        </p>
+      )}
     </section>
   );
 }

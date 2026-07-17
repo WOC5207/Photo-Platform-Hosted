@@ -30,12 +30,17 @@ export default function BookingStatusButton({
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted transition hover:border-fg-faint hover:text-fg disabled:opacity-50"
+        onClick={(event) => {
+          if (isConfirmed && !confirm(t("confirmCancelBooking"))) {
+            event.preventDefault();
+          }
+        }}
+        className="inline-flex min-h-10 items-center rounded-lg border border-border-strong px-3 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-50 max-sm:min-h-11"
       >
         {isConfirmed ? t("cancelBooking") : t("restoreBooking")}
       </button>
       {state.error === "slotFull" && (
-        <span className="max-w-[16rem] text-right text-xs text-danger">
+        <span role="alert" className="max-w-[16rem] text-right text-xs text-danger">
           {t("restoreSlotFull")}
         </span>
       )}

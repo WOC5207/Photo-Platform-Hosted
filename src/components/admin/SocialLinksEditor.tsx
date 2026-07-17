@@ -18,11 +18,11 @@ export function emptySocialLink(initial?: { platform: string; url: string }): So
 }
 
 const inputCls =
-  "min-w-0 flex-1 rounded-md border border-border-strong bg-page px-2 py-1 text-xs text-fg outline-none focus:border-fg-subtle";
+  "min-h-10 min-w-0 w-full rounded-lg border border-border-strong bg-page px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
 const platformInputCls =
-  "w-28 shrink-0 rounded-md border border-border-strong bg-page px-2 py-1 text-xs text-fg outline-none focus:border-fg-subtle";
+  `${inputCls} w-full`;
 const btnCls =
-  "rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted transition hover:border-fg-faint hover:text-fg";
+  "inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-3 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11";
 
 /** Repeatable platform-name + URL editor for a credit's social links. */
 export default function SocialLinksEditor({
@@ -35,35 +35,39 @@ export default function SocialLinksEditor({
   const t = useTranslations("adminEvents");
 
   return (
-    <div className="flex flex-col gap-1 pl-2">
+    <div className="flex flex-col gap-3 sm:pl-2">
       {links.map((link) => (
-        <div key={link.key} className="flex gap-1">
-          <input
-            value={link.platform}
-            onChange={(e) =>
-              onChange(
-                links.map((l) =>
-                  l.key === link.key ? { ...l, platform: e.target.value } : l
+        <div key={link.key} className="grid gap-2 sm:grid-cols-[9rem_minmax(0,1fr)_auto] sm:items-end">
+          <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+            {t("socialPlatformPlaceholder")}
+            <input
+              value={link.platform}
+              onChange={(e) =>
+                onChange(
+                  links.map((l) =>
+                    l.key === link.key ? { ...l, platform: e.target.value } : l
+                  )
                 )
-              )
-            }
-            placeholder={t("socialPlatformPlaceholder")}
-            maxLength={60}
-            className={platformInputCls}
-          />
-          <input
-            value={link.url}
-            onChange={(e) =>
-              onChange(
-                links.map((l) =>
-                  l.key === link.key ? { ...l, url: e.target.value } : l
+              }
+              maxLength={60}
+              className={platformInputCls}
+            />
+          </label>
+          <label className="flex min-w-0 flex-col gap-1 text-xs text-fg-subtle">
+            {t("socialUrlPlaceholder")}
+            <input
+              value={link.url}
+              onChange={(e) =>
+                onChange(
+                  links.map((l) =>
+                    l.key === link.key ? { ...l, url: e.target.value } : l
+                  )
                 )
-              )
-            }
-            placeholder={t("socialUrlPlaceholder")}
-            maxLength={500}
-            className={inputCls}
-          />
+              }
+              maxLength={500}
+              className={inputCls}
+            />
+          </label>
           <button
             type="button"
             aria-label={t("removeSocialLinkAria")}

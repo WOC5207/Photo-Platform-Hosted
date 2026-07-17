@@ -6,6 +6,7 @@ import { ownerName } from "@/lib/owner";
 import { formatDate } from "@/lib/datetime";
 import CopyButton from "@/components/admin/CopyButton";
 import InviteForm from "@/components/admin/InviteForm";
+import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import { revokeInvite } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export default async function PlatformInvitesPage() {
   const locale = await getLocale();
   await requireAdmin(locale);
   const t = await getTranslations("platform");
+  const tc = await getTranslations("common");
 
   const invites = await prisma.invite.findMany({
     orderBy: { createdAt: "desc" },
@@ -24,12 +26,20 @@ export default async function PlatformInvitesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold">{t("invitesTitle")}</h1>
-        <p className="mt-1 text-sm text-fg-subtle">{t("invitesSubtitle")}</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">{t("invitesTitle")}</h1>
+          <p className="mt-1 text-sm text-fg-subtle">{t("invitesSubtitle")}</p>
+        </div>
+        <InviteForm
+          labels={{
+            note: t("inviteNote"),
+            submit: t("newInvite"),
+            cancel: tc("cancel"),
+            error: tc("error")
+          }}
+        />
       </div>
-
-      <InviteForm labels={{ note: t("inviteNote"), submit: t("newInvite") }} />
 
       {invites.length === 0 ? (
         <p className="py-12 text-center text-fg-subtle">{t("noInvites")}</p>
@@ -68,16 +78,20 @@ export default async function PlatformInvitesPage() {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {!inv.redeemedAt && !expired && <CopyButton text={url} />}
+                  {!inv.redeemedAt && !expired && (
+                    <CopyButton
+                      text={url}
+                      label={t("inviteCopy")}
+                      copiedLabel={t("inviteCopied")}
+                    />
+                  )}
                   {!inv.redeemedAt && (
                     <form action={revokeInvite}>
                       <input type="hidden" name="id" value={inv.id} />
-                      <button
-                        type="submit"
-                        className="rounded-lg border border-border-strong px-2.5 py-1 text-xs text-fg-muted hover:border-fg-faint hover:text-fg"
-                      >
-                        {t("inviteRevoke")}
-                      </button>
+                      <ConfirmSubmit
+                        label={t("inviteRevoke")}
+                        confirmText={t("inviteRevokeConfirm")}
+                      />
                     </form>
                   )}
                 </div>

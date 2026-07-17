@@ -18,19 +18,23 @@ export default async function LotteryPage({
   const { id, locale } = await params;
   const user = await requireUser(locale);
   const t = await getTranslations("adminLottery");
+  const tb = await getTranslations("adminBookings");
+  const ts = await getTranslations("adminSite");
 
   const settings = await getSiteSettings(user.id);
-  if (!settings.lotteryEnabled) redirect(`/${locale}/dashboard/bookings/${id}`);
 
   const bookingEvent = await prisma.bookingEvent.findFirst({
-    where: { id, ownerId: user.id }
+    where: { id, ownerId: user.id },
+    include: { lotteryDraw: { select: { id: true } } }
   });
   if (!bookingEvent) notFound();
-  if (!bookingEvent.lotteryEnabled) redirect(`/${locale}/dashboard/bookings/${id}`);
+  if (!bookingEvent.lotteryEnabled && !bookingEvent.lotteryDraw) {
+    redirect(`/${locale}/dashboard/bookings/${id}`);
+  }
 
   // Guarantees a draw (and its shareable entry-link token) exists as soon as
   // the admin opens this page, even before any prize or entry has been added.
-  await ensureLotteryDraw(id);
+  if (!bookingEvent.lotteryDraw) await ensureLotteryDraw(id);
 
   const event = await prisma.bookingEvent.findFirst({
     where: { id, ownerId: user.id },
@@ -101,8 +105,24 @@ export default async function LotteryPage({
         </Link>
       </div>
 
+      {!settings.lotteryEnabled && (
+        <p
+          role="status"
+          className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-fg-subtle"
+        >
+          {ts("groupLotteryHint")}
+        </p>
+      )}
+
       <div className="rounded-xl border border-border bg-surface p-4">
-        <p className="text-sm font-semibold">{t("shareLink")}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold">{t("shareLink")}</p>
+          {(!settings.lotteryEnabled || !event.lotteryEnabled) && (
+            <span className="rounded-md bg-surface-2 px-2 py-0.5 text-xs text-fg-subtle">
+              {tb("offPublicly")}
+            </span>
+          )}
+        </div>
         <div className="mt-2 flex items-center gap-2">
           <code className="break-all rounded-md bg-page px-3 py-2 text-xs text-success">
             {shareUrl}

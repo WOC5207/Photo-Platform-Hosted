@@ -18,9 +18,9 @@ export interface AdminPersonalLink {
 }
 
 const inputCls =
-  "rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-fg-subtle";
+  "min-h-10 w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
 const btnCls =
-  "rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted transition hover:border-fg-faint hover:text-fg disabled:opacity-40";
+  "min-h-10 rounded-lg border border-border-strong px-3 py-1.5 text-sm font-medium text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40 max-sm:min-h-11";
 
 export default function PersonalLinksManager({
   links
@@ -51,27 +51,34 @@ export default function PersonalLinksManager({
                 className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]"
               >
                 <input type="hidden" name="id" value={link.id} />
-                <input
-                  name="labelEn"
-                  defaultValue={link.labelEn}
-                  placeholder={t("personalLinkLabelEn")}
-                  maxLength={200}
-                  className={inputCls}
-                />
-                <input
-                  name="labelZh"
-                  defaultValue={link.labelZh}
-                  placeholder={t("personalLinkLabelZh")}
-                  maxLength={200}
-                  className={inputCls}
-                />
-                <input
-                  name="url"
-                  defaultValue={link.url}
-                  placeholder={t("personalLinkUrl")}
-                  maxLength={500}
-                  className={inputCls}
-                />
+                <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+                  <span>{t("personalLinkLabelEn")}</span>
+                  <input
+                    name="labelEn"
+                    defaultValue={link.labelEn}
+                    maxLength={200}
+                    className={inputCls}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+                  <span>{t("personalLinkLabelZh")}</span>
+                  <input
+                    name="labelZh"
+                    defaultValue={link.labelZh}
+                    maxLength={200}
+                    className={inputCls}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+                  <span>{t("personalLinkUrl")}</span>
+                  <input
+                    name="url"
+                    type="url"
+                    defaultValue={link.url}
+                    maxLength={500}
+                    className={inputCls}
+                  />
+                </label>
                 <button type="submit" className={`${btnCls} sm:col-span-4 sm:w-fit`}>
                   {tc("save")}
                 </button>
@@ -123,24 +130,18 @@ export default function PersonalLinksManager({
         action={formAction}
         className="grid gap-2 rounded-xl border border-dashed border-border-strong p-3 sm:grid-cols-[1fr_1fr_1fr_auto]"
       >
-        <input
-          name="labelEn"
-          placeholder={t("personalLinkLabelEn")}
-          maxLength={200}
-          className={inputCls}
-        />
-        <input
-          name="labelZh"
-          placeholder={t("personalLinkLabelZh")}
-          maxLength={200}
-          className={inputCls}
-        />
-        <input
-          name="url"
-          placeholder={t("personalLinkUrl")}
-          maxLength={500}
-          className={inputCls}
-        />
+        <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          <span>{t("personalLinkLabelEn")}</span>
+          <input name="labelEn" maxLength={200} className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          <span>{t("personalLinkLabelZh")}</span>
+          <input name="labelZh" maxLength={200} className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          <span>{t("personalLinkUrl")}</span>
+          <input name="url" type="url" maxLength={500} className={inputCls} />
+        </label>
         <button
           type="submit"
           disabled={pending}
@@ -150,7 +151,9 @@ export default function PersonalLinksManager({
         </button>
       </form>
       {state.error && (
-        <p className="text-xs text-danger">{t("personalLinkValidationError")}</p>
+        <p role="alert" className="text-xs text-danger">
+          {t("personalLinkValidationError")}
+        </p>
       )}
     </section>
   );
