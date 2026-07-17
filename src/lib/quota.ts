@@ -1,4 +1,5 @@
 import "server-only";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 
 /**
@@ -20,6 +21,49 @@ import { prisma } from "./db";
  */
 
 /**
+ * Which tier an account is actually on, right now.
+ *
+ * Expiry is resolved here, at read time, rather than by a job that rewrites
+ * rows on a schedule: there is no scheduler in this app, and adding one would
+ * mean the answer could be wrong whenever it failed to run. This expression
+ * cannot be stale — the moment tierExpiresAt passes, every read returns the
+ * default tier, with nothing having had to happen.
+ *
+ * Exported so every caller that needs an allowance uses this one expression.
+ * Assumes the surrounding query aliases "User" as u.
+ */
+export const EFFECTIVE_TIER_ID = Prisma.sql`
+  CASE
+    WHEN u."tierId" IS NOT NULL
+     AND (u."tierExpiresAt" IS NULL OR u."tierExpiresAt" > now())
+    THEN u."tierId"
+    ELSE (SELECT d.id FROM "Tier" d WHERE d."isDefault" LIMIT 1)
+  END`;
+
+/**
+ * The allowance an account actually has: its own override if it has one, else
+ * whatever its effective tier grants.
+ *
+ * This exists as SQL, once, because reserveBytes has to check and claim in a
+ * single statement — the whole point of the counter. Anything computed in
+ * TypeScript and passed in would be a value read at one moment and acted on at
+ * another, which is precisely the race this is built to avoid. Reads use the
+ * same expression so that what an account is shown and what it is held to can
+ * never disagree.
+ *
+ * Falls back to 0 — refuse everything — if no default tier exists. That state
+ * should be unreachable (the migration seeds one, and the actions refuse to
+ * delete or un-default the last), but if it ever happens, failing closed beats
+ * handing out unlimited storage.
+ */
+export const EFFECTIVE_QUOTA = Prisma.sql`
+  COALESCE(
+    u."quotaBytes",
+    (SELECT t."quotaBytes" FROM "Tier" t WHERE t.id = ${EFFECTIVE_TIER_ID}),
+    0
+  )`;
+
+/**
  * Atomically claim `bytes` against the user's remaining allowance.
  *
  * Returns false if it would exceed the quota, having changed nothing. The
@@ -31,11 +75,16 @@ export async function reserveBytes(
   bytes: number
 ): Promise<boolean> {
   if (bytes <= 0) return true;
+  // Still exactly one statement, even though the allowance now comes from a
+  // tier, an override, and an expiry date. Resolving those in TypeScript first
+  // would reopen the read-then-write window this whole design exists to close:
+  // the tier could be reassigned, or the expiry pass, between the read and the
+  // update. In here, the check and the claim see one consistent snapshot.
   const updated = await prisma.$executeRaw`
-    UPDATE "User"
-       SET "usedBytes" = "usedBytes" + ${BigInt(bytes)}
-     WHERE id = ${userId}
-       AND "usedBytes" + ${BigInt(bytes)} <= "quotaBytes"
+    UPDATE "User" AS u
+       SET "usedBytes" = u."usedBytes" + ${BigInt(bytes)}
+     WHERE u.id = ${userId}
+       AND u."usedBytes" + ${BigInt(bytes)} <= ${EFFECTIVE_QUOTA}
   `;
   return updated === 1;
 }
@@ -83,21 +132,61 @@ export async function adjustReservation(
 
 export interface QuotaUsage {
   usedBytes: number;
+  /** The allowance actually in force — override, or effective tier's. */
   quotaBytes: number;
+  /** Name of the tier in force. Already accounts for expiry. */
+  tierName: string;
+  /** True when a per-account override is overriding the tier's allowance. */
+  overridden: boolean;
+  /** When the assignment lapses. Null = it does not. */
+  tierExpiresAt: Date | null;
+  /** True when the assignment has lapsed and the default tier is in force. */
+  expired: boolean;
 }
 
-/** Current usage for display. Converts BigInt at the boundary — see below. */
+/**
+ * Current usage and allowance for display.
+ *
+ * Raw rather than a findUnique so the allowance comes from the SAME expression
+ * the upload check uses. Computing it again in TypeScript would be a second
+ * implementation of one rule, free to drift from the first — and the way you
+ * would find out is a photographer being refused an upload the page told them
+ * would fit.
+ */
 export async function getQuotaUsage(userId: string): Promise<QuotaUsage> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { usedBytes: true, quotaBytes: true }
-  });
+  const rows = await prisma.$queryRaw<
+    {
+      usedBytes: bigint;
+      quotaBytes: bigint;
+      tierName: string | null;
+      overridden: boolean;
+      tierExpiresAt: Date | null;
+      expired: boolean;
+    }[]
+  >`
+    SELECT
+      u."usedBytes",
+      ${EFFECTIVE_QUOTA} AS "quotaBytes",
+      (SELECT t."name" FROM "Tier" t WHERE t.id = ${EFFECTIVE_TIER_ID}) AS "tierName",
+      (u."quotaBytes" IS NOT NULL) AS "overridden",
+      u."tierExpiresAt",
+      (u."tierId" IS NOT NULL
+        AND u."tierExpiresAt" IS NOT NULL
+        AND u."tierExpiresAt" <= now()) AS "expired"
+    FROM "User" AS u
+    WHERE u.id = ${userId}
+  `;
+  const row = rows[0];
   return {
     // BigInt cannot cross into a client component or JSON.stringify, so it is
     // converted here rather than at each call site. Number is exact to 2^53
     // bytes (9 PB), which is not a limit anyone will meet on a NAS.
-    usedBytes: Number(user?.usedBytes ?? 0),
-    quotaBytes: Number(user?.quotaBytes ?? 0)
+    usedBytes: Number(row?.usedBytes ?? 0),
+    quotaBytes: Number(row?.quotaBytes ?? 0),
+    tierName: row?.tierName ?? "",
+    overridden: row?.overridden ?? false,
+    tierExpiresAt: row?.tierExpiresAt ?? null,
+    expired: row?.expired ?? false
   };
 }
 

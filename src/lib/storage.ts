@@ -1,6 +1,11 @@
 import "server-only";
 import { prisma } from "./db";
-import { getQuotaUsage, type QuotaUsage } from "./quota";
+import {
+  EFFECTIVE_QUOTA,
+  EFFECTIVE_TIER_ID,
+  getQuotaUsage,
+  type QuotaUsage
+} from "./quota";
 
 // On-disk size of the whole database, including indexes and bloat. Ask
 // Postgres rather than measuring files: the data lives in the db container's
@@ -88,8 +93,18 @@ export interface PlatformAccountStorage {
   username: string;
   displayName: string;
   usedBytes: number;
+  /** The allowance in force: the override if set, else the effective tier's. */
   quotaBytes: number;
   photoCount: number;
+  /** The tier actually in force, expiry already applied. */
+  tierName: string;
+  /** What is assigned, which is not the same as what is in force once expired. */
+  tierId: string | null;
+  tierExpiresAt: Date | null;
+  /** Assigned tier has lapsed; the default is in force. */
+  expired: boolean;
+  /** A per-account override is beating the tier. */
+  overridden: boolean;
 }
 
 export interface PlatformStorage {
@@ -98,24 +113,58 @@ export interface PlatformStorage {
   databaseBytes: number;
 }
 
-/** Every account's usage, for the platform admin. */
+/**
+ * Every account's usage, for the platform admin.
+ *
+ * Raw rather than findMany because an account's allowance is no longer a column
+ * — it is an override, a tier and an expiry date resolved together. Reusing the
+ * fragments from quota.ts means this page shows exactly the number the upload
+ * check will enforce; reading User.quotaBytes directly would now show the
+ * override alone, which is NULL for most accounts and would render as 0.
+ */
 export async function getPlatformStorage(): Promise<PlatformStorage> {
-  const [users, databaseBytes] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        usedBytes: true,
-        quotaBytes: true,
-        events: { select: { _count: { select: { photos: true } } } }
-      }
-    }),
+  const [rows, databaseBytes] = await Promise.all([
+    prisma.$queryRaw<
+      {
+        id: string;
+        username: string;
+        displayName: string;
+        usedBytes: bigint;
+        quotaBytes: bigint;
+        photoCount: number;
+        tierName: string | null;
+        tierId: string | null;
+        tierExpiresAt: Date | null;
+        expired: boolean;
+        overridden: boolean;
+      }[]
+    >`
+      SELECT
+        u.id,
+        u.username,
+        u."displayName",
+        u."usedBytes",
+        ${EFFECTIVE_QUOTA} AS "quotaBytes",
+        (SELECT t."name" FROM "Tier" t WHERE t.id = ${EFFECTIVE_TIER_ID}) AS "tierName",
+        u."tierId",
+        u."tierExpiresAt",
+        (u."tierId" IS NOT NULL
+          AND u."tierExpiresAt" IS NOT NULL
+          AND u."tierExpiresAt" <= now()) AS "expired",
+        (u."quotaBytes" IS NOT NULL) AS "overridden",
+        (
+          SELECT COUNT(*)::int
+            FROM "Photo" p
+            JOIN "Event" e ON e.id = p."eventId"
+           WHERE e."ownerId" = u.id
+        ) AS "photoCount"
+      FROM "User" AS u
+      ORDER BY u."createdAt" ASC
+    `,
     databaseSize()
   ]);
 
-  const accounts: PlatformAccountStorage[] = users
+  const accounts: PlatformAccountStorage[] = rows
     .map((u) => ({
       id: u.id,
       username: u.username,
@@ -123,7 +172,12 @@ export async function getPlatformStorage(): Promise<PlatformStorage> {
       // BigInt cannot cross into a client component or JSON.stringify.
       usedBytes: Number(u.usedBytes),
       quotaBytes: Number(u.quotaBytes),
-      photoCount: u.events.reduce((n, e) => n + e._count.photos, 0)
+      photoCount: u.photoCount,
+      tierName: u.tierName ?? "",
+      tierId: u.tierId,
+      tierExpiresAt: u.tierExpiresAt,
+      expired: u.expired,
+      overridden: u.overridden
     }))
     .sort((a, b) => b.usedBytes - a.usedBytes);
 
