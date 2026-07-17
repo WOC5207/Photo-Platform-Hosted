@@ -45,7 +45,10 @@ export async function GET(req: NextRequest) {
         { creditName: { contains: q, mode: "insensitive" } },
         { subject: { contains: q, mode: "insensitive" } }
       ],
-      photo: { event: { ownerId: owner.id, published: true } }
+      photo: {
+        pendingBatchId: null,
+        event: { ownerId: owner.id, published: true }
+      }
     },
     take: MAX_RESULTS,
     orderBy: { photo: { createdAt: "desc" } },

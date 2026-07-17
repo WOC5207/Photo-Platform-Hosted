@@ -13,7 +13,9 @@ import {
 } from "@/lib/settings";
 import { Link } from "@/i18n/navigation";
 import EventForm from "@/components/admin/EventForm";
-import PhotoUploader from "@/components/admin/PhotoUploader";
+import PhotoUploader, {
+  type PendingPhotoValue
+} from "@/components/admin/PhotoUploader";
 import PhotoManager, { type AdminPhoto } from "@/components/admin/PhotoManager";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import { deleteEvent, updateEvent } from "../actions";
@@ -53,26 +55,46 @@ export default async function EditEventPage({
     socialLinks: c.socialLinks.map((s) => ({ platform: s.platform, url: s.url }))
   }));
 
-  const photos: AdminPhoto[] = event.photos.map((p) => ({
-    id: p.id,
-    thumbUrl: photoUrls(event.id, p.id).thumb,
-    credits: p.credits.map((c) => ({
-      creditName: c.creditName,
-      subject: c.subject,
-      socialLinks: c.socialLinks.map((s) => ({ platform: s.platform, url: s.url }))
-    })),
-    isCover: event.coverPhotoId === p.id,
-    homeHighlight: p.homeHighlight,
-    exif: {
-      focalLengthMm: p.exifFocalLengthMm?.toString() ?? "",
-      aperture: p.exifAperture?.toString() ?? "",
-      exposureTime: formatShutterSpeedInput(p.exifExposureTime),
-      iso: p.exifIso?.toString() ?? "",
-      takenAt: p.exifTakenAt ? p.exifTakenAt.toISOString().slice(0, 10) : "",
-      cameraModel: p.exifCameraModel ?? "",
-      lensModel: p.exifLensModel ?? ""
-    }
-  }));
+  const pendingPhotos: PendingPhotoValue[] = event.photos
+    .filter((photo) => photo.pendingBatchId !== null)
+    .map((photo) => ({
+      id: photo.id,
+      name: photo.originalName,
+      state:
+        photo.uploadState === "processing"
+          ? "processing"
+          : photo.uploadState === "deleting"
+            ? "deleting"
+            : "pending"
+    }));
+
+  const photos: AdminPhoto[] = event.photos
+    .filter((photo) => photo.pendingBatchId === null)
+    .map((p) => ({
+      id: p.id,
+      thumbUrl: photoUrls(event.id, p.id).thumb,
+      credits: p.credits.map((c) => ({
+        creditName: c.creditName,
+        subject: c.subject,
+        socialLinks: c.socialLinks.map((s) => ({
+          platform: s.platform,
+          url: s.url
+        }))
+      })),
+      isCover: event.coverPhotoId === p.id,
+      homeHighlight: p.homeHighlight,
+      exif: {
+        focalLengthMm: p.exifFocalLengthMm?.toString() ?? "",
+        aperture: p.exifAperture?.toString() ?? "",
+        exposureTime: formatShutterSpeedInput(p.exifExposureTime),
+        iso: p.exifIso?.toString() ?? "",
+        takenAt: p.exifTakenAt
+          ? p.exifTakenAt.toISOString().slice(0, 10)
+          : "",
+        cameraModel: p.exifCameraModel ?? "",
+        lensModel: p.exifLensModel ?? ""
+      }
+    }));
 
   return (
     <div className="flex flex-col gap-8">
@@ -121,6 +143,7 @@ export default async function EditEventPage({
         <h2 className="text-lg font-semibold">{t("photos")}</h2>
         <PhotoUploader
           eventId={event.id}
+          initialPendingPhotos={pendingPhotos}
           creditProfiles={creditProfiles}
           creditTerm={creditTerm}
           subjectTerm={subjectTerm}

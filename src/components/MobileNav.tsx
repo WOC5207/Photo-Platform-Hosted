@@ -9,7 +9,7 @@ import ContactUsButton, { type ContactUsLabels } from "@/components/ContactUsBut
 export interface MobileNavLabels {
   gallery: string;
   booking: string;
-  admin: string;
+  account: string;
   menu: string;
   toggleTheme: string;
   contact: string;
@@ -17,6 +17,7 @@ export interface MobileNavLabels {
 
 export default function MobileNav({
   basePath,
+  accountHref,
   labels,
   showBooking = true,
   showContact = false,
@@ -24,6 +25,8 @@ export default function MobileNav({
 }: {
   /** Root of the owner's site, e.g. "/u/alice" — locale is added by Link. */
   basePath: string;
+  /** Login for visitors; the signed-in photographer's dashboard otherwise. */
+  accountHref: "/login" | "/dashboard";
   labels: MobileNavLabels;
   showBooking?: boolean;
   showContact?: boolean;
@@ -91,8 +94,8 @@ export default function MobileNav({
               className={`${linkClass} text-left`}
             />
           )}
-          <Link href="/" onClick={() => setOpen(false)} className={linkClass}>
-            {labels.admin}
+          <Link href={accountHref} onClick={() => setOpen(false)} className={linkClass}>
+            {labels.account}
           </Link>
           <div className="mt-1 flex items-center justify-between border-t border-fg/10 px-3 pt-2">
             <LanguageSwitcher />

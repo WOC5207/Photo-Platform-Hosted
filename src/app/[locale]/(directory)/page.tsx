@@ -28,7 +28,12 @@ export default async function DirectoryPage() {
       // Only accounts with something to show. A photographer who has not
       // published yet gets a working site at their URL but no directory card,
       // rather than a card leading to an empty page.
-      events: { some: { published: true } }
+      events: {
+        some: {
+          published: true,
+          photos: { some: { pendingBatchId: null } }
+        }
+      }
     },
     orderBy: { createdAt: "asc" },
     select: {
@@ -40,9 +45,19 @@ export default async function DirectoryPage() {
         orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
         select: {
           id: true,
-          coverPhotoId: true,
-          _count: { select: { photos: true } },
-          photos: { orderBy: { sortOrder: "asc" }, take: 1, select: { id: true } }
+          coverPhoto: {
+            where: { pendingBatchId: null },
+            select: { id: true }
+          },
+          _count: {
+            select: { photos: { where: { pendingBatchId: null } } }
+          },
+          photos: {
+            where: { pendingBatchId: null },
+            orderBy: { sortOrder: "asc" },
+            take: 1,
+            select: { id: true }
+          }
         }
       }
     }
@@ -53,10 +68,10 @@ export default async function DirectoryPage() {
       const settings = await getSiteSettings(o.id);
       // First published album with a picture, for the card thumbnail.
       const withPhoto = o.events.find(
-        (e) => e.coverPhotoId ?? e.photos[0]?.id
+        (e) => e.coverPhoto?.id ?? e.photos[0]?.id
       );
       const photoId = withPhoto
-        ? (withPhoto.coverPhotoId ?? withPhoto.photos[0]?.id)
+        ? (withPhoto.coverPhoto?.id ?? withPhoto.photos[0]?.id)
         : null;
       return {
         username: o.username,

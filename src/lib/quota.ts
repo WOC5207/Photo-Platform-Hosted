@@ -41,6 +41,35 @@ export const EFFECTIVE_TIER_ID = Prisma.sql`
   END`;
 
 /**
+ * Number of accounts whose effective tier is each tier right now.
+ *
+ * This deliberately does not use Prisma's Tier.users relation count. A NULL
+ * User.tierId means "follow the default tier", while an expired assignment
+ * also falls back to the default without rewriting the row. Counting the
+ * physical foreign key would therefore omit every inherited-default account
+ * and keep counting expired assignments against their old tier.
+ */
+export async function getEffectiveTierAccountCounts(): Promise<Map<string, number>> {
+  const rows = await prisma.$queryRaw<
+    { tierId: string | null; accountCount: number }[]
+  >`
+    SELECT effective."tierId", COUNT(*)::int AS "accountCount"
+      FROM (
+        SELECT ${EFFECTIVE_TIER_ID} AS "tierId"
+          FROM "User" AS u
+      ) AS effective
+     WHERE effective."tierId" IS NOT NULL
+     GROUP BY effective."tierId"
+  `;
+
+  return new Map(
+    rows
+      .filter((row): row is { tierId: string; accountCount: number } => Boolean(row.tierId))
+      .map((row) => [row.tierId, row.accountCount])
+  );
+}
+
+/**
  * The allowance an account actually has: its own override if it has one, else
  * whatever its effective tier grants.
  *
@@ -200,20 +229,27 @@ export async function getQuotaUsage(userId: string): Promise<QuotaUsage> {
  * any time.
  */
 export async function reconcileQuota(userId: string): Promise<QuotaUsage> {
-  const [photos, siteImages] = await Promise.all([
-    prisma.photo.aggregate({
-      where: { event: { ownerId: userId } },
-      _sum: { bytes: true }
-    }),
-    prisma.siteImage.aggregate({
-      where: { ownerId: userId },
-      _sum: { bytes: true }
-    })
-  ]);
-  const total = (photos._sum.bytes ?? 0) + (siteImages._sum.bytes ?? 0);
-  await prisma.user.update({
-    where: { id: userId },
-    data: { usedBytes: BigInt(total) }
+  await prisma.$transaction(async (tx) => {
+    // Every pending-photo reservation/finalize/discard transition locks this
+    // same row before changing the Photo record that the aggregate sees. Taking
+    // it first prevents reconcile from observing one side of a transition and
+    // then overwriting the counter after the other side commits.
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    const [photos, siteImages] = await Promise.all([
+      tx.photo.aggregate({
+        where: { event: { ownerId: userId } },
+        _sum: { bytes: true }
+      }),
+      tx.siteImage.aggregate({
+        where: { ownerId: userId },
+        _sum: { bytes: true }
+      })
+    ]);
+    const total = (photos._sum.bytes ?? 0) + (siteImages._sum.bytes ?? 0);
+    await tx.user.update({
+      where: { id: userId },
+      data: { usedBytes: BigInt(total) }
+    });
   });
   return getQuotaUsage(userId);
 }

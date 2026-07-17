@@ -7,6 +7,7 @@ import MobileNav from "@/components/MobileNav";
 import ThemeToggle from "@/components/ThemeToggle";
 import ScrollBlurBackground from "@/components/ScrollBlurBackground";
 import ContactUsButton from "@/components/ContactUsButton";
+import { getCurrentUser } from "@/lib/auth";
 import {
   getSiteSettings,
   resolveContactQrToken,
@@ -36,8 +37,15 @@ export default async function SiteChrome({
 }) {
   const t = await getTranslations();
   const locale = await getLocale();
-  const settings = await getSiteSettings(owner.id);
+  const [settings, currentUser] = await Promise.all([
+    getSiteSettings(owner.id),
+    getCurrentUser()
+  ]);
   const base = ownerBasePath(owner.username);
+  const accountHref = currentUser ? "/dashboard" : "/login";
+  const accountLabel = currentUser
+    ? t("nav.profileManagement")
+    : t("nav.photographerLogin");
 
   const siteTitle = resolveSiteTitle(settings, locale, t("common.siteName"));
   const bgImage = siteImageUrl(settings.backgroundImage);
@@ -101,10 +109,10 @@ export default async function SiteChrome({
               />
             )}
             <Link
-              href="/"
+              href={accountHref}
               className="rounded-lg border border-border-strong px-3 py-1.5 text-fg-muted transition hover:border-fg-faint hover:text-fg"
             >
-              {t("nav.directory")}
+              {accountLabel}
             </Link>
           </nav>
           <MobileNav
@@ -112,11 +120,12 @@ export default async function SiteChrome({
             labels={{
               gallery: t("nav.gallery"),
               booking: t("nav.booking"),
-              admin: t("nav.directory"),
+              account: accountLabel,
               menu: t("nav.menu"),
               toggleTheme: t("common.toggleTheme"),
               contact: t("nav.contact")
             }}
+            accountHref={accountHref}
             showBooking={settings.bookingEnabled}
             showContact={!!showContact}
             contact={

@@ -16,13 +16,14 @@ export type RegisterState = {
     | "usernameTaken"
     | "usernameReserved"
     | "usernameInvalid"
+    | "usernameUppercase"
     | "mismatch"
     | "badInvite"
     | "rateLimited";
 };
 
 const registerSchema = z.object({
-  username: z.string().trim().toLowerCase().min(1).max(40),
+  username: z.string().trim().min(1).max(40),
   displayName: z.string().trim().max(80),
   password: z.string().min(8).max(500),
   confirmPassword: z.string().min(1).max(500)
@@ -53,6 +54,7 @@ export async function register(
   const d = parsed.data;
   if (d.password !== d.confirmPassword) return { error: "mismatch" };
 
+  if (/[A-Z]/.test(d.username)) return { error: "usernameUppercase" };
   const nameProblem = usernameError(d.username);
   if (nameProblem === "invalid") return { error: "usernameInvalid" };
   if (nameProblem === "reserved") return { error: "usernameReserved" };

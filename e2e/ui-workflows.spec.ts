@@ -214,6 +214,40 @@ test.describe.serial("management workflows", () => {
     await expect(page).toHaveURL(/\/en\/dashboard\/events$/);
   });
 
+  test("photo selections upload immediately and accumulate in one pending queue", async ({ page }) => {
+    const slug = `e2e-pending-photos-${Date.now()}`;
+    await page.goto("/en/dashboard/events/new");
+    await page.getByLabel("Title (English)").fill("E2E pending photo queue");
+    await page.getByLabel("URL slug").fill(slug);
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await page.waitForURL(/\/dashboard\/events\/(?!new$)[^/]+$/);
+
+    const picker = page.locator('input[type="file"][accept*="image/jpeg"]');
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64"
+    );
+
+    await picker.setInputFiles({ name: "first.png", mimeType: "image/png", buffer: png });
+    await expect(page.getByText("1 photo queued")).toBeVisible();
+    await expect(page.getByText("Ready to create")).toHaveCount(1);
+
+    // Opening the native picker again replaces its own FileList. The app queue
+    // must retain the first server-backed pending photo and append this one.
+    await picker.setInputFiles({ name: "second.png", mimeType: "image/png", buffer: png });
+    await expect(page.getByText("2 photos queued")).toBeVisible();
+    await expect(page.getByText("Ready to create")).toHaveCount(2);
+
+    await page.locator('input[list="known-credits"]').fill("E2E credit");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "2 photos created." })).toBeVisible();
+    await expect(page.getByText("No photos in the pending queue.")).toBeVisible();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Delete event" }).click();
+    await expect(page).toHaveURL(/\/en\/dashboard\/events$/);
+  });
+
   test("booking cannot open without readiness requirements", async ({ page }) => {
     const title = `E2E booking ${Date.now()}`;
     const date = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);

@@ -23,9 +23,15 @@ export default async function GalleryPage({
     where: { ownerId: owner.id, published: true },
     orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
     include: {
-      coverPhoto: true,
-      photos: { orderBy: { sortOrder: "asc" }, take: 1 },
-      _count: { select: { photos: true } }
+      coverPhoto: { where: { pendingBatchId: null } },
+      photos: {
+        where: { pendingBatchId: null },
+        orderBy: { sortOrder: "asc" },
+        take: 1
+      },
+      _count: {
+        select: { photos: { where: { pendingBatchId: null } } }
+      }
     }
   });
 

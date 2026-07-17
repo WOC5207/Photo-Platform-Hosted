@@ -108,8 +108,11 @@ export default async function ResourceMonitorPage() {
                     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                       <span className="font-medium">{title}</span>
                       <span className="text-sm text-fg-muted">
-                      {formatBytes(e.bytes)} · {t("photoCount", { count: e.photoCount })} ·{" "}
-                      {t("shareOfPhotos", { pct: shareOfPhotos.toFixed(1) })}
+                        {formatBytes(e.bytes)} · {t("photoCount", { count: e.photoCount })}
+                        {e.pendingPhotoCount > 0
+                          ? ` · ${t("pendingPhotoCount", { count: e.pendingPhotoCount })}`
+                          : ""}{" "}
+                        · {t("shareOfPhotos", { pct: shareOfPhotos.toFixed(1) })}
                       </span>
                     </div>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-fg/10">

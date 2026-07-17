@@ -18,12 +18,14 @@ import { randomUUID } from "crypto";
 import { PrismaClient, type User } from "@prisma/client";
 import {
   filterOwnedPhotoIds,
+  filterOwnedPhotoIdsForDeletion,
   findOwnedBooking,
   findOwnedBookingEvent,
   findOwnedDraw,
   findOwnedEntry,
   findOwnedEvent,
   findOwnedPhoto,
+  findOwnedPhotoForDeletion,
   findOwnedPrize,
   findOwnedSlot
 } from "../src/lib/ownership";
@@ -163,6 +165,17 @@ async function seed(owner: User) {
       height: 1
     }
   });
+  const pendingPhoto = await prisma.photo.create({
+    data: {
+      eventId: event.id,
+      filename: randomUUID().replace(/-/g, ""),
+      originalName: "pending.jpg",
+      width: 1,
+      height: 1,
+      pendingBatchId: randomUUID(),
+      uploadState: "pending"
+    }
+  });
   const bookingEvent = await prisma.bookingEvent.create({
     data: {
       ownerId: owner.id,
@@ -203,7 +216,17 @@ async function seed(owner: User) {
   await prisma.creditProfile.create({
     data: { ownerId: owner.id, creditName: "Jane" }
   });
-  return { event, photo, bookingEvent, slot, booking, draw, prize, entry };
+  return {
+    event,
+    photo,
+    pendingPhoto,
+    bookingEvent,
+    slot,
+    booking,
+    draw,
+    prize,
+    entry
+  };
 }
 
 async function main() {
@@ -254,6 +277,34 @@ async function main() {
     "filterOwnedPhotoIds: keeps the owner's own photo ids",
     alicePhotoIds.length === 1,
     `kept ${alicePhotoIds.length} of 1`
+  );
+
+  const pendingAsNormal = await findOwnedPhoto(a.pendingPhoto.id, alice);
+  const pendingForDeletion = await findOwnedPhotoForDeletion(
+    a.pendingPhoto.id,
+    alice
+  );
+  const foreignPendingForDeletion = await findOwnedPhotoForDeletion(
+    a.pendingPhoto.id,
+    bob
+  );
+  report(
+    "pending photos: hidden from normal actions but available to their owner for discard",
+    pendingAsNormal === null &&
+      pendingForDeletion !== null &&
+      foreignPendingForDeletion === null,
+    `normal=${pendingAsNormal ? "VISIBLE" : "hidden"}, owner discard=${pendingForDeletion ? "allowed" : "refused"}, foreign discard=${foreignPendingForDeletion ? "ALLOWED" : "refused"}`
+  );
+
+  const normalPendingIds = await filterOwnedPhotoIds([a.pendingPhoto.id], alice);
+  const discardPendingIds = await filterOwnedPhotoIdsForDeletion(
+    [a.pendingPhoto.id],
+    alice
+  );
+  report(
+    "pending photos: bulk normal actions drop them while deletion keeps owned ids",
+    normalPendingIds.length === 0 && discardPendingIds.length === 1,
+    `normal kept ${normalPendingIds.length}, deletion kept ${discardPendingIds.length}`
   );
 
   // Slugs are unique per owner: Bob must get the same slug, not "shared-slug-2".

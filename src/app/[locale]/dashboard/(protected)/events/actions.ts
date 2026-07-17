@@ -8,8 +8,10 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import {
   filterOwnedPhotoIds,
+  filterOwnedPhotoIdsForDeletion,
   findOwnedEvent,
-  findOwnedPhoto
+  findOwnedPhoto,
+  findOwnedPhotoForDeletion
 } from "@/lib/ownership";
 import { deleteEventFiles, deletePhotoFiles } from "@/lib/images";
 import { releaseBytes } from "@/lib/quota";
@@ -161,19 +163,54 @@ export async function deleteEvent(formData: FormData): Promise<void> {
   const id = formData.get("id");
   if (typeof id !== "string") return;
 
-  const event = await findOwnedEvent(id, user);
-  if (!event) return;
+  const deleted = await prisma.$transaction(
+    async (tx) => {
+      // Pending uploads take this event lock before reserving quota and
+      // inserting their placeholder. Taking the same lock makes the event
+      // either wholly present (including every reservation) or wholly gone;
+      // an upload cannot slip between the byte total and the cascade.
+      const event = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id
+          FROM "Event"
+         WHERE id = ${id}
+           AND "ownerId" = ${user.id}
+         FOR UPDATE
+      `;
+      if (event.length !== 1) return false;
 
-  // Total the photos BEFORE deleting the event — the cascade takes their rows
-  // with it, and with them any way to know how much to hand back.
-  const total = await prisma.photo.aggregate({
-    where: { eventId: event.id },
-    _sum: { bytes: true }
-  });
+      // Lock in the same Event -> User order as upload reservation. This also
+      // waits for an in-flight image-processing adjustment before summing, and
+      // prevents another account upload/reconcile from changing usedBytes
+      // until this event's rows and counter deduction commit together.
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+      const total = await tx.photo.aggregate({
+        // Deliberately includes ready, processing, pending and deleting rows:
+        // all of them have already reserved the bytes stored on the row.
+        where: { eventId: id },
+        _sum: { bytes: true }
+      });
 
-  await prisma.event.delete({ where: { id: event.id } });
-  await deleteEventFiles(user.id, event.id);
-  await releaseBytes(user.id, total._sum.bytes ?? 0);
+      // Files first, while the event lock prevents new reservations. Database
+      // rows retain the cleanup path if filesystem removal fails; the database
+      // cascade and quota adjustment below are then one atomic commit.
+      await deleteEventFiles(user.id, id);
+
+      const freed = total._sum.bytes ?? 0;
+      if (freed > 0) {
+        await tx.$executeRaw`
+          UPDATE "User"
+             SET "usedBytes" = GREATEST(0, "usedBytes" - ${BigInt(freed)})
+           WHERE id = ${user.id}
+        `;
+      }
+      await tx.event.delete({ where: { id } });
+      return true;
+    },
+    // Removing a large event directory can take longer than Prisma's default
+    // interactive-transaction timeout. Keep the lock bounded but practical.
+    { maxWait: 10_000, timeout: 60_000 }
+  );
+  if (!deleted) return;
 
   revalidatePath("/", "layout");
   redirect(`/${locale}/dashboard/events`);
@@ -274,7 +311,7 @@ export async function deletePhoto(formData: FormData): Promise<void> {
   const photoId = formData.get("photoId");
   if (typeof photoId !== "string") return;
 
-  const photo = await findOwnedPhoto(photoId, user);
+  const photo = await findOwnedPhotoForDeletion(photoId, user);
   if (!photo) return;
 
   await prisma.photo.delete({ where: { id: photo.id } });
@@ -293,7 +330,10 @@ export async function bulkDeletePhotos(formData: FormData): Promise<void> {
   // deleting anything. The unscoped version of this deleted rows and their
   // files straight from the posted ids, so one crafted request wiped another
   // photographer's album off the disk.
-  const photoIds = await filterOwnedPhotoIds(bulkPhotoIds(formData), user);
+  const photoIds = await filterOwnedPhotoIdsForDeletion(
+    bulkPhotoIds(formData),
+    user
+  );
   if (photoIds.length === 0) return;
 
   const photos = await prisma.photo.findMany({ where: { id: { in: photoIds } } });
@@ -397,7 +437,7 @@ export async function movePhoto(formData: FormData): Promise<void> {
 
   await prisma.$transaction(async (tx) => {
     const photos = await tx.photo.findMany({
-      where: { eventId: photo.eventId },
+      where: { eventId: photo.eventId, pendingBatchId: null },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       select: { id: true }
     });

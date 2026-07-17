@@ -41,7 +41,10 @@ there is no privileged site.
   per-language captions, cover selection, publish/unpublish. Thumbnails are
   pre-generated at upload time with `sharp`; **all EXIF (including GPS) is
   stripped** from every displayed image. Optionally scrub the stored originals
-  too. Credited people's social links are remembered across photos, per account.
+  too. Selecting files starts a private pending upload immediately, so the file
+  picker can be opened repeatedly to build one batch; **Create** then applies
+  the shared credits to every ready photo. Credited people's social links are
+  remembered across photos, per account.
 - **Booking system**: bookable events with configurable time slots (length,
   count, capacity). Each gets an unguessable shareable link — no visitor account
   needed. Double-booking is prevented with row-locked capacity checks. Visitors
@@ -273,8 +276,8 @@ data. **Never set `E2E_ALLOW_MUTATIONS=1` against a production database.**
 | `npm run test:concurrency` | Booking capacity and lottery prize stock hold under simultaneous requests |
 | `npm run test:isolation` | The ownership helpers refuse another account's ids; invites redeem once; usernames are reserved |
 | `npm run test:quota` | The storage cap holds under concurrent uploads; reconcile recovers drift |
-| `npm run test:http` | Cross-tenant pen pass over real HTTP (needs `npm run dev` running) |
-| `npm run test:e2e` | Role-aware navigation, responsive layouts, settings and booking workflows, English/Chinese themes, and axe accessibility checks |
+| `npm run test:http` | Cross-tenant pen pass plus pending-photo privacy over real HTTP (needs `npm run dev` running) |
+| `npm run test:e2e` | Role-aware navigation, responsive layouts, settings, pending photo uploads and booking workflows, English/Chinese themes, and axe accessibility checks |
 | `npm run test:e2e:ui` | The same Playwright suite in its interactive runner |
 
 > These suites are worth their weight only because each has been checked to
@@ -330,6 +333,9 @@ vars, and rebuild. Nothing else has to change.
 ## Notes & limits
 
 - Uploads: JPEG, PNG, WebP (HEIC is not supported — export/convert first).
+- Pending uploads are fully processed, private, recoverable after a page reload
+  and counted against the photographer's storage. They become gallery photos
+  only after **Create**, or can be removed from the pending queue to free space.
 - Unpublished albums are fully hidden (404) from everyone but their owner, and
   their images are blocked too. Original files are only ever served to the
   photo's owner.

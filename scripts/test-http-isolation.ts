@@ -86,10 +86,13 @@ async function main() {
   });
 
   // Upload through the real route so the files genuinely exist on disk.
+  const uploadId = randomUUID().replace(/-/g, "");
+  const batchId = randomUUID();
   const upload = new FormData();
   upload.append("eventId", aliceEvent.id);
+  upload.append("batchId", batchId);
+  upload.append("uploadId", uploadId);
   upload.append("file", new Blob([await jpeg()], { type: "image/jpeg" }), "a.jpg");
-  upload.append("credits", JSON.stringify([{ creditName: "Jane", subject: "", socialLinks: [] }]));
   const uploadRes = await fetch(`${BASE}/api/admin/photos`, {
     method: "POST",
     headers: { cookie: aliceCookie },
@@ -97,19 +100,258 @@ async function main() {
   });
   const uploaded = await uploadRes.json();
   report(
-    "setup: Alice can upload to her own album",
-    uploadRes.status === 200 && !!uploaded.id,
+    "setup: Alice can upload a pending photo to her own album",
+    uploadRes.status === 201 && !!uploaded.id,
     `HTTP ${uploadRes.status} ${JSON.stringify(uploaded)}` +
-      (uploadRes.status === 200 ? "" : " — the suite below proves nothing if this fails")
+      (uploadRes.status === 201 ? "" : " — the suite below proves nothing if this fails")
   );
   const photoId: string = uploaded.id;
+
+  const retryUpload = new FormData();
+  retryUpload.append("eventId", aliceEvent.id);
+  retryUpload.append("batchId", batchId);
+  retryUpload.append("uploadId", uploadId);
+  retryUpload.append(
+    "file",
+    new Blob([await jpeg()], { type: "image/jpeg" }),
+    "a.jpg"
+  );
+  const retryUploadRes = await fetch(`${BASE}/api/admin/photos`, {
+    method: "POST",
+    headers: { cookie: aliceCookie },
+    body: retryUpload
+  });
+  const pendingRowsAfterRetry = await prisma.photo.count({
+    where: { id: uploadId }
+  });
+  report(
+    "pending queue: retrying one upload id is idempotent",
+    retryUploadRes.status === 200 && pendingRowsAfterRetry === 1,
+    `HTTP ${retryUploadRes.status}, ${pendingRowsAfterRetry} row(s) (want 1)`
+  );
+
+  await prisma.event.update({
+    where: { id: aliceEvent.id },
+    data: { published: true }
+  });
+  await prisma.user.update({ where: { id: bob.id }, data: { role: "admin" } });
+  const pendingVariants = ["thumb.webp", "med.webp", "full.webp", "orig.jpg"];
+  const pendingStatuses: string[] = [];
+  for (const variant of pendingVariants) {
+    const url = `${BASE}/api/images/${aliceEvent.id}/${photoId}-${variant}`;
+    const [anon, owner, admin] = await Promise.all([
+      fetch(url),
+      fetch(url, { headers: { cookie: aliceCookie } }),
+      fetch(url, { headers: { cookie: bobCookie } })
+    ]);
+    pendingStatuses.push(
+      `${variant}: anon=${anon.status} owner=${owner.status} admin=${admin.status}`
+    );
+  }
+  report(
+    "pending queue: every image variant stays private before Create",
+    pendingStatuses.every((status) =>
+      status.includes("anon=404 owner=404 admin=404")
+    ),
+    pendingStatuses.join(", ")
+  );
+
+  const publicPendingAlbum = await fetch(
+    `${BASE}/en/u/${alice.username}/gallery/${aliceEvent.slug}`
+  );
+  const publicPendingHtml = await publicPendingAlbum.text();
+  report(
+    "pending queue: a published album does not render pending photos",
+    publicPendingAlbum.status === 200 && !publicPendingHtml.includes(photoId),
+    `HTTP ${publicPendingAlbum.status}, photo id ${publicPendingHtml.includes(photoId) ? "LEAKED" : "absent"}`
+  );
+
+  await prisma.user.update({ where: { id: bob.id }, data: { role: "user" } });
+  await prisma.event.update({
+    where: { id: aliceEvent.id },
+    data: { published: false }
+  });
+
+  const finalizeBody = JSON.stringify({
+    eventId: aliceEvent.id,
+    photoIds: [photoId],
+    credits: JSON.stringify([
+      { creditName: "Jane", subject: "", socialLinks: [] }
+    ])
+  });
+  const foreignFinalize = await fetch(`${BASE}/api/admin/photos`, {
+    method: "PATCH",
+    headers: { cookie: bobCookie, "content-type": "application/json" },
+    body: finalizeBody
+  });
+  report(
+    "pending queue: another account cannot finalize Alice's queue",
+    foreignFinalize.status === 404,
+    `HTTP ${foreignFinalize.status} (want 404)`
+  );
+
+  const foreignDiscard = await fetch(`${BASE}/api/admin/photos`, {
+    method: "DELETE",
+    headers: { cookie: bobCookie, "content-type": "application/json" },
+    body: JSON.stringify({ photoId })
+  });
+  const rowAfterForeignDiscard = await prisma.photo.count({
+    where: { id: photoId }
+  });
+  report(
+    "pending queue: another account cannot discard Alice's upload",
+    foreignDiscard.status === 200 && rowAfterForeignDiscard === 1,
+    `HTTP ${foreignDiscard.status}, row count=${rowAfterForeignDiscard} (want 1)`
+  );
+
+  const finalizeRes = await fetch(`${BASE}/api/admin/photos`, {
+    method: "PATCH",
+    headers: { cookie: aliceCookie, "content-type": "application/json" },
+    body: finalizeBody
+  });
+  const finalized = await prisma.photo.findUnique({ where: { id: photoId } });
+  report(
+    "pending queue: Create finalizes the exact owned photo",
+    finalizeRes.status === 200 && finalized?.pendingBatchId === null,
+    `HTTP ${finalizeRes.status}, pendingBatchId=${finalized?.pendingBatchId ?? "null"}`
+  );
+
+  const finalizeRetry = await fetch(`${BASE}/api/admin/photos`, {
+    method: "PATCH",
+    headers: { cookie: aliceCookie, "content-type": "application/json" },
+    body: finalizeBody
+  });
+  const creditsAfterFinalizeRetry = await prisma.photoCredit.count({
+    where: { photoId }
+  });
+  report(
+    "pending queue: retrying Create is idempotent",
+    finalizeRetry.status === 200 && creditsAfterFinalizeRetry === 1,
+    `HTTP ${finalizeRetry.status}, ${creditsAfterFinalizeRetry} credit row(s) (want 1)`
+  );
+
+  const mismatchedFinalize = await fetch(`${BASE}/api/admin/photos`, {
+    method: "PATCH",
+    headers: { cookie: aliceCookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      eventId: aliceEvent.id,
+      photoIds: [photoId],
+      credits: JSON.stringify([
+        { creditName: "Different person", subject: "", socialLinks: [] }
+      ])
+    })
+  });
+  const creditsAfterMismatch = await prisma.photoCredit.findMany({
+    where: { photoId },
+    select: { creditName: true }
+  });
+  report(
+    "pending queue: an idempotent Create retry cannot change attribution",
+    mismatchedFinalize.status === 409 &&
+      creditsAfterMismatch.length === 1 &&
+      creditsAfterMismatch[0].creditName === "Jane",
+    `HTTP ${mismatchedFinalize.status}, stored=${creditsAfterMismatch.map((credit) => credit.creditName).join(",")}`
+  );
+
+  const beforeStalledCleanup = await prisma.user.findUniqueOrThrow({
+    where: { id: alice.id },
+    select: { usedBytes: true }
+  });
+  const stalledId = randomUUID().replace(/-/g, "");
+  const stalledBytes = 321;
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: alice.id },
+      data: { usedBytes: { increment: stalledBytes } }
+    }),
+    prisma.photo.create({
+      data: {
+        id: stalledId,
+        eventId: aliceEvent.id,
+        filename: `${stalledId}-orig.jpg`,
+        originalName: "interrupted.jpg",
+        width: 1,
+        height: 1,
+        bytes: stalledBytes,
+        pendingBatchId: randomUUID(),
+        uploadState: "processing"
+      }
+    })
+  ]);
+  const stalledDiscard = await fetch(`${BASE}/api/admin/photos`, {
+    method: "DELETE",
+    headers: { cookie: aliceCookie, "content-type": "application/json" },
+    body: JSON.stringify({ photoId: stalledId })
+  });
+  const [stalledRow, afterStalledCleanup] = await Promise.all([
+    prisma.photo.findUnique({ where: { id: stalledId } }),
+    prisma.user.findUniqueOrThrow({
+      where: { id: alice.id },
+      select: { usedBytes: true }
+    })
+  ]);
+  report(
+    "pending queue: an interrupted processing reservation can be removed",
+    stalledDiscard.status === 200 &&
+      stalledRow === null &&
+      afterStalledCleanup.usedBytes === beforeStalledCleanup.usedBytes,
+    `HTTP ${stalledDiscard.status}, row=${stalledRow ? "present" : "removed"}, ` +
+      `before=${beforeStalledCleanup.usedBytes}, after=${afterStalledCleanup.usedBytes}`
+  );
+
+  const beforeDiscard = await prisma.user.findUniqueOrThrow({
+    where: { id: alice.id },
+    select: { usedBytes: true }
+  });
+  const discardId = randomUUID().replace(/-/g, "");
+  const discardUpload = new FormData();
+  discardUpload.append("eventId", aliceEvent.id);
+  discardUpload.append("batchId", randomUUID());
+  discardUpload.append("uploadId", discardId);
+  discardUpload.append(
+    "file",
+    new Blob([await jpeg()], { type: "image/jpeg" }),
+    "discard.jpg"
+  );
+  const discardUploadRes = await fetch(`${BASE}/api/admin/photos`, {
+    method: "POST",
+    headers: { cookie: aliceCookie },
+    body: discardUpload
+  });
+  const pendingDiscard = await prisma.photo.findUniqueOrThrow({
+    where: { id: discardId }
+  });
+  const discardRes = await fetch(`${BASE}/api/admin/photos`, {
+    method: "DELETE",
+    headers: { cookie: aliceCookie, "content-type": "application/json" },
+    body: JSON.stringify({ photoId: discardId })
+  });
+  const discardRetryRes = await fetch(`${BASE}/api/admin/photos`, {
+    method: "DELETE",
+    headers: { cookie: aliceCookie, "content-type": "application/json" },
+    body: JSON.stringify({ photoId: discardId })
+  });
+  const afterDiscard = await prisma.user.findUniqueOrThrow({
+    where: { id: alice.id },
+    select: { usedBytes: true }
+  });
+  report(
+    "pending queue: discard releases quota once and is idempotent",
+    discardUploadRes.status === 201 &&
+      discardRes.status === 200 &&
+      discardRetryRes.status === 200 &&
+      afterDiscard.usedBytes === beforeDiscard.usedBytes,
+    `upload=${discardUploadRes.status}, delete=${discardRes.status}/${discardRetryRes.status}, ` +
+      `pending bytes=${pendingDiscard.bytes}, before=${beforeDiscard.usedBytes}, after=${afterDiscard.usedBytes}`
+  );
 
   // --- Bob attacks Alice's album -----------------------------------------
 
   const intoHers = new FormData();
   intoHers.append("eventId", aliceEvent.id);
+  intoHers.append("batchId", randomUUID());
+  intoHers.append("uploadId", randomUUID().replace(/-/g, ""));
   intoHers.append("file", new Blob([await jpeg()], { type: "image/jpeg" }), "b.jpg");
-  intoHers.append("credits", "[]");
   const intoHersRes = await fetch(`${BASE}/api/admin/photos`, {
     method: "POST",
     headers: { cookie: bobCookie },

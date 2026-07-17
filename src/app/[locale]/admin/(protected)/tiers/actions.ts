@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { getEffectiveTierAccountCounts } from "@/lib/quota";
 import { resolveAssignment } from "@/lib/tiers";
 
 /**
@@ -141,13 +142,13 @@ export async function deleteTier(
   const id = formData.get("id");
   if (typeof id !== "string") return {};
 
-  const tier = await prisma.tier.findUnique({
-    where: { id },
-    include: { _count: { select: { users: true } } }
-  });
+  const [tier, accountCounts] = await Promise.all([
+    prisma.tier.findUnique({ where: { id } }),
+    getEffectiveTierAccountCounts()
+  ]);
   if (!tier) return {};
   if (tier.isDefault) return { error: "isDefault" };
-  if (tier._count.users > 0) return { error: "inUse" };
+  if ((accountCounts.get(tier.id) ?? 0) > 0) return { error: "inUse" };
 
   await prisma.tier.delete({ where: { id } }).catch(() => {});
   revalidatePath("/", "layout");

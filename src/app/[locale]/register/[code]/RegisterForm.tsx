@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
+import { usernameError } from "@/lib/username";
 import { register, type RegisterState } from "./actions";
 
 export interface RegisterLabels {
@@ -16,6 +17,7 @@ export interface RegisterLabels {
   errorUsernameTaken: string;
   errorUsernameReserved: string;
   errorUsernameInvalid: string;
+  errorUsernameUppercase: string;
   errorBadInvite: string;
   errorRateLimited: string;
 }
@@ -29,6 +31,7 @@ const ERROR_KEY: Record<
   usernameTaken: "errorUsernameTaken",
   usernameReserved: "errorUsernameReserved",
   usernameInvalid: "errorUsernameInvalid",
+  usernameUppercase: "errorUsernameUppercase",
   badInvite: "errorBadInvite",
   rateLimited: "errorRateLimited"
 };
@@ -44,6 +47,17 @@ export default function RegisterForm({
     register,
     {}
   );
+  const [username, setUsername] = useState("");
+  const trimmedUsername = username.trim();
+  const usernameProblem = trimmedUsername ? usernameError(trimmedUsername) : null;
+  let clientUsernameError: string | null = null;
+  if (/[A-Z]/.test(trimmedUsername)) {
+    clientUsernameError = labels.errorUsernameUppercase;
+  } else if (usernameProblem === "reserved") {
+    clientUsernameError = labels.errorUsernameReserved;
+  } else if (usernameProblem === "invalid") {
+    clientUsernameError = labels.errorUsernameInvalid;
+  }
 
   const inputClass =
     "min-h-10 w-full rounded-lg border border-border-strong bg-page px-3 py-2 text-sm outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11";
@@ -57,11 +71,35 @@ export default function RegisterForm({
         <input
           name="username"
           required
-          maxLength={40}
+          minLength={2}
+          maxLength={31}
+          pattern="[a-z0-9][a-z0-9-]{1,30}"
+          title={labels.errorUsernameInvalid}
           autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          aria-invalid={clientUsernameError ? true : undefined}
+          aria-describedby={
+            clientUsernameError
+              ? "register-username-hint register-username-error"
+              : "register-username-hint"
+          }
           className={inputClass}
         />
-        <span className="text-xs text-fg-subtle">{labels.usernameHint}</span>
+        <span id="register-username-hint" className="text-xs text-fg-subtle">
+          {labels.usernameHint}
+        </span>
+        {clientUsernameError && (
+          <span
+            id="register-username-error"
+            role="alert"
+            className="text-xs text-danger"
+          >
+            {clientUsernameError}
+          </span>
+        )}
       </label>
 
       <label className="flex flex-col gap-1">
@@ -99,7 +137,7 @@ export default function RegisterForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || Boolean(clientUsernameError)}
         className="min-h-10 rounded-lg bg-fg px-4 py-2.5 text-sm font-semibold text-page transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-50 max-sm:min-h-11"
       >
         {labels.submit}
