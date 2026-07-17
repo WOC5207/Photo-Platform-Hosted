@@ -21,12 +21,16 @@ export async function GET(
   // token — so the owner has to be looked up before the file can be found.
   // Stays unauthenticated: these are logos, backgrounds and QR codes shown on
   // public pages, and the token is random.
+  //
+  // That same lookup carries the owner's status: a suspended account's logo and
+  // QR codes come down with the rest of its site, the same rule the images
+  // route applies to photos.
   const token = file.replace(/\.webp$/, "");
   const image = await prisma.siteImage.findUnique({
     where: { token },
-    select: { ownerId: true }
+    select: { ownerId: true, owner: { select: { status: true } } }
   });
-  if (!image) {
+  if (!image || image.owner.status !== "active") {
     return new NextResponse("Not found", { status: 404 });
   }
 

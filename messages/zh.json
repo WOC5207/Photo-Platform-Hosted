@@ -56,7 +56,7 @@
     "noSearchResults": "没有找到匹配结果。"
   },
   "auth": {
-    "loginTitle": "管理员登录",
+    "loginTitle": "登录以管理你的账号",
     "username": "用户名",
     "password": "密码",
     "signIn": "登录",
@@ -79,6 +79,7 @@
     "resourceMonitor": "资源监控",
     "resourceMonitorCardHint": "查看照片、网站图片和数据库占用的存储空间。",
     "platform": "平台",
+    "platformCardHint": "管理平台上的账号、邀请与存储。",
     "account": "账号",
     "accountCardHint": "修改你的登录密码。"
   },
@@ -511,7 +512,8 @@
     "noMatches": "没有匹配的摄影师。",
     "albums": "{count} 个相册",
     "photos": "{count} 张照片",
-    "visit": "访问站点"
+    "visit": "访问站点",
+    "login": "摄影师登录"
   },
   "platform": {
     "usersTitle": "账号",

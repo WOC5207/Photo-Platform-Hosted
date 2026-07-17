@@ -56,7 +56,7 @@
     "noSearchResults": "No matches found."
   },
   "auth": {
-    "loginTitle": "Admin login",
+    "loginTitle": "Sign in to manage your account",
     "username": "Username",
     "password": "Password",
     "signIn": "Sign in",
@@ -79,6 +79,7 @@
     "resourceMonitor": "Resource monitor",
     "resourceMonitorCardHint": "See how much storage your photos, site images and database are using.",
     "platform": "Platform",
+    "platformCardHint": "Manage accounts, invites and storage across the platform.",
     "account": "Account",
     "accountCardHint": "Change your password."
   },
@@ -511,7 +512,8 @@
     "noMatches": "No photographers match that search.",
     "albums": "{count, plural, =1 {# album} other {# albums}}",
     "photos": "{count, plural, =1 {# photo} other {# photos}}",
-    "visit": "Visit site"
+    "visit": "Visit site",
+    "login": "Log in"
   },
   "platform": {
     "usersTitle": "Accounts",

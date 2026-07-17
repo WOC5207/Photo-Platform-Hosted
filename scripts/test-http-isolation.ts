@@ -15,10 +15,13 @@
  *   npm run test:http
  */
 import { randomUUID } from "crypto";
+import { promises as fs } from "fs";
+import path from "path";
 import { sealData } from "iron-session";
 import sharp from "sharp";
 import bcrypt from "bcryptjs";
 import { PrismaClient, type User } from "@prisma/client";
+import { siteDir } from "../src/lib/images";
 
 const prisma = new PrismaClient();
 const BASE = process.env.APP_BASE_URL ?? "http://localhost:3000";
@@ -200,6 +203,36 @@ async function main() {
 
   // --- A suspended account disappears ------------------------------------
 
+  // Alice's album is published as of the search checks above, which is what
+  // makes the image check below meaningful: a published photo takes neither
+  // the "orig" nor the "unpublished" branch in the images route.
+  //
+  // The file has to genuinely exist on disk, or the route 404s at its fs.stat
+  // and the check passes without suspension ever being consulted.
+  const siteImageToken = randomUUID().replace(/-/g, "").slice(0, 24);
+  const siteFile = path.join(siteDir(alice.id), `${siteImageToken}.webp`);
+  await fs.mkdir(path.dirname(siteFile), { recursive: true });
+  const siteBytes = await sharp({
+    create: { width: 8, height: 8, channels: 3, background: "#111" }
+  })
+    .webp()
+    .toBuffer();
+  await fs.writeFile(siteFile, siteBytes);
+  await prisma.siteImage.create({
+    data: {
+      ownerId: alice.id,
+      token: siteImageToken,
+      purpose: "logo",
+      bytes: siteBytes.byteLength
+    }
+  });
+  const siteImageBefore = await fetch(`${BASE}/api/site/${siteImageToken}.webp`);
+  report(
+    "setup: Alice's site image serves while she is active",
+    siteImageBefore.status === 200,
+    `HTTP ${siteImageBefore.status} (want 200) — the suspension check below is vacuous if this 404s`
+  );
+
   await prisma.user.update({
     where: { id: alice.id },
     data: { status: "suspended" }
@@ -216,6 +249,29 @@ async function main() {
     suspendedSite.status === 404 &&
       (suspendedDash.status === 307 || suspendedDash.status === 302),
     `site=${suspendedSite.status} (want 404), dashboard=${suspendedDash.status} (want redirect) — cookie still valid`
+  );
+
+  // Suspension is the tool for taking content down, so the content is the part
+  // that has to actually go. The page 404ing is not enough: these URLs are
+  // public, already shared, and served immutable-cached for a year, so anyone
+  // holding one keeps the photo unless the route itself refuses.
+  // Only the webp: renditions are always webp, so a -med.jpg URL 404s on a
+  // missing file whether or not suspension works, and would pass either way.
+  const suspendedPhoto = await fetch(
+    `${BASE}/api/images/${aliceEvent.id}/${photoId}-med.webp`
+  );
+  report(
+    "suspension: a published photo stops serving from /api/images",
+    suspendedPhoto.status === 404,
+    `HTTP ${suspendedPhoto.status} (want 404) — the album is published, so neither ` +
+      `the orig nor the unpublished branch covers it`
+  );
+
+  const suspendedSiteImage = await fetch(`${BASE}/api/site/${siteImageToken}.webp`);
+  report(
+    "suspension: a site image stops serving from /api/site",
+    suspendedSiteImage.status === 404,
+    `HTTP ${suspendedSiteImage.status} (want 404) — logos and QR codes go down with the account`
   );
 
   await prisma.user.delete({ where: { id: alice.id } });

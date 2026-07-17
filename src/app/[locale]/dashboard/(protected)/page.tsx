@@ -72,6 +72,18 @@ export default async function AdminDashboardPage() {
           <h2 className="text-lg font-semibold">{t("account")}</h2>
           <p className="mt-1 text-sm text-fg-subtle">{t("accountCardHint")}</p>
         </Link>
+        {/* The platform tools are a section like any other, so they get a card
+            like any other rather than a differently-shaped button in the nav.
+            Admin-only: for everyone else this slot simply isn't there. */}
+        {user.role === "admin" && (
+          <Link
+            href="/admin"
+            className="rounded-xl border border-border bg-surface p-6 transition hover:border-border-strong"
+          >
+            <h2 className="text-lg font-semibold">{t("platform")}</h2>
+            <p className="mt-1 text-sm text-fg-subtle">{t("platformCardHint")}</p>
+          </Link>
+        )}
       </div>
     </div>
   );
