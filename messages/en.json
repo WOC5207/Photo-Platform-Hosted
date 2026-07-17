@@ -78,7 +78,8 @@
     "siteCardHint": "Customize the site title, homepage text, background and logo.",
     "resourceMonitor": "Resource monitor",
     "resourceMonitorCardHint": "See how much storage your photos, site images and database are using.",
-    "platform": "Platform"
+    "platform": "Platform",
+    "platformCardHint": "Manage accounts, invites and storage across the platform."
   },
   "adminEvents": {
     "listTitle": "Gallery events",
