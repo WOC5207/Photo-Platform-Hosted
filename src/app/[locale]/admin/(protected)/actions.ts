@@ -2,6 +2,7 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
 import type { User } from "@prisma/client";
@@ -60,6 +61,9 @@ export async function deleteUser(formData: FormData): Promise<void> {
   await deleteUserFiles(id);
   await prisma.user.delete({ where: { id } }).catch(() => {});
   revalidatePath("/", "layout");
+  // Back to the list: this is submitted from the account's own detail page,
+  // which stops existing the moment the delete lands.
+  redirect(`/${await getLocale()}/admin`);
 }
 
 const QUOTA_MIN = 0;

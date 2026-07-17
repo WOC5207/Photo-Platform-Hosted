@@ -547,7 +547,11 @@
     "resetPasswordConfirm": "为 {username} 生成新密码？其当前密码将立即失效。",
     "resetPasswordGenerated": "{username} 的新密码：",
     "resetPasswordCopyHint": "请立即复制并发送给对方——此密码不会再次显示。如果丢失，重置一次即可。",
-    "resetPasswordError": "该账号已不存在。"
+    "resetPasswordError": "该账号已不存在。",
+    "backToAccounts": "账号列表",
+    "storageTitle": "存储",
+    "tierTitle": "等级",
+    "dangerTitle": "账号操作"
   },
   "register": {
     "title": "创建账号",

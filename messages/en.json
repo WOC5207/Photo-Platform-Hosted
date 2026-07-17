@@ -547,7 +547,11 @@
     "resetPasswordConfirm": "Generate a new password for {username}? Their current password stops working immediately.",
     "resetPasswordGenerated": "New password for {username}:",
     "resetPasswordCopyHint": "Copy it now and send it to them — it is not shown again. If you lose it, just reset again.",
-    "resetPasswordError": "That account no longer exists."
+    "resetPasswordError": "That account no longer exists.",
+    "backToAccounts": "Accounts",
+    "storageTitle": "Storage",
+    "tierTitle": "Tier",
+    "dangerTitle": "Account actions"
   },
   "register": {
     "title": "Create your account",
