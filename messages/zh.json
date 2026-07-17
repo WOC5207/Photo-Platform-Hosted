@@ -78,7 +78,8 @@
     "siteCardHint": "自定义站点标题、首页文案、背景和 Logo。",
     "resourceMonitor": "资源监控",
     "resourceMonitorCardHint": "查看照片、网站图片和数据库占用的存储空间。",
-    "platform": "平台"
+    "platform": "平台",
+    "platformCardHint": "管理平台上的账号、邀请与存储。"
   },
   "adminEvents": {
     "listTitle": "相册管理",

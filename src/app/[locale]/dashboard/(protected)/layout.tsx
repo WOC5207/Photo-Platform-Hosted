@@ -96,12 +96,11 @@ export default async function DashboardLayout({
               </Link>
               {/* Platform tools. Only the admin has these, and they are about
                   other people's accounts rather than this user's own site —
-                  which is exactly why they are not part of the dashboard. */}
+                  which is exactly why they are not part of the dashboard.
+                  Styled like its neighbours: being a different shape made it
+                  read as a mode switch rather than one more section. */}
               {user.role === "admin" && (
-                <Link
-                  href="/admin"
-                  className="rounded-lg border border-border-strong px-2.5 py-1 text-fg-muted transition hover:border-fg-faint hover:text-fg"
-                >
+                <Link href="/admin" className="text-fg-muted hover:text-fg">
                   {t("admin.platform")}
                 </Link>
               )}
