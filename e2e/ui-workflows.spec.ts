@@ -158,8 +158,12 @@ test.describe.serial("management workflows", () => {
     await expect(page.getByText("Unsaved changes")).toBeVisible();
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible();
+    await expect(page).toHaveTitle(temporaryTitle);
     await title.fill(originalTitle);
     await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page).toHaveTitle(
+      originalTitle || "Pinhaoshe Photographer Platform"
+    );
 
     await page.getByRole("link", { name: "Profile & security" }).click();
     await expect(page).toHaveURL(/section=profile/);

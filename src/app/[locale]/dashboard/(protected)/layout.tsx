@@ -1,9 +1,10 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 // Auth depends on the request cookie — never prerender dashboard pages.
 export const dynamic = "force-dynamic";
-import { requireUser } from "@/lib/auth";
+import { getCurrentUser, requireUser } from "@/lib/auth";
 import ManagementShell, {
   type ManagementNavItem
 } from "@/components/management/ManagementShell";
@@ -11,6 +12,23 @@ import { getSiteSettings, resolveCreditTerm, resolveSiteTitle } from "@/lib/sett
 import { siteImageUrl } from "@/lib/images";
 import { ownerBasePath, ownerName } from "@/lib/owner";
 import { logout } from "../../login/actions";
+
+/** Use the photographer's site title in the browser tab when configured. */
+export async function generateMetadata({
+  params
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const [user, t] = await Promise.all([
+    getCurrentUser(),
+    getTranslations({ locale, namespace: "common" })
+  ]);
+  if (!user) return { title: t("siteName") };
+
+  const settings = await getSiteSettings(user.id);
+  return { title: resolveSiteTitle(settings, locale, t("siteName")) };
+}
 
 /**
  * "My site" — every account's own admin area, not just the platform admin's.

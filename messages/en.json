@@ -1,6 +1,6 @@
 {
   "common": {
-    "siteName": "Photo Gallery",
+    "siteName": "Pinhaoshe Photographer Platform",
     "creditTerm": "Credit",
     "subjectTerm": "Subject",
     "backToHome": "Back to home",
@@ -205,7 +205,7 @@
     "savedAutomatically": "Saved automatically",
     "lotteryRequiresBooking": "Turn on Booking to enable Lottery.",
     "groupHeaderTitle": "Header",
-    "groupHeaderHint": "The site name and logo shown in the header. The site name also appears in the footer. Leave title fields empty to use the default.",
+    "groupHeaderHint": "The site name and logo shown in the header. The site name also appears in the footer and browser tab. Leave title fields empty to use Pinhaoshe Photographer Platform.",
     "siteTitleEn": "Site title (English)",
     "siteTitleZh": "Site title (中文)",
     "groupBackgroundTitle": "Background",
@@ -537,7 +537,7 @@
     "credentialsMismatch": "Passwords don't match.",
     "credentialsUnknown": "Something went wrong. Please try again.",
     "brandTitle": "Name your site",
-    "brandHint": "This is the brand name shown in the header and footer. Leave both blank to use the default name.",
+    "brandHint": "This brand name appears in the header, footer, and browser tab. Leave both fields blank to use Pinhaoshe Photographer Platform.",
     "hometextTitle": "Homepage headline",
     "hometextHint": "The headline and subtitle visitors see first. Leave a field blank to use the default copy.",
     "featuresTitle": "Choose your site's features",
