@@ -56,7 +56,7 @@
     "noSearchResults": "No matches found."
   },
   "auth": {
-    "loginTitle": "Admin login",
+    "loginTitle": "Sign in to manage your account",
     "username": "Username",
     "password": "Password",
     "signIn": "Sign in",
