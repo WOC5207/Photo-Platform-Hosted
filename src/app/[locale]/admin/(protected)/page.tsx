@@ -1,31 +1,49 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
-import { ownerBasePath, ownerName } from "@/lib/owner";
+import { ownerName } from "@/lib/owner";
 import { formatDate } from "@/lib/datetime";
+import { formatBytes, getPlatformStorage } from "@/lib/storage";
 import { Link } from "@/i18n/navigation";
-import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
-import { deleteUser, setUserStatus } from "./actions";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * The account list: who is on the platform and how they are doing, at a
+ * glance. Deliberately read-only — with three forms per row this was a control
+ * panel pretending to be a list, and the row for the account you were changing
+ * was indistinguishable from the nineteen you were not. Every control lives on
+ * the account's own page now, one click through the name.
+ */
 export default async function PlatformUsersPage() {
   const locale = await getLocale();
-  const admin = await requireAdmin(locale);
+  await requireAdmin(locale);
   const t = await getTranslations("platform");
+  const ts = await getTranslations("adminStorage");
 
-  const users = await prisma.user.findMany({
-    orderBy: { createdAt: "asc" },
-    select: {
-      id: true,
-      username: true,
-      displayName: true,
-      role: true,
-      status: true,
-      createdAt: true,
-      _count: { select: { events: true } }
-    }
-  });
+  const [users, { accounts }] = await Promise.all([
+    prisma.user.findMany({
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        _count: { select: { events: true } }
+      }
+    }),
+    // Resolves each account's effective allowance (override / tier / expiry)
+    // through the same SQL the upload check uses, so this page cannot show a
+    // limit the uploader would not honour.
+    getPlatformStorage()
+  ]);
+
+  // getPlatformStorage sorts by usage; this page is ordered by join date. Key
+  // by id rather than zipping the two lists, which would silently pair the
+  // wrong rows together.
+  const storageById = new Map(accounts.map((a) => [a.id, a]));
 
   return (
     <div className="flex flex-col gap-6">
@@ -35,7 +53,7 @@ export default async function PlatformUsersPage() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[820px] text-sm">
           <thead className="border-b border-border bg-surface text-left text-fg-subtle">
             <tr>
               <th className="px-4 py-3 font-medium">{t("colUser")}</th>
@@ -43,23 +61,35 @@ export default async function PlatformUsersPage() {
               <th className="px-4 py-3 font-medium">{t("colStatus")}</th>
               <th className="px-4 py-3 font-medium">{t("colAlbums")}</th>
               <th className="px-4 py-3 font-medium">{t("colJoined")}</th>
-              <th className="px-4 py-3" />
+              <th className="px-4 py-3 font-medium">{ts("colUsed")}</th>
+              <th className="px-4 py-3 font-medium">{ts("colTier")}</th>
             </tr>
           </thead>
           <tbody>
             {users.map((u) => {
-              const isSelf = u.id === admin.id;
+              const s = storageById.get(u.id);
+              const pct =
+                s && s.quotaBytes > 0
+                  ? Math.min(100, (s.usedBytes / s.quotaBytes) * 100)
+                  : 0;
               return (
-                <tr key={u.id} className="border-b border-border last:border-0">
+                <tr
+                  key={u.id}
+                  className="border-b border-border last:border-0"
+                >
                   <td className="px-4 py-3">
                     <div className="flex flex-col">
-                      <span className="font-medium">{ownerName(u)}</span>
+                      {/* The name is the way in: everything that CHANGES this
+                          account lives on its own page. */}
                       <Link
-                        href={ownerBasePath(u.username)}
-                        className="text-xs text-fg-subtle underline decoration-fg/30 underline-offset-2 hover:text-fg"
+                        href={`/admin/accounts/${u.id}`}
+                        className="font-medium underline decoration-fg/30 underline-offset-2 hover:decoration-fg"
                       >
-                        /u/{u.username}
+                        {ownerName(u)}
                       </Link>
+                      <span className="text-xs text-fg-subtle">
+                        /u/{u.username}
+                      </span>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-fg-muted">
@@ -81,35 +111,37 @@ export default async function PlatformUsersPage() {
                     {formatDate(u.createdAt)}
                   </td>
                   <td className="px-4 py-3">
-                    {isSelf ? (
-                      // No self-suspend, no self-delete: either would leave the
-                      // platform with no way back in.
-                      <span className="text-xs text-fg-subtle">
-                        {t("cannotSuspendSelf")}
-                      </span>
-                    ) : (
-                      <div className="flex items-center justify-end gap-2">
-                        <form action={setUserStatus}>
-                          <input type="hidden" name="id" value={u.id} />
-                          <input
-                            type="hidden"
-                            name="status"
-                            value={u.status === "active" ? "suspended" : "active"}
+                    {s && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-fg-muted">
+                          {formatBytes(s.usedBytes)} / {formatBytes(s.quotaBytes)}
+                        </span>
+                        <div className="h-1.5 w-28 overflow-hidden rounded-full bg-fg/10">
+                          <div
+                            className={`h-full rounded-full ${pct >= 100 ? "bg-danger" : "bg-fg/60"}`}
+                            style={{ width: `${pct}%` }}
                           />
-                          <button
-                            type="submit"
-                            className="rounded-lg border border-border-strong px-2.5 py-1 text-xs text-fg-muted hover:border-fg-faint hover:text-fg"
-                          >
-                            {u.status === "active" ? t("suspend") : t("unsuspend")}
-                          </button>
-                        </form>
-                        <form action={deleteUser}>
-                          <input type="hidden" name="id" value={u.id} />
-                          <ConfirmSubmit
-                            label={t("deleteUser")}
-                            confirmText={t("deleteUserConfirm")}
-                          />
-                        </form>
+                        </div>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {s && (
+                      <div className="flex flex-col">
+                        <span className="text-fg-muted">{s.tierName}</span>
+                        {/* The two states where the tier name alone would
+                            mislead: the limit is not actually the tier's, or
+                            the assignment has already lapsed. */}
+                        {s.overridden && (
+                          <span className="text-xs text-fg-subtle">
+                            {ts("sourceOverride")}
+                          </span>
+                        )}
+                        {s.expired && (
+                          <span className="text-xs text-fg-subtle">
+                            {ts("expiredNote")}
+                          </span>
+                        )}
                       </div>
                     )}
                   </td>

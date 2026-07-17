@@ -1,14 +1,17 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireAdmin } from "@/lib/auth";
 import { getPlatformStorage, formatBytes } from "@/lib/storage";
-import { ownerName } from "@/lib/owner";
-import QuotaControls from "@/components/admin/QuotaControls";
+import { Link } from "@/i18n/navigation";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Platform-wide storage: who is using what, and the controls to do something
- * about it. The per-account view lives on each user's own dashboard.
+ * Platform-wide storage: is the disk filling up.
+ *
+ * Deliberately only the figures that are not about any one account. Per-account
+ * usage, tier and limit live on the Accounts page next to the account they
+ * describe — deciding whether to raise someone's allowance should not mean
+ * holding two screens in your head.
  */
 export default async function PlatformStoragePage() {
   const locale = await getLocale();
@@ -17,6 +20,13 @@ export default async function PlatformStoragePage() {
 
   const { accounts, totalUsedBytes, databaseBytes } = await getPlatformStorage();
 
+  // The one account-shaped question that is really about the platform: who is
+  // closest to their limit. Not a management view — a pointer at whoever is
+  // about to start having uploads refused.
+  const nearLimit = accounts
+    .filter((a) => a.quotaBytes > 0 && a.usedBytes / a.quotaBytes >= 0.8)
+    .sort((a, b) => b.usedBytes / b.quotaBytes - a.usedBytes / a.quotaBytes);
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -24,7 +34,7 @@ export default async function PlatformStoragePage() {
         <p className="mt-1 text-sm text-fg-subtle">{t("intro")}</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-border bg-surface p-4">
           <p className="text-sm text-fg-subtle">{t("platformTotal")}</p>
           <p className="mt-1 text-2xl font-bold">{formatBytes(totalUsedBytes)}</p>
@@ -33,70 +43,39 @@ export default async function PlatformStoragePage() {
           <p className="text-sm text-fg-subtle">{t("databaseLabel")}</p>
           <p className="mt-1 text-2xl font-bold">{formatBytes(databaseBytes)}</p>
         </div>
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <p className="text-sm text-fg-subtle">{t("accountsLabel")}</p>
+          <p className="mt-1 text-2xl font-bold">{accounts.length}</p>
+        </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full min-w-[760px] text-sm">
-          <thead className="border-b border-border bg-surface text-left text-fg-subtle">
-            <tr>
-              <th className="px-4 py-3 font-medium">{t("colAccount")}</th>
-              <th className="px-4 py-3 font-medium">{t("colPhotos")}</th>
-              <th className="px-4 py-3 font-medium">{t("colUsed")}</th>
-              <th className="px-4 py-3 font-medium">{t("colQuota")}</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {accounts.map((a) => {
-              const pct =
-                a.quotaBytes > 0
-                  ? Math.min(100, (a.usedBytes / a.quotaBytes) * 100)
-                  : 0;
-              return (
-                <tr key={a.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col">
-                      <span className="font-medium">{ownerName(a)}</span>
-                      <span className="text-xs text-fg-subtle">/u/{a.username}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-fg-muted">{a.photoCount}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-fg-muted">{formatBytes(a.usedBytes)}</span>
-                      <div className="h-1.5 w-28 overflow-hidden rounded-full bg-fg/10">
-                        <div
-                          className={`h-full rounded-full ${pct >= 100 ? "bg-danger" : "bg-fg/60"}`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-fg-muted">
-                    {formatBytes(a.quotaBytes)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <QuotaControls
-                      userId={a.id}
-                      quotaGib={
-                        // Round-trip through GiB for the form; the action
-                        // converts back. Two decimals keeps sub-GiB quotas
-                        // (a trial account, say) from rounding to zero.
-                        Math.round((a.quotaBytes / 1024 ** 3) * 100) / 100
-                      }
-                      labels={{
-                        set: t("setQuota"),
-                        unit: t("quotaGib"),
-                        reconcile: t("reconcile"),
-                        reconcileHint: t("reconcileHint")
-                      }}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <h2 className="text-sm font-semibold">{t("nearLimitTitle")}</h2>
+        {nearLimit.length === 0 ? (
+          <p className="mt-1 text-sm text-fg-subtle">{t("nearLimitNone")}</p>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-2">
+            {nearLimit.map((a) => (
+              <li key={a.id} className="flex items-center justify-between gap-4">
+                <span className="text-sm">
+                  {a.displayName || a.username}
+                  <span className="ml-2 text-xs text-fg-subtle">
+                    /u/{a.username}
+                  </span>
+                </span>
+                <span className="text-sm text-fg-muted">
+                  {formatBytes(a.usedBytes)} / {formatBytes(a.quotaBytes)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-3 text-xs text-fg-subtle">
+          {t("manageOnAccounts")}{" "}
+          <Link href="/admin" className="underline hover:text-fg">
+            {t("accountsLink")}
+          </Link>
+        </p>
       </div>
     </div>
   );

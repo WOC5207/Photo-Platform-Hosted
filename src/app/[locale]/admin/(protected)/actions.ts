@@ -2,6 +2,7 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
 import type { User } from "@prisma/client";
@@ -9,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { deleteUserFiles } from "@/lib/images";
 import { reconcileQuota } from "@/lib/quota";
+import { generateTemporaryPassword, setPassword } from "@/lib/password";
 
 /**
  * Platform administration. Unlike the dashboard actions — which are scoped to
@@ -59,6 +61,9 @@ export async function deleteUser(formData: FormData): Promise<void> {
   await deleteUserFiles(id);
   await prisma.user.delete({ where: { id } }).catch(() => {});
   revalidatePath("/", "layout");
+  // Back to the list: this is submitted from the account's own detail page,
+  // which stops existing the moment the delete lands.
+  redirect(`/${await getLocale()}/admin`);
 }
 
 const QUOTA_MIN = 0;
@@ -66,7 +71,14 @@ const QUOTA_MIN = 0;
 // number typed into a form.
 const QUOTA_MAX = 2 * 1024 ** 4;
 
-/** Sets one account's storage allowance. This is goal #5's actual control. */
+/**
+ * Overrides one account's storage allowance, ignoring its tier.
+ *
+ * The exception, not the rule: tiers are how allowances are normally set, and
+ * an override is for the one account that needs a different number without a
+ * tier being invented for it. Clearing it (clearUserQuotaOverride) puts the
+ * account back on whatever its tier grants.
+ */
 export async function setUserQuota(formData: FormData): Promise<void> {
   await guard();
   const id = formData.get("id");
@@ -86,6 +98,17 @@ export async function setUserQuota(formData: FormData): Promise<void> {
   revalidatePath("/", "layout");
 }
 
+/** Drops the override so the account follows its tier again. */
+export async function clearUserQuotaOverride(formData: FormData): Promise<void> {
+  await guard();
+  const id = formData.get("id");
+  if (typeof id !== "string") return;
+  await prisma.user
+    .update({ where: { id }, data: { quotaBytes: null } })
+    .catch(() => {});
+  revalidatePath("/", "layout");
+}
+
 /** Recomputes one account's usage counter from its rows. See reconcileQuota. */
 export async function reconcileUserQuota(formData: FormData): Promise<void> {
   await guard();
@@ -93,6 +116,46 @@ export async function reconcileUserQuota(formData: FormData): Promise<void> {
   if (typeof id !== "string") return;
   await reconcileQuota(id).catch(() => {});
   revalidatePath("/", "layout");
+}
+
+export type ResetPasswordState = {
+  /** The generated password, returned to the admin's browser exactly once. */
+  password?: string;
+  username?: string;
+  error?: "notFound";
+};
+
+/**
+ * Reset an account's password to a generated one.
+ *
+ * The plaintext is returned to the caller's own form state and nothing else: it
+ * is not stored, not logged, and not readable again. Losing it before passing it
+ * on is not a problem — reset again and a new one replaces it.
+ *
+ * Generated rather than admin-chosen so that no one, including the admin, needs
+ * to invent a password for someone else. It also means the admin's knowledge of
+ * it is momentary rather than a value they picked and might reuse.
+ *
+ * Deliberately does NOT touch the account's session: the point is usually that
+ * someone is locked out, and there is no reason to eject them if they happen to
+ * still be signed in elsewhere. Suspend the account if that is the intent —
+ * that is what suspend is for.
+ */
+export async function resetUserPassword(
+  _prev: ResetPasswordState,
+  formData: FormData
+): Promise<ResetPasswordState> {
+  await guard();
+  const id = formData.get("id");
+  if (typeof id !== "string") return { error: "notFound" };
+
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return { error: "notFound" };
+
+  const password = generateTemporaryPassword();
+  await setPassword(user.id, password);
+  revalidatePath("/", "layout");
+  return { password, username: user.username };
 }
 
 export type InviteState = { error?: "validation"; ok?: boolean };

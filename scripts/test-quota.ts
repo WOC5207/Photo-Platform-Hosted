@@ -18,6 +18,7 @@ import {
   releaseBytes,
   reserveBytes
 } from "../src/lib/quota";
+import { resolveAssignment } from "../src/lib/tiers";
 
 const prisma = new PrismaClient();
 let failures = 0;
@@ -29,6 +30,14 @@ function report(name: string, ok: boolean, detail: string) {
 
 const MB = 1024 * 1024;
 
+/**
+ * An account with a per-account override of `quotaBytes`.
+ *
+ * The override is the simplest way to pin an exact allowance for the tests
+ * below that are about reserve/release arithmetic rather than about tiers.
+ * The tier-specific tests further down deliberately leave it NULL, so that the
+ * allowance has to come through the tier for them to pass.
+ */
 async function makeUser(quotaBytes: number): Promise<User> {
   return prisma.user.create({
     data: {
@@ -39,6 +48,49 @@ async function makeUser(quotaBytes: number): Promise<User> {
       usedBytes: 0
     }
   });
+}
+
+/** A throwaway named tier. Never a default — only one row may hold that. */
+async function makeTier(label: string, quotaBytes: number) {
+  return prisma.tier.create({
+    data: {
+      name: `${label}-${randomUUID().slice(0, 8)}`,
+      quotaBytes: BigInt(quotaBytes)
+    }
+  });
+}
+
+/**
+ * An account whose allowance comes from a tier: no override unless one is
+ * asked for. `tierId: null` means "on the default tier" — the same state every
+ * newly registered account is in.
+ */
+async function makeTieredUser(opts: {
+  tierId?: string | null;
+  expiresAt?: Date | null;
+  override?: number | null;
+}): Promise<User> {
+  return prisma.user.create({
+    data: {
+      username: `quota-${randomUUID().slice(0, 8)}`,
+      passwordHash: "not-a-real-hash",
+      role: "user",
+      tierId: opts.tierId ?? null,
+      tierExpiresAt: opts.expiresAt ?? null,
+      quotaBytes: opts.override != null ? BigInt(opts.override) : null,
+      usedBytes: 0
+    }
+  });
+}
+
+/**
+ * The seeded default tier. Read rather than hardcoded: its allowance is the
+ * admin's to change, and a test that assumes 5 GiB would start failing for a
+ * reason that has nothing to do with the rule it is checking.
+ */
+async function defaultTierQuota(): Promise<number> {
+  const t = await prisma.tier.findFirstOrThrow({ where: { isDefault: true } });
+  return Number(t.quotaBytes);
 }
 
 async function used(userId: string): Promise<number> {
@@ -223,13 +275,195 @@ async function testQuotaIsPerAccount() {
   await prisma.user.delete({ where: { id: b.id } });
 }
 
+/** An account with no tier assigned is on the default one. */
+async function testDefaultTierApplies() {
+  const u = await makeTieredUser({});
+  const usage = await getQuotaUsage(u.id);
+  const expected = await defaultTierQuota();
+
+  report(
+    "tier: an account with nothing assigned gets the default tier's allowance",
+    usage.quotaBytes === expected && !usage.overridden && !usage.expired,
+    `quota=${usage.quotaBytes} (want ${expected}), tier="${usage.tierName}", overridden=${usage.overridden} (want false)`
+  );
+
+  await prisma.user.delete({ where: { id: u.id } });
+}
+
+/** An assigned tier sets the allowance, and is actually enforced. */
+async function testAssignedTierApplies() {
+  const pro = await makeTier("pro", 50 * MB);
+  const u = await makeTieredUser({ tierId: pro.id });
+
+  const usage = await getQuotaUsage(u.id);
+  const fits = await reserveBytes(u.id, 40 * MB);
+  const doesNot = await reserveBytes(u.id, 20 * MB); // 40+20 > 50
+
+  report(
+    "tier: an assigned tier sets the allowance, and the upload check honours it",
+    usage.quotaBytes === 50 * MB && usage.tierName === pro.name && fits && !doesNot,
+    `quota=${(usage.quotaBytes / MB).toFixed(0)}MB (want 50), tier="${usage.tierName}", 40MB=${fits} (want true), +20MB=${doesNot} (want false)`
+  );
+
+  await prisma.user.delete({ where: { id: u.id } });
+  await prisma.tier.delete({ where: { id: pro.id } });
+}
+
+/** A per-account override beats the tier it is on. */
+async function testOverrideBeatsTier() {
+  const pro = await makeTier("pro", 50 * MB);
+  const u = await makeTieredUser({ tierId: pro.id, override: 5 * MB });
+
+  const usage = await getQuotaUsage(u.id);
+  const refused = await reserveBytes(u.id, 6 * MB);
+
+  report(
+    "tier: a per-account override beats the tier's allowance",
+    usage.quotaBytes === 5 * MB && usage.overridden && !refused,
+    `quota=${(usage.quotaBytes / MB).toFixed(0)}MB (want 5, not the tier's 50), overridden=${usage.overridden} (want true), 6MB reserve=${refused} (want false)`
+  );
+
+  await prisma.user.delete({ where: { id: u.id } });
+  await prisma.tier.delete({ where: { id: pro.id } });
+}
+
+/**
+ * The point of the expiry: it needs nothing to run.
+ *
+ * No job rewrites these rows — the date passing is the whole event. So the very
+ * next read, with nothing having happened in between, must already report the
+ * default tier and enforce it.
+ */
+async function testExpiredAssignmentFallsBackToDefault() {
+  const dflt = await defaultTierQuota();
+  // Deliberately TWICE the default, so the reservation below can sit in the gap
+  // between the two — big enough that the default refuses it, small enough that
+  // the assigned tier would allow it. A tier smaller than the default cannot
+  // test this: an amount over both limits is refused whether expiry works or
+  // not, which is a pass that means nothing. No disk is involved; these are
+  // counter arithmetic only.
+  const pro = await makeTier("pro", dflt * 2);
+  const between = dflt + MB;
+
+  const future = await makeTieredUser({
+    tierId: pro.id,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000)
+  });
+  const live = await getQuotaUsage(future.id);
+  const liveAllows = await reserveBytes(future.id, between);
+  report(
+    "tier: an assignment that has not expired yet still applies",
+    live.quotaBytes === dflt * 2 && !live.expired && liveAllows,
+    `quota=${live.quotaBytes} (want ${dflt * 2}), expired=${live.expired} (want false), reserving ${between} = ${liveAllows} (want true — over the default, under this tier)`
+  );
+
+  const past = await makeTieredUser({
+    tierId: pro.id,
+    expiresAt: new Date(Date.now() - 1000)
+  });
+  const lapsed = await getQuotaUsage(past.id);
+  report(
+    "tier: an expired assignment falls back to the default tier with nothing having run",
+    lapsed.quotaBytes === dflt && lapsed.expired,
+    `quota=${lapsed.quotaBytes} (want the default tier's ${dflt}, not the assigned tier's ${dflt * 2}), expired=${lapsed.expired} (want true)`
+  );
+
+  // Not merely cosmetic: the upload check must refuse what the lapsed tier
+  // would have allowed. Same amount the un-expired account above was granted,
+  // so the only difference between true and false here is the expiry.
+  const overDefault = await reserveBytes(past.id, between);
+  report(
+    "tier: an expired assignment is enforced, not just displayed",
+    !overDefault,
+    `reserving ${between} = ${overDefault} (want false) — the un-expired account was granted this exact amount`
+  );
+
+  await prisma.user.delete({ where: { id: future.id } });
+  await prisma.user.delete({ where: { id: past.id } });
+  await prisma.tier.delete({ where: { id: pro.id } });
+}
+
+/**
+ * The check is still one statement.
+ *
+ * The allowance now arrives via a subquery over Tier rather than a column on
+ * the row being updated, which is exactly the kind of change that quietly
+ * reintroduces a read-then-write. Same shape as the concurrency test above, but
+ * with the limit coming from a tier and no override in sight.
+ */
+async function testConcurrentReserveAgainstTier() {
+  const tier = await makeTier("small", 10 * MB);
+  const u = await makeTieredUser({ tierId: tier.id });
+
+  const results = await Promise.all(
+    Array.from({ length: 20 }, () => reserveBytes(u.id, 1 * MB))
+  );
+  const granted = results.filter(Boolean).length;
+  const after = await used(u.id);
+
+  report(
+    "tier: 20 concurrent 1MB reservations against a 10MB TIER grant exactly 10",
+    granted === 10 && after === 10 * MB && after === granted * MB,
+    `${granted} granted (want 10), used=${(after / MB).toFixed(1)}MB (want 10) — the tier subquery must not have cost us atomicity`
+  );
+
+  await prisma.user.delete({ where: { id: u.id } });
+  await prisma.tier.delete({ where: { id: tier.id } });
+}
+
+/**
+ * What the admin's assignment form means.
+ *
+ * The end-of-day rule is the kind of thing that looks right and is off by a
+ * day: `new Date("2026-08-01")` is midnight UTC, so an admin typing today's
+ * date would find the tier already lapsed — and would have no reason to suspect
+ * the date field rather than the tier.
+ */
+async function testAssignmentRules() {
+  const midday = resolveAssignment("tier-1", "2026-08-01");
+  const end = midday.expiresAt!;
+  report(
+    "assignment: a date means the END of that day, not midnight",
+    end.getHours() === 23 && end.getMinutes() === 59 &&
+      end.getFullYear() === 2026 && end.getMonth() === 7 && end.getDate() === 1,
+    `parsed as ${end.toString()} — want 2026-08-01 23:59:59 local, or "expires today" lapses this morning`
+  );
+
+  const noTier = resolveAssignment("", "2026-08-01");
+  report(
+    "assignment: an expiry without a tier is dropped",
+    noTier.tierId === null && noTier.expiresAt === null,
+    `tierId=${noTier.tierId} expiresAt=${noTier.expiresAt} — both must be null; the default has nothing to lapse to`
+  );
+
+  const noExpiry = resolveAssignment("tier-1", "");
+  report(
+    "assignment: a tier with no date never expires",
+    noExpiry.tierId === "tier-1" && noExpiry.expiresAt === null,
+    `tierId=${noExpiry.tierId} expiresAt=${noExpiry.expiresAt} (want tier-1 / null)`
+  );
+
+  const junk = resolveAssignment("tier-1", "not-a-date");
+  report(
+    "assignment: an unparseable date is ignored rather than becoming Invalid Date",
+    junk.tierId === "tier-1" && junk.expiresAt === null,
+    `expiresAt=${junk.expiresAt} — an Invalid Date written to the column would make the tier expire never or always`
+  );
+}
+
 async function main() {
+  await testAssignmentRules();
   await testBasicReserve();
   await testConcurrentReserve();
   await testRelease();
   await testAdjustReservation();
   await testReconcile();
   await testQuotaIsPerAccount();
+  await testDefaultTierApplies();
+  await testAssignedTierApplies();
+  await testOverrideBeatsTier();
+  await testExpiredAssignmentFallsBackToDefault();
+  await testConcurrentReserveAgainstTier();
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);
   await prisma.$disconnect();
   process.exit(failures === 0 ? 0 : 1);

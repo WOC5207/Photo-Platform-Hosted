@@ -45,10 +45,27 @@ model User {
   // username, so an account is never nameless.
   displayName  String   @default("")
 
-  // Storage allowance, in bytes, set per account by the platform admin.
+  // The tier this account is on. NULL = the default tier, so a new account is
+  // on the default without anything having to assign it.
+  tierId       String?
+  tier         Tier?    @relation(fields: [tierId], references: [id], onDelete: SetNull)
+  // When this account's tier assignment lapses. NULL = it does not.
+  //
+  // Expiry is resolved lazily, at the moment the tier is read, rather than by a
+  // scheduled job: there is no scheduler here, and a job would be a second way
+  // for the answer to be wrong (missed run, wrong clock) on top of the rule
+  // itself. Read-time resolution cannot drift — the account is on the default
+  // tier the instant the date passes, whether or not anything ran.
+  tierExpiresAt DateTime?
+
+  // Per-account override of the tier's storage allowance, in bytes.
+  // NULL = use the tier's, which is the normal case.
+  //
   // BigInt because a 32-bit Int caps at ~2.1GB, which is under one photoshoot.
-  // Default 5 GiB.
-  quotaBytes   BigInt   @default(5368709120)
+  // The effective allowance is override ?? effective-tier's — expressed once,
+  // in SQL, in src/lib/quota.ts, because the upload check has to be a single
+  // atomic statement and cannot afford a second opinion computed elsewhere.
+  quotaBytes   BigInt?
   // Live running total of everything this account has on disk. A denormalised
   // counter rather than a SUM() because the check has to be atomic: SUM ->
   // compare -> write leaves a window where two concurrent uploads both pass a
@@ -95,6 +112,32 @@ model SiteImage {
   createdAt DateTime @default(now())
 
   @@index([ownerId])
+}
+
+// A named storage allowance accounts can be put on, so the admin sets a limit
+// in one place instead of typing the same number onto every account.
+model Tier {
+  id         String   @id @default(cuid())
+  // Admin-facing only; never shown on a public page.
+  name       String   @unique
+  quotaBytes BigInt
+  // Exactly one tier is the default: new accounts get it, and an expired
+  // assignment falls back to it.
+  //
+  // "At most one" is enforced by a PARTIAL unique index, added by hand in the
+  // migration — Prisma cannot express "unique among the rows where isDefault is
+  // true", and a plain @unique here would instead allow only one tier to be
+  // NON-default, which is the opposite of the rule. "At least one" is enforced
+  // in code: the default tier cannot be deleted or un-defaulted directly, only
+  // replaced by promoting another.
+  isDefault  Boolean  @default(false)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  // SetNull rather than Cascade: deleting a tier must never delete accounts.
+  // Deleting one that is in use is blocked in the action anyway; this is the
+  // backstop, and NULL already means "on the default tier".
+  users      User[]
 }
 
 // Registration is invite-only: there is no public signup form, so an account
