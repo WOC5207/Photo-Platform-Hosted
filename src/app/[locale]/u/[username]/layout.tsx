@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import SiteChrome from "@/components/SiteChrome";
-import { findOwner, ownerName, resolveOwner } from "@/lib/owner";
+import { findOwner, resolveOwner } from "@/lib/owner";
 import { getSiteSettings, resolveSiteTitle } from "@/lib/settings";
 
 // Resolves the owner from the request path — never prerender.
@@ -20,7 +20,7 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "common" });
   const settings = await getSiteSettings(owner.id);
   return {
-    title: resolveSiteTitle(settings, locale, ownerName(owner) || t("siteName"))
+    title: resolveSiteTitle(settings, locale, t("siteName"))
   };
 }
 

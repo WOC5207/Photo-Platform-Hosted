@@ -1,6 +1,6 @@
 {
   "common": {
-    "siteName": "图库网站",
+    "siteName": "拼好摄摄影师平台",
     "creditTerm": "署名",
     "subjectTerm": "主题",
     "backToHome": "返回首页",
@@ -205,7 +205,7 @@
     "savedAutomatically": "自动保存",
     "lotteryRequiresBooking": "开启预约后才能启用抽奖。",
     "groupHeaderTitle": "页眉",
-    "groupHeaderHint": "页眉中显示的网站名称与 Logo。网站名称也会显示在页脚。标题留空则使用默认名称。",
+    "groupHeaderHint": "页眉中显示的网站名称与 Logo。网站名称也会显示在页脚和浏览器标签页。标题留空则使用“拼好摄摄影师平台”。",
     "siteTitleEn": "站点标题（English）",
     "siteTitleZh": "站点标题（中文）",
     "groupBackgroundTitle": "背景",
@@ -537,7 +537,7 @@
     "credentialsMismatch": "两次输入的密码不一致。",
     "credentialsUnknown": "出错了，请重试。",
     "brandTitle": "为你的网站命名",
-    "brandHint": "这是显示在页眉和页脚的品牌名称。两项都留空则使用默认名称。",
+    "brandHint": "这是显示在页眉、页脚和浏览器标签页的品牌名称。两项都留空则使用“拼好摄摄影师平台”。",
     "hometextTitle": "首页标题文案",
     "hometextHint": "访客首先看到的标题和副标题。留空则使用默认文案。",
     "featuresTitle": "选择网站功能",
