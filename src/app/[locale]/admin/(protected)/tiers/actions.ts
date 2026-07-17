@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { resolveAssignment } from "@/lib/tiers";
 
 /**
  * Storage tiers: the named allowances accounts are put on.
@@ -156,37 +157,21 @@ export async function deleteTier(
 /**
  * Put an account on a tier, optionally until a date.
  *
- * An empty tier means "the default", which is stored as NULL rather than as the
- * default tier's id: that way an account follows the default even if which tier
- * is default changes later, which is what "default" is supposed to mean.
- *
- * An expiry only makes sense against an explicit assignment — there is nothing
- * for the default to expire back to — so it is cleared alongside.
+ * The rules live in resolveAssignment so they can be tested — this action
+ * cannot be, since revalidatePath needs a request context.
  */
 export async function assignTier(formData: FormData): Promise<void> {
   await guard();
   const id = formData.get("id");
-  const tierId = formData.get("tierId");
-  const expiresAt = formData.get("expiresAt");
   if (typeof id !== "string") return;
 
-  const resolvedTierId =
-    typeof tierId === "string" && tierId !== "" ? tierId : null;
-
-  let resolvedExpiry: Date | null = null;
-  if (resolvedTierId && typeof expiresAt === "string" && expiresAt !== "") {
-    // <input type="date"> gives YYYY-MM-DD. Take it as the END of that day, in
-    // the server's zone: an admin who types today's date means "through today",
-    // not "expired at midnight this morning".
-    const parsed = new Date(`${expiresAt}T23:59:59`);
-    if (!Number.isNaN(parsed.getTime())) resolvedExpiry = parsed;
-  }
+  const { tierId, expiresAt } = resolveAssignment(
+    formData.get("tierId"),
+    formData.get("expiresAt")
+  );
 
   await prisma.user
-    .update({
-      where: { id },
-      data: { tierId: resolvedTierId, tierExpiresAt: resolvedExpiry }
-    })
+    .update({ where: { id }, data: { tierId, tierExpiresAt: expiresAt } })
     .catch(() => {});
   revalidatePath("/", "layout");
 }

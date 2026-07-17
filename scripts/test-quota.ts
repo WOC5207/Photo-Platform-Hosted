@@ -18,6 +18,7 @@ import {
   releaseBytes,
   reserveBytes
 } from "../src/lib/quota";
+import { resolveAssignment } from "../src/lib/tiers";
 
 const prisma = new PrismaClient();
 let failures = 0;
@@ -410,7 +411,48 @@ async function testConcurrentReserveAgainstTier() {
   await prisma.tier.delete({ where: { id: tier.id } });
 }
 
+/**
+ * What the admin's assignment form means.
+ *
+ * The end-of-day rule is the kind of thing that looks right and is off by a
+ * day: `new Date("2026-08-01")` is midnight UTC, so an admin typing today's
+ * date would find the tier already lapsed — and would have no reason to suspect
+ * the date field rather than the tier.
+ */
+async function testAssignmentRules() {
+  const midday = resolveAssignment("tier-1", "2026-08-01");
+  const end = midday.expiresAt!;
+  report(
+    "assignment: a date means the END of that day, not midnight",
+    end.getHours() === 23 && end.getMinutes() === 59 &&
+      end.getFullYear() === 2026 && end.getMonth() === 7 && end.getDate() === 1,
+    `parsed as ${end.toString()} — want 2026-08-01 23:59:59 local, or "expires today" lapses this morning`
+  );
+
+  const noTier = resolveAssignment("", "2026-08-01");
+  report(
+    "assignment: an expiry without a tier is dropped",
+    noTier.tierId === null && noTier.expiresAt === null,
+    `tierId=${noTier.tierId} expiresAt=${noTier.expiresAt} — both must be null; the default has nothing to lapse to`
+  );
+
+  const noExpiry = resolveAssignment("tier-1", "");
+  report(
+    "assignment: a tier with no date never expires",
+    noExpiry.tierId === "tier-1" && noExpiry.expiresAt === null,
+    `tierId=${noExpiry.tierId} expiresAt=${noExpiry.expiresAt} (want tier-1 / null)`
+  );
+
+  const junk = resolveAssignment("tier-1", "not-a-date");
+  report(
+    "assignment: an unparseable date is ignored rather than becoming Invalid Date",
+    junk.tierId === "tier-1" && junk.expiresAt === null,
+    `expiresAt=${junk.expiresAt} — an Invalid Date written to the column would make the tier expire never or always`
+  );
+}
+
 async function main() {
+  await testAssignmentRules();
   await testBasicReserve();
   await testConcurrentReserve();
   await testRelease();

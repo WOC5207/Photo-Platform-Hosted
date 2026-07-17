@@ -266,7 +266,7 @@
   },
   "adminStorage": {
     "title": "资源监控",
-    "intro": "照片、网站图片和数据库当前占用的磁盘空间。",
+    "intro": "整个平台的存储情况。各账号自己的用量、等级和上限在「账号」页面。",
     "totalLabel": "总计",
     "photosLabel": "活动照片",
     "siteImagesLabel": "网站图片",
@@ -299,7 +299,12 @@
     "overrideNote": "自定义上限已覆盖该等级。",
     "clearOverride": "清除",
     "sourceTier": "来自等级：{tier}",
-    "sourceOverride": "该账号的自定义上限"
+    "sourceOverride": "该账号的自定义上限",
+    "accountsLabel": "账号数",
+    "nearLimitTitle": "接近上限",
+    "nearLimitNone": "暂无账号接近上限。",
+    "manageOnAccounts": "在此设置等级与上限：",
+    "accountsLink": "账号"
   },
   "gallery": {
     "title": "作品集",

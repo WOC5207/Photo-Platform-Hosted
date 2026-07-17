@@ -266,7 +266,7 @@
   },
   "adminStorage": {
     "title": "Resource monitor",
-    "intro": "How much disk space your photos, site images, and database are using right now.",
+    "intro": "Storage across the whole platform. Each account's own usage, tier and limit are on the Accounts page.",
     "totalLabel": "Total",
     "photosLabel": "Event photos",
     "siteImagesLabel": "Site images",
@@ -299,7 +299,12 @@
     "overrideNote": "Custom limit overrides this tier.",
     "clearOverride": "Clear",
     "sourceTier": "from tier: {tier}",
-    "sourceOverride": "custom limit for this account"
+    "sourceOverride": "custom limit for this account",
+    "accountsLabel": "Accounts",
+    "nearLimitTitle": "Close to their limit",
+    "nearLimitNone": "No account is near its limit.",
+    "manageOnAccounts": "Set tiers and limits on",
+    "accountsLink": "Accounts"
   },
   "gallery": {
     "title": "Gallery",
