@@ -78,7 +78,9 @@
     "siteCardHint": "自定义站点标题、首页文案、背景和 Logo。",
     "resourceMonitor": "资源监控",
     "resourceMonitorCardHint": "查看照片、网站图片和数据库占用的存储空间。",
-    "platform": "平台"
+    "platform": "平台",
+    "account": "账号",
+    "accountCardHint": "修改你的登录密码。"
   },
   "adminEvents": {
     "listTitle": "相册管理",
@@ -288,7 +290,16 @@
     "quotaGib": "GiB",
     "reconcile": "重新计算",
     "reconcileHint": "根据该账号的照片和站点图片重新统计用量。数值有误时使用。",
-    "platformTotal": "所有账号已用合计"
+    "platformTotal": "所有账号已用合计",
+    "colTier": "等级",
+    "defaultTierOption": "默认等级",
+    "assign": "应用",
+    "expiresAtHint": "到期日期——到期后账号回落到默认等级。留空表示不过期。",
+    "expiredNote": "已到期——当前使用默认等级。",
+    "overrideNote": "自定义上限已覆盖该等级。",
+    "clearOverride": "清除",
+    "sourceTier": "来自等级：{tier}",
+    "sourceOverride": "该账号的自定义上限"
   },
   "gallery": {
     "title": "作品集",
@@ -526,7 +537,12 @@
     "inviteUnused": "尚未使用",
     "inviteExpired": "已过期",
     "noInvites": "还没有邀请。",
-    "cannotSuspendSelf": "不能停用或删除自己的账号。"
+    "cannotSuspendSelf": "不能停用或删除自己的账号。",
+    "resetPassword": "重置密码",
+    "resetPasswordConfirm": "为 {username} 生成新密码？其当前密码将立即失效。",
+    "resetPasswordGenerated": "{username} 的新密码：",
+    "resetPasswordCopyHint": "请立即复制并发送给对方——此密码不会再次显示。如果丢失，重置一次即可。",
+    "resetPasswordError": "该账号已不存在。"
   },
   "register": {
     "title": "创建账号",
@@ -547,5 +563,42 @@
     "errorUsernameInvalid": "请使用 2–31 位小写字母、数字或连字符，并以字母或数字开头。",
     "errorBadInvite": "该邀请已失效。",
     "errorRateLimited": "尝试次数过多，请稍后再试。"
+  },
+  "adminTiers": {
+    "title": "等级",
+    "intro": "命名的存储额度。每个账号都属于某个等级；默认等级是新账号的起始等级，也是等级到期后回落的等级。",
+    "colName": "等级",
+    "colLimit": "存储上限",
+    "colAccounts": "账号数",
+    "accountsCount": "{count} 个账号",
+    "save": "保存",
+    "unitGib": "GiB",
+    "makeDefault": "设为默认",
+    "defaultBadge": "默认",
+    "defaultHint": "新账号从默认等级开始；账号的等级到期后也会回落到默认等级。",
+    "delete": "删除",
+    "confirmDelete": "确定删除该等级？",
+    "errorIsDefault": "无法删除默认等级。请先将其他等级设为默认。",
+    "errorInUse": "仍有账号属于该等级。请先将他们移至其他等级。",
+    "newTitle": "新建等级",
+    "namePlaceholder": "等级名称",
+    "create": "创建等级",
+    "errorValidation": "请填写名称和上限。",
+    "errorDuplicate": "已存在同名等级。"
+  },
+  "account": {
+    "title": "账号",
+    "signedInAs": "当前登录：{username}。",
+    "changePasswordTitle": "修改密码",
+    "changePasswordHint": "需要输入当前密码。如果你不记得了，请联系站点管理员重置。",
+    "currentPassword": "当前密码",
+    "newPassword": "新密码",
+    "confirmPassword": "确认新密码",
+    "changePassword": "修改密码",
+    "changed": "密码已修改。",
+    "errorValidation": "新密码至少需要 8 个字符。",
+    "errorMismatch": "两次输入的新密码不一致。",
+    "errorWrongCurrent": "当前密码不正确。",
+    "errorRateLimited": "尝试次数过多，请几分钟后再试。"
   }
 }

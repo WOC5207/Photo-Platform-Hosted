@@ -78,7 +78,9 @@
     "siteCardHint": "Customize the site title, homepage text, background and logo.",
     "resourceMonitor": "Resource monitor",
     "resourceMonitorCardHint": "See how much storage your photos, site images and database are using.",
-    "platform": "Platform"
+    "platform": "Platform",
+    "account": "Account",
+    "accountCardHint": "Change your password."
   },
   "adminEvents": {
     "listTitle": "Gallery events",
@@ -288,7 +290,16 @@
     "quotaGib": "GiB",
     "reconcile": "Recalculate",
     "reconcileHint": "Recount this account's usage from its photos and site images. Use if the number looks wrong.",
-    "platformTotal": "Total used by all accounts"
+    "platformTotal": "Total used by all accounts",
+    "colTier": "Tier",
+    "defaultTierOption": "Default tier",
+    "assign": "Assign",
+    "expiresAtHint": "Expiry date — the account returns to the default tier after this. Leave empty for no expiry.",
+    "expiredNote": "Expired — on the default tier now.",
+    "overrideNote": "Custom limit overrides this tier.",
+    "clearOverride": "Clear",
+    "sourceTier": "from tier: {tier}",
+    "sourceOverride": "custom limit for this account"
   },
   "gallery": {
     "title": "Gallery",
@@ -526,7 +537,12 @@
     "inviteUnused": "Not used yet",
     "inviteExpired": "Expired",
     "noInvites": "No invites yet.",
-    "cannotSuspendSelf": "You cannot suspend or delete your own account."
+    "cannotSuspendSelf": "You cannot suspend or delete your own account.",
+    "resetPassword": "Reset password",
+    "resetPasswordConfirm": "Generate a new password for {username}? Their current password stops working immediately.",
+    "resetPasswordGenerated": "New password for {username}:",
+    "resetPasswordCopyHint": "Copy it now and send it to them — it is not shown again. If you lose it, just reset again.",
+    "resetPasswordError": "That account no longer exists."
   },
   "register": {
     "title": "Create your account",
@@ -547,5 +563,42 @@
     "errorUsernameInvalid": "Use 2–31 lowercase letters, numbers or hyphens, starting with a letter or number.",
     "errorBadInvite": "This invite is no longer valid.",
     "errorRateLimited": "Too many attempts. Try again later."
+  },
+  "adminTiers": {
+    "title": "Tiers",
+    "intro": "Named storage allowances. Every account is on one; the default is what new accounts get, and what an account returns to when its tier expires.",
+    "colName": "Tier",
+    "colLimit": "Storage limit",
+    "colAccounts": "Accounts",
+    "accountsCount": "{count, plural, =0 {none} =1 {1 account} other {# accounts}}",
+    "save": "Save",
+    "unitGib": "GiB",
+    "makeDefault": "Make default",
+    "defaultBadge": "Default",
+    "defaultHint": "New accounts start on the default tier, and accounts fall back to it when their tier expires.",
+    "delete": "Delete",
+    "confirmDelete": "Delete this tier?",
+    "errorIsDefault": "The default tier cannot be deleted. Make another tier the default first.",
+    "errorInUse": "Accounts are still on this tier. Move them to another one first.",
+    "newTitle": "New tier",
+    "namePlaceholder": "Tier name",
+    "create": "Create tier",
+    "errorValidation": "Enter a name and a limit.",
+    "errorDuplicate": "A tier with that name already exists."
+  },
+  "account": {
+    "title": "Account",
+    "signedInAs": "Signed in as {username}.",
+    "changePasswordTitle": "Change password",
+    "changePasswordHint": "You need your current password. If you do not have it, ask the site admin to reset it for you.",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "changePassword": "Change password",
+    "changed": "Password changed.",
+    "errorValidation": "New password must be at least 8 characters.",
+    "errorMismatch": "The two new passwords do not match.",
+    "errorWrongCurrent": "Current password is incorrect.",
+    "errorRateLimited": "Too many attempts. Please wait a few minutes and try again."
   }
 }

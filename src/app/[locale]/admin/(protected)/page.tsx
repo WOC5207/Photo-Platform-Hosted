@@ -5,6 +5,7 @@ import { ownerBasePath, ownerName } from "@/lib/owner";
 import { formatDate } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
+import ResetPasswordControl from "@/components/admin/ResetPasswordControl";
 import { deleteUser, setUserStatus } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -88,28 +89,45 @@ export default async function PlatformUsersPage() {
                         {t("cannotSuspendSelf")}
                       </span>
                     ) : (
-                      <div className="flex items-center justify-end gap-2">
-                        <form action={setUserStatus}>
-                          <input type="hidden" name="id" value={u.id} />
-                          <input
-                            type="hidden"
-                            name="status"
-                            value={u.status === "active" ? "suspended" : "active"}
-                          />
-                          <button
-                            type="submit"
-                            className="rounded-lg border border-border-strong px-2.5 py-1 text-xs text-fg-muted hover:border-fg-faint hover:text-fg"
-                          >
-                            {u.status === "active" ? t("suspend") : t("unsuspend")}
-                          </button>
-                        </form>
-                        <form action={deleteUser}>
-                          <input type="hidden" name="id" value={u.id} />
-                          <ConfirmSubmit
-                            label={t("deleteUser")}
-                            confirmText={t("deleteUserConfirm")}
-                          />
-                        </form>
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="flex items-center justify-end gap-2">
+                          <form action={setUserStatus}>
+                            <input type="hidden" name="id" value={u.id} />
+                            <input
+                              type="hidden"
+                              name="status"
+                              value={u.status === "active" ? "suspended" : "active"}
+                            />
+                            <button
+                              type="submit"
+                              className="rounded-lg border border-border-strong px-2.5 py-1 text-xs text-fg-muted hover:border-fg-faint hover:text-fg"
+                            >
+                              {u.status === "active" ? t("suspend") : t("unsuspend")}
+                            </button>
+                          </form>
+                          <form action={deleteUser}>
+                            <input type="hidden" name="id" value={u.id} />
+                            <ConfirmSubmit
+                              label={t("deleteUser")}
+                              confirmText={t("deleteUserConfirm")}
+                            />
+                          </form>
+                        </div>
+                        {/* Not offered for your own account: you would be
+                            handing yourself a random password to type back in,
+                            when Dashboard -> Account changes it properly. */}
+                        <ResetPasswordControl
+                          userId={u.id}
+                          labels={{
+                            reset: t("resetPassword"),
+                            confirm: t("resetPasswordConfirm", { username: u.username }),
+                            generatedFor: t("resetPasswordGenerated", {
+                              username: u.username
+                            }),
+                            copyHint: t("resetPasswordCopyHint"),
+                            error: t("resetPasswordError")
+                          }}
+                        />
                       </div>
                     )}
                   </td>

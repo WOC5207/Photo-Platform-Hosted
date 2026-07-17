@@ -38,6 +38,9 @@ export default async function PlatformAdminLayout({
             <Link href="/admin/invites" className="text-fg-muted hover:text-fg">
               {t("platform.invitesTitle")}
             </Link>
+            <Link href="/admin/tiers" className="text-fg-muted hover:text-fg">
+              {t("adminTiers.title")}
+            </Link>
             <Link href="/admin/storage" className="text-fg-muted hover:text-fg">
               {t("adminStorage.title")}
             </Link>

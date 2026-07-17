@@ -65,6 +65,13 @@ export default async function AdminDashboardPage() {
             {t("resourceMonitorCardHint")}
           </p>
         </Link>
+        <Link
+          href="/dashboard/account"
+          className="rounded-xl border border-border bg-surface p-6 transition hover:border-border-strong"
+        >
+          <h2 className="text-lg font-semibold">{t("account")}</h2>
+          <p className="mt-1 text-sm text-fg-subtle">{t("accountCardHint")}</p>
+        </Link>
       </div>
     </div>
   );

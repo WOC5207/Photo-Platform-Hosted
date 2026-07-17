@@ -94,6 +94,12 @@ export default async function DashboardLayout({
               >
                 {t("admin.resourceMonitor")}
               </Link>
+              <Link
+                href="/dashboard/account"
+                className="text-fg-muted hover:text-fg"
+              >
+                {t("admin.account")}
+              </Link>
               {/* Platform tools. Only the admin has these, and they are about
                   other people's accounts rather than this user's own site —
                   which is exactly why they are not part of the dashboard. */}

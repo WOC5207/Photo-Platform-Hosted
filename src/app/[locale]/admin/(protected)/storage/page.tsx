@@ -1,10 +1,19 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireAdmin } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { getPlatformStorage, formatBytes } from "@/lib/storage";
 import { ownerName } from "@/lib/owner";
 import QuotaControls from "@/components/admin/QuotaControls";
+import TierAssignment from "@/components/admin/TierAssignment";
 
 export const dynamic = "force-dynamic";
+
+/** YYYY-MM-DD in the server's zone, which is what <input type="date"> wants. */
+function dateInputValue(d: Date | null): string {
+  if (!d) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 /**
  * Platform-wide storage: who is using what, and the controls to do something
@@ -15,7 +24,13 @@ export default async function PlatformStoragePage() {
   await requireAdmin(locale);
   const t = await getTranslations("adminStorage");
 
-  const { accounts, totalUsedBytes, databaseBytes } = await getPlatformStorage();
+  const [{ accounts, totalUsedBytes, databaseBytes }, tiers] = await Promise.all([
+    getPlatformStorage(),
+    prisma.tier.findMany({
+      orderBy: [{ sortOrder: "asc" }, { quotaBytes: "asc" }],
+      select: { id: true, name: true }
+    })
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -43,6 +58,7 @@ export default async function PlatformStoragePage() {
               <th className="px-4 py-3 font-medium">{t("colPhotos")}</th>
               <th className="px-4 py-3 font-medium">{t("colUsed")}</th>
               <th className="px-4 py-3 font-medium">{t("colQuota")}</th>
+              <th className="px-4 py-3 font-medium">{t("colTier")}</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -72,8 +88,40 @@ export default async function PlatformStoragePage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-fg-muted">
-                    {formatBytes(a.quotaBytes)}
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col">
+                      <span className="text-fg-muted">
+                        {formatBytes(a.quotaBytes)}
+                      </span>
+                      {/* Where that number came from. Without this the column
+                          is a bare figure that may or may not match the tier
+                          named beside it, with no way to tell which rule won. */}
+                      <span className="text-xs text-fg-subtle">
+                        {a.overridden
+                          ? t("sourceOverride")
+                          : t("sourceTier", { tier: a.tierName })}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <TierAssignment
+                      userId={a.id}
+                      tiers={tiers}
+                      current={{
+                        tierId: a.tierId,
+                        expiresAt: dateInputValue(a.tierExpiresAt),
+                        expired: a.expired,
+                        overridden: a.overridden
+                      }}
+                      labels={{
+                        defaultTier: t("defaultTierOption"),
+                        save: t("assign"),
+                        expiresAt: t("expiresAtHint"),
+                        expiredNote: t("expiredNote"),
+                        overrideNote: t("overrideNote"),
+                        clearOverride: t("clearOverride")
+                      }}
+                    />
                   </td>
                   <td className="px-4 py-3">
                     <QuotaControls
