@@ -30,7 +30,9 @@ there is no privileged site.
 
 - **Invite-only registration.** There is no public signup form. The admin issues
   a link from **Platform admin → Invites**; only someone holding one can create an
-  account. Each invite works exactly once.
+  account. Each invite works exactly once. Administrators can place a bilingual
+  notification or EULA before the account form and choose a 0–300 second delay
+  before visitors may continue.
 - **Per-account storage plans.** The admin assigns the default tier, a named
   tier or a custom limit under **Platform admin → Accounts → Storage plan**.
   Named tiers live under **Storage plans**, while **Platform health** is reserved
@@ -186,7 +188,8 @@ service needs this; Postgres pulls its own official image.)
 ### 5. Inviting photographers
 
 1. **Platform admin → Invites → Create invite**. Add a note so you remember who
-   it was for.
+   it was for. The same page also configures the optional bilingual registration
+   notice, EULA text and countdown shown before every usable invitation.
 2. Copy the link and send it to them. It works once.
 3. They pick their own username (their site becomes `/u/<username>`), display
    name and password, then land in their own setup wizard.

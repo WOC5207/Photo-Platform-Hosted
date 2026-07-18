@@ -161,6 +161,19 @@ model Invite {
   @@index([issuedById])
 }
 
+// One platform-wide row controlled by administrators. The registration notice
+// appears before the account form for every usable invite link.
+model PlatformSettings {
+  id                              String   @id @default("platform")
+  registrationNoticeEnabled       Boolean  @default(false)
+  registrationNoticeDelaySeconds  Int      @default(5)
+  registrationNoticeTitleEn       String   @default("")
+  registrationNoticeTitleZh       String   @default("")
+  registrationNoticeBodyEn        String   @default("")
+  registrationNoticeBodyZh        String   @default("")
+  updatedAt                       DateTime @updatedAt
+}
+
 // A gallery event = one photo album (a con, a shoot, etc.)
 model Event {
   id            String    @id @default(cuid())

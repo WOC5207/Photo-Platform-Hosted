@@ -160,6 +160,59 @@ export async function resetUserPassword(
 
 export type InviteState = { error?: "validation"; ok?: boolean };
 
+export type RegistrationNoticeState = {
+  error?: "validation";
+  ok?: boolean;
+};
+
+const registrationNoticeSchema = z.object({
+  enabled: z.boolean(),
+  delaySeconds: z.coerce.number().int().min(0).max(300),
+  titleEn: z.string().trim().max(200),
+  titleZh: z.string().trim().max(200),
+  bodyEn: z.string().trim().max(20_000),
+  bodyZh: z.string().trim().max(20_000)
+});
+
+export async function saveRegistrationNotice(
+  _prev: RegistrationNoticeState,
+  formData: FormData
+): Promise<RegistrationNoticeState> {
+  await guard();
+  const parsed = registrationNoticeSchema.safeParse({
+    enabled: formData.get("enabled") === "on",
+    delaySeconds: formData.get("delaySeconds"),
+    titleEn: formData.get("titleEn") ?? "",
+    titleZh: formData.get("titleZh") ?? "",
+    bodyEn: formData.get("bodyEn") ?? "",
+    bodyZh: formData.get("bodyZh") ?? ""
+  });
+  if (!parsed.success) return { error: "validation" };
+
+  await prisma.platformSettings.upsert({
+    where: { id: "platform" },
+    create: {
+      id: "platform",
+      registrationNoticeEnabled: parsed.data.enabled,
+      registrationNoticeDelaySeconds: parsed.data.delaySeconds,
+      registrationNoticeTitleEn: parsed.data.titleEn,
+      registrationNoticeTitleZh: parsed.data.titleZh,
+      registrationNoticeBodyEn: parsed.data.bodyEn,
+      registrationNoticeBodyZh: parsed.data.bodyZh
+    },
+    update: {
+      registrationNoticeEnabled: parsed.data.enabled,
+      registrationNoticeDelaySeconds: parsed.data.delaySeconds,
+      registrationNoticeTitleEn: parsed.data.titleEn,
+      registrationNoticeTitleZh: parsed.data.titleZh,
+      registrationNoticeBodyEn: parsed.data.bodyEn,
+      registrationNoticeBodyZh: parsed.data.bodyZh
+    }
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
 const inviteSchema = z.object({
   note: z.string().trim().max(200)
 });

@@ -4,9 +4,11 @@ import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { ownerName } from "@/lib/owner";
 import { formatDate } from "@/lib/datetime";
+import { getPlatformSettings } from "@/lib/platformSettings";
 import CopyButton from "@/components/admin/CopyButton";
 import InviteForm from "@/components/admin/InviteForm";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
+import RegistrationNoticeForm from "@/components/admin/RegistrationNoticeForm";
 import { revokeInvite } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -17,12 +19,15 @@ export default async function PlatformInvitesPage() {
   const t = await getTranslations("platform");
   const tc = await getTranslations("common");
 
-  const invites = await prisma.invite.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
-      redeemedBy: { select: { username: true, displayName: true } }
-    }
-  });
+  const [invites, platformSettings] = await Promise.all([
+    prisma.invite.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        redeemedBy: { select: { username: true, displayName: true } }
+      }
+    }),
+    getPlatformSettings()
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -40,6 +45,26 @@ export default async function PlatformInvitesPage() {
           }}
         />
       </div>
+
+      <RegistrationNoticeForm
+        settings={platformSettings}
+        labels={{
+          title: t("registrationNoticeTitle"),
+          description: t("registrationNoticeDescription"),
+          enabled: t("registrationNoticeEnabled"),
+          enabledHint: t("registrationNoticeEnabledHint"),
+          delay: t("registrationNoticeDelay"),
+          delayHint: t("registrationNoticeDelayHint"),
+          titleEn: t("registrationNoticeTitleEn"),
+          titleZh: t("registrationNoticeTitleZh"),
+          bodyEn: t("registrationNoticeBodyEn"),
+          bodyZh: t("registrationNoticeBodyZh"),
+          bodyHint: t("registrationNoticeBodyHint"),
+          save: tc("save"),
+          saved: tc("saved"),
+          error: t("registrationNoticeError")
+        }}
+      />
 
       {invites.length === 0 ? (
         <p className="py-12 text-center text-fg-subtle">{t("noInvites")}</p>
