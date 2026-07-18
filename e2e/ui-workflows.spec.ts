@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "crypto";
 import { sealData } from "iron-session";
+import sharp from "sharp";
 import { prisma } from "@/lib/db";
 
 const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.ADMIN_USERNAME;
@@ -381,9 +382,31 @@ test.describe.serial("management workflows", () => {
     );
     await expect(page.getByTestId("pending-photo-list")).toHaveCSS("overflow-y", "visible");
 
+    // Windows may report TIFF as a generic binary file. The filename fallback
+    // must still admit .tif/.tiff while Sharp validates the actual bytes.
+    const tiff = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 3,
+        background: { r: 30, g: 120, b: 70 }
+      }
+    })
+      .tiff({ compression: "lzw" })
+      .toBuffer();
+    await picker.setInputFiles({
+      name: "third.tiff",
+      mimeType: "application/octet-stream",
+      buffer: tiff
+    });
+    await expect(page.getByText("3 photos queued")).toBeVisible();
+    await expect(page.getByText("Ready to create")).toHaveCount(3);
+    await expect(page.getByRole("img", { name: "third.tiff" })).toBeVisible();
+
     await page.reload();
     await expect(page.getByRole("img", { name: "first.png" })).toBeVisible();
     await expect(page.getByRole("img", { name: "second.png" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "third.tiff" })).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
       "aria-valuenow",
       "100"
@@ -391,7 +414,7 @@ test.describe.serial("management workflows", () => {
 
     await page.locator('input[list="known-credits"]').fill("E2E credit");
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "2 photos created." })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "3 photos created." })).toBeVisible();
     await expect(page.getByText("No photos in the pending queue.")).toBeVisible();
 
     page.once("dialog", (dialog) => dialog.accept());

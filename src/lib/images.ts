@@ -13,8 +13,31 @@ sharp.cache(false);
 export const ALLOWED_UPLOAD_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
-  "image/webp": "webp"
+  "image/webp": "webp",
+  "image/tiff": "tif",
+  "image/x-tiff": "tif"
 };
+
+export function resolveUploadExtension(file: {
+  type: string;
+  name: string;
+}): string | null {
+  const mimeExtension = ALLOWED_UPLOAD_TYPES[file.type.toLowerCase()];
+  if (mimeExtension) return mimeExtension;
+
+  // Some Windows/browser combinations do not provide a TIFF MIME type. Only
+  // use the filename fallback for an absent/generic MIME; Sharp still parses
+  // the bytes before anything is published.
+  const mime = file.type.toLowerCase();
+  const filenameExtension = path.extname(file.name).toLowerCase();
+  if (
+    (mime === "" || mime === "application/octet-stream") &&
+    (filenameExtension === ".tif" || filenameExtension === ".tiff")
+  ) {
+    return "tif";
+  }
+  return null;
+}
 
 // Generated web sizes. sharp strips ALL metadata (EXIF/GPS/etc.) by default
 // on output, which is exactly what we want for displayed images.
@@ -385,6 +408,8 @@ export async function processAndStorePhoto(
     if (ext === "png") await pipeline.png().toFile(origPath);
     else if (ext === "webp")
       await pipeline.webp({ quality: 95 }).toFile(origPath);
+    else if (ext === "tif" || ext === "tiff")
+      await pipeline.tiff({ compression: "lzw" }).toFile(origPath);
     else await pipeline.jpeg({ quality: 95, mozjpeg: true }).toFile(origPath);
   } else {
     await fs.writeFile(origPath, buffer);

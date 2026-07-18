@@ -920,7 +920,7 @@ export default function PhotoUploader({
           <input
             type="file"
             multiple
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/jpeg,image/png,image/webp,image/tiff,image/x-tiff,.tif,.tiff"
             disabled={finalizing || clearing}
             onChange={queueSelectedFiles}
             className="sr-only"

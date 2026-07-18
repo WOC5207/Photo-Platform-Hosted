@@ -6,13 +6,15 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { eventDir } from "@/lib/images";
 
-const FILE_PATTERN = /^([a-z0-9]+)-(thumb|med|full|orig)\.(webp|jpg|jpeg|png)$/;
+const FILE_PATTERN = /^([a-z0-9]+)-(thumb|med|full|orig)\.(webp|jpg|jpeg|png|tif|tiff)$/;
 
 const CONTENT_TYPES: Record<string, string> = {
   webp: "image/webp",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
-  png: "image/png"
+  png: "image/png",
+  tif: "image/tiff",
+  tiff: "image/tiff"
 };
 
 export async function GET(

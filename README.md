@@ -345,7 +345,7 @@ vars, and rebuild. Nothing else has to change.
 
 ## Notes & limits
 
-- Uploads: JPEG, PNG, WebP (HEIC is not supported — export/convert first).
+- Uploads: JPEG, PNG, WebP, TIFF (`.tif` and `.tiff`). HEIC is not supported — export/convert first. TIFF processing is more CPU- and memory-intensive on NAS hardware, and the same per-file upload limit applies.
 - Pending uploads are fully processed, private and recoverable after a page
   reload. The exact source and one compressed candidate both count toward the
   photographer's storage temporarily; **Create** keeps the chosen master,
