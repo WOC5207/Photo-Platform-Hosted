@@ -237,6 +237,11 @@ test.describe.serial("management workflows", () => {
     await picker.setInputFiles({ name: "first.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("1 photo queued")).toBeVisible();
     await expect(page.getByText("Ready to create")).toHaveCount(1);
+    await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
+      "aria-valuenow",
+      "100"
+    );
+    await expect(page.getByRole("img", { name: "first.png" })).toBeVisible();
     await expect(page.getByText("Original", { exact: true })).toBeVisible();
     await expect(page.getByText("Balanced candidate")).toBeVisible();
     await expect(page.getByText("After Create")).toBeVisible();
@@ -255,6 +260,20 @@ test.describe.serial("management workflows", () => {
     await expect(page.getByLabel("Storage quality", { exact: true })).toHaveCount(2);
     await expect(page.getByLabel("Storage quality", { exact: true }).nth(0)).toHaveValue("archive");
     await expect(page.getByLabel("Storage quality", { exact: true }).nth(1)).toHaveValue("balanced");
+    await expect(page.getByRole("img", { name: "second.png" })).toBeVisible();
+    await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
+      "aria-valuenow",
+      "100"
+    );
+    await expect(page.getByTestId("pending-photo-list")).toHaveCSS("overflow-y", "visible");
+
+    await page.reload();
+    await expect(page.getByRole("img", { name: "first.png" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "second.png" })).toBeVisible();
+    await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
+      "aria-valuenow",
+      "100"
+    );
 
     await page.locator('input[list="known-credits"]').fill("E2E credit");
     await page.getByRole("button", { name: "Create", exact: true }).click();
