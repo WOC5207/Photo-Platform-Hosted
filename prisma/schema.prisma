@@ -191,8 +191,8 @@ model Photo {
   id           String   @id @default(cuid())
   eventId      String
   event        Event    @relation("EventPhotos", fields: [eventId], references: [id], onDelete: Cascade)
-  // Base name (no extension) of the stored files; sizes live at
-  // <PHOTOS_DIR>/<eventId>/<filename>-{orig,full,med,thumb}.<ext>
+  // Final master filename, or the active versioned candidate while pending.
+  // Public renditions use the photo id and never expose pending filenames.
   filename     String
   originalName String
   width        Int
@@ -202,6 +202,16 @@ model Photo {
   // means an fs.stat per photo, which is what the storage page used to do.
   // Int (2GB) is ample for one photo; only the per-user totals need BigInt.
   bytes        Int      @default(0)
+  // Storage choice for new pending uploads: original | archive | balanced.
+  // Existing photos default to original and require no filesystem migration.
+  storagePreset  String  @default("original")
+  // While pending, the exact source and one compressed comparison candidate
+  // coexist. These persisted sizes make the queue recoverable after reloads.
+  candidatePreset String?
+  sourceFilename  String?
+  sourceBytes     Int?
+  candidateBytes  Int?
+  renditionBytes  Int?
   // One or more (credited person, subject) credits — most photos have one,
   // group shots have several.
   credits      PhotoCredit[]
@@ -219,7 +229,7 @@ model Photo {
   // photos are fully processed and count toward storage, but stay private and
   // out of normal photo queries until the batch is finalized with credits.
   pendingBatchId String?
-  // ready | processing | pending | deleting. Existing/directly-created photos
+  // ready | processing | pending | finalizing | deleting. Existing/directly-created photos
   // default to ready; the database check constraint keeps this in sync with
   // pendingBatchId so forgotten query paths fail closed.
   uploadState String @default("ready")

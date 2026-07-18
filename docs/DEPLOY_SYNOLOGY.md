@@ -85,8 +85,16 @@ Either way you should end up with a folder containing `Dockerfile`,
 | `ADMIN_PASSWORD` | A long, unique password — stored only as a bcrypt hash, never in plaintext |
 | `SESSION_SECRET` | 32+ random characters — see below |
 | `APP_BASE_URL` | Your public HTTPS address, e.g. `https://photos.example.com`. Used to build shareable booking links, so it must match whatever domain you land on in [step 6](#6-connect-a-domain) |
-| `STRIP_ORIGINAL_EXIF` | `false` keeps uploaded originals untouched on disk; `true` re-encodes uploads so even the stored original has no EXIF/GPS (displayed images always have EXIF stripped either way) |
+| `STRIP_ORIGINAL_EXIF` | `false` lets photographers choose a byte-identical Original; `true` hides that option so new stored masters use EXIF-free Archive or Balanced compression (displayed images always have EXIF stripped) |
 | `UPLOAD_MAX_MB` | Max size per uploaded photo, default `100` |
+
+Photo compression runs server-side and one file at a time to keep NAS memory
+usage predictable. A pending photo temporarily stores the exact source, one
+Archive/Balanced comparison and the three gallery sizes; all of them count
+toward the account quota until **Create** removes the unselected master. Archive
+uses more CPU and disk than Balanced because it retains up to a 6000px long
+edge. Balanced (4096px) is the default and is the better choice for most NAS
+deployments.
 
 `DATABASE_URL` is **not** in `.env` — `docker-compose.yml` sets it to point at
 the database container, which is reachable only from the app.
@@ -334,8 +342,9 @@ valid padlock. Check a few things:
 
 Everything that matters lives in two folders next to the compose file:
 
-- `data/photos` — every account's originals and generated web sizes
-  (thumb/med/full), plus their site images (logo, background, contact QR),
+- `data/photos` — every account's selected stored masters and generated web
+  sizes (thumb/med/full), plus temporary pending comparisons and site images
+  (logo, background, contact QR),
   under `u/<account-id>/`.
 - `data/pg` — the database: accounts, albums, captions, bookings, settings,
   quotas, everything else.

@@ -6,8 +6,14 @@ import { findOwnedEvent } from "@/lib/ownership";
 import { config } from "@/lib/config";
 import {
   ALLOWED_UPLOAD_TYPES,
+  deletePhotoAssetFile,
   deletePhotoFiles,
-  processAndStorePhoto
+  finalizePendingMaster,
+  isStoragePreset,
+  processAndStorePendingPhoto,
+  replacePendingCandidate,
+  type CandidatePreset,
+  type StoragePreset
 } from "@/lib/images";
 import { EFFECTIVE_QUOTA } from "@/lib/quota";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
@@ -16,52 +22,90 @@ const BATCH_ID_PATTERN = /^[a-zA-Z0-9_-]{16,100}$/;
 const UPLOAD_ID_PATTERN = /^[a-f0-9]{32}$/;
 const MAX_PENDING_PER_EVENT = 200;
 
-type UploadState = "processing" | "pending" | "ready" | "deleting";
-
 class QuotaExceededError extends Error {}
 class QueueFullError extends Error {}
 class UploadConflictError extends Error {}
 class PendingBatchChangedError extends Error {}
 
 function statusForUploadState(state: string): number {
-  return state === "processing" || state === "deleting" ? 202 : 200;
+  return state === "processing" || state === "finalizing" || state === "deleting"
+    ? 202
+    : 200;
+}
+
+const uploadSelect = {
+  id: true,
+  eventId: true,
+  filename: true,
+  originalName: true,
+  bytes: true,
+  uploadState: true,
+  pendingBatchId: true,
+  storagePreset: true,
+  candidatePreset: true,
+  sourceFilename: true,
+  sourceBytes: true,
+  candidateBytes: true,
+  renditionBytes: true
+} as const;
+
+interface UploadRecord {
+  id: string;
+  eventId: string;
+  filename: string;
+  originalName: string;
+  bytes: number;
+  uploadState: string;
+  pendingBatchId: string | null;
+  storagePreset: string;
+  candidatePreset: string | null;
+  sourceFilename: string | null;
+  sourceBytes: number | null;
+  candidateBytes: number | null;
+  renditionBytes: number | null;
 }
 
 async function findOwnedUpload(
   uploadId: string,
   userId: string
-): Promise<{
-  id: string;
-  eventId: string;
-  originalName: string;
-  uploadState: string;
-  pendingBatchId: string | null;
-} | null> {
+): Promise<UploadRecord | null> {
   return prisma.photo.findFirst({
     where: { id: uploadId, event: { ownerId: userId } },
-    select: {
-      id: true,
-      eventId: true,
-      originalName: true,
-      uploadState: true,
-      pendingBatchId: true
-    }
+    select: uploadSelect
   });
 }
 
-function existingUploadResponse(photo: {
-  id: string;
-  originalName: string;
-  uploadState: string;
-  pendingBatchId: string | null;
-}) {
+function pendingPhotoJson(photo: UploadRecord) {
+  const preset = isStoragePreset(photo.storagePreset)
+    ? photo.storagePreset
+    : "original";
+  const selectedMasterBytes =
+    preset === "original" ? photo.sourceBytes : photo.candidateBytes;
+  const finalBytes =
+    selectedMasterBytes != null && photo.renditionBytes != null
+      ? selectedMasterBytes + photo.renditionBytes
+      : null;
+  return {
+    id: photo.id,
+    name: photo.originalName,
+    state: photo.uploadState,
+    batchId: photo.pendingBatchId,
+    storagePreset: preset,
+    candidatePreset:
+      photo.candidatePreset === "archive" || photo.candidatePreset === "balanced"
+        ? photo.candidatePreset
+        : null,
+    sourceBytes: photo.sourceBytes,
+    candidateBytes: photo.candidateBytes,
+    renditionBytes: photo.renditionBytes,
+    pendingBytes: photo.bytes,
+    finalBytes
+  };
+}
+
+function existingUploadResponse(photo: UploadRecord) {
   return NextResponse.json(
-    {
-      id: photo.id,
-      name: photo.originalName,
-      state: photo.uploadState,
-      batchId: photo.pendingBatchId
-    },
+    pendingPhotoJson(photo),
     { status: statusForUploadState(photo.uploadState) }
   );
 }
@@ -167,18 +211,12 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { createdAt: "asc" },
     select: {
-      id: true,
-      originalName: true,
-      uploadState: true
+      ...uploadSelect
     }
   });
 
   return NextResponse.json({
-    photos: photos.map((photo) => ({
-      id: photo.id,
-      name: photo.originalName,
-      state: photo.uploadState
-    }))
+    photos: photos.map((photo) => pendingPhotoJson(photo))
   });
 }
 
@@ -199,6 +237,7 @@ export async function POST(req: NextRequest) {
   const eventId = form.get("eventId");
   const batchId = form.get("batchId");
   const uploadId = form.get("uploadId");
+  const requestedPreset = form.get("storagePreset");
   const file = form.get("file");
 
   if (
@@ -207,6 +246,8 @@ export async function POST(req: NextRequest) {
     !BATCH_ID_PATTERN.test(batchId) ||
     typeof uploadId !== "string" ||
     !UPLOAD_ID_PATTERN.test(uploadId) ||
+    !isStoragePreset(requestedPreset) ||
+    (config.stripOriginalExif() && requestedPreset === "original") ||
     !(file instanceof File)
   ) {
     return NextResponse.json({ error: "badRequest" }, { status: 400 });
@@ -232,7 +273,10 @@ export async function POST(req: NextRequest) {
     return existingUploadResponse(existing);
   }
 
-  const expectedOrigFilename = `${uploadId}-orig.${ext}`;
+  const storagePreset: StoragePreset = requestedPreset;
+  const candidatePreset: CandidatePreset =
+    storagePreset === "original" ? "balanced" : storagePreset;
+  const expectedSourceFilename = `${uploadId}-source.${ext}`;
   const reserved = file.size;
 
   try {
@@ -262,14 +306,18 @@ export async function POST(req: NextRequest) {
         data: {
           id: uploadId,
           eventId,
-          filename: expectedOrigFilename,
+          filename: expectedSourceFilename,
           originalName: file.name.slice(0, 300),
           width: 1,
           height: 1,
           bytes: reserved,
           sortOrder: 0,
           pendingBatchId: batchId,
-          uploadState: "processing"
+          uploadState: "processing",
+          storagePreset,
+          candidatePreset,
+          sourceFilename: expectedSourceFilename,
+          sourceBytes: reserved
         }
       });
     });
@@ -293,12 +341,13 @@ export async function POST(req: NextRequest) {
   let processed;
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    processed = await processAndStorePhoto(
+    processed = await processAndStorePendingPhoto(
       user.id,
       eventId,
       uploadId,
       buffer,
-      ext
+      ext,
+      storagePreset
     );
   } catch {
     const claimed = await markProcessingForDeletion(user.id, eventId, uploadId);
@@ -308,7 +357,7 @@ export async function POST(req: NextRequest) {
         user.id,
         eventId,
         uploadId,
-        expectedOrigFilename
+        expectedSourceFilename
       );
     }
     return NextResponse.json({ error: "invalidImage" }, { status: 400 });
@@ -317,8 +366,18 @@ export async function POST(req: NextRequest) {
   try {
     const delta = processed.bytes - reserved;
     await prisma.$transaction(async (tx) => {
-      // Lock/update the counter before changing the row that reconcile sums.
-      if (delta !== 0) {
+      // Pending comparison files are real disk usage, so the post-encode
+      // adjustment also enforces quota instead of allowing duplicate masters
+      // to overshoot a photographer's allowance.
+      if (delta > 0) {
+        const adjusted = await tx.$executeRaw`
+          UPDATE "User" AS u
+             SET "usedBytes" = u."usedBytes" + ${BigInt(delta)}
+           WHERE u.id = ${user.id}
+             AND u."usedBytes" + ${BigInt(delta)} <= ${EFFECTIVE_QUOTA}
+        `;
+        if (adjusted !== 1) throw new QuotaExceededError();
+      } else if (delta < 0) {
         await tx.$executeRaw`
           UPDATE "User"
              SET "usedBytes" = GREATEST(0, "usedBytes" + ${BigInt(delta)})
@@ -341,6 +400,12 @@ export async function POST(req: NextRequest) {
           height: processed.height,
           bytes: processed.bytes,
           uploadState: "pending",
+          storagePreset: processed.storagePreset,
+          candidatePreset: processed.candidatePreset,
+          sourceFilename: processed.sourceFilename,
+          sourceBytes: processed.sourceBytes,
+          candidateBytes: processed.candidateBytes,
+          renditionBytes: processed.renditionBytes,
           exifFocalLengthMm: processed.exif.focalLengthMm,
           exifAperture: processed.exif.aperture,
           exifExposureTime: processed.exif.exposureTime,
@@ -375,18 +440,176 @@ export async function POST(req: NextRequest) {
       );
     }
     console.error("Failed to finish pending photo:", err);
-    return NextResponse.json({ error: "unknown" }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof QuotaExceededError ? "quotaExceeded" : "unknown" },
+      { status: err instanceof QuotaExceededError ? 413 : 500 }
+    );
   }
 
-  return NextResponse.json(
-    {
-      id: uploadId,
-      name: file.name.slice(0, 300),
-      state: "pending" satisfies UploadState,
-      batchId
-    },
-    { status: 201 }
-  );
+  const completed = await findOwnedUpload(uploadId, user.id);
+  if (!completed) {
+    return NextResponse.json({ error: "unknown" }, { status: 500 });
+  }
+  return NextResponse.json(pendingPhotoJson(completed), { status: 201 });
+}
+
+/** Change one pending photo's selected master or regenerate its comparison. */
+export async function PUT(req: NextRequest) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const body = (await req.json().catch(() => null)) as Record<
+    string,
+    unknown
+  > | null;
+  const photoId = typeof body?.photoId === "string" ? body.photoId : "";
+  const requestedPreset = body?.storagePreset;
+  if (
+    !UPLOAD_ID_PATTERN.test(photoId) ||
+    !isStoragePreset(requestedPreset) ||
+    (config.stripOriginalExif() && requestedPreset === "original")
+  ) {
+    return NextResponse.json({ error: "badRequest" }, { status: 400 });
+  }
+  const storagePreset: StoragePreset = requestedPreset;
+
+  const current = await findOwnedUpload(photoId, user.id);
+  if (!current || current.pendingBatchId === null) {
+    return NextResponse.json({ error: "photoNotFound" }, { status: 404 });
+  }
+  if (current.uploadState !== "pending") {
+    return NextResponse.json(
+      pendingPhotoJson(current),
+      { status: statusForUploadState(current.uploadState) }
+    );
+  }
+
+  // Pre-migration pending uploads stay usable as Original without a filesystem
+  // migration. They can still be finalized or removed normally.
+  if (!current.sourceFilename) {
+    if (storagePreset !== "original") {
+      return NextResponse.json({ error: "legacyPending" }, { status: 409 });
+    }
+    const updated = await prisma.photo.update({
+      where: { id: current.id },
+      data: { storagePreset: "original" },
+      select: uploadSelect
+    });
+    return NextResponse.json(pendingPhotoJson(updated));
+  }
+
+  const candidatePreset: CandidatePreset =
+    storagePreset === "original"
+      ? current.candidatePreset === "archive"
+        ? "archive"
+        : "balanced"
+      : storagePreset;
+
+  if (
+    storagePreset === "original" ||
+    current.candidatePreset === candidatePreset
+  ) {
+    const updated = await prisma.photo.updateMany({
+      where: { id: current.id, uploadState: "pending" },
+      data: { storagePreset }
+    });
+    const latest = await findOwnedUpload(current.id, user.id);
+    if (updated.count !== 1 || !latest) {
+      return NextResponse.json({ error: "uploadConflict" }, { status: 409 });
+    }
+    return NextResponse.json(pendingPhotoJson(latest));
+  }
+
+  const claimed = await prisma.photo.updateMany({
+    where: { id: current.id, uploadState: "pending" },
+    data: { uploadState: "processing" }
+  });
+  if (claimed.count !== 1) {
+    return NextResponse.json({ error: "uploadConflict" }, { status: 409 });
+  }
+
+  let candidate: { filename: string; bytes: number } | null = null;
+  try {
+    candidate = await replacePendingCandidate(
+      user.id,
+      current.eventId,
+      current.id,
+      current.sourceFilename,
+      candidatePreset
+    );
+    const oldCandidateBytes = current.candidateBytes ?? 0;
+    const nextBytes = current.bytes - oldCandidateBytes + candidate.bytes;
+    const delta = nextBytes - current.bytes;
+
+    await prisma.$transaction(async (tx) => {
+      if (delta > 0) {
+        const adjusted = await tx.$executeRaw`
+          UPDATE "User" AS u
+             SET "usedBytes" = u."usedBytes" + ${BigInt(delta)}
+           WHERE u.id = ${user.id}
+             AND u."usedBytes" + ${BigInt(delta)} <= ${EFFECTIVE_QUOTA}
+        `;
+        if (adjusted !== 1) throw new QuotaExceededError();
+      } else if (delta < 0) {
+        await tx.$executeRaw`
+          UPDATE "User"
+             SET "usedBytes" = GREATEST(0, "usedBytes" + ${BigInt(delta)})
+           WHERE id = ${user.id}
+        `;
+      } else {
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+      }
+
+      const changed = await tx.photo.updateMany({
+        where: {
+          id: current.id,
+          eventId: current.eventId,
+          uploadState: "processing"
+        },
+        data: {
+          filename: candidate!.filename,
+          bytes: nextBytes,
+          storagePreset,
+          candidatePreset,
+          candidateBytes: candidate!.bytes,
+          uploadState: "pending"
+        }
+      });
+      if (changed.count !== 1) throw new UploadConflictError();
+    });
+
+    if (current.filename !== candidate.filename) {
+      await deletePhotoAssetFile(
+        user.id,
+        current.eventId,
+        current.filename
+      ).catch((error) =>
+        console.error("Failed to remove replaced photo candidate:", error)
+      );
+    }
+  } catch (error) {
+    if (candidate) {
+      await deletePhotoAssetFile(
+        user.id,
+        current.eventId,
+        candidate.filename
+      ).catch(() => undefined);
+    }
+    await prisma.photo.updateMany({
+      where: { id: current.id, uploadState: "processing" },
+      data: { uploadState: "pending" }
+    });
+    return NextResponse.json(
+      { error: error instanceof QuotaExceededError ? "quotaExceeded" : "unknown" },
+      { status: error instanceof QuotaExceededError ? 413 : 500 }
+    );
+  }
+
+  const updated = await findOwnedUpload(current.id, user.id);
+  if (!updated) return NextResponse.json({ error: "unknown" }, { status: 500 });
+  return NextResponse.json(pendingPhotoJson(updated));
 }
 
 /**
@@ -427,86 +650,54 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "eventNotFound" }, { status: 404 });
   }
 
+  let alreadyFinalized = false;
   try {
-    await prisma.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${eventId} FOR UPDATE`;
-
-        const photos = await tx.photo.findMany({
-          where: { id: { in: photoIds }, eventId },
-          select: {
-            id: true,
-            pendingBatchId: true,
-            uploadState: true,
-            credits: {
-              orderBy: { sortOrder: "asc" },
-              select: {
-                creditName: true,
-                subject: true,
-                socialLinks: {
-                  orderBy: { sortOrder: "asc" },
-                  select: { platform: true, url: true }
-                }
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${eventId} FOR UPDATE`;
+      const photos = await tx.photo.findMany({
+        where: { id: { in: photoIds }, eventId },
+        select: {
+          id: true,
+          pendingBatchId: true,
+          uploadState: true,
+          credits: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              creditName: true,
+              subject: true,
+              socialLinks: {
+                orderBy: { sortOrder: "asc" },
+                select: { platform: true, url: true }
               }
             }
           }
-        });
-        if (photos.length !== photoIds.length) {
+        }
+      });
+      if (photos.length !== photoIds.length) throw new PendingBatchChangedError();
+
+      alreadyFinalized = photos.every(
+        (photo) => photo.uploadState === "ready" && photo.pendingBatchId === null
+      );
+      if (alreadyFinalized) {
+        const expectedCredits = creditSignature(credits);
+        if (!photos.every((photo) => creditSignature(photo.credits) === expectedCredits)) {
           throw new PendingBatchChangedError();
         }
+        return;
+      }
 
-        const alreadyFinalized = photos.every(
-          (photo) =>
-            photo.uploadState === "ready" && photo.pendingBatchId === null
-        );
-        if (alreadyFinalized) {
-          const expectedCredits = creditSignature(credits);
-          const attributionMatches = photos.every(
-            (photo) => creditSignature(photo.credits) === expectedCredits
-          );
-          if (!attributionMatches) throw new PendingBatchChangedError();
-          return;
-        }
+      const resumable = photos.every(
+        (photo) =>
+          photo.pendingBatchId !== null &&
+          (photo.uploadState === "pending" || photo.uploadState === "finalizing")
+      );
+      if (!resumable) throw new PendingBatchChangedError();
 
-        const allPending = photos.every(
-          (photo) =>
-            photo.uploadState === "pending" && photo.pendingBatchId !== null
-        );
-        if (!allPending) throw new PendingBatchChangedError();
-
-        const maxOrder = await tx.photo.aggregate({
-          where: { eventId, pendingBatchId: null },
-          _max: { sortOrder: true }
-        });
-        const firstOrder = (maxOrder._max.sortOrder ?? 0) + 1;
-
-        for (let photoIndex = 0; photoIndex < photoIds.length; photoIndex++) {
-          await tx.photo.update({
-            where: { id: photoIds[photoIndex] },
-            data: {
-              pendingBatchId: null,
-              uploadState: "ready",
-              sortOrder: firstOrder + photoIndex,
-              credits: {
-                create: credits.map((credit, creditIndex) => ({
-                  creditName: credit.creditName,
-                  subject: credit.subject,
-                  sortOrder: creditIndex,
-                  socialLinks: {
-                    create: credit.socialLinks.map((link, linkIndex) => ({
-                      platform: link.platform,
-                      url: link.url,
-                      sortOrder: linkIndex
-                    }))
-                  }
-                }))
-              }
-            }
-          });
-        }
-      },
-      { timeout: 60_000 }
-    );
+      await tx.photo.updateMany({
+        where: { id: { in: photoIds }, eventId, uploadState: "pending" },
+        data: { uploadState: "finalizing" }
+      });
+    });
   } catch (err) {
     if (err instanceof PendingBatchChangedError) {
       return NextResponse.json(
@@ -516,6 +707,152 @@ export async function PATCH(req: NextRequest) {
     }
     console.error("Failed to finalize pending photos:", err);
     return NextResponse.json({ error: "unknown" }, { status: 500 });
+  }
+
+  if (!alreadyFinalized) {
+    const claimed = await prisma.photo.findMany({
+      where: { id: { in: photoIds }, eventId },
+      select: uploadSelect
+    });
+    if (claimed.length !== photoIds.length) {
+      return NextResponse.json({ error: "pendingBatchChanged" }, { status: 409 });
+    }
+
+    const finalized = new Map<string, { filename: string; bytes: number }>();
+    try {
+      // Sequential filesystem work keeps Sharp/disk pressure predictable and
+      // leaves each photo independently resumable through its stable -orig file.
+      for (const photoId of photoIds) {
+        const photo = claimed.find((candidate) => candidate.id === photoId)!;
+        if (!isStoragePreset(photo.storagePreset)) {
+          throw new Error("Invalid persisted storage preset");
+        }
+        finalized.set(
+          photo.id,
+          await finalizePendingMaster(user.id, eventId, photo.id, {
+            filename: photo.filename,
+            bytes: photo.bytes,
+            storagePreset: photo.storagePreset,
+            sourceFilename: photo.sourceFilename,
+            sourceBytes: photo.sourceBytes,
+            candidateBytes: photo.candidateBytes,
+            renditionBytes: photo.renditionBytes
+          })
+        );
+      }
+    } catch (err) {
+      console.error("Failed to finalize pending photo files:", err);
+      return NextResponse.json({ error: "unknown" }, { status: 500 });
+    }
+
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${eventId} FOR UPDATE`;
+          await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+          const photos = await tx.photo.findMany({
+            where: { id: { in: photoIds }, eventId },
+            select: {
+              id: true,
+              bytes: true,
+              uploadState: true,
+              pendingBatchId: true,
+              credits: {
+                orderBy: { sortOrder: "asc" },
+                select: {
+                  creditName: true,
+                  subject: true,
+                  socialLinks: {
+                    orderBy: { sortOrder: "asc" },
+                    select: { platform: true, url: true }
+                  }
+                }
+              }
+            }
+          });
+          if (photos.length !== photoIds.length) throw new PendingBatchChangedError();
+
+          const nowReady = photos.every(
+            (photo) => photo.uploadState === "ready" && photo.pendingBatchId === null
+          );
+          if (nowReady) {
+            const expectedCredits = creditSignature(credits);
+            if (
+              !photos.every(
+                (photo) => creditSignature(photo.credits) === expectedCredits
+              )
+            ) {
+              throw new PendingBatchChangedError();
+            }
+            return;
+          }
+          if (
+            !photos.every(
+              (photo) =>
+                photo.uploadState === "finalizing" && photo.pendingBatchId !== null
+            )
+          ) {
+            throw new PendingBatchChangedError();
+          }
+
+          const previousBytes = photos.reduce((sum, photo) => sum + photo.bytes, 0);
+          const finalBytes = photoIds.reduce(
+            (sum, id) => sum + (finalized.get(id)?.bytes ?? 0),
+            0
+          );
+          const delta = finalBytes - previousBytes;
+          if (delta !== 0) {
+            await tx.$executeRaw`
+              UPDATE "User"
+                 SET "usedBytes" = GREATEST(0, "usedBytes" + ${BigInt(delta)})
+               WHERE id = ${user.id}
+            `;
+          }
+
+          const maxOrder = await tx.photo.aggregate({
+            where: { eventId, pendingBatchId: null },
+            _max: { sortOrder: true }
+          });
+          const firstOrder = (maxOrder._max.sortOrder ?? 0) + 1;
+          for (let photoIndex = 0; photoIndex < photoIds.length; photoIndex++) {
+            const id = photoIds[photoIndex];
+            const file = finalized.get(id)!;
+            await tx.photo.update({
+              where: { id },
+              data: {
+                filename: file.filename,
+                bytes: file.bytes,
+                sourceFilename: null,
+                pendingBatchId: null,
+                uploadState: "ready",
+                sortOrder: firstOrder + photoIndex,
+                credits: {
+                  create: credits.map((credit, creditIndex) => ({
+                    creditName: credit.creditName,
+                    subject: credit.subject,
+                    sortOrder: creditIndex,
+                    socialLinks: {
+                      create: credit.socialLinks.map((link, linkIndex) => ({
+                        platform: link.platform,
+                        url: link.url,
+                        sortOrder: linkIndex
+                      }))
+                    }
+                  }))
+                }
+              }
+            });
+          }
+        },
+        { timeout: 60_000 }
+      );
+    } catch (err) {
+      if (err instanceof PendingBatchChangedError) {
+        return NextResponse.json({ error: "pendingBatchChanged" }, { status: 409 });
+      }
+      console.error("Failed to commit finalized pending photos:", err);
+      return NextResponse.json({ error: "unknown" }, { status: 500 });
+    }
   }
 
   await syncCreditProfiles(user.id, credits).catch((err) =>
@@ -550,7 +887,7 @@ export async function DELETE(req: NextRequest) {
       where: {
         id: photoId,
         pendingBatchId: { not: null },
-        uploadState: { in: ["processing", "pending", "deleting"] },
+        uploadState: { in: ["processing", "pending", "finalizing", "deleting"] },
         event: { ownerId: user.id }
       }
     });

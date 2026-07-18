@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { photoUrls } from "@/lib/images";
 import { formatShutterSpeedInput } from "@/lib/exif";
 import { ownerBasePath } from "@/lib/owner";
+import { config } from "@/lib/config";
 import {
   getCreditProfiles,
   getSiteSettings,
@@ -61,11 +62,32 @@ export default async function EditEventPage({
       id: photo.id,
       name: photo.originalName,
       state:
-        photo.uploadState === "processing"
+        photo.uploadState === "processing" || photo.uploadState === "finalizing"
           ? "processing"
           : photo.uploadState === "deleting"
             ? "deleting"
-            : "pending"
+            : "pending",
+      storagePreset:
+        photo.storagePreset === "archive" || photo.storagePreset === "balanced"
+          ? photo.storagePreset
+          : "original",
+      candidatePreset:
+        photo.candidatePreset === "archive" || photo.candidatePreset === "balanced"
+          ? photo.candidatePreset
+          : null,
+      sourceBytes: photo.sourceBytes,
+      candidateBytes: photo.candidateBytes,
+      renditionBytes: photo.renditionBytes,
+      pendingBytes: photo.bytes,
+      finalBytes:
+        photo.renditionBytes != null &&
+        (photo.storagePreset === "original"
+          ? photo.sourceBytes != null
+          : photo.candidateBytes != null)
+          ? (photo.storagePreset === "original"
+              ? photo.sourceBytes!
+              : photo.candidateBytes!) + photo.renditionBytes
+          : null
     }));
 
   const photos: AdminPhoto[] = event.photos
@@ -144,6 +166,7 @@ export default async function EditEventPage({
         <PhotoUploader
           eventId={event.id}
           initialPendingPhotos={pendingPhotos}
+          allowOriginal={!config.stripOriginalExif()}
           creditProfiles={creditProfiles}
           creditTerm={creditTerm}
           subjectTerm={subjectTerm}
