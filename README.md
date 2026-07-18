@@ -44,7 +44,9 @@ there is no privileged site.
   exact original or use a 6000px Archive / 4096px Balanced optimized master,
   with exact source, compressed and final-storage sizes shown before Create.
   Selecting files starts a private pending upload immediately, so the picker
-  can be opened repeatedly to build one batch; **Create** removes the unselected
+  can be opened repeatedly to build one batch. The queue shows total byte
+  progress and an owner-only thumbnail for every photo, and expands with the
+  page instead of using a nested scrollbar. **Create** removes the unselected
   master and applies the shared credits to every ready photo. Credited people's
   social links are remembered across photos, per account.
 - **Booking system**: bookable events with configurable time slots (length,

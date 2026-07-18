@@ -180,7 +180,7 @@ async function main() {
     data: { published: true }
   });
   await prisma.user.update({ where: { id: bob.id }, data: { role: "admin" } });
-  const pendingVariants = ["thumb.webp", "med.webp", "full.webp", "orig.jpg"];
+  const pendingVariants = ["med.webp", "full.webp", "orig.jpg"];
   const pendingStatuses: string[] = [];
   for (const variant of pendingVariants) {
     const url = `${BASE}/api/images/${aliceEvent.id}/${photoId}-${variant}`;
@@ -194,11 +194,26 @@ async function main() {
     );
   }
   report(
-    "pending queue: every image variant stays private before Create",
+    "pending queue: non-preview image variants stay private before Create",
     pendingStatuses.every((status) =>
       status.includes("anon=404 owner=404 admin=404")
     ),
     pendingStatuses.join(", ")
+  );
+
+  const pendingThumbUrl = `${BASE}/api/images/${aliceEvent.id}/${photoId}-thumb.webp`;
+  const [anonymousThumb, ownerThumb, adminThumb] = await Promise.all([
+    fetch(pendingThumbUrl),
+    fetch(pendingThumbUrl, { headers: { cookie: aliceCookie } }),
+    fetch(pendingThumbUrl, { headers: { cookie: bobCookie } })
+  ]);
+  report(
+    "pending queue: thumbnail preview is private to the owner and platform admin",
+    anonymousThumb.status === 404 &&
+      ownerThumb.status === 200 &&
+      adminThumb.status === 200 &&
+      ownerThumb.headers.get("cache-control") === "private, no-store",
+    `anon=${anonymousThumb.status}, owner=${ownerThumb.status}, admin=${adminThumb.status}, cache=${ownerThumb.headers.get("cache-control")}`
   );
 
   const publicPendingAlbum = await fetch(

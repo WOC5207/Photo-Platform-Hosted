@@ -16,6 +16,7 @@ export interface CreditProfile {
 export interface PendingPhotoValue {
   id: string;
   name: string;
+  previewUrl: string;
   state: "processing" | "pending" | "finalizing" | "ready" | "deleting";
   storagePreset: StoragePreset;
   candidatePreset: "archive" | "balanced" | null;
@@ -48,6 +49,9 @@ interface QueuedFile {
   uploadId: string;
   name: string;
   file?: File;
+  previewUrl?: string;
+  fileBytes?: number;
+  uploadedBytes?: number;
   photoId?: string;
   state: QueueState;
   error?: QueueError;
@@ -188,12 +192,19 @@ export default function PhotoUploader({
   const activeUploadKeysRef = useRef(new Set<string>());
   const discardingKeysRef = useRef(new Set<string>());
   const finalizingRef = useRef(false);
+  const blobPreviewUrlsRef = useRef(new Set<string>());
 
   const [files, setFiles] = useState<QueuedFile[]>(() =>
     initialPendingPhotos.map((photo) => ({
       key: `server-${photo.id}`,
       uploadId: photo.id,
       name: photo.name,
+      previewUrl:
+        photo.state === "processing" || photo.state === "finalizing"
+          ? undefined
+          : photo.previewUrl,
+      fileBytes: photo.sourceBytes ?? undefined,
+      uploadedBytes: photo.sourceBytes ?? undefined,
       photoId: photo.id,
       ...serverPhotoPatch(photo),
       state:
@@ -234,6 +245,48 @@ export default function PhotoUploader({
   );
   const canCreate =
     !finalizing && !clearing && !queueWorking && readyFiles.length > 0 && credits.length > 0;
+  const uploadTotalBytes = files.reduce(
+    (total, item) => total + (item.fileBytes ?? item.sourceBytes ?? 0),
+    0
+  );
+  const uploadedBytes = files.reduce((total, item) => {
+    const itemTotal = item.fileBytes ?? item.sourceBytes ?? 0;
+    if (item.state === "failed") return total;
+    if (
+      item.state === "ready" ||
+      item.state === "optimizing" ||
+      item.state === "discarding"
+    ) {
+      return total + itemTotal;
+    }
+    return total + Math.min(item.uploadedBytes ?? 0, itemTotal);
+  }, 0);
+  const uploadPercent =
+    uploadTotalBytes > 0
+      ? Math.min(100, Math.round((uploadedBytes / uploadTotalBytes) * 100))
+      : files.length > 0 && files.every((item) => item.state === "ready")
+        ? 100
+        : 0;
+  const uploadedCount = files.filter((item) => {
+    if (item.state === "failed") return false;
+    const itemTotal = item.fileBytes ?? item.sourceBytes ?? 0;
+    return (
+      item.state === "ready" ||
+      item.state === "optimizing" ||
+      item.state === "discarding" ||
+      (itemTotal > 0 && (item.uploadedBytes ?? 0) >= itemTotal)
+    );
+  }).length;
+
+  function releaseBlobPreview(url: string | undefined) {
+    if (!url || !blobPreviewUrlsRef.current.has(url)) return;
+    URL.revokeObjectURL(url);
+    blobPreviewUrlsRef.current.delete(url);
+  }
+
+  function serverPreviewUrl(photoId: string): string {
+    return `/api/images/${eventId}/${photoId}-thumb.webp`;
+  }
 
   function updateQueuedFile(key: string, patch: Partial<QueuedFile>) {
     setFiles((current) =>
@@ -271,10 +324,14 @@ export default function PhotoUploader({
         }
 
         if (serverPhoto.state === "pending" && typeof serverPhoto.id === "string") {
+          releaseBlobPreview(item.previewUrl);
           updateQueuedFile(item.key, {
             state: "ready",
             photoId: serverPhoto.id,
             file: undefined,
+            previewUrl: serverPhoto.previewUrl || serverPreviewUrl(serverPhoto.id),
+            fileBytes: serverPhoto.sourceBytes ?? item.fileBytes,
+            uploadedBytes: serverPhoto.sourceBytes ?? item.fileBytes,
             error: undefined,
             ...serverPhotoPatch(serverPhoto)
           });
@@ -302,7 +359,11 @@ export default function PhotoUploader({
   async function uploadQueuedFile(item: QueuedFile & { file: File }) {
     if (cancelledKeysRef.current.has(item.key)) return;
 
-    updateQueuedFile(item.key, { state: "uploading", error: undefined });
+    updateQueuedFile(item.key, {
+      state: "uploading",
+      error: undefined,
+      uploadedBytes: 0
+    });
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const body = new FormData();
@@ -314,12 +375,38 @@ export default function PhotoUploader({
         body.append("uploadId", item.uploadId);
         body.append("storagePreset", item.storagePreset);
         body.append("file", item.file);
-        const response = await fetch("/api/admin/photos", { method: "POST", body });
-        const data = (await response.json().catch(() => null)) as
-          | (Partial<PendingPhotoValue> & { error?: unknown })
-          | null;
+        const { status, data } = await new Promise<{
+          status: number;
+          data: (Partial<PendingPhotoValue> & { error?: unknown }) | null;
+        }>((resolve, reject) => {
+          const request = new XMLHttpRequest();
+          request.open("POST", "/api/admin/photos");
+          request.upload.addEventListener("progress", (progress) => {
+            if (!progress.lengthComputable || progress.total <= 0) return;
+            updateQueuedFile(item.key, {
+              uploadedBytes: Math.min(
+                item.file.size,
+                Math.round((progress.loaded / progress.total) * item.file.size)
+              )
+            });
+          });
+          request.addEventListener("load", () => {
+            updateQueuedFile(item.key, { uploadedBytes: item.file.size });
+            let parsed: (Partial<PendingPhotoValue> & { error?: unknown }) | null = null;
+            try {
+              parsed = request.responseText ? JSON.parse(request.responseText) : null;
+            } catch {
+              parsed = null;
+            }
+            resolve({ status: request.status, data: parsed });
+          });
+          request.addEventListener("error", () => reject(new Error("upload failed")));
+          request.addEventListener("abort", () => reject(new Error("upload aborted")));
+          request.send(body);
+        });
+        const responseOk = status >= 200 && status < 300;
 
-        if (!response.ok) {
+        if (!responseOk) {
           updateQueuedFile(item.key, {
             state: "failed",
             error: normalizeUploadError(data?.error)
@@ -327,7 +414,7 @@ export default function PhotoUploader({
           return;
         }
         if (
-          response.status === 202 ||
+          status === 202 ||
           data?.state === "processing" ||
           data?.state === "deleting"
         ) {
@@ -344,10 +431,14 @@ export default function PhotoUploader({
           return;
         }
         if (data?.state === "pending" && typeof data.id === "string") {
+          releaseBlobPreview(item.previewUrl);
           updateQueuedFile(item.key, {
             state: "ready",
             photoId: data.id,
             file: undefined,
+            previewUrl: data.previewUrl || serverPreviewUrl(data.id),
+            fileBytes: data.sourceBytes ?? item.file.size,
+            uploadedBytes: data.sourceBytes ?? item.file.size,
             error: undefined,
             ...(serverPhotoPatch(data as PendingPhotoValue))
           });
@@ -385,11 +476,16 @@ export default function PhotoUploader({
     if (selected.length > 0) {
       const queued = selected.map((file) => {
         const uploadId = newUploadId();
+        const previewUrl = URL.createObjectURL(file);
+        blobPreviewUrlsRef.current.add(previewUrl);
         return {
           key: `local-${uploadId}-${fileKeySeq++}`,
           uploadId,
           name: file.name,
           file,
+          previewUrl,
+          fileBytes: file.size,
+          uploadedBytes: 0,
           storagePreset: batchPreset,
           state: "waiting" as const
         };
@@ -427,6 +523,7 @@ export default function PhotoUploader({
         }
         return false;
       }
+      releaseBlobPreview(item.previewUrl);
       setFiles((current) => current.filter((candidate) => candidate.key !== item.key));
       if (updateStatus) setFinalizeStatus(null);
       return true;
@@ -453,6 +550,7 @@ export default function PhotoUploader({
       return;
     if (item.state === "waiting") {
       cancelledKeysRef.current.add(item.key);
+      releaseBlobPreview(item.previewUrl);
       setFiles((current) => current.filter((candidate) => candidate.key !== item.key));
       setFinalizeStatus(null);
       return;
@@ -488,7 +586,8 @@ export default function PhotoUploader({
         photoId: undefined,
         state: "waiting",
         error: undefined,
-        file: item.file
+        file: item.file,
+        uploadedBytes: 0
       };
       cancelledKeysRef.current.delete(item.key);
       updateQueuedFile(item.key, retried);
@@ -512,6 +611,7 @@ export default function PhotoUploader({
     for (const item of snapshot) {
       if (item.state === "waiting") {
         cancelledKeysRef.current.add(item.key);
+        releaseBlobPreview(item.previewUrl);
         setFiles((current) =>
           current.filter((candidate) => candidate.key !== item.key)
         );
@@ -638,6 +738,7 @@ export default function PhotoUploader({
       }
 
       const finalizedKeys = new Set(batch.map((item) => item.key));
+      batch.forEach((item) => releaseBlobPreview(item.previewUrl));
       setFiles((current) =>
         current.filter((item) => !finalizedKeys.has(item.key))
       );
@@ -673,6 +774,12 @@ export default function PhotoUploader({
             ...item,
             name: server.name,
             photoId: server.id,
+            previewUrl:
+              server.state === "processing" || server.state === "finalizing"
+                ? item.previewUrl
+                : server.previewUrl,
+            fileBytes: server.sourceBytes ?? item.fileBytes,
+            uploadedBytes: server.sourceBytes ?? item.uploadedBytes,
             ...serverPhotoPatch(server),
             file: server.state === "pending" ? undefined : item.file,
             state:
@@ -692,6 +799,12 @@ export default function PhotoUploader({
           uploadId: server.id,
           name: server.name,
           photoId: server.id,
+          previewUrl:
+            server.state === "processing" || server.state === "finalizing"
+              ? undefined
+              : server.previewUrl,
+          fileBytes: server.sourceBytes ?? undefined,
+          uploadedBytes: server.sourceBytes ?? undefined,
           ...serverPhotoPatch(server),
           state:
             server.state === "processing" || server.state === "finalizing"
@@ -706,12 +819,26 @@ export default function PhotoUploader({
   }, [initialPendingPhotos]);
 
   useEffect(() => {
+    const previews = blobPreviewUrlsRef.current;
+    return () => {
+      for (const url of previews) URL.revokeObjectURL(url);
+      previews.clear();
+    };
+  }, []);
+
+  useEffect(() => {
     for (const photo of initialPendingPhotos) {
       const item: QueuedFile = {
         key: `server-${photo.id}`,
         uploadId: photo.id,
         name: photo.name,
         photoId: photo.id,
+        previewUrl:
+          photo.state === "processing" || photo.state === "finalizing"
+            ? undefined
+            : photo.previewUrl,
+        fileBytes: photo.sourceBytes ?? undefined,
+        uploadedBytes: photo.sourceBytes ?? undefined,
         ...serverPhotoPatch(photo),
         state:
           photo.state === "processing" || photo.state === "finalizing"
@@ -736,7 +863,12 @@ export default function PhotoUploader({
 
   function queueStateLabel(item: QueuedFile): string {
     if (item.state === "waiting") return t("pendingWaiting");
-    if (item.state === "uploading") return t("pendingUploading");
+    if (item.state === "uploading") {
+      const total = item.fileBytes ?? item.sourceBytes ?? 0;
+      return total > 0 && (item.uploadedBytes ?? 0) >= total
+        ? t("pendingProcessing")
+        : t("pendingUploading");
+    }
     if (item.state === "optimizing") return t("pendingOptimizing");
     if (item.state === "ready") return t("pendingReady");
     if (item.state === "discarding") return t("pendingRemoving");
@@ -756,8 +888,8 @@ export default function PhotoUploader({
         ))}
       </datalist>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex min-w-52 flex-col gap-1 text-xs font-medium text-fg-muted">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,20rem)_auto] sm:items-end sm:justify-between">
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-fg-muted">
           {t("storagePresetLabel")}
           <select
             value={batchPreset}
@@ -774,7 +906,7 @@ export default function PhotoUploader({
             <option value="balanced">{t("storagePresetBalanced")}</option>
           </select>
         </label>
-        <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-border-strong px-4 py-2 text-sm font-medium text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-within:ring-2 focus-within:ring-fg/40">
+        <label className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-85 focus-within:ring-2 focus-within:ring-fg/40 sm:w-fit sm:justify-self-end">
           <input
             type="file"
             multiple
@@ -785,16 +917,16 @@ export default function PhotoUploader({
           />
           <span>+ {t("upload")}</span>
         </label>
-        <span role="status" aria-live="polite" className="text-sm text-fg-subtle">
-          {files.length > 0
-            ? t("filesSelected", { count: files.length })
-            : t("noFilesSelected")}
-        </span>
       </div>
       <p className="-mt-1 text-xs text-fg-subtle">{t("uploadHint")}</p>
       {!allowOriginal && (
         <p className="-mt-1 text-xs text-fg-subtle">
           {t("storageOriginalDisabled")}
+        </p>
+      )}
+      {files.length === 0 && (
+        <p role="status" className="text-sm text-fg-subtle">
+          {t("noFilesSelected")}
         </p>
       )}
 
@@ -803,10 +935,15 @@ export default function PhotoUploader({
           aria-labelledby="pending-upload-heading"
           className="rounded-lg border border-border-strong/60 bg-surface/50 p-3"
         >
-          <div className="flex items-center justify-between gap-3">
-            <h3 id="pending-upload-heading" className="text-sm font-semibold text-fg">
-              {t("pendingQueue")}
-            </h3>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <h3 id="pending-upload-heading" className="text-sm font-semibold text-fg">
+                {t("pendingQueue")}
+              </h3>
+              <span role="status" aria-live="polite" className="text-xs text-fg-subtle">
+                {t("filesSelected", { count: files.length })}
+              </span>
+            </div>
             <button
               type="button"
               disabled={queueWorking || finalizing || clearing}
@@ -816,33 +953,76 @@ export default function PhotoUploader({
               {clearing ? "…" : t("clearPendingQueue")}
             </button>
           </div>
+          <div className="mt-3" aria-live="polite">
+            <div className="mb-1 flex items-center justify-between gap-3 text-xs text-fg-subtle">
+              <span>{t("uploadProgressLabel")}</span>
+              <span>
+                {t("uploadProgress", {
+                  completed: uploadedCount,
+                  total: files.length,
+                  percent: uploadPercent
+                })}
+              </span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label={t("uploadProgressLabel")}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={uploadPercent}
+              className="h-2 overflow-hidden rounded-full bg-border"
+            >
+              <div
+                className="h-full rounded-full bg-fg transition-[width] duration-200"
+                style={{ width: `${uploadPercent}%` }}
+              />
+            </div>
+          </div>
           <p className="mt-2 text-xs text-fg-subtle">
             {t("pendingStorageNotice")}
           </p>
-          <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto pr-1">
+          <ul data-testid="pending-photo-list" className="mt-3 space-y-3">
             {files.map((item) => (
               <li
                 key={item.key}
-                className="flex min-h-10 flex-col gap-2 rounded-lg px-3 py-2 text-sm text-fg-muted odd:bg-page/60"
+                className="grid gap-3 rounded-lg border border-border-strong/50 bg-page/60 p-3 text-sm text-fg-muted sm:grid-cols-[6rem_minmax(0,1fr)]"
               >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 flex-1 truncate font-medium" title={item.name}>
-                    {item.name}
-                  </span>
-                  <span
-                    role="status"
-                    className={
-                      item.state === "failed"
-                        ? "text-xs text-danger"
-                        : "text-xs text-fg-subtle"
-                    }
-                  >
-                    {queueStateLabel(item)}
-                  </span>
+                <div className="aspect-[4/3] w-24 overflow-hidden rounded-lg border border-border bg-surface sm:w-full">
+                  {item.previewUrl ? (
+                    <img
+                      src={item.previewUrl}
+                      alt={item.name}
+                      width={160}
+                      height={120}
+                      loading="lazy"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-xs text-fg-subtle">
+                      {t("previewUnavailable")}
+                    </div>
+                  )}
                 </div>
 
+                <div className="min-w-0 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="min-w-0 flex-1 break-words font-medium" title={item.name}>
+                      {item.name}
+                    </span>
+                    <span
+                      role="status"
+                      className={
+                        item.state === "failed"
+                          ? "shrink-0 text-xs text-danger"
+                          : "shrink-0 text-xs text-fg-subtle"
+                      }
+                    >
+                      {queueStateLabel(item)}
+                    </span>
+                  </div>
+
                 {item.photoId && item.sourceBytes != null && item.candidateBytes != null && (
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,12rem)_1fr] sm:items-end">
+                  <div className="grid gap-2 md:grid-cols-[minmax(0,12rem)_1fr] md:items-end">
                     <label className="flex flex-col gap-1 text-xs text-fg-subtle">
                       {t("storagePresetPhotoLabel")}
                       <select
@@ -894,7 +1074,7 @@ export default function PhotoUploader({
                       )}
                     </dl>
                     <p
-                      className={`text-xs sm:col-start-2 ${
+                      className={`text-xs md:col-start-2 ${
                         item.candidateBytes <= item.sourceBytes
                           ? "text-success"
                           : "text-danger"
@@ -955,6 +1135,7 @@ export default function PhotoUploader({
                   >
                     {t("removePendingFileButton")}
                   </button>
+                </div>
                 </div>
               </li>
             ))}

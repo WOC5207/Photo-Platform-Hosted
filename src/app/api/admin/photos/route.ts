@@ -88,6 +88,7 @@ function pendingPhotoJson(photo: UploadRecord) {
   return {
     id: photo.id,
     name: photo.originalName,
+    previewUrl: `/api/images/${photo.eventId}/${photo.id}-thumb.webp`,
     state: photo.uploadState,
     batchId: photo.pendingBatchId,
     storagePreset: preset,

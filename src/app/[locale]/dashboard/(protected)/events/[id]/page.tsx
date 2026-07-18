@@ -61,6 +61,7 @@ export default async function EditEventPage({
     .map((photo) => ({
       id: photo.id,
       name: photo.originalName,
+      previewUrl: photoUrls(event.id, photo.id).thumb,
       state:
         photo.uploadState === "processing" || photo.uploadState === "finalizing"
           ? "processing"

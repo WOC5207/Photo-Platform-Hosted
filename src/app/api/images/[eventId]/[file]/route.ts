@@ -29,10 +29,7 @@ export async function GET(
   const [, photoId, variant, ext] = match;
 
   const photo = await prisma.photo.findFirst({
-    // Pending uploads never receive an image response, even for their owner.
-    // Besides keeping them private, this prevents an incomplete rendition
-    // from receiving the route's one-year immutable cache header.
-    where: { id: photoId, pendingBatchId: null },
+    where: { id: photoId },
     include: {
       event: {
         select: {
@@ -60,6 +57,19 @@ export async function GET(
     return new NextResponse("Not found", { status: 404 });
   }
 
+  const isPending = photo.pendingBatchId !== null;
+  if (isPending) {
+    // A pending thumbnail is available only as a private queue preview. Other
+    // renditions and the temporary source remain unreachable until Create.
+    if (variant !== "thumb") {
+      return new NextResponse("Not found", { status: 404 });
+    }
+    const user = await getCurrentUser();
+    const allowed =
+      user && (user.id === photo.event.ownerId || user.role === "admin");
+    if (!allowed) return new NextResponse("Not found", { status: 404 });
+  }
+
   // Originals, and any size of an unpublished album, are for that album's owner
   // (or the platform admin) only. This used to ask merely "is an admin signed
   // in" — which, once anyone can hold an account, would have let every user
@@ -68,7 +78,7 @@ export async function GET(
   //
   // Still 404 rather than 403: it is the existing convention here and it does
   // not confirm that the photo exists.
-  if (variant === "orig" || !photo.event.published) {
+  if (!isPending && (variant === "orig" || !photo.event.published)) {
     const user = await getCurrentUser();
     const allowed =
       user && (user.id === photo.event.ownerId || user.role === "admin");
@@ -93,8 +103,11 @@ export async function GET(
     headers: {
       "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream",
       "Content-Length": String(stat.size),
-      // Filenames are unique per photo, so long immutable caching is safe.
-      "Cache-Control": "public, max-age=31536000, immutable"
+      // Queue previews can be regenerated or deleted before Create and must
+      // never enter a shared cache. Published filenames are immutable.
+      "Cache-Control": isPending
+        ? "private, no-store"
+        : "public, max-age=31536000, immutable"
     }
   });
 }
