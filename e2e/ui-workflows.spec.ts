@@ -1,6 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { randomUUID } from "crypto";
 import { sealData } from "iron-session";
+import { prisma } from "@/lib/db";
 
 const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.ADMIN_USERNAME;
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD;
@@ -216,6 +218,95 @@ test.describe.serial("management workflows", () => {
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Delete event" }).click();
     await expect(page).toHaveURL(/\/en\/dashboard\/events$/);
+  });
+
+  test("registration notice delays a usable invite before showing the account form", async ({
+    page,
+    browser
+  }) => {
+    await page.goto("/en/admin/invites");
+
+    const enabled = page.getByRole("checkbox", {
+      name: "Show this notice before registration"
+    });
+    const delay = page.getByLabel("Continue delay (seconds)");
+    const titleEn = page.getByLabel("Notice title (English)");
+    const titleZh = page.getByLabel("Notice title (Chinese)");
+    const bodyEn = page.getByLabel("Notice or EULA (English)");
+    const bodyZh = page.getByLabel("Notice or EULA (Chinese)");
+    const original = {
+      enabled: await enabled.isChecked(),
+      delay: await delay.inputValue(),
+      titleEn: await titleEn.inputValue(),
+      titleZh: await titleZh.inputValue(),
+      bodyEn: await bodyEn.inputValue(),
+      bodyZh: await bodyZh.inputValue()
+    };
+    const inviteCode = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+    let guestContext: Awaited<ReturnType<typeof browser.newContext>> | null = null;
+
+    try {
+      await enabled.setChecked(true);
+      await delay.fill("1");
+      await titleEn.fill("E2E terms before registration");
+      await bodyEn.fill("Please read this test notice before continuing.");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible();
+
+      const admin = await prisma.user.findUniqueOrThrow({
+        where: { username: adminUsername! },
+        select: { id: true }
+      });
+      await prisma.invite.create({
+        data: {
+          code: inviteCode,
+          issuedById: admin.id,
+          note: "E2E registration notice"
+        }
+      });
+      const localInviteUrl = `${new URL(page.url()).origin}/en/register/${inviteCode}`;
+
+      guestContext = await browser.newContext({
+        storageState: { cookies: [], origins: [] }
+      });
+      const guest = await guestContext.newPage();
+      await guest.goto(`${new URL(page.url()).origin}/en/register/not-a-real-invite`);
+      await expect(
+        guest.getByRole("heading", { name: "This invite link is not valid." })
+      ).toBeVisible();
+      await expect(guest.getByText("E2E terms before registration")).toHaveCount(0);
+
+      await guest.goto(localInviteUrl);
+      await expect(
+        guest.getByRole("heading", { name: "E2E terms before registration" })
+      ).toBeVisible();
+      await expect(
+        guest.getByText("Please read this test notice before continuing.")
+      ).toBeVisible();
+      const usernameInput = guest.locator('input[name="username"]');
+      await expect(usernameInput).toHaveCount(0);
+      const continueButton = guest.getByRole("button", {
+        name: "Continue to registration"
+      });
+      await expect(continueButton).toBeDisabled();
+      await expect(continueButton).toBeEnabled({ timeout: 3_000 });
+      await continueButton.click();
+      await expect(usernameInput).toBeVisible();
+    } finally {
+      await guestContext?.close();
+      await prisma.invite.deleteMany({ where: { code: inviteCode } });
+      await page.goto("/en/admin/invites");
+      await page
+        .getByRole("checkbox", { name: "Show this notice before registration" })
+        .setChecked(original.enabled);
+      await page.getByLabel("Continue delay (seconds)").fill(original.delay);
+      await page.getByLabel("Notice title (English)").fill(original.titleEn);
+      await page.getByLabel("Notice title (Chinese)").fill(original.titleZh);
+      await page.getByLabel("Notice or EULA (English)").fill(original.bodyEn);
+      await page.getByLabel("Notice or EULA (Chinese)").fill(original.bodyZh);
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible();
+    }
   });
 
   test("photo selections upload immediately and accumulate in one pending queue", async ({ page }) => {
