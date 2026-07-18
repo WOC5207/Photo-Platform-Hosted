@@ -40,11 +40,13 @@ there is no privileged site.
 - **Photo gallery** grouped by event/album: bulk upload, reordering,
   per-language captions, cover selection, publish/unpublish. Thumbnails are
   pre-generated at upload time with `sharp`; **all EXIF (including GPS) is
-  stripped** from every displayed image. Optionally scrub the stored originals
-  too. Selecting files starts a private pending upload immediately, so the file
-  picker can be opened repeatedly to build one batch; **Create** then applies
-  the shared credits to every ready photo. Credited people's social links are
-  remembered across photos, per account.
+  stripped** from every displayed image. Each picker selection can keep the
+  exact original or use a 6000px Archive / 4096px Balanced optimized master,
+  with exact source, compressed and final-storage sizes shown before Create.
+  Selecting files starts a private pending upload immediately, so the picker
+  can be opened repeatedly to build one batch; **Create** removes the unselected
+  master and applies the shared credits to every ready photo. Credited people's
+  social links are remembered across photos, per account.
 - **Booking system**: bookable events with configurable time slots (length,
   count, capacity). Each gets an unguessable shareable link — no visitor account
   needed. Double-booking is prevented with row-locked capacity checks. Visitors
@@ -105,8 +107,14 @@ Tested target: DS920+ (x86-64). Everything below happens in DSM. The same
 | `ADMIN_PASSWORD` | A long, unique password (stored only as a hash) |
 | `SESSION_SECRET` | 32+ random characters — see below |
 | `APP_BASE_URL` | Your public HTTPS address, e.g. `https://photos.example.com` (used to build shareable booking and invite links) |
-| `STRIP_ORIGINAL_EXIF` | `false` keeps originals untouched on disk; `true` re-encodes uploads so even the stored original has no EXIF/GPS |
+| `STRIP_ORIGINAL_EXIF` | `false` allows photographers to choose an exact Original; `true` hides that option so every new stored master is optimized with EXIF/GPS removed |
 | `UPLOAD_MAX_MB` | Max size per uploaded photo (default 100) |
+
+Compression is server-side and sequential for predictable NAS memory use.
+Balanced (4096px) is the default; Archive (6000px) uses more CPU and storage.
+While a photo is pending, its exact source, one comparison candidate and the
+three gallery renditions all count toward quota until **Create** removes the
+unselected master.
 
 `DATABASE_URL` is **not** in `.env` — `docker-compose.yml` sets it for you, to
 point at the database container.
@@ -139,7 +147,7 @@ To generate good secrets, SSH into the NAS (or use any terminal) and run
 
 Your persistent data is two folders next to the compose file:
 
-- `data/photos` — originals + generated web sizes, per account
+- `data/photos` — selected masters, pending comparisons and generated web sizes, per account
 - `data/pg` — the database
 
 Both are created on first start. The containers themselves are disposable.
@@ -220,7 +228,7 @@ walkthrough.
 
 Everything that matters lives in two folders next to the compose file:
 
-- `data/photos` — every account's originals and generated sizes
+- `data/photos` — every account's selected masters, pending comparisons and generated sizes
 - `data/pg` — the database (accounts, albums, captions, bookings, settings)
 
 **Both, or neither.** Photos without the database are unattributed files; the
@@ -333,16 +341,17 @@ vars, and rebuild. Nothing else has to change.
 ## Notes & limits
 
 - Uploads: JPEG, PNG, WebP (HEIC is not supported — export/convert first).
-- Pending uploads are fully processed, private, recoverable after a page reload
-  and counted against the photographer's storage. They become gallery photos
-  only after **Create**, or can be removed from the pending queue to free space.
+- Pending uploads are fully processed, private and recoverable after a page
+  reload. The exact source and one compressed candidate both count toward the
+  photographer's storage temporarily; **Create** keeps the chosen master,
+  removes the other copy and releases that space. A per-photo preset can be
+  changed before Create without uploading the source again.
 - Unpublished albums are fully hidden (404) from everyone but their owner, and
   their images are blocked too. Original files are only ever served to the
   photo's owner.
-- The storage cap is a firm backstop rather than an exact ceiling: an accepted
-  upload can finish slightly over quota, because the renditions' size is only
-  known after they are written. Everything is refused afterwards, so it cannot
-  compound. See the comment in `src/app/api/admin/photos/route.ts`.
+- The storage cap is enforced again after compression, once the exact source,
+  candidate and rendition sizes are known. If the complete pending comparison
+  would exceed the allowance, it is cleaned up and the upload is refused.
 - Slot times are stored and shown exactly as typed (no timezone conversion),
   which is the sane behaviour when photographer and clients are in the same
   city.

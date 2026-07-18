@@ -24,6 +24,27 @@ const SIZES = [
   { suffix: "full", width: 2560, quality: 85 }
 ] as const;
 
+export type StoragePreset = "original" | "archive" | "balanced";
+export type CandidatePreset = Exclude<StoragePreset, "original">;
+
+export const STORAGE_PRESETS: readonly StoragePreset[] = [
+  "original",
+  "archive",
+  "balanced"
+];
+
+const CANDIDATE_OPTIONS: Record<
+  CandidatePreset,
+  { maxEdge: number; quality: number }
+> = {
+  archive: { maxEdge: 6000, quality: 92 },
+  balanced: { maxEdge: 4096, quality: 88 }
+};
+
+export function isStoragePreset(value: unknown): value is StoragePreset {
+  return typeof value === "string" && STORAGE_PRESETS.includes(value as StoragePreset);
+}
+
 /**
  * Storage is keyed by owner id, never username: usernames are renameable, and a
  * rename must not mean moving files or rewriting URLs.
@@ -47,6 +68,15 @@ export interface ProcessedUpload {
   exif: PhotoExif;
   /** Total bytes written: the original plus all three renditions. */
   bytes: number;
+}
+
+export interface ProcessedPendingUpload extends ProcessedUpload {
+  storagePreset: StoragePreset;
+  candidatePreset: CandidatePreset;
+  sourceFilename: string;
+  sourceBytes: number;
+  candidateBytes: number;
+  renditionBytes: number;
 }
 
 export interface PhotoExif {
@@ -111,6 +141,218 @@ async function extractExif(buffer: Buffer): Promise<PhotoExif> {
   };
 }
 
+async function writeRenditions(
+  input: Buffer | string,
+  dir: string,
+  photoId: string
+): Promise<number> {
+  let bytes = 0;
+  // Sequential processing keeps peak memory predictable on NAS hardware.
+  for (const size of SIZES) {
+    const out = await sharp(input, { failOn: "none" })
+      .rotate()
+      .resize({ width: size.width, withoutEnlargement: true })
+      .webp({ quality: size.quality })
+      .toFile(path.join(dir, `${photoId}-${size.suffix}.webp`));
+    bytes += out.size;
+  }
+  return bytes;
+}
+
+async function writeCandidate(
+  input: Buffer | string,
+  dir: string,
+  photoId: string,
+  preset: CandidatePreset
+): Promise<{ filename: string; bytes: number }> {
+  const meta = await sharp(input, { failOn: "none" }).metadata();
+  if (!meta.width || !meta.height) throw new Error("Unreadable image");
+
+  const { maxEdge, quality } = CANDIDATE_OPTIONS[preset];
+  const ext = meta.hasAlpha ? "webp" : "jpg";
+  const token = randomUUID().replace(/-/g, "");
+  const filename = `${photoId}-candidate-${token}.${ext}`;
+  const output = path.join(dir, filename);
+  const pipeline = sharp(input, { failOn: "none" })
+    .rotate()
+    .resize({
+      width: maxEdge,
+      height: maxEdge,
+      fit: "inside",
+      withoutEnlargement: true
+    })
+    // Optimized masters retain predictable colour but not EXIF/GPS metadata.
+    .withIccProfile("srgb");
+
+  try {
+    const out = meta.hasAlpha
+      ? await pipeline
+          .webp({
+            quality,
+            alphaQuality: 100,
+            effort: 4,
+            preset: "photo",
+            smartSubsample: true
+          })
+          .toFile(output)
+      : await pipeline
+          .jpeg({ quality, progressive: true, mozjpeg: true })
+          .toFile(output);
+    return { filename, bytes: out.size };
+  } catch (error) {
+    await fs.rm(output, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+/**
+ * Store an exact source, one compressed comparison candidate and the public
+ * renditions. Neither master receives the stable -orig name until Create, so
+ * pending files cannot accidentally become addressable through the image API.
+ */
+export async function processAndStorePendingPhoto(
+  ownerId: string,
+  eventId: string,
+  photoId: string,
+  buffer: Buffer,
+  ext: string,
+  storagePreset: StoragePreset
+): Promise<ProcessedPendingUpload> {
+  const dir = eventDir(ownerId, eventId);
+  await fs.mkdir(dir, { recursive: true });
+
+  const meta = await sharp(buffer).metadata();
+  if (!meta.width || !meta.height) throw new Error("Unreadable image");
+  const swapped = (meta.orientation ?? 1) >= 5;
+  const width = swapped ? meta.height : meta.width;
+  const height = swapped ? meta.width : meta.height;
+  const exif = await extractExif(buffer);
+  const sourceFilename = `${photoId}-source.${ext}`;
+  const candidatePreset =
+    storagePreset === "original" ? "balanced" : storagePreset;
+
+  try {
+    await fs.writeFile(path.join(dir, sourceFilename), buffer);
+    const renditionBytes = await writeRenditions(buffer, dir, photoId);
+    const candidate = await writeCandidate(
+      buffer,
+      dir,
+      photoId,
+      candidatePreset
+    );
+    const sourceBytes = buffer.length;
+    const bytes = sourceBytes + candidate.bytes + renditionBytes;
+    return {
+      width,
+      height,
+      origFilename: candidate.filename,
+      exif,
+      bytes,
+      storagePreset,
+      candidatePreset,
+      sourceFilename,
+      sourceBytes,
+      candidateBytes: candidate.bytes,
+      renditionBytes
+    };
+  } catch (error) {
+    await deletePhotoFiles(ownerId, eventId, photoId, sourceFilename).catch(
+      () => undefined
+    );
+    throw error;
+  }
+}
+
+export async function replacePendingCandidate(
+  ownerId: string,
+  eventId: string,
+  photoId: string,
+  sourceFilename: string,
+  preset: CandidatePreset
+): Promise<{ filename: string; bytes: number }> {
+  return writeCandidate(
+    path.join(eventDir(ownerId, eventId), sourceFilename),
+    eventDir(ownerId, eventId),
+    photoId,
+    preset
+  );
+}
+
+export async function deletePhotoAssetFile(
+  ownerId: string,
+  eventId: string,
+  filename: string
+): Promise<void> {
+  if (!filename || path.basename(filename) !== filename) {
+    throw new Error("Invalid photo filename");
+  }
+  await fs.rm(path.join(eventDir(ownerId, eventId), filename), { force: true });
+}
+
+export async function finalizePendingMaster(
+  ownerId: string,
+  eventId: string,
+  photoId: string,
+  input: {
+    filename: string;
+    bytes: number;
+    storagePreset: StoragePreset;
+    sourceFilename: string | null;
+    sourceBytes: number | null;
+    candidateBytes: number | null;
+    renditionBytes: number | null;
+  }
+): Promise<{ filename: string; bytes: number }> {
+  // A pre-migration pending upload already owns its stable original and can be
+  // finalized exactly as before without touching its files.
+  if (
+    !input.sourceFilename ||
+    input.sourceBytes == null ||
+    input.candidateBytes == null ||
+    input.renditionBytes == null
+  ) {
+    return { filename: input.filename, bytes: input.bytes };
+  }
+
+  const dir = eventDir(ownerId, eventId);
+  const chosen =
+    input.storagePreset === "original" ? input.sourceFilename : input.filename;
+  const discarded =
+    input.storagePreset === "original" ? input.filename : input.sourceFilename;
+  const finalFilename = `${photoId}-orig${path.extname(chosen)}`;
+  const chosenPath = path.join(dir, chosen);
+  const finalPath = path.join(dir, finalFilename);
+
+  // A retry after the rename is harmless: the stable file is the durable sign
+  // that the filesystem phase completed even if the database response was lost.
+  const finalExists = await fs.stat(finalPath).then(() => true).catch(() => false);
+  if (!finalExists && chosen !== finalFilename) {
+    await fs.rename(chosenPath, finalPath);
+  }
+  if (discarded !== finalFilename) {
+    await fs.rm(path.join(dir, discarded), { force: true });
+  }
+  const siblings = await fs.readdir(dir).catch(() => [] as string[]);
+  await Promise.all(
+    siblings
+      .filter(
+        (name) =>
+          name !== finalFilename &&
+          (name.startsWith(`${photoId}-candidate-`) ||
+            name.startsWith(`${photoId}-source.`))
+      )
+      .map((name) => fs.rm(path.join(dir, name), { force: true }))
+  );
+
+  return {
+    filename: finalFilename,
+    bytes:
+      (input.storagePreset === "original"
+        ? input.sourceBytes
+        : input.candidateBytes) + input.renditionBytes
+  };
+}
+
 /**
  * Writes the original plus thumb/med/full webp renditions for a photo.
  * Returns the display dimensions (after EXIF orientation is applied) and the
@@ -133,14 +375,7 @@ export async function processAndStorePhoto(
   const height = swapped ? meta.width : meta.height;
   const exif = await extractExif(buffer);
 
-  // Sequential to keep peak memory low.
-  for (const size of SIZES) {
-    await sharp(buffer, { failOn: "none" })
-      .rotate() // apply EXIF orientation before metadata is stripped
-      .resize({ width: size.width, withoutEnlargement: true })
-      .webp({ quality: size.quality })
-      .toFile(path.join(dir, `${photoId}-${size.suffix}.webp`));
-  }
+  await writeRenditions(buffer, dir, photoId);
 
   const origFilename = `${photoId}-orig.${ext}`;
   const origPath = path.join(dir, origFilename);
@@ -177,10 +412,17 @@ export async function deletePhotoFiles(
   origFilename: string
 ): Promise<void> {
   const dir = eventDir(ownerId, eventId);
-  const files = [
-    origFilename,
-    ...SIZES.map((s) => `${photoId}-${s.suffix}.webp`)
-  ];
+  // Include versioned candidates and temporary sources left by interrupted
+  // pending operations. The exact photo-id prefix keeps cleanup tenant/event
+  // scoped and cannot match a neighbouring photo.
+  const siblings = await fs.readdir(dir).catch(() => [] as string[]);
+  const files = Array.from(
+    new Set([
+      origFilename,
+      ...SIZES.map((s) => `${photoId}-${s.suffix}.webp`),
+      ...siblings.filter((name) => name.startsWith(`${photoId}-`))
+    ])
+  );
   await Promise.all(
     files.map((f) => fs.rm(path.join(dir, f), { force: true }))
   );

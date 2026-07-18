@@ -227,6 +227,8 @@ test.describe.serial("management workflows", () => {
     await page.waitForURL(/\/dashboard\/events\/(?!new$)[^/]+$/);
 
     const picker = page.locator('input[type="file"][accept*="image/jpeg"]');
+    const batchQuality = page.getByLabel("Storage quality for the next selection");
+    await expect(batchQuality).toHaveValue("balanced");
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       "base64"
@@ -235,12 +237,24 @@ test.describe.serial("management workflows", () => {
     await picker.setInputFiles({ name: "first.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("1 photo queued")).toBeVisible();
     await expect(page.getByText("Ready to create")).toHaveCount(1);
+    await expect(page.getByText("Original", { exact: true })).toBeVisible();
+    await expect(page.getByText("Balanced candidate")).toBeVisible();
+    await expect(page.getByText("After Create")).toBeVisible();
+    await expect(page.getByText("Pending now")).toBeVisible();
+
+    const photoQuality = page.getByLabel("Storage quality", { exact: true });
+    await photoQuality.selectOption("archive");
+    await expect(photoQuality).toHaveValue("archive", { timeout: 15_000 });
+    await expect(page.getByText("Archive candidate")).toBeVisible({ timeout: 15_000 });
 
     // Opening the native picker again replaces its own FileList. The app queue
     // must retain the first server-backed pending photo and append this one.
     await picker.setInputFiles({ name: "second.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("2 photos queued")).toBeVisible();
     await expect(page.getByText("Ready to create")).toHaveCount(2);
+    await expect(page.getByLabel("Storage quality", { exact: true })).toHaveCount(2);
+    await expect(page.getByLabel("Storage quality", { exact: true }).nth(0)).toHaveValue("archive");
+    await expect(page.getByLabel("Storage quality", { exact: true }).nth(1)).toHaveValue("balanced");
 
     await page.locator('input[list="known-credits"]').fill("E2E credit");
     await page.getByRole("button", { name: "Create", exact: true }).click();

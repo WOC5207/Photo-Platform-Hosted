@@ -92,6 +92,7 @@ async function main() {
   upload.append("eventId", aliceEvent.id);
   upload.append("batchId", batchId);
   upload.append("uploadId", uploadId);
+  upload.append("storagePreset", "balanced");
   upload.append("file", new Blob([await jpeg()], { type: "image/jpeg" }), "a.jpg");
   const uploadRes = await fetch(`${BASE}/api/admin/photos`, {
     method: "POST",
@@ -111,6 +112,7 @@ async function main() {
   retryUpload.append("eventId", aliceEvent.id);
   retryUpload.append("batchId", batchId);
   retryUpload.append("uploadId", uploadId);
+  retryUpload.append("storagePreset", "balanced");
   retryUpload.append(
     "file",
     new Blob([await jpeg()], { type: "image/jpeg" }),
@@ -128,6 +130,49 @@ async function main() {
     "pending queue: retrying one upload id is idempotent",
     retryUploadRes.status === 200 && pendingRowsAfterRetry === 1,
     `HTTP ${retryUploadRes.status}, ${pendingRowsAfterRetry} row(s) (want 1)`
+  );
+
+  const pendingWithComparison = await prisma.photo.findUniqueOrThrow({
+    where: { id: uploadId }
+  });
+  report(
+    "pending queue: exact source/candidate/rendition sizes are durable",
+    pendingWithComparison.sourceBytes !== null &&
+      pendingWithComparison.candidateBytes !== null &&
+      pendingWithComparison.renditionBytes !== null &&
+      pendingWithComparison.bytes ===
+        pendingWithComparison.sourceBytes +
+          pendingWithComparison.candidateBytes +
+          pendingWithComparison.renditionBytes,
+    `source=${pendingWithComparison.sourceBytes}, candidate=${pendingWithComparison.candidateBytes}, renditions=${pendingWithComparison.renditionBytes}, total=${pendingWithComparison.bytes}`
+  );
+
+  const foreignPreset = await fetch(`${BASE}/api/admin/photos`, {
+    method: "PUT",
+    headers: { cookie: bobCookie, "content-type": "application/json" },
+    body: JSON.stringify({ photoId, storagePreset: "archive" })
+  });
+  report(
+    "pending queue: another account cannot change Alice's storage quality",
+    foreignPreset.status === 404,
+    `HTTP ${foreignPreset.status} (want 404)`
+  );
+
+  const archivePreset = await fetch(`${BASE}/api/admin/photos`, {
+    method: "PUT",
+    headers: { cookie: aliceCookie, "content-type": "application/json" },
+    body: JSON.stringify({ photoId, storagePreset: "archive" })
+  });
+  const archiveRow = await prisma.photo.findUniqueOrThrow({
+    where: { id: uploadId }
+  });
+  report(
+    "pending queue: owner can regenerate and persist an Archive candidate",
+    archivePreset.status === 200 &&
+      archiveRow.storagePreset === "archive" &&
+      archiveRow.candidatePreset === "archive" &&
+      archiveRow.uploadState === "pending",
+    `HTTP ${archivePreset.status}, selected=${archiveRow.storagePreset}, candidate=${archiveRow.candidatePreset}, state=${archiveRow.uploadState}`
   );
 
   await prisma.event.update({
@@ -212,8 +257,12 @@ async function main() {
   const finalized = await prisma.photo.findUnique({ where: { id: photoId } });
   report(
     "pending queue: Create finalizes the exact owned photo",
-    finalizeRes.status === 200 && finalized?.pendingBatchId === null,
-    `HTTP ${finalizeRes.status}, pendingBatchId=${finalized?.pendingBatchId ?? "null"}`
+    finalizeRes.status === 200 &&
+      finalized?.pendingBatchId === null &&
+      finalized.sourceFilename === null &&
+      finalized.filename.includes("-orig.") &&
+      finalized.bytes < archiveRow.bytes,
+    `HTTP ${finalizeRes.status}, pendingBatchId=${finalized?.pendingBatchId ?? "null"}, filename=${finalized?.filename}, bytes=${finalized?.bytes}`
   );
 
   const finalizeRetry = await fetch(`${BASE}/api/admin/photos`, {
@@ -308,6 +357,7 @@ async function main() {
   discardUpload.append("eventId", aliceEvent.id);
   discardUpload.append("batchId", randomUUID());
   discardUpload.append("uploadId", discardId);
+  discardUpload.append("storagePreset", "balanced");
   discardUpload.append(
     "file",
     new Blob([await jpeg()], { type: "image/jpeg" }),
@@ -351,6 +401,7 @@ async function main() {
   intoHers.append("eventId", aliceEvent.id);
   intoHers.append("batchId", randomUUID());
   intoHers.append("uploadId", randomUUID().replace(/-/g, ""));
+  intoHers.append("storagePreset", "balanced");
   intoHers.append("file", new Blob([await jpeg()], { type: "image/jpeg" }), "b.jpg");
   const intoHersRes = await fetch(`${BASE}/api/admin/photos`, {
     method: "POST",
