@@ -121,6 +121,8 @@
     "noPhotos": "No photos yet — upload some below.",
     "upload": "Upload photos",
     "uploadHint": "Choose photos as many times as needed. Upload starts immediately, and each JPEG, PNG or WebP selection is added to the pending queue.",
+    "uploadSizeLimit": "Maximum size per photo: {maxSize}.",
+    "uploadSelectionTooLarge": "{count, plural, one {# photo was} other {# photos were}} not added because each photo must be {maxSize} or smaller.",
     "storagePresetLabel": "Storage quality for the next selection",
     "storagePresetPhotoLabel": "Storage quality",
     "storagePresetOriginal": "Original file (keeps metadata)",

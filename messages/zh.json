@@ -121,6 +121,8 @@
     "noPhotos": "还没有照片，在下方上传。",
     "upload": "上传照片",
     "uploadHint": "可多次打开文件选择器；选中 JPEG、PNG 或 WebP 照片后会立即开始上传，并加入待上传队列。",
+    "uploadSizeLimit": "每张照片的大小上限为 {maxSize}。",
+    "uploadSelectionTooLarge": "有 {count} 张照片因超过大小限制而未加入队列；每张照片必须为 {maxSize} 或更小。",
     "storagePresetLabel": "下一批照片的存储画质",
     "storagePresetPhotoLabel": "存储画质",
     "storagePresetOriginal": "原始文件（保留元数据）",

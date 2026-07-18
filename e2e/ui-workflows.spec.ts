@@ -320,6 +320,29 @@ test.describe.serial("management workflows", () => {
     const picker = page.locator('input[type="file"][accept*="image/jpeg"]');
     const batchQuality = page.getByLabel("Storage quality for the next selection");
     await expect(batchQuality).toHaveValue("balanced");
+    await expect(page.getByText("Maximum size per photo: 100 MB.")).toBeVisible();
+
+    // The native picker can select any size, so the app must reject an
+    // oversized file before it is added to the queue or sent to the server.
+    await picker.evaluate((element) => {
+      const oversized = new File(["not really large"], "oversized.jpg", {
+        type: "image/jpeg"
+      });
+      Object.defineProperty(oversized, "size", {
+        value: 100 * 1024 * 1024 + 1
+      });
+      const transfer = new DataTransfer();
+      transfer.items.add(oversized);
+      (element as HTMLInputElement).files = transfer.files;
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await expect(
+      page.getByRole("alert").filter({
+        hasText: "1 photo was not added because each photo must be 100 MB or smaller."
+      })
+    ).toBeVisible();
+    await expect(page.getByText("No photos in the pending queue.")).toBeVisible();
+
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       "base64"
