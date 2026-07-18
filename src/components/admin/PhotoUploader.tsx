@@ -134,6 +134,11 @@ function formatBytes(bytes: number): string {
   return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${unit}`;
 }
 
+function formatUploadLimit(bytes: number): string {
+  const megabytes = bytes / (1024 * 1024);
+  return Number.isInteger(megabytes) ? `${megabytes} MB` : formatBytes(bytes);
+}
+
 function serverPhotoPatch(
   photo: PendingPhotoValue
 ): Pick<
@@ -172,6 +177,7 @@ export default function PhotoUploader({
   eventId,
   initialPendingPhotos,
   allowOriginal,
+  uploadMaxBytes,
   creditProfiles,
   creditTerm,
   subjectTerm
@@ -179,6 +185,7 @@ export default function PhotoUploader({
   eventId: string;
   initialPendingPhotos: PendingPhotoValue[];
   allowOriginal: boolean;
+  uploadMaxBytes: number;
   creditProfiles: CreditProfile[];
   creditTerm: string;
   subjectTerm: string;
@@ -221,6 +228,7 @@ export default function PhotoUploader({
   const [finalizeStatus, setFinalizeStatus] = useState<FinalizeStatus | null>(null);
   const [finalizing, setFinalizing] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [oversizedSelectionCount, setOversizedSelectionCount] = useState(0);
 
   const credits = rows
     .map((row) => ({
@@ -473,8 +481,10 @@ export default function PhotoUploader({
 
   function queueSelectedFiles(event: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(event.currentTarget.files ?? []);
-    if (selected.length > 0) {
-      const queued = selected.map((file) => {
+    const accepted = selected.filter((file) => file.size <= uploadMaxBytes);
+    setOversizedSelectionCount(selected.length - accepted.length);
+    if (accepted.length > 0) {
+      const queued = accepted.map((file) => {
         const uploadId = newUploadId();
         const previewUrl = URL.createObjectURL(file);
         blobPreviewUrlsRef.current.add(previewUrl);
@@ -910,7 +920,7 @@ export default function PhotoUploader({
           <input
             type="file"
             multiple
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/jpeg,image/png,image/webp,image/tiff,image/x-tiff,.tif,.tiff"
             disabled={finalizing || clearing}
             onChange={queueSelectedFiles}
             className="sr-only"
@@ -919,6 +929,17 @@ export default function PhotoUploader({
         </label>
       </div>
       <p className="-mt-1 text-xs text-fg-subtle">{t("uploadHint")}</p>
+      <p className="-mt-1 text-xs text-fg-subtle">
+        {t("uploadSizeLimit", { maxSize: formatUploadLimit(uploadMaxBytes) })}
+      </p>
+      {oversizedSelectionCount > 0 && (
+        <p role="alert" className="text-sm text-danger">
+          {t("uploadSelectionTooLarge", {
+            count: oversizedSelectionCount,
+            maxSize: formatUploadLimit(uploadMaxBytes)
+          })}
+        </p>
+      )}
       {!allowOriginal && (
         <p className="-mt-1 text-xs text-fg-subtle">
           {t("storageOriginalDisabled")}

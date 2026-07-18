@@ -168,6 +168,7 @@ export default async function EditEventPage({
           eventId={event.id}
           initialPendingPhotos={pendingPhotos}
           allowOriginal={!config.stripOriginalExif()}
+          uploadMaxBytes={config.uploadMaxBytes()}
           creditProfiles={creditProfiles}
           creditTerm={creditTerm}
           subjectTerm={subjectTerm}

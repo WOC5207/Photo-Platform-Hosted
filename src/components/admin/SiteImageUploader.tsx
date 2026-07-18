@@ -118,7 +118,7 @@ export default function SiteImageUploader({
         <input
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/jpeg,image/png,image/webp,image/tiff,image/x-tiff,.tif,.tiff"
           disabled={busy}
           onChange={(e) => handleFile(e.target.files?.[0])}
           className="sr-only"

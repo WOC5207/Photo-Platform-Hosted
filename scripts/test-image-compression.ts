@@ -9,7 +9,8 @@ import {
   eventDir,
   finalizePendingMaster,
   processAndStorePendingPhoto,
-  replacePendingCandidate
+  replacePendingCandidate,
+  resolveUploadExtension
 } from "../src/lib/images";
 
 async function exists(file: string): Promise<boolean> {
@@ -138,6 +139,72 @@ async function main() {
       balanced.bytes + archive.renditionBytes
     );
 
+    assert.equal(
+      resolveUploadExtension({ type: "image/tiff", name: "photo.tiff" }),
+      "tif"
+    );
+    assert.equal(
+      resolveUploadExtension({ type: "image/x-tiff", name: "photo.tif" }),
+      "tif"
+    );
+    assert.equal(
+      resolveUploadExtension({ type: "application/octet-stream", name: "photo.tiff" }),
+      "tif"
+    );
+    assert.equal(
+      resolveUploadExtension({ type: "application/octet-stream", name: "photo.jpg" }),
+      null
+    );
+
+    const tiff = await sharp({
+      create: {
+        width: 1200,
+        height: 800,
+        channels: 3,
+        background: { r: 40, g: 130, b: 90 }
+      }
+    })
+      .tiff({ compression: "lzw" })
+      .toBuffer();
+    const tiffId = "c".repeat(32);
+    const pendingTiff = await processAndStorePendingPhoto(
+      ownerId,
+      eventId,
+      tiffId,
+      tiff,
+      "tif",
+      "original"
+    );
+    assert.deepEqual(
+      await fs.readFile(path.join(dir, pendingTiff.sourceFilename)),
+      tiff,
+      "an Original TIFF source must remain byte-identical"
+    );
+    assert.equal(
+      (await sharp(path.join(dir, pendingTiff.origFilename)).metadata()).format,
+      "jpeg",
+      "the TIFF comparison candidate should use the normal opaque JPEG master"
+    );
+    for (const suffix of ["thumb", "med", "full"]) {
+      assert.equal(await exists(path.join(dir, `${tiffId}-${suffix}.webp`)), true);
+    }
+    const finalizedTiff = await finalizePendingMaster(
+      ownerId,
+      eventId,
+      tiffId,
+      {
+        filename: pendingTiff.origFilename,
+        bytes: pendingTiff.bytes,
+        storagePreset: "original",
+        sourceFilename: pendingTiff.sourceFilename,
+        sourceBytes: pendingTiff.sourceBytes,
+        candidateBytes: pendingTiff.candidateBytes,
+        renditionBytes: pendingTiff.renditionBytes
+      }
+    );
+    assert.equal(finalizedTiff.filename, `${tiffId}-orig.tif`);
+    assert.deepEqual(await fs.readFile(path.join(dir, finalizedTiff.filename)), tiff);
+
     await deletePhotoFiles(
       ownerId,
       eventId,
@@ -150,6 +217,7 @@ async function main() {
       "b".repeat(32),
       finalizedBalanced.filename
     );
+    await deletePhotoFiles(ownerId, eventId, tiffId, finalizedTiff.filename);
     console.log("✓ pending image compression, comparison and finalization");
   } finally {
     await fs.rm(root, { recursive: true, force: true });

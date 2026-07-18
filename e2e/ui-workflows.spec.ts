@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "crypto";
 import { sealData } from "iron-session";
+import sharp from "sharp";
 import { prisma } from "@/lib/db";
 
 const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.ADMIN_USERNAME;
@@ -320,6 +321,29 @@ test.describe.serial("management workflows", () => {
     const picker = page.locator('input[type="file"][accept*="image/jpeg"]');
     const batchQuality = page.getByLabel("Storage quality for the next selection");
     await expect(batchQuality).toHaveValue("balanced");
+    await expect(page.getByText("Maximum size per photo: 100 MB.")).toBeVisible();
+
+    // The native picker can select any size, so the app must reject an
+    // oversized file before it is added to the queue or sent to the server.
+    await picker.evaluate((element) => {
+      const oversized = new File(["not really large"], "oversized.jpg", {
+        type: "image/jpeg"
+      });
+      Object.defineProperty(oversized, "size", {
+        value: 100 * 1024 * 1024 + 1
+      });
+      const transfer = new DataTransfer();
+      transfer.items.add(oversized);
+      (element as HTMLInputElement).files = transfer.files;
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await expect(
+      page.getByRole("alert").filter({
+        hasText: "1 photo was not added because each photo must be 100 MB or smaller."
+      })
+    ).toBeVisible();
+    await expect(page.getByText("No photos in the pending queue.")).toBeVisible();
+
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       "base64"
@@ -358,9 +382,31 @@ test.describe.serial("management workflows", () => {
     );
     await expect(page.getByTestId("pending-photo-list")).toHaveCSS("overflow-y", "visible");
 
+    // Windows may report TIFF as a generic binary file. The filename fallback
+    // must still admit .tif/.tiff while Sharp validates the actual bytes.
+    const tiff = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 3,
+        background: { r: 30, g: 120, b: 70 }
+      }
+    })
+      .tiff({ compression: "lzw" })
+      .toBuffer();
+    await picker.setInputFiles({
+      name: "third.tiff",
+      mimeType: "application/octet-stream",
+      buffer: tiff
+    });
+    await expect(page.getByText("3 photos queued")).toBeVisible();
+    await expect(page.getByText("Ready to create")).toHaveCount(3);
+    await expect(page.getByRole("img", { name: "third.tiff" })).toBeVisible();
+
     await page.reload();
     await expect(page.getByRole("img", { name: "first.png" })).toBeVisible();
     await expect(page.getByRole("img", { name: "second.png" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "third.tiff" })).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
       "aria-valuenow",
       "100"
@@ -368,7 +414,7 @@ test.describe.serial("management workflows", () => {
 
     await page.locator('input[list="known-credits"]').fill("E2E credit");
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "2 photos created." })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "3 photos created." })).toBeVisible();
     await expect(page.getByText("No photos in the pending queue.")).toBeVisible();
 
     page.once("dialog", (dialog) => dialog.accept());

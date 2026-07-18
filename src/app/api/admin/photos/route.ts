@@ -5,12 +5,12 @@ import { getCurrentUser } from "@/lib/auth";
 import { findOwnedEvent } from "@/lib/ownership";
 import { config } from "@/lib/config";
 import {
-  ALLOWED_UPLOAD_TYPES,
   deletePhotoAssetFile,
   deletePhotoFiles,
   finalizePendingMaster,
   isStoragePreset,
   processAndStorePendingPhoto,
+  resolveUploadExtension,
   replacePendingCandidate,
   type CandidatePreset,
   type StoragePreset
@@ -258,7 +258,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "eventNotFound" }, { status: 404 });
   }
 
-  const ext = ALLOWED_UPLOAD_TYPES[file.type];
+  const ext = resolveUploadExtension(file);
   if (!ext) {
     return NextResponse.json({ error: "unsupportedType" }, { status: 415 });
   }

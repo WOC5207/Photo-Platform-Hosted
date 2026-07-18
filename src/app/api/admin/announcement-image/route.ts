@@ -3,8 +3,8 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import {
-  ALLOWED_UPLOAD_TYPES,
   processAndStoreSiteImage,
+  resolveUploadExtension,
   siteImageUrl
 } from "@/lib/images";
 import { adjustReservation, releaseBytes, reserveBytes } from "@/lib/quota";
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "badRequest" }, { status: 400 });
   }
-  if (!ALLOWED_UPLOAD_TYPES[file.type]) {
+  if (!resolveUploadExtension(file)) {
     return NextResponse.json({ error: "unsupportedType" }, { status: 415 });
   }
   if (file.size > config.uploadMaxBytes()) {

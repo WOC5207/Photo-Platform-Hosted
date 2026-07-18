@@ -5,8 +5,8 @@ import { config } from "@/lib/config";
 import { adjustReservation, releaseBytes, reserveBytes } from "@/lib/quota";
 import { discardSiteImage } from "@/lib/siteImages";
 import {
-  ALLOWED_UPLOAD_TYPES,
   processAndStoreSiteImage,
+  resolveUploadExtension,
   siteImageUrl,
   type SiteImageOptions
 } from "@/lib/images";
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "badRequest" }, { status: 400 });
   }
-  if (!ALLOWED_UPLOAD_TYPES[file.type]) {
+  if (!resolveUploadExtension(file)) {
     return NextResponse.json({ error: "unsupportedType" }, { status: 415 });
   }
   if (file.size > config.uploadMaxBytes()) {
