@@ -43,6 +43,8 @@ const uploadSelect = {
   eventId: true,
   filename: true,
   originalName: true,
+  width: true,
+  height: true,
   bytes: true,
   uploadState: true,
   pendingBatchId: true,
@@ -59,6 +61,8 @@ interface UploadRecord {
   eventId: string;
   filename: string;
   originalName: string;
+  width: number;
+  height: number;
   bytes: number;
   uploadState: string;
   pendingBatchId: string | null;
@@ -95,6 +99,8 @@ function pendingPhotoJson(photo: UploadRecord) {
     name: photo.originalName,
     previewUrl: `/api/images/${photo.eventId}/${photo.id}-thumb.webp`,
     state: photo.uploadState,
+    width: photo.width,
+    height: photo.height,
     batchId: photo.pendingBatchId,
     storagePreset: preset,
     candidatePreset:
@@ -660,13 +666,14 @@ export async function PATCH(req: NextRequest) {
     typeof body?.credits === "string" ? body.credits : null
   );
 
+  // credits may be empty: the wizard's confirm step lets photos publish
+  // uncredited after an explicit acknowledgement.
   if (
     !eventId ||
     photoIds.length === 0 ||
     rawIds.length !== rawPhotoIds.length ||
     photoIds.length !== rawIds.length ||
-    photoIds.length > MAX_PENDING_PER_EVENT ||
-    credits.length === 0
+    photoIds.length > MAX_PENDING_PER_EVENT
   ) {
     return NextResponse.json({ error: "badRequest" }, { status: 400 });
   }

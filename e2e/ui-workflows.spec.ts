@@ -333,18 +333,26 @@ test.describe.serial("management workflows", () => {
     }
   });
 
-  test("photo selections upload immediately and accumulate in one pending queue", async ({ page }) => {
+  test("photo wizard uploads, compresses, credits and publishes step by step", async ({ page }) => {
     const slug = `e2e-pending-photos-${Date.now()}`;
     await page.goto("/en/dashboard/events/new");
     await page.getByLabel("Title (English)").fill("E2E pending photo queue");
     await page.getByLabel("URL slug").fill(slug);
+    await page.getByRole("checkbox", { name: /Published/ }).check();
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await page.waitForURL(/\/dashboard\/events\/(?!new$)[^/]+$/);
+    const editUrl = page.url();
+
+    // The edit page no longer hosts the uploader; the guided wizard does.
+    await page.getByRole("link", { name: "Add photos" }).click();
+    await page.waitForURL(/\/dashboard\/events\/[^/]+\/photos$/);
 
     const picker = page.locator('input[type="file"][accept*="image/jpeg"]');
     const batchQuality = page.getByLabel("Storage quality for the next selection");
     await expect(batchQuality).toHaveValue("balanced");
     await expect(page.getByText("Maximum size per photo: 100 MB.")).toBeVisible();
+    const continueButton = page.getByRole("button", { name: "Continue" });
+    await expect(continueButton).toBeDisabled();
 
     // The native picker can select any size, so the app must reject an
     // oversized file before it is added to the queue or sent to the server.
@@ -380,24 +388,12 @@ test.describe.serial("management workflows", () => {
       "100"
     );
     await expect(page.getByRole("img", { name: "first.png" })).toBeVisible();
-    await expect(page.getByText("Original", { exact: true })).toBeVisible();
-    await expect(page.getByText("Balanced candidate")).toBeVisible();
-    await expect(page.getByText("After Create")).toBeVisible();
-    await expect(page.getByText("Pending now")).toBeVisible();
-
-    const photoQuality = page.getByLabel("Storage quality", { exact: true });
-    await photoQuality.selectOption("archive");
-    await expect(photoQuality).toHaveValue("archive", { timeout: 15_000 });
-    await expect(page.getByText("Archive candidate")).toBeVisible({ timeout: 15_000 });
 
     // Opening the native picker again replaces its own FileList. The app queue
     // must retain the first server-backed pending photo and append this one.
     await picker.setInputFiles({ name: "second.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("2 photos queued")).toBeVisible();
     await expect(page.getByText("Ready to create")).toHaveCount(2);
-    await expect(page.getByLabel("Storage quality", { exact: true })).toHaveCount(2);
-    await expect(page.getByLabel("Storage quality", { exact: true }).nth(0)).toHaveValue("archive");
-    await expect(page.getByLabel("Storage quality", { exact: true }).nth(1)).toHaveValue("balanced");
     await expect(page.getByRole("img", { name: "second.png" })).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
       "aria-valuenow",
@@ -447,12 +443,61 @@ test.describe.serial("management workflows", () => {
     await expect(page.getByText("2 photos queued")).toBeVisible();
     await picker.setInputFiles({ name: "first.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("3 photos queued")).toBeVisible();
+    await expect(page.getByText("Ready to create")).toHaveCount(3);
 
+    // Step 2 — compression: per-photo overrides via multi-select.
+    await expect(continueButton).toBeEnabled();
+    await continueButton.click();
+    const grid = page.getByTestId("wizard-photo-grid");
+    await expect(grid.getByRole("button")).toHaveCount(3);
+    await expect(page.getByText(/^Total size after publishing:/)).toBeVisible();
+
+    await grid.getByRole("button", { name: "Select first.png" }).click();
+    await expect(page.getByText("1 selected")).toBeVisible();
+    await page.getByLabel("Storage quality", { exact: true }).selectOption("archive");
+    await page.getByRole("button", { name: "Apply to selected (1)" }).click();
+    await expect(grid.getByText(/^Archive/)).toBeVisible({ timeout: 15_000 });
+    await expect(grid.getByText(/^Balanced/)).toHaveCount(2);
+
+    // Step 3 — credits: only the first photo gets one; the rest stay
+    // uncredited on purpose.
+    await continueButton.click();
+    await page.getByRole("button", { name: "Select first.png" }).click();
     await page.locator('input[list="known-credits"]').fill("E2E credit");
-    await page.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "3 photos created." })).toBeVisible();
-    await expect(page.getByText("No photos in the pending queue.")).toBeVisible();
+    await page.getByRole("button", { name: "Apply to selected (1)" }).click();
+    await expect(grid.getByText("E2E credit")).toBeVisible();
+    await expect(grid.getByText("No credit")).toHaveCount(2);
 
+    // Step 4 — confirm: album preview, totals, and an explicit
+    // acknowledgement before uncredited photos may publish.
+    await continueButton.click();
+    await expect(page.getByText("Photos to publish")).toBeVisible();
+    await expect(page.getByText("Total size after publishing")).toBeVisible();
+    await expect(page.getByText("E2E credit — 1 photo")).toBeVisible();
+    await expect(page.getByText("2 photos without credit")).toBeVisible();
+    await expect(
+      page.getByText("2 photos have no credit and will be published without attribution.")
+    ).toBeVisible();
+    const publishButton = page.getByRole("button", { name: "Publish 3 photos" });
+    await expect(publishButton).toBeDisabled();
+    await page
+      .getByRole("checkbox", { name: "Publish these photos without a credit" })
+      .check();
+    await expect(publishButton).toBeEnabled();
+    await publishButton.click();
+
+    // Publishing finalizes one PATCH per credit group (credited + uncredited)
+    // and returns to the event's photo section.
+    await page.waitForURL(/\/dashboard\/events\/[^/]+#photos$/);
+
+    // All three photos — including the two uncredited ones — reach the
+    // public album.
+    await page.getByRole("link", { name: "View public page" }).click();
+    await expect(page).toHaveURL(new RegExp(`/en/u/[^/]+/gallery/${slug}$`));
+    await expect(page.getByText("3 photos")).toBeVisible();
+    await expect(page.getByText("E2E credit")).toBeAttached();
+
+    await page.goto(editUrl);
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Delete event" }).click();
     await expect(page).toHaveURL(/\/en\/dashboard\/events$/);

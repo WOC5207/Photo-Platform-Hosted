@@ -5,7 +5,6 @@ import { requireUser } from "@/lib/auth";
 import { photoUrls } from "@/lib/images";
 import { formatShutterSpeedInput } from "@/lib/exif";
 import { ownerBasePath } from "@/lib/owner";
-import { config } from "@/lib/config";
 import {
   getCreditProfiles,
   getSiteSettings,
@@ -14,9 +13,6 @@ import {
 } from "@/lib/settings";
 import { Link } from "@/i18n/navigation";
 import EventForm from "@/components/admin/EventForm";
-import PhotoUploader, {
-  type PendingPhotoValue
-} from "@/components/admin/PhotoUploader";
 import PhotoManager, { type AdminPhoto } from "@/components/admin/PhotoManager";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import { deleteEvent, updateEvent } from "../actions";
@@ -56,40 +52,9 @@ export default async function EditEventPage({
     socialLinks: c.socialLinks.map((s) => ({ platform: s.platform, url: s.url }))
   }));
 
-  const pendingPhotos: PendingPhotoValue[] = event.photos
-    .filter((photo) => photo.pendingBatchId !== null)
-    .map((photo) => ({
-      id: photo.id,
-      name: photo.originalName,
-      previewUrl: photoUrls(event.id, photo.id).thumb,
-      state:
-        photo.uploadState === "processing" || photo.uploadState === "finalizing"
-          ? "processing"
-          : photo.uploadState === "deleting"
-            ? "deleting"
-            : "pending",
-      storagePreset:
-        photo.storagePreset === "archive" || photo.storagePreset === "balanced"
-          ? photo.storagePreset
-          : "original",
-      candidatePreset:
-        photo.candidatePreset === "archive" || photo.candidatePreset === "balanced"
-          ? photo.candidatePreset
-          : null,
-      sourceBytes: photo.sourceBytes,
-      candidateBytes: photo.candidateBytes,
-      renditionBytes: photo.renditionBytes,
-      pendingBytes: photo.bytes,
-      finalBytes:
-        photo.renditionBytes != null &&
-        (photo.storagePreset === "original"
-          ? photo.sourceBytes != null
-          : photo.candidateBytes != null)
-          ? (photo.storagePreset === "original"
-              ? photo.sourceBytes!
-              : photo.candidateBytes!) + photo.renditionBytes
-          : null
-    }));
+  const pendingCount = event.photos.filter(
+    (photo) => photo.pendingBatchId !== null
+  ).length;
 
   const photos: AdminPhoto[] = event.photos
     .filter((photo) => photo.pendingBatchId === null)
@@ -163,16 +128,17 @@ export default async function EditEventPage({
         id="photos"
         className="scroll-mt-6 flex flex-col gap-4 border-t border-border pt-6"
       >
-        <h2 className="text-lg font-semibold">{t("photos")}</h2>
-        <PhotoUploader
-          eventId={event.id}
-          initialPendingPhotos={pendingPhotos}
-          allowOriginal={!config.stripOriginalExif()}
-          uploadMaxBytes={config.uploadMaxBytes()}
-          creditProfiles={creditProfiles}
-          creditTerm={creditTerm}
-          subjectTerm={subjectTerm}
-        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">{t("photos")}</h2>
+          <Link
+            href={`/dashboard/events/${event.id}/photos`}
+            className="inline-flex min-h-10 items-center justify-center rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11"
+          >
+            {pendingCount > 0
+              ? t("resumePhotos", { count: pendingCount })
+              : `+ ${t("addPhotos")}`}
+          </Link>
+        </div>
         <PhotoManager
           photos={photos}
           creditProfiles={creditProfiles}

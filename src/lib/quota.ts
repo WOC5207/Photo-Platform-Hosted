@@ -9,8 +9,8 @@ import { prisma } from "./db";
  * be both incomplete — quota covers site images too, so it is two SUMs across
  * two tables — and, more importantly, not atomic: SUM -> compare -> insert has
  * a window where two concurrent uploads both read 4.9GB, both pass a 5GB check,
- * and both write. PhotoUploader uploads one file at a time, but that is a
- * client-side property; two browser tabs defeat it.
+ * and both write. The photo wizard's upload queue sends one file at a time,
+ * but that is a client-side property; two browser tabs defeat it.
  *
  * A counter lets the check and the reservation be one row-locked statement, so
  * the answer cannot be stale by the time it is acted on. That is the same
