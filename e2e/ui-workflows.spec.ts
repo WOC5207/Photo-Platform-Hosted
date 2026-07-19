@@ -139,7 +139,7 @@ test.describe("locale and theme compatibility", () => {
     }
 
     await page.goto("/en/dashboard/settings?section=features#lottery");
-    await page.getByRole("button", { name: "Account" }).click();
+    await page.locator('aside button[aria-haspopup="dialog"]').click();
     await page
       .getByRole("dialog", { name: "Account" })
       .getByRole("link", { name: "中文" })
@@ -312,7 +312,7 @@ test.describe.serial("management workflows", () => {
       await expect(usernameInput).toBeFocused();
       await expect(
         guest.getByRole("checkbox", {
-          name: "I have read and agree to the registration notice above."
+          name: /I have read and agree to the registration notice/
         })
       ).toBeVisible();
     } finally {
