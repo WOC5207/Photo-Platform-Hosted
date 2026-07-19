@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "./db";
 import { deleteSiteImageFile } from "./images";
-import { releaseBytes } from "./quota";
+import { deleteSiteImageRowAndRelease } from "./quota";
 
 /**
  * Retire a site image: remove the file, drop its row, and stop counting its
@@ -37,6 +37,5 @@ export async function discardSiteImage(
   // release.
   if (!row) return;
 
-  await prisma.siteImage.delete({ where: { id: row.id } }).catch(() => {});
-  await releaseBytes(ownerId, row.bytes);
+  await deleteSiteImageRowAndRelease(ownerId, token);
 }

@@ -205,6 +205,60 @@ async function main() {
     assert.equal(finalizedTiff.filename, `${tiffId}-orig.tif`);
     assert.deepEqual(await fs.readFile(path.join(dir, finalizedTiff.filename)), tiff);
 
+    const pathInputId = "d".repeat(32);
+    const pathInput = path.join(root, "camera-original.jpg");
+    await fs.writeFile(pathInput, jpeg);
+    const pendingFromPath = await processAndStorePendingPhoto(
+      ownerId,
+      eventId,
+      pathInputId,
+      pathInput,
+      "jpg",
+      "original"
+    );
+    const finalizedFromPath = await finalizePendingMaster(
+      ownerId,
+      eventId,
+      pathInputId,
+      {
+        filename: pendingFromPath.origFilename,
+        bytes: pendingFromPath.bytes,
+        storagePreset: "original",
+        sourceFilename: pendingFromPath.sourceFilename,
+        sourceBytes: pendingFromPath.sourceBytes,
+        candidateBytes: pendingFromPath.candidateBytes,
+        renditionBytes: pendingFromPath.renditionBytes
+      }
+    );
+    assert.deepEqual(
+      await fs.readFile(path.join(dir, finalizedFromPath.filename)),
+      jpeg,
+      "streamed file-path input must preserve Original bytes exactly"
+    );
+
+    const pixelBomb = await sharp({
+      create: {
+        width: 20,
+        height: 20,
+        channels: 3,
+        background: { r: 1, g: 2, b: 3 }
+      }
+    }).png().toBuffer();
+    process.env.IMAGE_MAX_PIXELS = "100";
+    await assert.rejects(
+      processAndStorePendingPhoto(
+        ownerId,
+        eventId,
+        "e".repeat(32),
+        pixelBomb,
+        "png",
+        "balanced"
+      ),
+      /pixel|limit|input/i,
+      "decoded images above IMAGE_MAX_PIXELS must be rejected"
+    );
+    delete process.env.IMAGE_MAX_PIXELS;
+
     await deletePhotoFiles(
       ownerId,
       eventId,
@@ -218,6 +272,7 @@ async function main() {
       finalizedBalanced.filename
     );
     await deletePhotoFiles(ownerId, eventId, tiffId, finalizedTiff.filename);
+    await deletePhotoFiles(ownerId, eventId, pathInputId, finalizedFromPath.filename);
     console.log("✓ pending image compression, comparison and finalization");
   } finally {
     await fs.rm(root, { recursive: true, force: true });

@@ -13,6 +13,8 @@ import { randomUUID } from "crypto";
 import { PrismaClient, type User } from "@prisma/client";
 import {
   adjustReservation,
+  deleteOwnedPhotoRowsAndRelease,
+  deleteSiteImageRowAndRelease,
   getEffectiveTierAccountCounts,
   getQuotaUsage,
   reconcileQuota,
@@ -384,6 +386,69 @@ async function testExpiredAssignmentFallsBackToDefault() {
   await prisma.tier.delete({ where: { id: pro.id } });
 }
 
+/** Concurrent retries must release only rows the caller actually deleted. */
+async function testConditionalDeleteRelease() {
+  const u = await makeUser(100 * MB);
+  const event = await prisma.event.create({
+    data: {
+      ownerId: u.id,
+      slug: `delete-${randomUUID().slice(0, 8)}`,
+      titleEn: "Delete race",
+      titleZh: "Delete race"
+    }
+  });
+  const photos = await Promise.all(
+    [2, 3].map((size, index) =>
+      prisma.photo.create({
+        data: {
+          eventId: event.id,
+          filename: `delete-${index}.jpg`,
+          originalName: `delete-${index}.jpg`,
+          width: 1,
+          height: 1,
+          bytes: size * MB
+        }
+      })
+    )
+  );
+  const siteToken = randomUUID().replace(/-/g, "");
+  await prisma.siteImage.create({
+    data: { ownerId: u.id, token: siteToken, purpose: "logo", bytes: 4 * MB }
+  });
+  await prisma.user.update({
+    where: { id: u.id },
+    data: { usedBytes: BigInt(9 * MB) }
+  });
+
+  const photoReleases = await Promise.all([
+    deleteOwnedPhotoRowsAndRelease(u.id, photos.map((photo) => photo.id)),
+    deleteOwnedPhotoRowsAndRelease(u.id, photos.map((photo) => photo.id))
+  ]);
+  const siteReleases = await Promise.all([
+    deleteSiteImageRowAndRelease(u.id, siteToken),
+    deleteSiteImageRowAndRelease(u.id, siteToken)
+  ]);
+  const after = await used(u.id);
+
+  report(
+    "quota: concurrent photo deletion releases each row exactly once",
+    photoReleases.reduce((sum, bytes) => sum + bytes, 0) === 5 * MB,
+    `released ${photoReleases.join(" + ")} bytes (want ${5 * MB} total)`
+  );
+  report(
+    "quota: concurrent site-image deletion releases each row exactly once",
+    siteReleases.reduce((sum, bytes) => sum + bytes, 0) === 4 * MB,
+    `released ${siteReleases.join(" + ")} bytes (want ${4 * MB} total)`
+  );
+  report(
+    "quota: conditional deletion leaves the usage counter exact",
+    after === 0,
+    `used=${after}, want 0 after releasing 9MB exactly once`
+  );
+
+  await prisma.user.delete({ where: { id: u.id } });
+}
+
 /** Tier-page counts must describe the tier in force, not the stored FK. */
 async function testEffectiveTierAccountCounts() {
   const defaultTier = await prisma.tier.findFirstOrThrow({
@@ -497,6 +562,7 @@ async function main() {
   await testRelease();
   await testAdjustReservation();
   await testReconcile();
+  await testConditionalDeleteRelease();
   await testQuotaIsPerAccount();
   await testDefaultTierApplies();
   await testAssignedTierApplies();

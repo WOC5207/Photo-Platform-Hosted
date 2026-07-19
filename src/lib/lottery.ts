@@ -1,12 +1,14 @@
 import "server-only";
 import { randomBytes } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
+import { lockAvailablePublicDraw } from "./publicLottery";
 
 // Avoids visually ambiguous characters (0/O, 1/I) since tokens are read
 // aloud/off a screen during the draw.
 const TOKEN_CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
-function randomToken(length = 5): string {
+function randomToken(length = 8): string {
   const bytes = randomBytes(length);
   let s = "";
   for (let i = 0; i < length; i++) s += TOKEN_CHARS[bytes[i] % TOKEN_CHARS.length];
@@ -14,10 +16,13 @@ function randomToken(length = 5): string {
 }
 
 /** A short display token unique within one draw (used on the wheel). */
-export async function uniqueEntryToken(drawId: string): Promise<string> {
+export async function uniqueEntryToken(
+  drawId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<string> {
   for (let i = 0; i < 30; i++) {
     const token = randomToken();
-    const existing = await prisma.lotteryEntry.findUnique({
+    const existing = await client.lotteryEntry.findUnique({
       where: { drawId_token: { drawId, token } }
     });
     if (!existing) return token;
@@ -64,7 +69,8 @@ export type SpinResult =
  */
 export async function spinForEntry(
   entryId: string,
-  expectedDrawId?: string
+  expectedDrawId?: string,
+  requirePublicAvailable = false
 ): Promise<SpinResult> {
   return prisma.$transaction(async (tx) => {
     // Unlocked peek, purely to learn which draw to lock.
@@ -87,6 +93,13 @@ export async function spinForEntry(
     // Spins in other draws are unaffected. Every read that a decision
     // depends on must therefore happen *after* this line.
     await tx.$queryRaw`SELECT id FROM "LotteryDraw" WHERE id = ${target.drawId} FOR UPDATE`;
+
+    if (
+      requirePublicAvailable &&
+      !(await lockAvailablePublicDraw(tx, target.drawId, false))
+    ) {
+      return { ok: false, error: "not_found" } as const;
+    }
 
     const entry = await tx.lotteryEntry.findUnique({ where: { id: entryId } });
     if (!entry) return { ok: false, error: "not_found" } as const;

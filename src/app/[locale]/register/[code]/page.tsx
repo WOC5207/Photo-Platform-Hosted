@@ -52,6 +52,11 @@ export default async function RegisterPage({
       </div>
       <RegisterForm
         code={code}
+        consentRequired={
+          platformSettings.registrationNoticeEnabled &&
+          platformSettings.registrationNoticeMode === "consent"
+        }
+        noticeVersion={platformSettings.registrationNoticeVersion}
         labels={{
           username: t("username"),
           usernameHint: t("usernameHint"),
@@ -67,7 +72,10 @@ export default async function RegisterPage({
           errorUsernameInvalid: t("errorUsernameInvalid"),
           errorUsernameUppercase: t("errorUsernameUppercase"),
           errorBadInvite: t("errorBadInvite"),
-          errorRateLimited: t("errorRateLimited")
+          errorRateLimited: t("errorRateLimited"),
+          errorNoticeChanged: t("errorNoticeChanged"),
+          errorConsentRequired: t("errorConsentRequired"),
+          consentLabel: t("consentLabel")
         }}
       />
     </div>

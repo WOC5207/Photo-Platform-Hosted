@@ -253,3 +253,53 @@ export async function reconcileQuota(userId: string): Promise<QuotaUsage> {
   });
   return getQuotaUsage(userId);
 }
+
+export async function deleteOwnedPhotoRowsAndRelease(
+  userId: string,
+  photoIds: string[]
+): Promise<number> {
+  if (photoIds.length === 0) return 0;
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    const deleted = await tx.$queryRaw<{ bytes: number }[]>`
+      DELETE FROM "Photo" AS p
+      USING "Event" AS e
+      WHERE p."eventId" = e.id
+        AND e."ownerId" = ${userId}
+        AND p.id IN (${Prisma.join(photoIds)})
+      RETURNING p.bytes
+    `;
+    const bytes = deleted.reduce((sum, row) => sum + row.bytes, 0);
+    if (bytes > 0) {
+      await tx.$executeRaw`
+        UPDATE "User"
+           SET "usedBytes" = GREATEST(0, "usedBytes" - ${BigInt(bytes)})
+         WHERE id = ${userId}
+      `;
+    }
+    return bytes;
+  });
+}
+
+export async function deleteSiteImageRowAndRelease(
+  ownerId: string,
+  token: string
+): Promise<number> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${ownerId} FOR UPDATE`;
+    const deleted = await tx.$queryRaw<{ bytes: number }[]>`
+      DELETE FROM "SiteImage"
+       WHERE "ownerId" = ${ownerId} AND token = ${token}
+      RETURNING bytes
+    `;
+    const bytes = deleted[0]?.bytes ?? 0;
+    if (bytes > 0) {
+      await tx.$executeRaw`
+        UPDATE "User"
+           SET "usedBytes" = GREATEST(0, "usedBytes" - ${BigInt(bytes)})
+         WHERE id = ${ownerId}
+      `;
+    }
+    return bytes;
+  });
+}

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { config } from "@/lib/config";
 import {
   processAndStoreSiteImage,
   resolveUploadExtension,
-  siteImageUrl
+  siteImageUrl,
+  withImageProcessingSlot
 } from "@/lib/images";
 import { adjustReservation, releaseBytes, reserveBytes } from "@/lib/quota";
 import { discardSiteImage } from "@/lib/siteImages";
+import { MultipartUploadError, parseSingleImageMultipart } from "@/lib/multipartUpload";
 
 const IMAGE_OPTIONS = {
   prefix: "ann",
@@ -30,21 +31,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const form = await req.formData();
+  let upload;
+  try {
+    upload = await parseSingleImageMultipart(req);
+  } catch (error) {
+    const tooLarge = error instanceof MultipartUploadError && error.code === "tooLarge";
+    return NextResponse.json({ error: tooLarge ? "tooLarge" : "badRequest" }, { status: tooLarge ? 413 : 400 });
+  }
+  const form = upload.fields;
   const announcementId = form.get("announcementId");
-  const file = form.get("file");
+  const file = upload.file;
+
+  try {
 
   if (typeof announcementId !== "string" || announcementId.length === 0) {
     return NextResponse.json({ error: "badRequest" }, { status: 400 });
   }
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "badRequest" }, { status: 400 });
-  }
   if (!resolveUploadExtension(file)) {
     return NextResponse.json({ error: "unsupportedType" }, { status: 415 });
-  }
-  if (file.size > config.uploadMaxBytes()) {
-    return NextResponse.json({ error: "tooLarge" }, { status: 413 });
   }
 
   const existing = await prisma.announcement.findFirst({
@@ -60,10 +64,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "quotaExceeded" }, { status: 413 });
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   let stored;
   try {
-    stored = await processAndStoreSiteImage(user.id, buffer, IMAGE_OPTIONS);
+    stored = await withImageProcessingSlot(() =>
+      processAndStoreSiteImage(user.id, file.path, IMAGE_OPTIONS)
+    );
   } catch {
     await releaseBytes(user.id, reserved);
     return NextResponse.json({ error: "invalidImage" }, { status: 400 });
@@ -85,4 +90,7 @@ export async function POST(req: NextRequest) {
   if (existing.image) await discardSiteImage(user.id, existing.image);
 
   return NextResponse.json({ token, url: siteImageUrl(token) });
+  } finally {
+    await upload.cleanup();
+  }
 }

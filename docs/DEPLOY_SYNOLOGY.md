@@ -87,14 +87,22 @@ Either way you should end up with a folder containing `Dockerfile`,
 | `APP_BASE_URL` | Your public HTTPS address, e.g. `https://photos.example.com`. Used to build shareable booking links, so it must match whatever domain you land on in [step 6](#6-connect-a-domain) |
 | `STRIP_ORIGINAL_EXIF` | `false` lets photographers choose a byte-identical Original; `true` hides that option so new stored masters use EXIF-free Archive or Balanced compression (displayed images always have EXIF stripped) |
 | `UPLOAD_MAX_MB` | Max size per uploaded photo, default `100` |
+| `IMAGE_MAX_PIXELS` | Maximum decoded pixels; keep `100000000` unless the NAS has ample memory |
+| `IMAGE_PROCESSING_CONCURRENCY` | Concurrent Sharp jobs; `1` is the recommended Synology value |
+| `TRUSTED_PROXY_HOPS` | `1` for DSM's reverse proxy, or `2` when Cloudflare is also proxying traffic |
 
-Photo compression runs server-side and one file at a time to keep NAS memory
+Uploads stream to a bounded temporary file and stop immediately after the
+configured byte limit. Photo compression runs server-side and one file at a time to keep NAS memory
 usage predictable. A pending photo temporarily stores the exact source, one
 Archive/Balanced comparison and the three gallery sizes; all of them count
 toward the account quota until **Create** removes the unselected master. Archive
 uses more CPU and disk than Balanced because it retains up to a 6000px long
 edge. Balanced (4096px) is the default and is the better choice for most NAS
 deployments.
+
+TIFF files can be small on disk but enormous when decoded. `IMAGE_MAX_PIXELS`
+is a second safety boundary for that case; files above it are rejected as
+invalid rather than being allowed to exhaust NAS memory.
 
 `DATABASE_URL` is **not** in `.env` — `docker-compose.yml` sets it to point at
 the database container, which is reachable only from the app.
@@ -163,10 +171,9 @@ step 1 above (it will use the imported image instead of building).
    this first successful login is what creates the admin account in the
    database. After that, changing `ADMIN_PASSWORD` in `.env` has no further
    effect (the database copy is what's checked from then on).
-3. You'll land in the first-run **setup wizard** — follow it to pick which
-   features you want (booking, lottery, credit-profile management) and set
-   basic branding. You can change all of this later from **Admin →
-   Settings**.
+3. Open **Account → Profile & security** and replace the placeholder admin
+   password. Configure the admin's photography site from **Site settings**.
+   Invited photographers still receive the guided first-run setup wizard.
 4. Create a gallery event, upload some photos, and publish it. If booking is
    enabled, create a booking event with time slots and try the public
    booking flow end-to-end.
@@ -303,7 +310,9 @@ This is the piece that maps `https://photos.yourstudio.com` (public, port
    - Hostname: `localhost`
    - Port: `3000`
 4. Leave the custom header / WebSocket options at their defaults — this app
-   doesn't need WebSocket passthrough.
+   doesn't need WebSocket passthrough. Keep `TRUSTED_PROXY_HOPS="1"` when DSM
+   is the only reverse proxy. If Cloudflare also proxies into DSM, set it to
+   `2` so rate limits use the visitor address rather than a spoofed header.
 5. Save. Make sure the certificate from 6.5 is assigned to this hostname:
    **Control Panel → Security → Certificate → Settings**, and confirm
    `photos.yourstudio.com` is mapped to the Let's Encrypt certificate (DSM
@@ -455,5 +464,10 @@ stop the project, delete `data/pg`, update `.env` and start again.
   IP) and the admin password is bcrypt-hashed — but this is in-memory rate
   limiting that resets on container restart, not a substitute for a strong
   password.
+- Protected originals and unpublished photos use private, no-store responses;
+  configure any CDN to respect the origin `Cache-Control` headers.
+- Registration notices in **Require agreement** mode record the exact notice
+  version and content hash accepted with each redeemed invitation. Editing the
+  notice creates a new version automatically.
 - Back up regularly (see [step 7](#7-backups)) — it's the only real
   protection against disk failure, accidental deletion, or a botched update.

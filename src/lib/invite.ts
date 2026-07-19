@@ -1,6 +1,7 @@
 import "server-only";
 import type { User } from "@prisma/client";
 import { prisma } from "./db";
+import { registrationNoticeHash } from "./registrationNotice";
 
 export interface NewAccount {
   username: string;
@@ -10,7 +11,16 @@ export interface NewAccount {
 
 export type RedeemResult =
   | { ok: true; user: User }
-  | { ok: false; error: "badInvite" | "usernameTaken" };
+  | {
+      ok: false;
+      error: "badInvite" | "usernameTaken" | "noticeChanged" | "consentRequired";
+    };
+
+export interface RegistrationConsentInput {
+  accepted: boolean;
+  noticeVersion: number | null;
+  locale: string;
+}
 
 /**
  * Turns an unredeemed invite into an account, as a single atomic unit.
@@ -28,7 +38,8 @@ export type RedeemResult =
  */
 export async function redeemInvite(
   code: string,
-  account: NewAccount
+  account: NewAccount,
+  consent: RegistrationConsentInput
 ): Promise<RedeemResult> {
   return prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<
@@ -40,6 +51,37 @@ export async function redeemInvite(
     if (invite.redeemedAt) return { ok: false, error: "badInvite" } as const;
     if (invite.expiresAt && invite.expiresAt < new Date()) {
       return { ok: false, error: "badInvite" } as const;
+    }
+
+    const settingsRows = await tx.$queryRaw<
+      {
+        registrationNoticeEnabled: boolean;
+        registrationNoticeMode: string;
+        registrationNoticeVersion: number;
+        registrationNoticeTitleEn: string;
+        registrationNoticeTitleZh: string;
+        registrationNoticeBodyEn: string;
+        registrationNoticeBodyZh: string;
+      }[]
+    >`
+      SELECT "registrationNoticeEnabled", "registrationNoticeMode", "registrationNoticeVersion",
+             "registrationNoticeTitleEn", "registrationNoticeTitleZh",
+             "registrationNoticeBodyEn", "registrationNoticeBodyZh"
+        FROM "PlatformSettings"
+       WHERE id = 'platform'
+       FOR UPDATE
+    `;
+    const notice = settingsRows[0];
+    const consentRequired =
+      notice?.registrationNoticeEnabled === true &&
+      notice.registrationNoticeMode === "consent";
+    if (consentRequired) {
+      if (consent.noticeVersion !== notice.registrationNoticeVersion) {
+        return { ok: false, error: "noticeChanged" } as const;
+      }
+      if (!consent.accepted) {
+        return { ok: false, error: "consentRequired" } as const;
+      }
     }
 
     // Username uniqueness is enforced by the DB; this only turns the constraint
@@ -64,7 +106,14 @@ export async function redeemInvite(
 
     await tx.invite.update({
       where: { id: invite.id },
-      data: { redeemedAt: new Date(), redeemedById: user.id }
+      data: {
+        redeemedAt: new Date(),
+        redeemedById: user.id,
+        consentNoticeVersion: consentRequired ? notice.registrationNoticeVersion : null,
+        consentNoticeHash: consentRequired ? registrationNoticeHash(notice) : null,
+        consentLocale: consentRequired ? consent.locale : null,
+        consentAcceptedAt: consentRequired ? new Date() : null
+      }
     });
 
     return { ok: true, user } as const;

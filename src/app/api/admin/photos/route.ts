@@ -12,11 +12,16 @@ import {
   processAndStorePendingPhoto,
   resolveUploadExtension,
   replacePendingCandidate,
+  withImageProcessingSlot,
   type CandidatePreset,
   type StoragePreset
 } from "@/lib/images";
 import { EFFECTIVE_QUOTA } from "@/lib/quota";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
+import {
+  MultipartUploadError,
+  parseSingleImageMultipart
+} from "@/lib/multipartUpload";
 
 const BATCH_ID_PATTERN = /^[a-zA-Z0-9_-]{16,100}$/;
 const UPLOAD_ID_PATTERN = /^[a-f0-9]{32}$/;
@@ -234,12 +239,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const form = await req.formData();
+  let upload;
+  try {
+    upload = await parseSingleImageMultipart(req);
+  } catch (error) {
+    const tooLarge = error instanceof MultipartUploadError && error.code === "tooLarge";
+    return NextResponse.json(
+      { error: tooLarge ? "tooLarge" : "badRequest" },
+      { status: tooLarge ? 413 : 400 }
+    );
+  }
+  const form = upload.fields;
   const eventId = form.get("eventId");
   const batchId = form.get("batchId");
   const uploadId = form.get("uploadId");
   const requestedPreset = form.get("storagePreset");
-  const file = form.get("file");
+  const file = upload.file;
+
+  try {
 
   if (
     typeof eventId !== "string" ||
@@ -249,7 +266,7 @@ export async function POST(req: NextRequest) {
     !UPLOAD_ID_PATTERN.test(uploadId) ||
     !isStoragePreset(requestedPreset) ||
     (config.stripOriginalExif() && requestedPreset === "original") ||
-    !(file instanceof File)
+    !file
   ) {
     return NextResponse.json({ error: "badRequest" }, { status: 400 });
   }
@@ -341,14 +358,15 @@ export async function POST(req: NextRequest) {
 
   let processed;
   try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    processed = await processAndStorePendingPhoto(
-      user.id,
-      eventId,
-      uploadId,
-      buffer,
-      ext,
-      storagePreset
+    processed = await withImageProcessingSlot(() =>
+      processAndStorePendingPhoto(
+        user.id,
+        eventId,
+        uploadId,
+        file.path,
+        ext,
+        storagePreset
+      )
     );
   } catch {
     const claimed = await markProcessingForDeletion(user.id, eventId, uploadId);
@@ -452,6 +470,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unknown" }, { status: 500 });
   }
   return NextResponse.json(pendingPhotoJson(completed), { status: 201 });
+  } finally {
+    await upload.cleanup();
+  }
 }
 
 /** Change one pending photo's selected master or regenerate its comparison. */
@@ -533,12 +554,14 @@ export async function PUT(req: NextRequest) {
 
   let candidate: { filename: string; bytes: number } | null = null;
   try {
-    candidate = await replacePendingCandidate(
-      user.id,
-      current.eventId,
-      current.id,
-      current.sourceFilename,
-      candidatePreset
+    candidate = await withImageProcessingSlot(() =>
+      replacePendingCandidate(
+        user.id,
+        current.eventId,
+        current.id,
+        current.sourceFilename!,
+        candidatePreset
+      )
     );
     const oldCandidateBytes = current.candidateBytes ?? 0;
     const nextBytes = current.bytes - oldCandidateBytes + candidate.bytes;

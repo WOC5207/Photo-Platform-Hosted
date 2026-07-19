@@ -9,6 +9,8 @@ export interface PlatformSettings {
   registrationNoticeTitleZh: string;
   registrationNoticeBodyEn: string;
   registrationNoticeBodyZh: string;
+  registrationNoticeMode: "information" | "consent";
+  registrationNoticeVersion: number;
 }
 
 const DEFAULTS: PlatformSettings = {
@@ -17,7 +19,9 @@ const DEFAULTS: PlatformSettings = {
   registrationNoticeTitleEn: "",
   registrationNoticeTitleZh: "",
   registrationNoticeBodyEn: "",
-  registrationNoticeBodyZh: ""
+  registrationNoticeBodyZh: "",
+  registrationNoticeMode: "information",
+  registrationNoticeVersion: 1
 };
 
 /** Platform-wide settings with usable defaults before the singleton is saved. */
@@ -25,5 +29,10 @@ export const getPlatformSettings = cache(async (): Promise<PlatformSettings> => 
   const settings = await prisma.platformSettings.findUnique({
     where: { id: "platform" }
   });
-  return settings ?? DEFAULTS;
+  if (!settings) return DEFAULTS;
+  return {
+    ...settings,
+    registrationNoticeMode:
+      settings.registrationNoticeMode === "consent" ? "consent" : "information"
+  };
 });

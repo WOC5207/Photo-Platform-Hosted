@@ -136,6 +136,31 @@ export default function SiteSettingsForm({
     }
   }, [state]);
 
+  useEffect(() => {
+    if (!dirty) return;
+    const message = t("unsavedNavigationConfirm");
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const interceptLinks = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const link = target.closest("a[href]");
+      if (!link || link.getAttribute("target") === "_blank") return;
+      if (!window.confirm(message)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("click", interceptLinks, true);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      document.removeEventListener("click", interceptLinks, true);
+    };
+  }, [dirty, t]);
+
   function markDirty() {
     changeVersion.current += 1;
     setDirty(true);

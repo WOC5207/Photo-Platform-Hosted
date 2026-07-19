@@ -20,6 +20,9 @@ export interface RegisterLabels {
   errorUsernameUppercase: string;
   errorBadInvite: string;
   errorRateLimited: string;
+  errorNoticeChanged: string;
+  errorConsentRequired: string;
+  consentLabel: string;
 }
 
 const ERROR_KEY: Record<
@@ -33,14 +36,20 @@ const ERROR_KEY: Record<
   usernameInvalid: "errorUsernameInvalid",
   usernameUppercase: "errorUsernameUppercase",
   badInvite: "errorBadInvite",
-  rateLimited: "errorRateLimited"
+  rateLimited: "errorRateLimited",
+  noticeChanged: "errorNoticeChanged",
+  consentRequired: "errorConsentRequired"
 };
 
 export default function RegisterForm({
   code,
+  consentRequired,
+  noticeVersion,
   labels
 }: {
   code: string;
+  consentRequired: boolean;
+  noticeVersion: number;
   labels: RegisterLabels;
 }) {
   const [state, action, pending] = useActionState<RegisterState, FormData>(
@@ -65,10 +74,12 @@ export default function RegisterForm({
   return (
     <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="code" value={code} />
+      <input type="hidden" name="noticeVersion" value={noticeVersion} />
 
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">{labels.username}</span>
         <input
+          id="register-username"
           name="username"
           required
           minLength={2}
@@ -130,6 +141,18 @@ export default function RegisterForm({
           className={inputClass}
         />
       </label>
+
+      {consentRequired && (
+        <label className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3 text-sm">
+          <input
+            type="checkbox"
+            name="consentAccepted"
+            required
+            className="mt-0.5 size-4 shrink-0 accent-fg focus-visible:ring-2 focus-visible:ring-fg/40"
+          />
+          <span>{labels.consentLabel}</span>
+        </label>
+      )}
 
       {state.error && (
         <p role="alert" className="text-sm text-danger">{labels[ERROR_KEY[state.error]]}</p>

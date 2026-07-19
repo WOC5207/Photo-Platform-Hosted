@@ -3,7 +3,9 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { pickText } from "@/lib/content";
 import { formatDate } from "@/lib/datetime";
-import { getContactMethods, getSiteSettings } from "@/lib/settings";
+import { findAvailablePublicDraw } from "@/lib/publicLottery";
+import { getContactMethods } from "@/lib/settings";
+import { getAuthorizedLotteryEntryIds } from "@/lib/visitorSession";
 import LotteryEntryForm from "@/components/booking/LotteryEntryForm";
 
 export const dynamic = "force-dynamic";
@@ -19,23 +21,10 @@ export default async function LotteryEntryPage({
 
   if (!/^[a-z0-9]+$/.test(token)) notFound();
 
-  const draw = await prisma.lotteryDraw.findUnique({
-    where: { token },
-    include: {
-      bookingEvent: true,
-      entries: { orderBy: { createdAt: "asc" } },
-      prizes: {
-        orderBy: { sortOrder: "asc" },
-        include: { _count: { select: { winners: true } } }
-      }
-    }
-  });
-  if (!draw || !draw.bookingEvent.lotteryEnabled) notFound();
+  const draw = await findAvailablePublicDraw(token);
+  if (!draw) notFound();
 
   const event = draw.bookingEvent;
-  // The site-wide lottery toggle belongs to this event's owner, so it can only
-  // be read once the token has told us whose draw this is.
-  if (!(await getSiteSettings(event.ownerId)).lotteryEnabled) notFound();
 
   const description = pickText(locale, event.descriptionEn, event.descriptionZh);
   const contactMethods = (await getContactMethods(event.ownerId)).map((m) => ({
@@ -43,14 +32,20 @@ export default async function LotteryEntryPage({
     label: pickText(locale, m.labelEn, m.labelZh)
   }));
 
-  const entries = draw.entries.map((e) => ({
-    id: e.id,
-    token: e.token,
-    name: e.name,
-    subject: e.subject,
-    wonPrizeId: e.wonPrizeId
-  }));
-  const prizes = draw.prizes.map((p) => ({
+  const authorizedIds = await getAuthorizedLotteryEntryIds();
+  const [ownEntry, storedPrizes] = await Promise.all([
+    prisma.lotteryEntry.findFirst({
+      where: { drawId: draw.id, id: { in: authorizedIds } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, token: true, wonPrizeId: true }
+    }),
+    prisma.lotteryPrize.findMany({
+      where: { drawId: draw.id },
+      orderBy: { sortOrder: "asc" },
+      include: { _count: { select: { winners: true } } }
+    })
+  ]);
+  const prizes = storedPrizes.map((p) => ({
     id: p.id,
     name: p.name,
     quantity: p.quantity,
@@ -80,7 +75,7 @@ export default async function LotteryEntryPage({
       <LotteryEntryForm
         drawToken={token}
         contactMethods={contactMethods}
-        entries={entries}
+        initialEntry={ownEntry}
         prizes={prizes}
       />
     </div>

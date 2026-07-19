@@ -10,6 +10,7 @@ import {
   homePathFor,
   verifyCredentials
 } from "@/lib/auth";
+import { clientIp } from "@/lib/clientIp";
 import { rateLimit } from "@/lib/rate-limit";
 
 export type LoginState = {
@@ -21,16 +22,11 @@ const loginSchema = z.object({
   password: z.string().min(1).max(500)
 });
 
-async function clientIp(): Promise<string> {
-  const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
-}
-
 export async function login(
   _prev: LoginState,
   formData: FormData
 ): Promise<LoginState> {
-  const ip = await clientIp();
+  const ip = clientIp(await headers());
   if (!rateLimit(`login:${ip}`, { limit: 10, windowMs: 15 * 60 * 1000 })) {
     return { error: "rateLimited" };
   }

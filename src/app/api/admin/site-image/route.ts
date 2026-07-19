@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { config } from "@/lib/config";
 import { adjustReservation, releaseBytes, reserveBytes } from "@/lib/quota";
 import { discardSiteImage } from "@/lib/siteImages";
 import {
   processAndStoreSiteImage,
   resolveUploadExtension,
   siteImageUrl,
+  withImageProcessingSlot,
   type SiteImageOptions
 } from "@/lib/images";
+import { MultipartUploadError, parseSingleImageMultipart } from "@/lib/multipartUpload";
 
 // Per-kind processing + which settings column the token is stored in.
 const KINDS: Record<
@@ -38,22 +39,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const form = await req.formData();
+  let upload;
+  try {
+    upload = await parseSingleImageMultipart(req);
+  } catch (error) {
+    const tooLarge = error instanceof MultipartUploadError && error.code === "tooLarge";
+    return NextResponse.json({ error: tooLarge ? "tooLarge" : "badRequest" }, { status: tooLarge ? 413 : 400 });
+  }
+  const form = upload.fields;
   const kind = form.get("kind");
-  const file = form.get("file");
+  const file = upload.file;
+
+  try {
 
   if (typeof kind !== "string" || !(kind in KINDS)) {
     return NextResponse.json({ error: "badRequest" }, { status: 400 });
   }
   const validKind = kind as keyof typeof KINDS;
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "badRequest" }, { status: 400 });
-  }
   if (!resolveUploadExtension(file)) {
     return NextResponse.json({ error: "unsupportedType" }, { status: 415 });
-  }
-  if (file.size > config.uploadMaxBytes()) {
-    return NextResponse.json({ error: "tooLarge" }, { status: 413 });
   }
 
   // Site images count against the quota like photos do — a background can be
@@ -63,10 +67,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "quotaExceeded" }, { status: 413 });
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   let stored;
   try {
-    stored = await processAndStoreSiteImage(user.id, buffer, KINDS[validKind]);
+    stored = await withImageProcessingSlot(() =>
+      processAndStoreSiteImage(user.id, file.path, KINDS[validKind])
+    );
   } catch {
     await releaseBytes(user.id, reserved);
     return NextResponse.json({ error: "invalidImage" }, { status: 400 });
@@ -103,4 +108,7 @@ export async function POST(req: NextRequest) {
   if (previousToken) await discardSiteImage(user.id, previousToken);
 
   return NextResponse.json({ token, url: siteImageUrl(token) });
+  } finally {
+    await upload.cleanup();
+  }
 }

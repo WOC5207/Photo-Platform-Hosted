@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { clientIp } from "@/lib/clientIp";
 import { config } from "@/lib/config";
 import { rateLimit } from "@/lib/rate-limit";
 import { pickText } from "@/lib/content";
@@ -15,6 +16,7 @@ import { notifyBookingCreated } from "@/lib/notify";
 import { getSiteSettings } from "@/lib/settings";
 import { reserveSlot } from "@/lib/booking";
 import { spinForEntry, uniqueEntryToken } from "@/lib/lottery";
+import { findAvailablePublicDraw } from "@/lib/publicLottery";
 
 export type BookingFormState = {
   error?:
@@ -38,8 +40,7 @@ export async function createBooking(
   _prev: BookingFormState,
   formData: FormData
 ): Promise<BookingFormState> {
-  const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ip = clientIp(await headers());
   if (!rateLimit(`book:${ip}`, { limit: 8, windowMs: 60 * 60 * 1000 })) {
     return { error: "rateLimited" };
   }
@@ -156,8 +157,7 @@ export async function lookupMyBooking(
   _prev: BookingLookupState,
   formData: FormData
 ): Promise<BookingLookupState> {
-  const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ip = clientIp(await headers());
   if (!rateLimit(`book-lookup:${ip}`, { limit: 20, windowMs: 60 * 60 * 1000 })) {
     return { error: "rateLimited" };
   }
@@ -249,8 +249,7 @@ const SPIN_ERROR_MAP = {
 export async function spinMyBooking(
   cancelToken: string
 ): Promise<BookingSpinResult> {
-  const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ip = clientIp(await headers());
   if (!rateLimit(`book-spin:${ip}`, { limit: 20, windowMs: 60 * 60 * 1000 })) {
     return { ok: false, error: "rateLimited" };
   }
@@ -274,7 +273,7 @@ export async function spinMyBooking(
 
   const event = booking.timeSlot.bookingEvent;
   const draw = event.lotteryDraw;
-  if (!event.lotteryEnabled || !draw) {
+  if (!draw || !(await findAvailablePublicDraw(draw.token))) {
     return { ok: false, error: "notReady" };
   }
 
@@ -303,7 +302,7 @@ export async function spinMyBooking(
   }
   if (!entryId) return { ok: false, error: "notFound" };
 
-  const result = await spinForEntry(entryId, draw.id);
+  const result = await spinForEntry(entryId, draw.id, true);
   revalidatePath("/", "layout");
   if (result.ok) {
     return {

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
+import { clientIp } from "@/lib/clientIp";
 import { prisma } from "@/lib/db";
 import {
   changeOwnPassword,
@@ -71,8 +72,7 @@ export async function changePassword(
 ): Promise<ChangePasswordState> {
   const user = await requireUser(await getLocale());
 
-  const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ip = clientIp(await headers());
   if (!rateLimit(`password:${user.id}:${ip}`, { limit: 10, windowMs: 15 * 60 * 1000 })) {
     return { error: "rateLimited" };
   }

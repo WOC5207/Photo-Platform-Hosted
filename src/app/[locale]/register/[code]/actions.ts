@@ -6,6 +6,7 @@ import { getLocale } from "next-intl/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
+import { clientIp } from "@/lib/clientIp";
 import { redeemInvite } from "@/lib/invite";
 import { usernameError } from "@/lib/username";
 import { rateLimit } from "@/lib/rate-limit";
@@ -19,6 +20,8 @@ export type RegisterState = {
     | "usernameUppercase"
     | "mismatch"
     | "badInvite"
+    | "noticeChanged"
+    | "consentRequired"
     | "rateLimited";
 };
 
@@ -33,8 +36,7 @@ export async function register(
   _prev: RegisterState,
   formData: FormData
 ): Promise<RegisterState> {
-  const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ip = clientIp(await headers());
   // The code is unguessable, but rate-limiting still stops someone hammering
   // this endpoint to probe which usernames exist.
   if (!rateLimit(`register:${ip}`, { limit: 10, windowMs: 15 * 60 * 1000 })) {
@@ -62,11 +64,25 @@ export async function register(
   const passwordHash = await bcrypt.hash(d.password, 12);
 
   // Locked and atomic; see redeemInvite for why.
-  const result = await redeemInvite(code, {
-    username: d.username,
-    displayName: d.displayName,
-    passwordHash
-  });
+  const locale = await getLocale();
+  const rawNoticeVersion = formData.get("noticeVersion");
+  const noticeVersion =
+    typeof rawNoticeVersion === "string" && /^\d+$/.test(rawNoticeVersion)
+      ? Number(rawNoticeVersion)
+      : null;
+  const result = await redeemInvite(
+    code,
+    {
+      username: d.username,
+      displayName: d.displayName,
+      passwordHash
+    },
+    {
+      accepted: formData.get("consentAccepted") === "on",
+      noticeVersion,
+      locale
+    }
+  );
 
   if (!result.ok) return { error: result.error };
 
@@ -75,6 +91,5 @@ export async function register(
   session.userId = result.user.id;
   await session.save();
 
-  const locale = await getLocale();
   redirect(`/${locale}/dashboard`);
 }
