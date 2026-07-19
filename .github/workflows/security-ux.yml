@@ -50,6 +50,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Match the Docker build and the npm version that generated this lockfile.
+      # Node 22's older bundled npm rejects an optional @swc/helpers peer that
+      # npm 11 resolves correctly (see the matching note in Dockerfile).
+      - run: npm install --global npm@11
       - run: npm ci
       - run: npm audit
       - run: npx prisma generate
