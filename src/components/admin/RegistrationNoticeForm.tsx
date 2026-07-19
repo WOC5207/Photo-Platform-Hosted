@@ -15,6 +15,10 @@ interface Labels {
   description: string;
   enabled: string;
   enabledHint: string;
+  mode: string;
+  informationMode: string;
+  consentMode: string;
+  consentModeHint: string;
   delay: string;
   delayHint: string;
   titleEn: string;
@@ -73,6 +77,19 @@ export default function RegistrationNoticeForm({
             </span>
           </span>
         </label>
+
+        <Field label={labels.mode} htmlFor="registration-notice-mode" hint={labels.consentModeHint}>
+          <select
+            id="registration-notice-mode"
+            name="mode"
+            defaultValue={settings.registrationNoticeMode}
+            disabled={pending}
+            className="min-h-10 rounded-lg border border-border-strong bg-page px-3 py-2 text-sm"
+          >
+            <option value="information">{labels.informationMode}</option>
+            <option value="consent">{labels.consentMode}</option>
+          </select>
+        </Field>
 
         <Field label={labels.delay} htmlFor="registration-notice-delay" hint={labels.delayHint}>
           <Input

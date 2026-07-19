@@ -198,6 +198,7 @@ export default function PhotoUploader({
   const cancelledKeysRef = useRef(new Set<string>());
   const activeUploadKeysRef = useRef(new Set<string>());
   const discardingKeysRef = useRef(new Set<string>());
+  const uploadRequestsRef = useRef(new Map<string, XMLHttpRequest>());
   const finalizingRef = useRef(false);
   const blobPreviewUrlsRef = useRef(new Set<string>());
 
@@ -388,6 +389,7 @@ export default function PhotoUploader({
           data: (Partial<PendingPhotoValue> & { error?: unknown }) | null;
         }>((resolve, reject) => {
           const request = new XMLHttpRequest();
+          uploadRequestsRef.current.set(item.key, request);
           request.open("POST", "/api/admin/photos");
           request.upload.addEventListener("progress", (progress) => {
             if (!progress.lengthComputable || progress.total <= 0) return;
@@ -399,6 +401,7 @@ export default function PhotoUploader({
             });
           });
           request.addEventListener("load", () => {
+            uploadRequestsRef.current.delete(item.key);
             updateQueuedFile(item.key, { uploadedBytes: item.file.size });
             let parsed: (Partial<PendingPhotoValue> & { error?: unknown }) | null = null;
             try {
@@ -408,8 +411,14 @@ export default function PhotoUploader({
             }
             resolve({ status: request.status, data: parsed });
           });
-          request.addEventListener("error", () => reject(new Error("upload failed")));
-          request.addEventListener("abort", () => reject(new Error("upload aborted")));
+          request.addEventListener("error", () => {
+            uploadRequestsRef.current.delete(item.key);
+            reject(new Error("upload failed"));
+          });
+          request.addEventListener("abort", () => {
+            uploadRequestsRef.current.delete(item.key);
+            reject(new Error("upload aborted"));
+          });
           request.send(body);
         });
         const responseOk = status >= 200 && status < 300;
@@ -453,6 +462,7 @@ export default function PhotoUploader({
           return;
         }
       } catch {
+        if (cancelledKeysRef.current.has(item.key)) return;
         if (attempt === 0) continue;
       }
     }
@@ -526,7 +536,7 @@ export default function PhotoUploader({
       });
       if (!response.ok) {
         updateQueuedFile(item.key, {
-          state: item.state === "failed" ? "failed" : "ready"
+          state: item.photoId ? "ready" : "failed"
         });
         if (updateStatus) {
           setFinalizeStatus({ kind: "error", message: "discard" });
@@ -539,7 +549,7 @@ export default function PhotoUploader({
       return true;
     } catch {
       updateQueuedFile(item.key, {
-        state: item.state === "failed" ? "failed" : "ready"
+        state: item.photoId ? "ready" : "failed"
       });
       if (updateStatus) {
         setFinalizeStatus({ kind: "error", message: "discard" });
@@ -551,13 +561,7 @@ export default function PhotoUploader({
   }
 
   async function removeQueuedFile(item: QueuedFile) {
-    if (
-      item.state === "uploading" ||
-      item.state === "optimizing" ||
-      item.state === "discarding" ||
-      finalizing
-    )
-      return;
+    if (item.state === "discarding" || finalizing) return;
     if (item.state === "waiting") {
       cancelledKeysRef.current.add(item.key);
       releaseBlobPreview(item.previewUrl);
@@ -565,6 +569,14 @@ export default function PhotoUploader({
       setFinalizeStatus(null);
       return;
     }
+    if (
+      item.state === "ready" &&
+      !window.confirm(t("removePendingFileConfirm", { name: item.name }))
+    ) {
+      return;
+    }
+    cancelledKeysRef.current.add(item.key);
+    uploadRequestsRef.current.get(item.key)?.abort();
     await discardPendingPhoto(item);
   }
 
@@ -612,20 +624,35 @@ export default function PhotoUploader({
   }
 
   async function clearQueue() {
-    if (queueWorking || finalizing || clearing) return;
+    if (finalizing || clearing || files.length === 0) return;
+    const bytes = files.reduce(
+      (sum, item) => sum + (item.pendingBytes ?? item.fileBytes ?? 0),
+      0
+    );
+    if (
+      !window.confirm(
+        t("clearPendingQueueConfirm", {
+          count: files.length,
+          size: formatBytes(bytes)
+        })
+      )
+    ) {
+      return;
+    }
     setClearing(true);
     setFinalizeStatus(null);
     const snapshot = files;
     let discardFailed = false;
 
     for (const item of snapshot) {
+      cancelledKeysRef.current.add(item.key);
+      uploadRequestsRef.current.get(item.key)?.abort();
       if (item.state === "waiting") {
-        cancelledKeysRef.current.add(item.key);
         releaseBlobPreview(item.previewUrl);
         setFiles((current) =>
           current.filter((candidate) => candidate.key !== item.key)
         );
-      } else if (item.state === "ready" || item.state === "failed") {
+      } else if (item.state !== "discarding") {
         if (!(await discardPendingPhoto(item, false))) discardFailed = true;
       }
     }
@@ -967,7 +994,7 @@ export default function PhotoUploader({
             </div>
             <button
               type="button"
-              disabled={queueWorking || finalizing || clearing}
+              disabled={finalizing || clearing}
               onClick={clearQueue}
               className={`${btnCls} min-h-8 px-2 py-1 max-sm:min-h-11`}
             >
@@ -1143,18 +1170,14 @@ export default function PhotoUploader({
                   )}
                   <button
                     type="button"
-                    disabled={
-                      finalizing ||
-                      clearing ||
-                      item.state === "uploading" ||
-                      item.state === "optimizing" ||
-                      item.state === "discarding"
-                    }
+                    disabled={finalizing || clearing || item.state === "discarding"}
                     aria-label={t("removePendingFile", { name: item.name })}
                     onClick={() => removeQueuedFile(item)}
                     className={`${btnCls} min-h-8 px-2 py-1 max-sm:min-h-11`}
                   >
-                    {t("removePendingFileButton")}
+                    {item.state === "uploading" || item.state === "optimizing"
+                      ? t("cancelPendingFileButton")
+                      : t("removePendingFileButton")}
                   </button>
                 </div>
                 </div>

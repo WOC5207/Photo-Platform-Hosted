@@ -156,6 +156,13 @@ model Invite {
   // redemption also locks the row, so a shared link cannot be used twice.
   redeemedById String?   @unique
   redeemedBy   User?     @relation("InviteRedeemer", fields: [redeemedById], references: [id], onDelete: SetNull)
+  // Populated only when the platform notice required affirmative consent at
+  // redemption time. Historical invites remain null rather than implying an
+  // agreement that was never collected.
+  consentNoticeVersion Int?
+  consentNoticeHash    String?
+  consentLocale        String?
+  consentAcceptedAt    DateTime?
   createdAt    DateTime  @default(now())
 
   @@index([issuedById])
@@ -171,6 +178,10 @@ model PlatformSettings {
   registrationNoticeTitleZh       String   @default("")
   registrationNoticeBodyEn        String   @default("")
   registrationNoticeBodyZh        String   @default("")
+  // information | consent. Version increments whenever notice content or mode
+  // changes so a registration form cannot accept stale legal text.
+  registrationNoticeMode          String   @default("information")
+  registrationNoticeVersion       Int      @default(1)
   updatedAt                       DateTime @updatedAt
 }
 

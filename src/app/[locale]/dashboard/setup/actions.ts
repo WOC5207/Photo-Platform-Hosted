@@ -10,21 +10,36 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getSiteSettings } from "@/lib/settings";
 import { slugify, uniqueEventSlug } from "@/lib/slug";
+import { usernameError } from "@/lib/username";
 import type { User } from "@prisma/client";
 
 async function guard(): Promise<{ locale: string; user: User }> {
   const locale = await getLocale();
   const user = await requireUser(locale);
+  const settings = await getSiteSettings(user.id);
+  if (user.role === "admin" || settings.setupCompleted) {
+    redirect(`/${locale}/dashboard`);
+  }
   return { locale, user };
 }
 
 export type CredentialsState = {
-  error?: "validation" | "mismatch" | "unknown";
+  error?:
+    | "validation"
+    | "mismatch"
+    | "wrongCurrent"
+    | "notEligible"
+    | "usernameUppercase"
+    | "usernameInvalid"
+    | "usernameReserved"
+    | "usernameTaken"
+    | "unknown";
   ok?: boolean;
 };
 
 const credentialsSchema = z.object({
-  username: z.string().trim().min(1).max(200),
+  username: z.string().trim().min(1).max(40),
+  currentPassword: z.string().min(1).max(500),
   password: z.string().min(8).max(500),
   confirmPassword: z.string().min(1).max(500)
 });
@@ -46,12 +61,25 @@ export async function setupUpdateCredentials(
   const { user } = await guard();
   const parsed = credentialsSchema.safeParse({
     username: formData.get("username") ?? "",
+    currentPassword: formData.get("currentPassword") ?? "",
     password: formData.get("password") ?? "",
     confirmPassword: formData.get("confirmPassword") ?? ""
   });
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
   if (d.password !== d.confirmPassword) return { error: "mismatch" };
+  const redeemedInvite = await prisma.invite.findUnique({
+    where: { redeemedById: user.id },
+    select: { id: true }
+  });
+  if (redeemedInvite) return { error: "notEligible" };
+  if (/[A-Z]/.test(d.username)) return { error: "usernameUppercase" };
+  const nameProblem = usernameError(d.username);
+  if (nameProblem === "invalid") return { error: "usernameInvalid" };
+  if (nameProblem === "reserved") return { error: "usernameReserved" };
+  if (!(await bcrypt.compare(d.currentPassword, user.passwordHash))) {
+    return { error: "wrongCurrent" };
+  }
 
   try {
     await prisma.user.update({
@@ -61,8 +89,15 @@ export async function setupUpdateCredentials(
         passwordHash: await bcrypt.hash(d.password, 12)
       }
     });
-  } catch {
-    // Most likely the username is taken — it is unique across the platform.
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      return { error: "usernameTaken" };
+    }
     return { error: "unknown" };
   }
   return { ok: true };

@@ -100,6 +100,7 @@ export async function GET(
   const stream = Readable.toWeb(
     createReadStream(filePath)
   ) as ReadableStream<Uint8Array>;
+  const publicRendition = !isPending && variant !== "orig" && photo.event.published;
 
   return new NextResponse(stream, {
     headers: {
@@ -107,9 +108,11 @@ export async function GET(
       "Content-Length": String(stat.size),
       // Queue previews can be regenerated or deleted before Create and must
       // never enter a shared cache. Published filenames are immutable.
-      "Cache-Control": isPending
-        ? "private, no-store"
-        : "public, max-age=31536000, immutable"
+      "Cache-Control": publicRendition
+        ? "public, max-age=31536000, immutable"
+        : "private, no-store",
+      ...(publicRendition ? {} : { Vary: "Cookie" }),
+      "X-Content-Type-Options": "nosniff"
     }
   });
 }

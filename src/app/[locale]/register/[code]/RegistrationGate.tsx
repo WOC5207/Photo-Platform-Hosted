@@ -37,6 +37,14 @@ export default function RegistrationGate({
     return () => window.clearTimeout(timeout);
   }, [remaining]);
 
+  useEffect(() => {
+    if (!continued) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("register-username")?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [continued]);
+
   if (continued) return <>{children}</>;
 
   const progress = safeDelay === 0 ? 100 : ((safeDelay - remaining) / safeDelay) * 100;
@@ -63,10 +71,13 @@ export default function RegistrationGate({
 
       <div className="flex flex-col gap-3 border-t border-border pt-5">
         <div className="flex items-center justify-between gap-3 text-xs text-fg-subtle">
-          <span role="status" aria-live="polite">
+          <span aria-hidden="true">
             {remaining > 0
               ? `${labels.waitLabel} ${remaining}${labels.secondsShort}`
               : labels.ready}
+          </span>
+          <span role="status" aria-live="polite" className="sr-only">
+            {remaining === 0 ? labels.ready : ""}
           </span>
           <span aria-hidden="true">{Math.round(progress)}%</span>
         </div>

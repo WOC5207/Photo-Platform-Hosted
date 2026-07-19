@@ -14,7 +14,7 @@ import {
   findOwnedPhotoForDeletion
 } from "@/lib/ownership";
 import { deleteEventFiles, deletePhotoFiles } from "@/lib/images";
-import { releaseBytes } from "@/lib/quota";
+import { deleteOwnedPhotoRowsAndRelease } from "@/lib/quota";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
 import { parseShutterSpeed } from "@/lib/exif";
 import { slugify, uniqueEventSlug } from "@/lib/slug";
@@ -314,9 +314,8 @@ export async function deletePhoto(formData: FormData): Promise<void> {
   const photo = await findOwnedPhotoForDeletion(photoId, user);
   if (!photo) return;
 
-  await prisma.photo.delete({ where: { id: photo.id } });
   await deletePhotoFiles(user.id, photo.eventId, photo.id, photo.filename);
-  await releaseBytes(user.id, photo.bytes);
+  await deleteOwnedPhotoRowsAndRelease(user.id, [photo.id]);
   revalidatePath("/", "layout");
 }
 
@@ -339,14 +338,10 @@ export async function bulkDeletePhotos(formData: FormData): Promise<void> {
   const photos = await prisma.photo.findMany({ where: { id: { in: photoIds } } });
   if (photos.length === 0) return;
 
-  // Sum the rows we are actually about to delete, not the ids that were posted.
-  const freed = photos.reduce((sum, p) => sum + p.bytes, 0);
-
-  await prisma.photo.deleteMany({ where: { id: { in: photoIds } } });
   await Promise.all(
     photos.map((p) => deletePhotoFiles(user.id, p.eventId, p.id, p.filename))
   );
-  await releaseBytes(user.id, freed);
+  await deleteOwnedPhotoRowsAndRelease(user.id, photoIds);
   revalidatePath("/", "layout");
 }
 

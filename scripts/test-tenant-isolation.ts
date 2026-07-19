@@ -83,7 +83,7 @@ async function testInviteRedeemedOnce(issuer: User) {
     username: `racer-${randomUUID().slice(0, 8)}`,
     displayName: "Racer",
     passwordHash: "not-a-real-hash"
-  }).then((r) => {
+  }, { accepted: false, noticeVersion: null, locale: "en" }).then((r) => {
     settled = true;
     return r;
   });

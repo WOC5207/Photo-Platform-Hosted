@@ -229,7 +229,9 @@ function CredentialsStep({
         ? t("credentialsInvalid")
         : state.error === "unknown"
           ? t("credentialsUnknown")
-          : null;
+          : state.error
+            ? t(`credentials_${state.error}`)
+            : null;
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -244,7 +246,18 @@ function CredentialsStep({
           defaultValue={initialUsername}
           autoComplete="username"
           required
-          maxLength={200}
+          maxLength={40}
+          className={inputCls}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-fg-muted">{t("currentPassword")}</span>
+        <input
+          name="currentPassword"
+          type="password"
+          autoComplete="current-password"
+          required
+          maxLength={500}
           className={inputCls}
         />
       </label>

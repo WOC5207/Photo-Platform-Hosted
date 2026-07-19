@@ -6,9 +6,37 @@ import sharp from "sharp";
 import exifr from "exifr";
 import { config } from "./config";
 
-// Keep sharp's appetite modest on NAS hardware.
-sharp.concurrency(2);
+// Keep each libvips operation modest; the application-level semaphore below
+// limits how many independent uploads can invoke Sharp at once.
+sharp.concurrency(1);
 sharp.cache(false);
+
+type ImageInput = Buffer | string;
+
+function imagePipeline(input: ImageInput) {
+  return sharp(input, {
+    failOn: "warning",
+    limitInputPixels: config.imageMaxPixels(),
+    pages: 1
+  });
+}
+
+let activeImageJobs = 0;
+const imageJobWaiters: Array<() => void> = [];
+
+export async function withImageProcessingSlot<T>(work: () => Promise<T>): Promise<T> {
+  const limit = config.imageProcessingConcurrency();
+  if (activeImageJobs >= limit) {
+    await new Promise<void>((resolve) => imageJobWaiters.push(resolve));
+  }
+  activeImageJobs += 1;
+  try {
+    return await work();
+  } finally {
+    activeImageJobs -= 1;
+    imageJobWaiters.shift()?.();
+  }
+}
 
 export const ALLOWED_UPLOAD_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -77,7 +105,15 @@ export function isStoragePreset(value: unknown): value is StoragePreset {
  * removes any chance of the path's owner disagreeing with the record's.
  */
 export function userDir(ownerId: string): string {
-  return path.join(config.photosDir(), "u", ownerId);
+  if (!ownerId || ownerId === "." || ownerId === ".." || /[\\/]/.test(ownerId)) {
+    throw new Error("Invalid storage owner id");
+  }
+  const root = path.resolve(config.photosDir(), "u");
+  const target = path.resolve(root, ownerId);
+  if (target === root || !target.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Storage path escaped the owner root");
+  }
+  return target;
 }
 
 export function eventDir(ownerId: string, eventId: string): string {
@@ -117,7 +153,7 @@ export interface PhotoExif {
  * processing strips it. Best-effort: missing/unparseable EXIF just means
  * every field comes back null (e.g. screenshots, graphics, edited exports).
  */
-async function extractExif(buffer: Buffer): Promise<PhotoExif> {
+async function extractExif(input: ImageInput): Promise<PhotoExif> {
   const empty: PhotoExif = {
     focalLengthMm: null,
     aperture: null,
@@ -128,7 +164,7 @@ async function extractExif(buffer: Buffer): Promise<PhotoExif> {
     lensModel: null
   };
   const tags = await exifr
-    .parse(buffer, {
+    .parse(input, {
       pick: [
         "FocalLength",
         "FNumber",
@@ -165,14 +201,14 @@ async function extractExif(buffer: Buffer): Promise<PhotoExif> {
 }
 
 async function writeRenditions(
-  input: Buffer | string,
+  input: ImageInput,
   dir: string,
   photoId: string
 ): Promise<number> {
   let bytes = 0;
   // Sequential processing keeps peak memory predictable on NAS hardware.
   for (const size of SIZES) {
-    const out = await sharp(input, { failOn: "none" })
+    const out = await imagePipeline(input)
       .rotate()
       .resize({ width: size.width, withoutEnlargement: true })
       .webp({ quality: size.quality })
@@ -183,12 +219,12 @@ async function writeRenditions(
 }
 
 async function writeCandidate(
-  input: Buffer | string,
+  input: ImageInput,
   dir: string,
   photoId: string,
   preset: CandidatePreset
 ): Promise<{ filename: string; bytes: number }> {
-  const meta = await sharp(input, { failOn: "none" }).metadata();
+  const meta = await imagePipeline(input).metadata();
   if (!meta.width || !meta.height) throw new Error("Unreadable image");
 
   const { maxEdge, quality } = CANDIDATE_OPTIONS[preset];
@@ -196,7 +232,7 @@ async function writeCandidate(
   const token = randomUUID().replace(/-/g, "");
   const filename = `${photoId}-candidate-${token}.${ext}`;
   const output = path.join(dir, filename);
-  const pipeline = sharp(input, { failOn: "none" })
+  const pipeline = imagePipeline(input)
     .rotate()
     .resize({
       width: maxEdge,
@@ -237,33 +273,35 @@ export async function processAndStorePendingPhoto(
   ownerId: string,
   eventId: string,
   photoId: string,
-  buffer: Buffer,
+  input: ImageInput,
   ext: string,
   storagePreset: StoragePreset
 ): Promise<ProcessedPendingUpload> {
   const dir = eventDir(ownerId, eventId);
   await fs.mkdir(dir, { recursive: true });
 
-  const meta = await sharp(buffer).metadata();
+  const meta = await imagePipeline(input).metadata();
   if (!meta.width || !meta.height) throw new Error("Unreadable image");
   const swapped = (meta.orientation ?? 1) >= 5;
   const width = swapped ? meta.height : meta.width;
   const height = swapped ? meta.width : meta.height;
-  const exif = await extractExif(buffer);
+  const exif = await extractExif(input);
   const sourceFilename = `${photoId}-source.${ext}`;
   const candidatePreset =
     storagePreset === "original" ? "balanced" : storagePreset;
 
   try {
-    await fs.writeFile(path.join(dir, sourceFilename), buffer);
-    const renditionBytes = await writeRenditions(buffer, dir, photoId);
+    const sourcePath = path.join(dir, sourceFilename);
+    if (typeof input === "string") await fs.copyFile(input, sourcePath);
+    else await fs.writeFile(sourcePath, input);
+    const renditionBytes = await writeRenditions(sourcePath, dir, photoId);
     const candidate = await writeCandidate(
-      buffer,
+      sourcePath,
       dir,
       photoId,
       candidatePreset
     );
-    const sourceBytes = buffer.length;
+    const sourceBytes = (await fs.stat(sourcePath)).size;
     const bytes = sourceBytes + candidate.bytes + renditionBytes;
     return {
       width,
@@ -385,26 +423,26 @@ export async function processAndStorePhoto(
   ownerId: string,
   eventId: string,
   photoId: string,
-  buffer: Buffer,
+  input: ImageInput,
   ext: string
 ): Promise<ProcessedUpload> {
   const dir = eventDir(ownerId, eventId);
   await fs.mkdir(dir, { recursive: true });
 
-  const meta = await sharp(buffer).metadata();
+  const meta = await imagePipeline(input).metadata();
   if (!meta.width || !meta.height) throw new Error("Unreadable image");
   const swapped = (meta.orientation ?? 1) >= 5;
   const width = swapped ? meta.height : meta.width;
   const height = swapped ? meta.width : meta.height;
-  const exif = await extractExif(buffer);
+  const exif = await extractExif(input);
 
-  await writeRenditions(buffer, dir, photoId);
+  await writeRenditions(input, dir, photoId);
 
   const origFilename = `${photoId}-orig.${ext}`;
   const origPath = path.join(dir, origFilename);
   if (config.stripOriginalExif()) {
     // Re-encode (high quality) to drop EXIF from the stored original too.
-    const pipeline = sharp(buffer, { failOn: "none" }).rotate();
+    const pipeline = imagePipeline(input).rotate();
     if (ext === "png") await pipeline.png().toFile(origPath);
     else if (ext === "webp")
       await pipeline.webp({ quality: 95 }).toFile(origPath);
@@ -412,7 +450,8 @@ export async function processAndStorePhoto(
       await pipeline.tiff({ compression: "lzw" }).toFile(origPath);
     else await pipeline.jpeg({ quality: 95, mozjpeg: true }).toFile(origPath);
   } else {
-    await fs.writeFile(origPath, buffer);
+    if (typeof input === "string") await fs.copyFile(input, origPath);
+    else await fs.writeFile(origPath, input);
   }
 
   // Measured rather than estimated, and measured here because this is the only
@@ -469,6 +508,49 @@ export async function deleteUserFiles(ownerId: string): Promise<void> {
   await fs.rm(userDir(ownerId), { recursive: true, force: true });
 }
 
+export async function quarantineUserFiles(ownerId: string): Promise<string | null> {
+  const source = userDir(ownerId);
+  const root = path.resolve(config.photosDir(), "u");
+  const trash = path.resolve(root, ".trash");
+  await fs.mkdir(trash, { recursive: true });
+  const destination = path.resolve(trash, `${ownerId}-${randomUUID()}`);
+  if (!destination.startsWith(`${trash}${path.sep}`)) {
+    throw new Error("Quarantine path escaped its root");
+  }
+  try {
+    await fs.rename(source, destination);
+    return destination;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+export async function restoreQuarantinedUserFiles(
+  ownerId: string,
+  quarantinePath: string | null
+): Promise<void> {
+  if (!quarantinePath) return;
+  const trash = path.resolve(config.photosDir(), "u", ".trash");
+  const resolved = path.resolve(quarantinePath);
+  if (!resolved.startsWith(`${trash}${path.sep}`)) {
+    throw new Error("Invalid quarantine restore path");
+  }
+  await fs.rename(resolved, userDir(ownerId));
+}
+
+export async function removeQuarantinedUserFiles(
+  quarantinePath: string | null
+): Promise<void> {
+  if (!quarantinePath) return;
+  const trash = path.resolve(config.photosDir(), "u", ".trash");
+  const resolved = path.resolve(quarantinePath);
+  if (!resolved.startsWith(`${trash}${path.sep}`)) {
+    throw new Error("Invalid quarantine deletion path");
+  }
+  await fs.rm(resolved, { recursive: true, force: true });
+}
+
 export function photoUrls(eventId: string, photoId: string) {
   const base = `/api/images/${eventId}/${photoId}`;
   return {
@@ -503,18 +585,18 @@ export interface SiteImageOptions {
  */
 export async function processAndStoreSiteImage(
   ownerId: string,
-  buffer: Buffer,
+  input: ImageInput,
   opts: SiteImageOptions
 ): Promise<{ token: string; bytes: number }> {
   const dir = siteDir(ownerId);
   await fs.mkdir(dir, { recursive: true });
 
-  const meta = await sharp(buffer).metadata();
+  const meta = await imagePipeline(input).metadata();
   if (!meta.width || !meta.height) throw new Error("Unreadable image");
 
   const token = `${opts.prefix}${randomUUID().replace(/-/g, "")}`;
   const file = path.join(dir, `${token}.webp`);
-  const out = await sharp(buffer, { failOn: "none" })
+  const out = await imagePipeline(input)
     .rotate()
     .resize({
       width: opts.maxWidth,

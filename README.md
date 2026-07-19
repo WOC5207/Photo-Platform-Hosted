@@ -113,9 +113,16 @@ Tested target: DS920+ (x86-64). Everything below happens in DSM. The same
 | `APP_BASE_URL` | Your public HTTPS address, e.g. `https://photos.example.com` (used to build shareable booking and invite links) |
 | `STRIP_ORIGINAL_EXIF` | `false` allows photographers to choose an exact Original; `true` hides that option so every new stored master is optimized with EXIF/GPS removed |
 | `UPLOAD_MAX_MB` | Max size per uploaded photo (default 100) |
+| `IMAGE_MAX_PIXELS` | Maximum decoded pixels per image; leave at `100000000` for a NAS-safe 100 MP ceiling |
+| `IMAGE_PROCESSING_CONCURRENCY` | Simultaneous Sharp jobs; leave at `1` on Synology |
+| `TRUSTED_PROXY_HOPS` | Trusted proxies in the forwarded-IP chain: `1` for DSM alone, `2` for Cloudflare plus DSM |
 
+Uploads are streamed to a bounded temporary file and rejected as soon as they
+cross `UPLOAD_MAX_MB`; the server does not buffer the complete multipart body.
 Compression is server-side and sequential for predictable NAS memory use.
 Balanced (4096px) is the default; Archive (6000px) uses more CPU and storage.
+`IMAGE_MAX_PIXELS` also rejects compressed TIFF files whose decoded dimensions
+would be unsafe even though the original file is below 100 MB.
 While a photo is pending, its exact source, one comparison candidate and the
 three gallery renditions all count toward quota until **Create** removes the
 unselected master.
@@ -136,7 +143,8 @@ To generate good secrets, SSH into the NAS (or use any terminal) and run
 
 > The admin credentials are written into the database on the **first login
 > attempt**. After that, changing `ADMIN_PASSWORD` in `.env` has no effect —
-> the DB copy wins. The first-run wizard prompts you to replace them anyway.
+> the DB copy wins. Replace the placeholder password from **Account → Profile
+> & security** immediately after the first login.
 
 ### 3. Build and start with Container Manager
 
@@ -189,7 +197,10 @@ service needs this; Postgres pulls its own official image.)
 
 1. **Platform admin → Invites → Create invite**. Add a note so you remember who
    it was for. The same page also configures the optional bilingual registration
-   notice, EULA text and countdown shown before every usable invitation.
+   notice, EULA text and countdown shown before every usable invitation. Choose
+   **Information only** for a warning, or **Require agreement** to show a required
+   checkbox and store the notice version, content hash, language and acceptance
+   time with the redeemed invitation.
 2. Copy the link and send it to them. It works once.
 3. They pick their own username (their site becomes `/u/<username>`), display
    name and password, then land in their own setup wizard.
@@ -289,9 +300,16 @@ data. **Never set `E2E_ALLOW_MUTATIONS=1` against a production database.**
 | `npm run test:concurrency` | Booking capacity and lottery prize stock hold under simultaneous requests |
 | `npm run test:isolation` | The ownership helpers refuse another account's ids; invites redeem once; usernames are reserved |
 | `npm run test:quota` | The storage cap holds under concurrent uploads; reconcile recovers drift |
+| `npm run test:security` | Streaming limits and cleanup, proxy trust, path containment, and recoverable quarantine |
+| `npm run test:security:db` | Versioned registration consent and locked public-lottery availability checks |
+| `npm run test:images` | Master compression, exact Original preservation, TIFF support, metadata removal, and pixel limits |
 | `npm run test:http` | Cross-tenant pen pass plus pending-photo privacy over real HTTP (needs `npm run dev` running) |
 | `npm run test:e2e` | Role-aware navigation, responsive layouts, settings, pending photo uploads and booking workflows, English/Chinese themes, and axe accessibility checks |
 | `npm run test:e2e:ui` | The same Playwright suite in its interactive runner |
+
+Pull requests to `main` run these checks with migrations and a disposable
+PostgreSQL service in GitHub Actions. Keep auto-merge disabled until the
+**Security and UX verification** job succeeds.
 
 > These suites are worth their weight only because each has been checked to
 > **fail** when the protection it covers is removed. If you change one, verify

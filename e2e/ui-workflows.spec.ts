@@ -137,6 +137,16 @@ test.describe("locale and theme compatibility", () => {
       await expect(page.locator("html")).toHaveClass(new RegExp(theme));
       await expect(page.getByRole("heading", { name: "网站设置" })).toBeVisible();
     }
+
+    await page.goto("/en/dashboard/settings?section=features#lottery");
+    await page.locator('aside button[aria-haspopup="dialog"]').click();
+    await page
+      .getByRole("dialog", { name: "Account" })
+      .getByRole("link", { name: "中文" })
+      .click();
+    await expect(page).toHaveURL(
+      /\/zh\/dashboard\/settings\?section=features#lottery$/
+    );
   });
 });
 
@@ -159,6 +169,9 @@ test.describe.serial("management workflows", () => {
     const temporaryTitle = `E2E ${Date.now()}`;
     await title.fill(temporaryTitle);
     await expect(page.getByText("Unsaved changes")).toBeVisible();
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.getByRole("link", { name: "Homepage", exact: true }).click();
+    await expect(page).toHaveURL(/section=appearance/);
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible();
     await expect(page).toHaveTitle(temporaryTitle);
@@ -231,6 +244,7 @@ test.describe.serial("management workflows", () => {
       name: "Show this notice before registration"
     });
     const delay = page.getByLabel("Continue delay (seconds)");
+    const mode = page.getByLabel("Notice behavior");
     const titleEn = page.getByLabel("Notice title (English)");
     const titleZh = page.getByLabel("Notice title (Chinese)");
     const bodyEn = page.getByLabel("Notice or EULA (English)");
@@ -238,6 +252,7 @@ test.describe.serial("management workflows", () => {
     const original = {
       enabled: await enabled.isChecked(),
       delay: await delay.inputValue(),
+      mode: await mode.inputValue(),
       titleEn: await titleEn.inputValue(),
       titleZh: await titleZh.inputValue(),
       bodyEn: await bodyEn.inputValue(),
@@ -249,6 +264,7 @@ test.describe.serial("management workflows", () => {
     try {
       await enabled.setChecked(true);
       await delay.fill("1");
+      await mode.selectOption("consent");
       await titleEn.fill("E2E terms before registration");
       await bodyEn.fill("Please read this test notice before continuing.");
       await page.getByRole("button", { name: "Save", exact: true }).click();
@@ -293,6 +309,12 @@ test.describe.serial("management workflows", () => {
       await expect(continueButton).toBeEnabled({ timeout: 3_000 });
       await continueButton.click();
       await expect(usernameInput).toBeVisible();
+      await expect(usernameInput).toBeFocused();
+      await expect(
+        guest.getByRole("checkbox", {
+          name: /I have read and agree to the registration notice/
+        })
+      ).toBeVisible();
     } finally {
       await guestContext?.close();
       await prisma.invite.deleteMany({ where: { code: inviteCode } });
@@ -301,6 +323,7 @@ test.describe.serial("management workflows", () => {
         .getByRole("checkbox", { name: "Show this notice before registration" })
         .setChecked(original.enabled);
       await page.getByLabel("Continue delay (seconds)").fill(original.delay);
+      await page.getByLabel("Notice behavior").selectOption(original.mode);
       await page.getByLabel("Notice title (English)").fill(original.titleEn);
       await page.getByLabel("Notice title (Chinese)").fill(original.titleZh);
       await page.getByLabel("Notice or EULA (English)").fill(original.bodyEn);
@@ -411,6 +434,19 @@ test.describe.serial("management workflows", () => {
       "aria-valuenow",
       "100"
     );
+
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page
+      .getByRole("button", { name: "Remove first.png from the pending upload queue" })
+      .click();
+    await expect(page.getByText("3 photos queued")).toBeVisible();
+    page.once("dialog", (dialog) => dialog.accept());
+    await page
+      .getByRole("button", { name: "Remove first.png from the pending upload queue" })
+      .click();
+    await expect(page.getByText("2 photos queued")).toBeVisible();
+    await picker.setInputFiles({ name: "first.png", mimeType: "image/png", buffer: png });
+    await expect(page.getByText("3 photos queued")).toBeVisible();
 
     await page.locator('input[list="known-credits"]').fill("E2E credit");
     await page.getByRole("button", { name: "Create", exact: true }).click();

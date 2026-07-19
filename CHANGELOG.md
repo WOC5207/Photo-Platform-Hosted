@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Security and reliability
+
+- Public lottery authorization now uses a separate encrypted visitor session;
+  entrant identities, contact details, and recovery tokens are no longer sent
+  to other visitors. Recovery requires the matching token and submitted contact
+  identity, with rate limiting and fresh availability checks before every spin.
+- Image uploads stream to contained temporary files with request-size,
+  decoded-pixel, page, and global processing-concurrency limits. TIFF remains
+  supported without buffering an entire upload in application memory.
+- Account and photo deletion now use contained quarantine paths and
+  owner-scoped conditional deletion, preventing traversal and double quota
+  release. Protected images use private, no-store caching.
+- Registration notices can require versioned affirmative consent, with the
+  accepted content hash, locale, and time recorded on the redeemed invitation.
+
+### User experience
+
+- Pending uploads can be cancelled individually or in bulk, and destructive
+  removal confirms the affected files and storage. Settings warn before dirty
+  navigation, while language changes retain the active section and URL suffix.
+- Setup credential changes now require the current password and consistently
+  enforce lowercase, reserved-name, and account-eligibility rules.
+
 ## v2.0.0 — multi-tenant
 
 Turns the single-photographer site below into a platform: many photographers,

@@ -212,8 +212,11 @@ async function main() {
     anonymousThumb.status === 404 &&
       ownerThumb.status === 200 &&
       adminThumb.status === 200 &&
-      ownerThumb.headers.get("cache-control") === "private, no-store",
-    `anon=${anonymousThumb.status}, owner=${ownerThumb.status}, admin=${adminThumb.status}, cache=${ownerThumb.headers.get("cache-control")}`
+      ownerThumb.headers.get("cache-control") === "private, no-store" &&
+      ownerThumb.headers.get("vary")?.toLowerCase().includes("cookie") === true &&
+      ownerThumb.headers.get("x-content-type-options") === "nosniff",
+    `anon=${anonymousThumb.status}, owner=${ownerThumb.status}, admin=${adminThumb.status}, ` +
+      `cache=${ownerThumb.headers.get("cache-control")}, vary=${ownerThumb.headers.get("vary")}`
   );
 
   const publicPendingAlbum = await fetch(
@@ -459,8 +462,14 @@ async function main() {
     const asAlice = await fetch(url, { headers: { cookie: aliceCookie } });
     report(
       `GET /api/images (${label}): Bob and anonymous cannot read ${what}`,
-      asBob.status === 404 && anon.status === 404 && asAlice.status === 200,
-      `bob=${asBob.status} anon=${anon.status} (both want 404), alice=${asAlice.status} (want 200)`
+      asBob.status === 404 &&
+        anon.status === 404 &&
+        asAlice.status === 200 &&
+        asAlice.headers.get("cache-control") === "private, no-store" &&
+        asAlice.headers.get("vary")?.toLowerCase().includes("cookie") === true &&
+        asAlice.headers.get("x-content-type-options") === "nosniff",
+      `bob=${asBob.status} anon=${anon.status} (both want 404), alice=${asAlice.status} (want 200), ` +
+        `cache=${asAlice.headers.get("cache-control")}`
     );
   }
 
@@ -481,6 +490,24 @@ async function main() {
     where: { id: aliceEvent.id },
     data: { published: true }
   });
+  const [publishedRendition, publishedOriginal] = await Promise.all([
+    fetch(`${BASE}/api/images/${aliceEvent.id}/${photoId}-med.webp`),
+    fetch(`${BASE}/api/images/${aliceEvent.id}/${photoId}-orig.jpg`, {
+      headers: { cookie: aliceCookie }
+    })
+  ]);
+  report(
+    "GET /api/images: only a published non-original rendition is publicly immutable",
+    publishedRendition.status === 200 &&
+      publishedRendition.headers.get("cache-control") ===
+        "public, max-age=31536000, immutable" &&
+      publishedRendition.headers.get("x-content-type-options") === "nosniff" &&
+      publishedOriginal.status === 200 &&
+      publishedOriginal.headers.get("cache-control") === "private, no-store" &&
+      publishedOriginal.headers.get("vary")?.toLowerCase().includes("cookie") === true,
+    `rendition=${publishedRendition.status}/${publishedRendition.headers.get("cache-control")}, ` +
+      `original=${publishedOriginal.status}/${publishedOriginal.headers.get("cache-control")}`
+  );
   const aliceSearch = await fetch(
     `${BASE}/api/search/credits?owner=${alice.username}&q=Jane`
   ).then((r) => r.json());

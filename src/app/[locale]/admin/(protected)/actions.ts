@@ -8,7 +8,11 @@ import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
-import { deleteUserFiles } from "@/lib/images";
+import {
+  quarantineUserFiles,
+  removeQuarantinedUserFiles,
+  restoreQuarantinedUserFiles
+} from "@/lib/images";
 import { reconcileQuota } from "@/lib/quota";
 import { generateTemporaryPassword, setPassword } from "@/lib/password";
 
@@ -58,8 +62,22 @@ export async function deleteUser(formData: FormData): Promise<void> {
   if (typeof id !== "string") return;
   if (id === admin.id) return;
 
-  await deleteUserFiles(id);
-  await prisma.user.delete({ where: { id } }).catch(() => {});
+  const target = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true }
+  });
+  if (!target || target.id === admin.id) return;
+
+  const quarantine = await quarantineUserFiles(target.id);
+  try {
+    await prisma.user.delete({ where: { id: target.id } });
+  } catch (error) {
+    await restoreQuarantinedUserFiles(target.id, quarantine);
+    throw error;
+  }
+  await removeQuarantinedUserFiles(quarantine).catch((error) => {
+    console.error("Failed to remove quarantined user files", error);
+  });
   revalidatePath("/", "layout");
   // Back to the list: this is submitted from the account's own detail page,
   // which stops existing the moment the delete lands.
@@ -167,6 +185,7 @@ export type RegistrationNoticeState = {
 
 const registrationNoticeSchema = z.object({
   enabled: z.boolean(),
+  mode: z.enum(["information", "consent"]),
   delaySeconds: z.coerce.number().int().min(0).max(300),
   titleEn: z.string().trim().max(200),
   titleZh: z.string().trim().max(200),
@@ -181,6 +200,7 @@ export async function saveRegistrationNotice(
   await guard();
   const parsed = registrationNoticeSchema.safeParse({
     enabled: formData.get("enabled") === "on",
+    mode: formData.get("mode") ?? "information",
     delaySeconds: formData.get("delaySeconds"),
     titleEn: formData.get("titleEn") ?? "",
     titleZh: formData.get("titleZh") ?? "",
@@ -189,25 +209,64 @@ export async function saveRegistrationNotice(
   });
   if (!parsed.success) return { error: "validation" };
 
-  await prisma.platformSettings.upsert({
-    where: { id: "platform" },
-    create: {
-      id: "platform",
-      registrationNoticeEnabled: parsed.data.enabled,
-      registrationNoticeDelaySeconds: parsed.data.delaySeconds,
-      registrationNoticeTitleEn: parsed.data.titleEn,
-      registrationNoticeTitleZh: parsed.data.titleZh,
-      registrationNoticeBodyEn: parsed.data.bodyEn,
-      registrationNoticeBodyZh: parsed.data.bodyZh
-    },
-    update: {
-      registrationNoticeEnabled: parsed.data.enabled,
-      registrationNoticeDelaySeconds: parsed.data.delaySeconds,
-      registrationNoticeTitleEn: parsed.data.titleEn,
-      registrationNoticeTitleZh: parsed.data.titleZh,
-      registrationNoticeBodyEn: parsed.data.bodyEn,
-      registrationNoticeBodyZh: parsed.data.bodyZh
-    }
+  const data = parsed.data;
+  await prisma.$transaction(async (tx) => {
+    // Ensure there is a real singleton row to lock. A SELECT FOR UPDATE on a
+    // missing row locks nothing, which would let two first-time saves both
+    // choose version 1 and silently lose one edit.
+    await tx.platformSettings.upsert({
+      where: { id: "platform" },
+      create: { id: "platform" },
+      update: {}
+    });
+    const rows = await tx.$queryRaw<
+      {
+        registrationNoticeEnabled: boolean;
+        registrationNoticeDelaySeconds: number;
+        registrationNoticeTitleEn: string;
+        registrationNoticeTitleZh: string;
+        registrationNoticeBodyEn: string;
+        registrationNoticeBodyZh: string;
+        registrationNoticeMode: string;
+        registrationNoticeVersion: number;
+      }[]
+    >`SELECT * FROM "PlatformSettings" WHERE id = 'platform' FOR UPDATE`;
+    const current = rows[0];
+    const versionChanged =
+      !current ||
+      current.registrationNoticeTitleEn !== data.titleEn ||
+      current.registrationNoticeTitleZh !== data.titleZh ||
+      current.registrationNoticeBodyEn !== data.bodyEn ||
+      current.registrationNoticeBodyZh !== data.bodyZh ||
+      current.registrationNoticeMode !== data.mode;
+    const registrationNoticeVersion = current
+      ? current.registrationNoticeVersion + (versionChanged ? 1 : 0)
+      : 1;
+
+    await tx.platformSettings.upsert({
+      where: { id: "platform" },
+      create: {
+        id: "platform",
+        registrationNoticeEnabled: data.enabled,
+        registrationNoticeDelaySeconds: data.delaySeconds,
+        registrationNoticeTitleEn: data.titleEn,
+        registrationNoticeTitleZh: data.titleZh,
+        registrationNoticeBodyEn: data.bodyEn,
+        registrationNoticeBodyZh: data.bodyZh,
+        registrationNoticeMode: data.mode,
+        registrationNoticeVersion
+      },
+      update: {
+        registrationNoticeEnabled: data.enabled,
+        registrationNoticeDelaySeconds: data.delaySeconds,
+        registrationNoticeTitleEn: data.titleEn,
+        registrationNoticeTitleZh: data.titleZh,
+        registrationNoticeBodyEn: data.bodyEn,
+        registrationNoticeBodyZh: data.bodyZh,
+        registrationNoticeMode: data.mode,
+        registrationNoticeVersion
+      }
+    });
   });
   revalidatePath("/", "layout");
   return { ok: true };

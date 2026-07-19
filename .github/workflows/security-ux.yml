@@ -1,0 +1,91 @@
+name: Security and UX verification
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: photo
+          POSTGRES_PASSWORD: photo-test-password
+          POSTGRES_DB: photo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U photo -d photo"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://photo:photo-test-password@127.0.0.1:5432/photo?schema=public&connection_limit=20
+      PHOTOS_DIR: /tmp/photo-platform-ci
+      SESSION_SECRET: ci-only-session-secret-with-at-least-thirty-two-characters
+      APP_BASE_URL: http://127.0.0.1:3000
+      ADMIN_USERNAME: ci-admin
+      ADMIN_PASSWORD: ci-admin-password-123
+      E2E_ADMIN_USERNAME: ci-admin
+      E2E_ADMIN_PASSWORD: ci-admin-password-123
+      E2E_SESSION_SECRET: ci-only-session-secret-with-at-least-thirty-two-characters
+      E2E_ALLOW_MUTATIONS: "1"
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+      PLAYWRIGHT_CHANNEL: chromium
+      TRUSTED_PROXY_HOPS: "1"
+      IMAGE_MAX_PIXELS: "100000000"
+      IMAGE_PROCESSING_CONCURRENCY: "1"
+      UPLOAD_MAX_MB: "100"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Match the Docker build and the npm version that generated this lockfile.
+      # Node 22's older bundled npm rejects an optional @swc/helpers peer that
+      # npm 11 resolves correctly (see the matching note in Dockerfile).
+      - run: npm install --global npm@11
+      - run: npm ci
+      - run: npm audit
+      - run: npx prisma generate
+      - run: npx prisma validate
+      - run: npx prisma migrate deploy
+      - run: npm run test:security
+      - run: npm run test:images
+      - run: npm run test:concurrency
+      - run: npm run test:isolation
+      - run: npm run test:quota
+      - run: npm run test:security:db
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: HTTP isolation and browser coverage
+        shell: bash
+        run: |
+          mkdir -p "$PHOTOS_DIR"
+          npm start > /tmp/photo-platform-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent "$APP_BASE_URL/en/login" > /dev/null; then
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat /tmp/photo-platform-server.log
+              exit 1
+            fi
+            sleep 1
+          done
+          curl --fail --silent "$APP_BASE_URL/en/login" > /dev/null
+          npm run test:http
+          npm run test:e2e
+        env:
+          NODE_ENV: production
