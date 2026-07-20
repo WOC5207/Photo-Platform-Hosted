@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
@@ -40,6 +40,15 @@ export default function EventForm({
     {}
   );
 
+  const [dateStart, setDateStart] = useState(initial.dateStart);
+  const [dateEnd, setDateEnd] = useState(initial.dateEnd);
+  // Once the end date diverges from the start date, treat it as an
+  // intentional multi-day range and stop auto-following further start-date
+  // edits — only a brand-new or still-single-day event keeps syncing.
+  const [endFollowsStart, setEndFollowsStart] = useState(
+    initial.dateEnd === "" || initial.dateEnd === initial.dateStart
+  );
+
   return (
     <form action={formAction} className="flex flex-col gap-4">
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
@@ -72,7 +81,12 @@ export default function EventForm({
           <input
             name="dateStart"
             type="date"
-            defaultValue={initial.dateStart}
+            value={dateStart}
+            onChange={(e) => {
+              const value = e.target.value;
+              setDateStart(value);
+              if (endFollowsStart) setDateEnd(value);
+            }}
             className={inputCls}
           />
         </label>
@@ -81,7 +95,14 @@ export default function EventForm({
           <input
             name="dateEnd"
             type="date"
-            defaultValue={initial.dateEnd}
+            value={dateEnd}
+            onChange={(e) => {
+              const value = e.target.value;
+              setDateEnd(value);
+              // Clearing the end date opts back into auto-following the
+              // start date, same as a brand-new event.
+              setEndFollowsStart(value === "" || value === dateStart);
+            }}
             className={inputCls}
           />
         </label>
