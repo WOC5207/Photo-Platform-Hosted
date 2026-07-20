@@ -11,6 +11,8 @@ import ManagementShell, {
 import { getSiteSettings, resolveCreditTerm, resolveSiteTitle } from "@/lib/settings";
 import { siteImageUrl } from "@/lib/images";
 import { ownerBasePath, ownerName } from "@/lib/owner";
+import { getActiveNotificationsForUser } from "@/lib/platformNotifications";
+import PlatformNoticeBanner from "@/components/dashboard/PlatformNoticeBanner";
 import { logout } from "../../login/actions";
 
 /** Use the photographer's site title in the browser tab when configured. */
@@ -56,6 +58,9 @@ export default async function DashboardLayout({
   if (user.role !== "admin" && !settings.setupCompleted) {
     redirect(`/${locale}/dashboard/setup`);
   }
+  // Platform-admin messages for this account. Fetched in the layout so the
+  // banner shows on every management screen, not just the Overview entry.
+  const platformNotifications = await getActiveNotificationsForUser(user.id);
   const logoUrl = siteImageUrl(settings.logo);
   const siteTitle = resolveSiteTitle(settings, locale, t("common.siteName"));
   const creditTerm = resolveCreditTerm(settings, locale, t("common.creditTerm"));
@@ -116,6 +121,10 @@ export default async function DashboardLayout({
       isAdmin={user.role === "admin"}
       logoutAction={logout}
     >
+      <PlatformNoticeBanner
+        notifications={platformNotifications}
+        locale={locale}
+      />
       {children}
     </ManagementShell>
   );

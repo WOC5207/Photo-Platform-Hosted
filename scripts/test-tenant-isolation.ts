@@ -34,6 +34,10 @@ import { syncCreditProfiles } from "../src/lib/photoCredits";
 import { getSiteSettings } from "../src/lib/settings";
 import { redeemInvite } from "../src/lib/invite";
 import { usernameError } from "../src/lib/username";
+import {
+  dismissNotificationForUser,
+  getActiveNotificationsForUser
+} from "../src/lib/platformNotifications";
 
 const prisma = new PrismaClient();
 let failures = 0;
@@ -139,6 +143,71 @@ function testReservedUsernames() {
     `${allowed.length}/${ok.length} allowed` +
       (allowed.length === ok.length ? "" : " — the rule is too strict, not safe")
   );
+}
+
+/**
+ * Platform notifications are the one deliberate cross-tenant write on the
+ * platform (admin → tenants), so their reach rule is exactly the kind of
+ * silent fail-open this file exists for: a missing targets filter shows
+ * every "selected" message to everyone, and nothing errors.
+ */
+async function testPlatformNotifications(alice: User, bob: User) {
+  const targeted = await prisma.platformNotification.create({
+    data: {
+      titleEn: "For Alice only",
+      audience: "selected",
+      targets: { create: [{ userId: alice.id }] }
+    }
+  });
+  const broadcast = await prisma.platformNotification.create({
+    data: { titleEn: "For everyone", audience: "all" }
+  });
+
+  const aliceSees = await getActiveNotificationsForUser(alice.id);
+  const bobSees = await getActiveNotificationsForUser(bob.id);
+  report(
+    "notifications: 'selected' reaches only its targets",
+    aliceSees.some((n) => n.id === targeted.id) &&
+      !bobSees.some((n) => n.id === targeted.id),
+    `alice sees targeted: ${aliceSees.some((n) => n.id === targeted.id)}, bob sees targeted: ${bobSees.some((n) => n.id === targeted.id)} (bob must not)`
+  );
+  report(
+    "notifications: 'all' reaches every account",
+    aliceSees.some((n) => n.id === broadcast.id) &&
+      bobSees.some((n) => n.id === broadcast.id),
+    `alice: ${aliceSees.some((n) => n.id === broadcast.id)}, bob: ${bobSees.some((n) => n.id === broadcast.id)}`
+  );
+
+  // Dismissal is per user: Alice closing a broadcast must not close Bob's.
+  await dismissNotificationForUser(alice.id, broadcast.id);
+  const aliceAfter = await getActiveNotificationsForUser(alice.id);
+  const bobAfter = await getActiveNotificationsForUser(bob.id);
+  report(
+    "notifications: dismissal hides for the dismisser only",
+    !aliceAfter.some((n) => n.id === broadcast.id) &&
+      bobAfter.some((n) => n.id === broadcast.id),
+    `alice still sees it: ${aliceAfter.some((n) => n.id === broadcast.id)} (must not), bob still sees it: ${bobAfter.some((n) => n.id === broadcast.id)} (must)`
+  );
+
+  // Dismissing a notification that never reached you is a silent no-op — no
+  // row, no error, no way to probe which ids exist.
+  await dismissNotificationForUser(bob.id, targeted.id);
+  const bobDismissals = await prisma.platformNotificationDismissal.count({
+    where: { userId: bob.id, notificationId: targeted.id }
+  });
+  const aliceStillSees = await getActiveNotificationsForUser(alice.id);
+  report(
+    "notifications: dismissing an unreachable notification is a no-op",
+    bobDismissals === 0 && aliceStillSees.some((n) => n.id === targeted.id),
+    `bob's dismissal rows: ${bobDismissals} (must be 0), alice still sees targeted: ${aliceStillSees.some((n) => n.id === targeted.id)}`
+  );
+
+  // Re-dismissing must be idempotent, not a unique-constraint crash.
+  await dismissNotificationForUser(alice.id, broadcast.id);
+
+  await prisma.platformNotification.deleteMany({
+    where: { id: { in: [targeted.id, broadcast.id] } }
+  });
 }
 
 async function makeUser(name: string): Promise<User> {
@@ -353,6 +422,7 @@ async function main() {
     `Alice: '${aliceSettings.siteTitleEn}', Bob: '${bobSettings.siteTitleEn}' (Bob must be empty)`
   );
 
+  await testPlatformNotifications(alice, bob);
   await testInviteRedeemedOnce(bob);
   testReservedUsernames();
 

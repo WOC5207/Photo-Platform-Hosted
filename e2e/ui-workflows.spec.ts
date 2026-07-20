@@ -503,6 +503,49 @@ test.describe.serial("management workflows", () => {
     await expect(page).toHaveURL(/\/en\/dashboard\/events$/);
   });
 
+  test("platform notification shows on the dashboard until dismissed", async ({ page }) => {
+    const title = `E2E notice ${Date.now()}`;
+
+    // Compose to all accounts (the default audience).
+    await page.goto("/en/admin/notifications");
+    await page.getByLabel("Title (English)").fill(title);
+    await page.getByLabel("Message (English)").fill("E2E notification body");
+    await page.getByRole("button", { name: "Send notification" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Notification sent." })
+    ).toBeVisible();
+    const sentItem = page.locator("li").filter({ hasText: title });
+    await expect(sentItem.getByTestId("dismissed-count")).toHaveText(
+      /Dismissed by 0 of \d+/
+    );
+
+    // The banner greets the recipient in their management area.
+    await page.goto("/en/dashboard");
+    const notice = page
+      .locator('[data-testid="platform-notices"] section')
+      .filter({ hasText: title });
+    await expect(notice).toBeVisible();
+    await expect(notice.getByText("E2E notification body")).toBeVisible();
+
+    // Dismissing is per user and durable across reloads.
+    await notice.getByRole("button", { name: "Dismiss" }).click();
+    await expect(notice).toHaveCount(0);
+    await page.reload();
+    await expect(
+      page.locator('[data-testid="platform-notices"] section').filter({ hasText: title })
+    ).toHaveCount(0);
+
+    // The admin list reflects the dismissal, and deleting retracts the
+    // notification everywhere.
+    await page.goto("/en/admin/notifications");
+    await expect(sentItem.getByTestId("dismissed-count")).toHaveText(
+      /Dismissed by 1 of \d+/
+    );
+    page.once("dialog", (dialog) => dialog.accept());
+    await sentItem.getByRole("button", { name: "Delete" }).click();
+    await expect(sentItem).toHaveCount(0);
+  });
+
   test("booking cannot open without readiness requirements", async ({ page }) => {
     const title = `E2E booking ${Date.now()}`;
     const date = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);

@@ -90,6 +90,9 @@ model User {
 
   invitesIssued  Invite[] @relation("InviteIssuer")
   invite         Invite?  @relation("InviteRedeemer")
+
+  notificationTargets    PlatformNotificationTarget[]
+  notificationDismissals PlatformNotificationDismissal[]
 }
 
 // One uploaded site-level image (logo, background, contact QR, announcement
@@ -573,4 +576,50 @@ model LotteryPrize {
   sortOrder Int            @default(0)
   winners   LotteryEntry[]
   createdAt DateTime       @default(now())
+}
+
+// A message from the platform admin to tenant accounts, shown as a dismissible
+// banner across each recipient's /dashboard until that user dismisses it.
+//
+// Who sees it is resolved at read time (src/lib/platformNotifications.ts):
+// audience "all" reaches every account including ones created after sending;
+// "selected" reaches exactly the PlatformNotificationTarget rows. Deleting the
+// notification retracts it everywhere — there is no editing after send.
+model PlatformNotification {
+  id       String @id @default(cuid())
+  titleEn  String @default("")
+  titleZh  String @default("")
+  bodyEn   String @default("")
+  bodyZh   String @default("")
+  // "all" | "selected". Plain string to match the other pseudo-enums here.
+  audience String @default("all")
+
+  createdAt DateTime @default(now())
+
+  targets    PlatformNotificationTarget[]
+  dismissals PlatformNotificationDismissal[]
+}
+
+// One selected recipient of a notification with audience "selected".
+model PlatformNotificationTarget {
+  notificationId String
+  notification   PlatformNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+  @@index([userId])
+}
+
+// One user's dismissal of one notification. DB-backed (not client storage) so
+// a dismissal holds across devices, and so the admin can see reach counts.
+model PlatformNotificationDismissal {
+  notificationId String
+  notification   PlatformNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dismissedAt    DateTime             @default(now())
+
+  @@id([notificationId, userId])
+  @@index([userId])
 }
