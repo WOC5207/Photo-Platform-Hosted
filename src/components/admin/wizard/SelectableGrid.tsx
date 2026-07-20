@@ -19,13 +19,17 @@ export default function SelectableGrid({
   selected,
   onToggle,
   disabled,
-  renderFooter
+  renderFooter,
+  renderBadge
 }: {
   photos: GridPhoto[];
   selected: Set<string>;
   onToggle: (photoId: string) => void;
   disabled?: boolean;
   renderFooter?: (photo: GridPhoto) => ReactNode;
+  /** Optional marker shown over the top-right corner of a tile (e.g. a
+      no-credit warning). Return null for tiles that should stay unmarked. */
+  renderBadge?: (photo: GridPhoto) => ReactNode;
 }) {
   const t = useTranslations("adminEvents");
 
@@ -36,6 +40,7 @@ export default function SelectableGrid({
     >
       {photos.map((photo) => {
         const isSelected = selected.has(photo.photoId);
+        const badge = renderBadge?.(photo);
         return (
           <li key={photo.photoId} className="flex flex-col gap-1">
             <button
@@ -75,6 +80,9 @@ export default function SelectableGrid({
               >
                 ✓
               </span>
+              {badge && (
+                <span className="absolute right-2 top-2">{badge}</span>
+              )}
             </button>
             {renderFooter?.(photo)}
           </li>

@@ -29,11 +29,17 @@ export default function CompressionStep({
 }) {
   const t = useTranslations("adminEvents");
   const tw = useTranslations("photoWizard");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Browsable photos include those still compressing/optimizing in the
+  // background, not just fully-ready ones — so a tile never vanishes while its
+  // compression (initial or a preset change) is in flight.
+  const photos = queue.browsableFiles;
+
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(photos.map((item) => item.photoId))
+  );
   const [preset, setPreset] = useState<StoragePreset>("balanced");
   const [applying, setApplying] = useState(false);
-
-  const photos = queue.readyFiles;
   // Pre-migration pending uploads have no retained source and stay Original;
   // they are excluded from bulk preset changes but still publish normally.
   const adjustable = photos.filter((item) => item.sourceBytes != null);
@@ -75,6 +81,9 @@ export default function CompressionStep({
     <div className="flex flex-col gap-4">
       <p className="text-sm text-fg-muted">{tw("compressIntro")}</p>
       <p className="text-xs text-fg-subtle">{t("pendingStorageNotice")}</p>
+      {!allowOriginal && (
+        <p className="text-xs text-fg-subtle">{t("storageOriginalDisabled")}</p>
+      )}
 
       <div className="flex flex-col gap-3 rounded-lg border border-border-strong/60 bg-surface/50 p-3 sm:flex-row sm:items-end sm:justify-between">
         <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-fg-muted sm:max-w-72 sm:flex-1">
@@ -143,13 +152,15 @@ export default function CompressionStep({
             (candidate) => candidate.photoId === photo.photoId
           );
           if (!item) return null;
+          const working =
+            item.state === "optimizing" || item.state === "compressing";
           return (
             <div className="flex flex-col gap-0.5 text-xs">
               <span className="font-semibold text-fg">
-                {item.state === "optimizing"
+                {working
                   ? t("pendingOptimizing")
                   : presetShortLabel(t, item.storagePreset)}
-                {item.finalBytes != null && item.state !== "optimizing" && (
+                {item.finalBytes != null && !working && (
                   <span className="ml-1 font-normal text-fg-subtle">
                     · {formatBytes(item.finalBytes)}
                   </span>

@@ -75,6 +75,13 @@ const SIZES = [
   { suffix: "full", width: 2560, quality: 85 }
 ] as const;
 
+type RenditionSize = (typeof SIZES)[number];
+// The thumbnail is generated synchronously at upload so the wizard has an
+// instant preview; the background compression worker (re)generates the full
+// rendition set — thumbnail included, so a thumbnail lost to a crash between
+// the source write and the worker is always restored.
+const THUMB_SIZE: RenditionSize = SIZES[0];
+
 export type StoragePreset = "original" | "archive" | "balanced";
 export type CandidatePreset = Exclude<StoragePreset, "original">;
 
@@ -127,15 +134,6 @@ export interface ProcessedUpload {
   exif: PhotoExif;
   /** Total bytes written: the original plus all three renditions. */
   bytes: number;
-}
-
-export interface ProcessedPendingUpload extends ProcessedUpload {
-  storagePreset: StoragePreset;
-  candidatePreset: CandidatePreset;
-  sourceFilename: string;
-  sourceBytes: number;
-  candidateBytes: number;
-  renditionBytes: number;
 }
 
 export interface PhotoExif {
@@ -200,14 +198,15 @@ async function extractExif(input: ImageInput): Promise<PhotoExif> {
   };
 }
 
-async function writeRenditions(
+async function writeRenditionSizes(
   input: ImageInput,
   dir: string,
-  photoId: string
+  photoId: string,
+  sizes: readonly RenditionSize[]
 ): Promise<number> {
   let bytes = 0;
   // Sequential processing keeps peak memory predictable on NAS hardware.
-  for (const size of SIZES) {
+  for (const size of sizes) {
     const out = await imagePipeline(input)
       .rotate()
       .resize({ width: size.width, withoutEnlargement: true })
@@ -216,6 +215,26 @@ async function writeRenditions(
     bytes += out.size;
   }
   return bytes;
+}
+
+async function writeRenditions(
+  input: ImageInput,
+  dir: string,
+  photoId: string
+): Promise<number> {
+  return writeRenditionSizes(input, dir, photoId, SIZES);
+}
+
+async function sumRenditionBytes(dir: string, photoId: string): Promise<number> {
+  const sizes = await Promise.all(
+    SIZES.map((size) =>
+      fs
+        .stat(path.join(dir, `${photoId}-${size.suffix}.webp`))
+        .then((st) => st.size)
+        .catch(() => 0)
+    )
+  );
+  return sizes.reduce((sum, n) => sum + n, 0);
 }
 
 async function writeCandidate(
@@ -264,66 +283,6 @@ async function writeCandidate(
   }
 }
 
-/**
- * Store an exact source, one compressed comparison candidate and the public
- * renditions. Neither master receives the stable -orig name until Create, so
- * pending files cannot accidentally become addressable through the image API.
- */
-export async function processAndStorePendingPhoto(
-  ownerId: string,
-  eventId: string,
-  photoId: string,
-  input: ImageInput,
-  ext: string,
-  storagePreset: StoragePreset
-): Promise<ProcessedPendingUpload> {
-  const dir = eventDir(ownerId, eventId);
-  await fs.mkdir(dir, { recursive: true });
-
-  const meta = await imagePipeline(input).metadata();
-  if (!meta.width || !meta.height) throw new Error("Unreadable image");
-  const swapped = (meta.orientation ?? 1) >= 5;
-  const width = swapped ? meta.height : meta.width;
-  const height = swapped ? meta.width : meta.height;
-  const exif = await extractExif(input);
-  const sourceFilename = `${photoId}-source.${ext}`;
-  const candidatePreset =
-    storagePreset === "original" ? "balanced" : storagePreset;
-
-  try {
-    const sourcePath = path.join(dir, sourceFilename);
-    if (typeof input === "string") await fs.copyFile(input, sourcePath);
-    else await fs.writeFile(sourcePath, input);
-    const renditionBytes = await writeRenditions(sourcePath, dir, photoId);
-    const candidate = await writeCandidate(
-      sourcePath,
-      dir,
-      photoId,
-      candidatePreset
-    );
-    const sourceBytes = (await fs.stat(sourcePath)).size;
-    const bytes = sourceBytes + candidate.bytes + renditionBytes;
-    return {
-      width,
-      height,
-      origFilename: candidate.filename,
-      exif,
-      bytes,
-      storagePreset,
-      candidatePreset,
-      sourceFilename,
-      sourceBytes,
-      candidateBytes: candidate.bytes,
-      renditionBytes
-    };
-  } catch (error) {
-    await deletePhotoFiles(ownerId, eventId, photoId, sourceFilename).catch(
-      () => undefined
-    );
-    throw error;
-  }
-}
-
 export async function replacePendingCandidate(
   ownerId: string,
   eventId: string,
@@ -337,6 +296,113 @@ export async function replacePendingCandidate(
     photoId,
     preset
   );
+}
+
+export interface StoredPendingSource {
+  width: number;
+  height: number;
+  exif: PhotoExif;
+  sourceFilename: string;
+  sourceBytes: number;
+  thumbBytes: number;
+}
+
+/**
+ * The fast half of a pending upload: store the exact source and generate only
+ * the thumbnail, so the wizard has an instant preview. The heavier renditions
+ * and the compressed master are produced later by compressPendingMaster in a
+ * background worker. Neither master receives the stable -orig name until
+ * finalize, so pending files stay unaddressable through the image API.
+ */
+export async function storePendingSource(
+  ownerId: string,
+  eventId: string,
+  photoId: string,
+  input: ImageInput,
+  ext: string
+): Promise<StoredPendingSource> {
+  const dir = eventDir(ownerId, eventId);
+  await fs.mkdir(dir, { recursive: true });
+
+  const meta = await imagePipeline(input).metadata();
+  if (!meta.width || !meta.height) throw new Error("Unreadable image");
+  const swapped = (meta.orientation ?? 1) >= 5;
+  const width = swapped ? meta.height : meta.width;
+  const height = swapped ? meta.width : meta.height;
+  const exif = await extractExif(input);
+  const sourceFilename = `${photoId}-source.${ext}`;
+  const sourcePath = path.join(dir, sourceFilename);
+
+  try {
+    if (typeof input === "string") await fs.copyFile(input, sourcePath);
+    else await fs.writeFile(sourcePath, input);
+    const thumbBytes = await writeRenditionSizes(sourcePath, dir, photoId, [
+      THUMB_SIZE
+    ]);
+    const sourceBytes = (await fs.stat(sourcePath)).size;
+    return { width, height, exif, sourceFilename, sourceBytes, thumbBytes };
+  } catch (error) {
+    await deletePhotoFiles(ownerId, eventId, photoId, sourceFilename).catch(
+      () => undefined
+    );
+    throw error;
+  }
+}
+
+export interface CompressedPendingMaster {
+  /** The active compressed candidate filename (stored as Photo.filename). */
+  origFilename: string;
+  candidatePreset: CandidatePreset;
+  candidateBytes: number;
+  /** Total bytes of all three renditions (thumb + med + full). */
+  renditionBytes: number;
+  sourceBytes: number;
+}
+
+/**
+ * The deferred half of a pending upload: generate the remaining renditions and
+ * the compressed master from the retained source. Idempotent and re-runnable —
+ * renditions are overwritten in place and stale candidate versions are removed,
+ * so the startup sweep or a quality change can safely call it again.
+ */
+export async function compressPendingMaster(
+  ownerId: string,
+  eventId: string,
+  photoId: string,
+  sourceFilename: string,
+  candidatePreset: CandidatePreset
+): Promise<CompressedPendingMaster> {
+  const dir = eventDir(ownerId, eventId);
+  const sourcePath = path.join(dir, sourceFilename);
+
+  await writeRenditions(sourcePath, dir, photoId);
+  const candidate = await writeCandidate(
+    sourcePath,
+    dir,
+    photoId,
+    candidatePreset
+  );
+
+  // Drop any earlier candidate versions left by a previous preset.
+  const siblings = await fs.readdir(dir).catch(() => [] as string[]);
+  await Promise.all(
+    siblings
+      .filter(
+        (name) =>
+          name.startsWith(`${photoId}-candidate-`) && name !== candidate.filename
+      )
+      .map((name) => fs.rm(path.join(dir, name), { force: true }))
+  );
+
+  const renditionBytes = await sumRenditionBytes(dir, photoId);
+  const sourceBytes = (await fs.stat(sourcePath)).size;
+  return {
+    origFilename: candidate.filename,
+    candidatePreset,
+    candidateBytes: candidate.bytes,
+    renditionBytes,
+    sourceBytes
+  };
 }
 
 export async function deletePhotoAssetFile(

@@ -161,6 +161,9 @@ export async function adjustReservation(
 
 export interface QuotaUsage {
   usedBytes: number;
+  /** On-disk bytes held by unpublished pending uploads. Not counted against
+      quotaBytes; shown for visibility only. */
+  pendingBytes: number;
   /** The allowance actually in force — override, or effective tier's. */
   quotaBytes: number;
   /** Name of the tier in force. Already accounts for expiry. */
@@ -186,6 +189,7 @@ export async function getQuotaUsage(userId: string): Promise<QuotaUsage> {
   const rows = await prisma.$queryRaw<
     {
       usedBytes: bigint;
+      pendingBytes: bigint;
       quotaBytes: bigint;
       tierName: string | null;
       overridden: boolean;
@@ -195,6 +199,7 @@ export async function getQuotaUsage(userId: string): Promise<QuotaUsage> {
   >`
     SELECT
       u."usedBytes",
+      u."pendingBytes",
       ${EFFECTIVE_QUOTA} AS "quotaBytes",
       (SELECT t."name" FROM "Tier" t WHERE t.id = ${EFFECTIVE_TIER_ID}) AS "tierName",
       (u."quotaBytes" IS NOT NULL) AS "overridden",
@@ -211,6 +216,7 @@ export async function getQuotaUsage(userId: string): Promise<QuotaUsage> {
     // converted here rather than at each call site. Number is exact to 2^53
     // bytes (9 PB), which is not a limit anyone will meet on a NAS.
     usedBytes: Number(row?.usedBytes ?? 0),
+    pendingBytes: Number(row?.pendingBytes ?? 0),
     quotaBytes: Number(row?.quotaBytes ?? 0),
     tierName: row?.tierName ?? "",
     overridden: row?.overridden ?? false,
@@ -220,13 +226,17 @@ export async function getQuotaUsage(userId: string): Promise<QuotaUsage> {
 }
 
 /**
- * Recompute usedBytes from what is actually recorded, and overwrite the
- * counter.
+ * Recompute usedBytes and pendingBytes from what is actually recorded, and
+ * overwrite both counters.
  *
  * The escape hatch for drift: a crash between reserving and truing up, a file
  * removed by hand, a bug. Sums the rows rather than walking the disk, so it
- * corrects the counter against the database's own view — cheap, and safe to run
- * any time.
+ * corrects the counters against the database's own view — cheap, and safe to
+ * run any time.
+ *
+ * usedBytes counts only published photos (pendingBatchId IS NULL) plus site
+ * images; pending photos are held separately in pendingBytes because they no
+ * longer count toward the storage quota until they are published.
  */
 export async function reconcileQuota(userId: string): Promise<QuotaUsage> {
   await prisma.$transaction(async (tx) => {
@@ -235,9 +245,13 @@ export async function reconcileQuota(userId: string): Promise<QuotaUsage> {
     // it first prevents reconcile from observing one side of a transition and
     // then overwriting the counter after the other side commits.
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
-    const [photos, siteImages] = await Promise.all([
+    const [publishedPhotos, pendingPhotos, siteImages] = await Promise.all([
       tx.photo.aggregate({
-        where: { event: { ownerId: userId } },
+        where: { event: { ownerId: userId }, pendingBatchId: null },
+        _sum: { bytes: true }
+      }),
+      tx.photo.aggregate({
+        where: { event: { ownerId: userId }, pendingBatchId: { not: null } },
         _sum: { bytes: true }
       }),
       tx.siteImage.aggregate({
@@ -245,10 +259,11 @@ export async function reconcileQuota(userId: string): Promise<QuotaUsage> {
         _sum: { bytes: true }
       })
     ]);
-    const total = (photos._sum.bytes ?? 0) + (siteImages._sum.bytes ?? 0);
+    const used = (publishedPhotos._sum.bytes ?? 0) + (siteImages._sum.bytes ?? 0);
+    const pending = pendingPhotos._sum.bytes ?? 0;
     await tx.user.update({
       where: { id: userId },
-      data: { usedBytes: BigInt(total) }
+      data: { usedBytes: BigInt(used), pendingBytes: BigInt(pending) }
     });
   });
   return getQuotaUsage(userId);

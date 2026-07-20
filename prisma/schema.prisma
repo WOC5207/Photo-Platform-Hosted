@@ -73,6 +73,13 @@ model User {
   //
   // The cost is drift, which reconcileQuota() exists to correct.
   usedBytes    BigInt   @default(0)
+  // On-disk bytes held by pending (not yet published) uploads. Tracked apart
+  // from usedBytes because pending photos no longer count toward the storage
+  // quota — they are compressed in the background and only charged to usedBytes
+  // at publish. This counter bounds pending disk so a runaway upload cannot
+  // fill the NAS (config.pendingMaxBytes), using the same atomic check-and-claim
+  // pattern as usedBytes. reconcileQuota() corrects its drift too.
+  pendingBytes BigInt   @default(0)
 
   createdAt    DateTime @default(now())
 
@@ -259,7 +266,20 @@ model Photo {
   // ready | processing | pending | finalizing | deleting. Existing/directly-created photos
   // default to ready; the database check constraint keeps this in sync with
   // pendingBatchId so forgotten query paths fail closed.
+  //
+  // "processing" now spans the whole background-compression window: POST stores
+  // the source and thumbnail (so a preview exists immediately) and leaves the
+  // row processing while a background worker generates the remaining renditions
+  // and the compressed master, then flips it to "pending".
   uploadState String @default("ready")
+  // Set while a background worker owns this row's compression. Lets exactly one
+  // worker (even across app instances) claim a processing row via
+  // FOR UPDATE SKIP LOCKED, and lets the startup sweep reclaim a row whose
+  // worker died mid-compress (claim older than config.compressionClaimStaleMs).
+  compressionClaimedAt DateTime?
+  // True when background compression failed and the source was kept for retry.
+  // Distinguishes a stuck/failed processing row from one still being worked.
+  compressionFailed    Boolean @default(false)
   createdAt    DateTime @default(now())
   coverOf      Event?   @relation("EventCover")
   // Admin-picked for the homepage's per-event carousel. Independent of

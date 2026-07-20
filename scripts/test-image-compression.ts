@@ -4,17 +4,61 @@ import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import {
+  compressPendingMaster,
   deletePhotoAssetFile,
   deletePhotoFiles,
   eventDir,
   finalizePendingMaster,
-  processAndStorePendingPhoto,
   replacePendingCandidate,
-  resolveUploadExtension
+  resolveUploadExtension,
+  storePendingSource,
+  type CandidatePreset,
+  type StoragePreset
 } from "../src/lib/images";
 
 async function exists(file: string): Promise<boolean> {
   return fs.stat(file).then(() => true).catch(() => false);
+}
+
+// The upload pipeline is split in two: storePendingSource writes the source and
+// thumbnail synchronously, then the background worker calls compressPendingMaster
+// for the remaining renditions and the compressed master. This helper runs both
+// (as the worker does) and returns the combined pending layout the finalize
+// assertions expect.
+async function storeAndCompressPending(
+  ownerId: string,
+  eventId: string,
+  photoId: string,
+  input: Buffer | string,
+  ext: string,
+  storagePreset: StoragePreset
+) {
+  const source = await storePendingSource(ownerId, eventId, photoId, input, ext);
+  const candidatePreset: CandidatePreset =
+    storagePreset === "original" ? "balanced" : storagePreset;
+  const compressed = await compressPendingMaster(
+    ownerId,
+    eventId,
+    photoId,
+    source.sourceFilename,
+    candidatePreset
+  );
+  return {
+    width: source.width,
+    height: source.height,
+    sourceFilename: source.sourceFilename,
+    thumbBytes: source.thumbBytes,
+    origFilename: compressed.origFilename,
+    candidatePreset: compressed.candidatePreset,
+    candidateBytes: compressed.candidateBytes,
+    renditionBytes: compressed.renditionBytes,
+    sourceBytes: compressed.sourceBytes,
+    bytes:
+      compressed.sourceBytes +
+      compressed.candidateBytes +
+      compressed.renditionBytes,
+    storagePreset
+  };
 }
 
 async function main() {
@@ -35,7 +79,33 @@ async function main() {
       .jpeg({ quality: 96 })
       .withMetadata({ orientation: 1 })
       .toBuffer();
-    const original = await processAndStorePendingPhoto(
+    const dir = eventDir(ownerId, eventId);
+
+    // storePendingSource alone must yield the source and thumbnail only — the
+    // heavier renditions belong to the background compression step.
+    const sourceOnly = await storePendingSource(
+      ownerId,
+      eventId,
+      "a".repeat(32),
+      jpeg,
+      "jpg"
+    );
+    assert.equal(
+      await exists(path.join(dir, `${"a".repeat(32)}-thumb.webp`)),
+      true,
+      "the thumbnail must exist immediately after storing the source"
+    );
+    for (const suffix of ["med", "full"]) {
+      assert.equal(
+        await exists(path.join(dir, `${"a".repeat(32)}-${suffix}.webp`)),
+        false,
+        "larger renditions are deferred to the background worker"
+      );
+    }
+    assert.ok(sourceOnly.thumbBytes > 0);
+
+    // Compress it (as the worker would) and continue with the full layout.
+    const original = await storeAndCompressPending(
       ownerId,
       eventId,
       "a".repeat(32),
@@ -43,7 +113,13 @@ async function main() {
       "jpg",
       "original"
     );
-    const dir = eventDir(ownerId, eventId);
+    for (const suffix of ["thumb", "med", "full"]) {
+      assert.equal(
+        await exists(path.join(dir, `${"a".repeat(32)}-${suffix}.webp`)),
+        true,
+        "compression must produce the full rendition set"
+      );
+    }
     assert.deepEqual(
       await fs.readFile(path.join(dir, original.sourceFilename)),
       jpeg,
@@ -92,7 +168,7 @@ async function main() {
     })
       .png()
       .toBuffer();
-    const archive = await processAndStorePendingPhoto(
+    const archive = await storeAndCompressPending(
       ownerId,
       eventId,
       "b".repeat(32),
@@ -167,7 +243,7 @@ async function main() {
       .tiff({ compression: "lzw" })
       .toBuffer();
     const tiffId = "c".repeat(32);
-    const pendingTiff = await processAndStorePendingPhoto(
+    const pendingTiff = await storeAndCompressPending(
       ownerId,
       eventId,
       tiffId,
@@ -208,7 +284,7 @@ async function main() {
     const pathInputId = "d".repeat(32);
     const pathInput = path.join(root, "camera-original.jpg");
     await fs.writeFile(pathInput, jpeg);
-    const pendingFromPath = await processAndStorePendingPhoto(
+    const pendingFromPath = await storeAndCompressPending(
       ownerId,
       eventId,
       pathInputId,
@@ -246,7 +322,7 @@ async function main() {
     }).png().toBuffer();
     process.env.IMAGE_MAX_PIXELS = "100";
     await assert.rejects(
-      processAndStorePendingPhoto(
+      storeAndCompressPending(
         ownerId,
         eventId,
         "e".repeat(32),
