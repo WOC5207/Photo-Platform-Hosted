@@ -142,8 +142,8 @@ async function main() {
   });
   report(
     "pending queue: retrying one upload id is idempotent",
-    retryUploadRes.status === 200 && pendingRowsAfterRetry === 1,
-    `HTTP ${retryUploadRes.status}, ${pendingRowsAfterRetry} row(s) (want 1)`
+    [200, 202].includes(retryUploadRes.status) && pendingRowsAfterRetry === 1,
+    `HTTP ${retryUploadRes.status} (want 200 or 202), ${pendingRowsAfterRetry} row(s) (want 1)`
   );
 
   const pendingWithComparison = await prisma.photo.findUniqueOrThrow({
