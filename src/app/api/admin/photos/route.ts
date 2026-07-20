@@ -5,18 +5,16 @@ import { getCurrentUser } from "@/lib/auth";
 import { findOwnedEvent } from "@/lib/ownership";
 import { config } from "@/lib/config";
 import {
-  deletePhotoAssetFile,
   deletePhotoFiles,
   finalizePendingMaster,
   isStoragePreset,
-  processAndStorePendingPhoto,
+  storePendingSource,
   resolveUploadExtension,
-  replacePendingCandidate,
   withImageProcessingSlot,
   type CandidatePreset,
   type StoragePreset
 } from "@/lib/images";
-import { EFFECTIVE_QUOTA } from "@/lib/quota";
+import { enqueueCompression } from "@/lib/compressionWorker";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
 import {
   MultipartUploadError,
@@ -53,7 +51,8 @@ const uploadSelect = {
   sourceFilename: true,
   sourceBytes: true,
   candidateBytes: true,
-  renditionBytes: true
+  renditionBytes: true,
+  compressionFailed: true
 } as const;
 
 interface UploadRecord {
@@ -72,6 +71,7 @@ interface UploadRecord {
   sourceBytes: number | null;
   candidateBytes: number | null;
   renditionBytes: number | null;
+  compressionFailed: boolean;
 }
 
 async function findOwnedUpload(
@@ -111,7 +111,8 @@ function pendingPhotoJson(photo: UploadRecord) {
     candidateBytes: photo.candidateBytes,
     renditionBytes: photo.renditionBytes,
     pendingBytes: photo.bytes,
-    finalBytes
+    finalBytes,
+    compressionFailed: photo.compressionFailed
   };
 }
 
@@ -166,9 +167,11 @@ async function cleanupDeletingPhoto(
       });
       if (!photo) return;
 
+      // Pending photos are accounted in pendingBytes, not usedBytes, so a
+      // discard releases the pending reservation.
       await tx.$executeRaw`
         UPDATE "User"
-           SET "usedBytes" = GREATEST(0, "usedBytes" - ${BigInt(photo.bytes)})
+           SET "pendingBytes" = GREATEST(0, "pendingBytes" - ${BigInt(photo.bytes)})
          WHERE id = ${userId}
       `;
       await tx.photo.delete({ where: { id: photo.id } });
@@ -316,13 +319,15 @@ export async function POST(req: NextRequest) {
       });
       if (pendingCount >= MAX_PENDING_PER_EVENT) throw new QueueFullError();
 
-      // The conditional update both enforces quota and locks this user's
+      // Pending photos no longer count toward the storage quota — they are
+      // charged at publish. This conditional update reserves the source against
+      // the pending-disk cap (so a runaway cannot fill the NAS) and locks the
       // counter until the placeholder is present in the same commit.
       const updated = await tx.$executeRaw`
         UPDATE "User" AS u
-           SET "usedBytes" = u."usedBytes" + ${BigInt(reserved)}
+           SET "pendingBytes" = u."pendingBytes" + ${BigInt(reserved)}
          WHERE u.id = ${user.id}
-           AND u."usedBytes" + ${BigInt(reserved)} <= ${EFFECTIVE_QUOTA}
+           AND u."pendingBytes" + ${BigInt(reserved)} <= ${BigInt(config.pendingMaxBytes())}
       `;
       if (updated !== 1) throw new QuotaExceededError();
 
@@ -362,17 +367,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "uploadConflict" }, { status: 409 });
   }
 
-  let processed;
+  // Fast path: store the exact source and a thumbnail only, so the wizard has an
+  // instant preview. The remaining renditions and the compressed master are
+  // produced by the background worker enqueued below.
+  let stored;
   try {
-    processed = await withImageProcessingSlot(() =>
-      processAndStorePendingPhoto(
-        user.id,
-        eventId,
-        uploadId,
-        file.path,
-        ext,
-        storagePreset
-      )
+    stored = await withImageProcessingSlot(() =>
+      storePendingSource(user.id, eventId, uploadId, file.path, ext)
     );
   } catch {
     const claimed = await markProcessingForDeletion(user.id, eventId, uploadId);
@@ -389,27 +390,19 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const delta = processed.bytes - reserved;
+    const storedBytes = stored.sourceBytes + stored.thumbBytes;
+    const delta = storedBytes - reserved;
     await prisma.$transaction(async (tx) => {
-      // Pending comparison files are real disk usage, so the post-encode
-      // adjustment also enforces quota instead of allowing duplicate masters
-      // to overshoot a photographer's allowance.
-      if (delta > 0) {
-        const adjusted = await tx.$executeRaw`
-          UPDATE "User" AS u
-             SET "usedBytes" = u."usedBytes" + ${BigInt(delta)}
-           WHERE u.id = ${user.id}
-             AND u."usedBytes" + ${BigInt(delta)} <= ${EFFECTIVE_QUOTA}
-        `;
-        if (adjusted !== 1) throw new QuotaExceededError();
-      } else if (delta < 0) {
+      // The thumbnail is real disk usage on top of the reserved source; true up
+      // the pending counter. Not re-checked against the cap: the bytes are
+      // already written, and reconcile corrects any small overshoot.
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+      if (delta !== 0) {
         await tx.$executeRaw`
           UPDATE "User"
-             SET "usedBytes" = GREATEST(0, "usedBytes" + ${BigInt(delta)})
+             SET "pendingBytes" = GREATEST(0, "pendingBytes" + ${BigInt(delta)})
            WHERE id = ${user.id}
         `;
-      } else {
-        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
       }
 
       const updated = await tx.photo.updateMany({
@@ -420,56 +413,42 @@ export async function POST(req: NextRequest) {
           uploadState: "processing"
         },
         data: {
-          filename: processed.origFilename,
-          width: processed.width,
-          height: processed.height,
-          bytes: processed.bytes,
-          uploadState: "pending",
-          storagePreset: processed.storagePreset,
-          candidatePreset: processed.candidatePreset,
-          sourceFilename: processed.sourceFilename,
-          sourceBytes: processed.sourceBytes,
-          candidateBytes: processed.candidateBytes,
-          renditionBytes: processed.renditionBytes,
-          exifFocalLengthMm: processed.exif.focalLengthMm,
-          exifAperture: processed.exif.aperture,
-          exifExposureTime: processed.exif.exposureTime,
-          exifIso: processed.exif.iso,
-          exifTakenAt: processed.exif.takenAt,
-          exifCameraModel: processed.exif.cameraModel,
-          exifLensModel: processed.exif.lensModel
+          width: stored.width,
+          height: stored.height,
+          bytes: storedBytes,
+          sourceFilename: stored.sourceFilename,
+          sourceBytes: stored.sourceBytes,
+          // Only the thumbnail exists yet; the worker overwrites this with the
+          // full rendition total when it finishes.
+          renditionBytes: stored.thumbBytes,
+          exifFocalLengthMm: stored.exif.focalLengthMm,
+          exifAperture: stored.exif.aperture,
+          exifExposureTime: stored.exif.exposureTime,
+          exifIso: stored.exif.iso,
+          exifTakenAt: stored.exif.takenAt,
+          exifCameraModel: stored.exif.cameraModel,
+          exifLensModel: stored.exif.lensModel
         }
       });
       if (updated.count !== 1) throw new UploadConflictError();
     });
   } catch (err) {
-    // If the database commit actually landed but its acknowledgement was lost,
-    // keep the completed row and answer idempotently. Otherwise claim cleanup;
-    // a durable deleting row remains available if filesystem cleanup fails.
+    // If the row was discarded during the brief thumbnail write, cleanup
+    // already handled it; otherwise surface the failure.
     const current = await findOwnedUpload(uploadId, user.id);
-    if (
-      current &&
-      current.eventId === eventId &&
-      (current.uploadState === "pending" || current.uploadState === "ready")
-    ) {
-      return existingUploadResponse(current);
+    if (!current) {
+      return NextResponse.json({ error: "unknown" }, { status: 500 });
     }
-
-    const claimed = await markProcessingForDeletion(user.id, eventId, uploadId);
-    if (claimed || current?.uploadState === "deleting" || !current) {
-      await cleanupDeletingPhoto(
-        user.id,
-        eventId,
-        uploadId,
-        processed.origFilename
-      );
+    if (current.uploadState === "deleting") {
+      return NextResponse.json({ error: "invalidImage" }, { status: 400 });
     }
-    console.error("Failed to finish pending photo:", err);
-    return NextResponse.json(
-      { error: err instanceof QuotaExceededError ? "quotaExceeded" : "unknown" },
-      { status: err instanceof QuotaExceededError ? 413 : 500 }
-    );
+    console.error("Failed to record pending photo source:", err);
+    return NextResponse.json({ error: "unknown" }, { status: 500 });
   }
+
+  // Kick background compression (renditions + compressed master). Fire-and-
+  // forget: the durable "processing" row and startup sweep make it recoverable.
+  enqueueCompression(uploadId);
 
   const completed = await findOwnedUpload(uploadId, user.id);
   if (!completed) {
@@ -507,7 +486,9 @@ export async function PUT(req: NextRequest) {
   if (!current || current.pendingBatchId === null) {
     return NextResponse.json({ error: "photoNotFound" }, { status: 404 });
   }
-  if (current.uploadState !== "pending") {
+  // Only pending or still-compressing (processing) uploads accept a quality
+  // change; finalizing/deleting are terminal for this endpoint.
+  if (current.uploadState !== "pending" && current.uploadState !== "processing") {
     return NextResponse.json(
       pendingPhotoJson(current),
       { status: statusForUploadState(current.uploadState) }
@@ -535,9 +516,14 @@ export async function PUT(req: NextRequest) {
         : "balanced"
       : storagePreset;
 
+  // Fast path: a fully-compressed pending row whose stored candidate already
+  // matches the requested master needs only a flag flip, no re-encode.
   if (
-    storagePreset === "original" ||
-    current.candidatePreset === candidatePreset
+    current.uploadState === "pending" &&
+    !current.compressionFailed &&
+    current.renditionBytes != null &&
+    current.candidateBytes != null &&
+    (storagePreset === "original" || current.candidatePreset === candidatePreset)
   ) {
     const updated = await prisma.photo.updateMany({
       where: { id: current.id, uploadState: "pending" },
@@ -550,92 +536,27 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json(pendingPhotoJson(latest));
   }
 
+  // Otherwise (re)compress in the background: record the desired preset, mark
+  // the row processing and hand it to the worker, which trues up pendingBytes
+  // when it commits. compressionClaimedAt is deliberately left untouched so a
+  // worker already encoding this row detects the change and re-runs itself.
   const claimed = await prisma.photo.updateMany({
-    where: { id: current.id, uploadState: "pending" },
-    data: { uploadState: "processing" }
+    where: {
+      id: current.id,
+      pendingBatchId: { not: null },
+      uploadState: { in: ["pending", "processing"] }
+    },
+    data: {
+      storagePreset,
+      candidatePreset,
+      uploadState: "processing",
+      compressionFailed: false
+    }
   });
   if (claimed.count !== 1) {
     return NextResponse.json({ error: "uploadConflict" }, { status: 409 });
   }
-
-  let candidate: { filename: string; bytes: number } | null = null;
-  try {
-    candidate = await withImageProcessingSlot(() =>
-      replacePendingCandidate(
-        user.id,
-        current.eventId,
-        current.id,
-        current.sourceFilename!,
-        candidatePreset
-      )
-    );
-    const oldCandidateBytes = current.candidateBytes ?? 0;
-    const nextBytes = current.bytes - oldCandidateBytes + candidate.bytes;
-    const delta = nextBytes - current.bytes;
-
-    await prisma.$transaction(async (tx) => {
-      if (delta > 0) {
-        const adjusted = await tx.$executeRaw`
-          UPDATE "User" AS u
-             SET "usedBytes" = u."usedBytes" + ${BigInt(delta)}
-           WHERE u.id = ${user.id}
-             AND u."usedBytes" + ${BigInt(delta)} <= ${EFFECTIVE_QUOTA}
-        `;
-        if (adjusted !== 1) throw new QuotaExceededError();
-      } else if (delta < 0) {
-        await tx.$executeRaw`
-          UPDATE "User"
-             SET "usedBytes" = GREATEST(0, "usedBytes" + ${BigInt(delta)})
-           WHERE id = ${user.id}
-        `;
-      } else {
-        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
-      }
-
-      const changed = await tx.photo.updateMany({
-        where: {
-          id: current.id,
-          eventId: current.eventId,
-          uploadState: "processing"
-        },
-        data: {
-          filename: candidate!.filename,
-          bytes: nextBytes,
-          storagePreset,
-          candidatePreset,
-          candidateBytes: candidate!.bytes,
-          uploadState: "pending"
-        }
-      });
-      if (changed.count !== 1) throw new UploadConflictError();
-    });
-
-    if (current.filename !== candidate.filename) {
-      await deletePhotoAssetFile(
-        user.id,
-        current.eventId,
-        current.filename
-      ).catch((error) =>
-        console.error("Failed to remove replaced photo candidate:", error)
-      );
-    }
-  } catch (error) {
-    if (candidate) {
-      await deletePhotoAssetFile(
-        user.id,
-        current.eventId,
-        candidate.filename
-      ).catch(() => undefined);
-    }
-    await prisma.photo.updateMany({
-      where: { id: current.id, uploadState: "processing" },
-      data: { uploadState: "pending" }
-    });
-    return NextResponse.json(
-      { error: error instanceof QuotaExceededError ? "quotaExceeded" : "unknown" },
-      { status: error instanceof QuotaExceededError ? 413 : 500 }
-    );
-  }
+  enqueueCompression(current.id);
 
   const updated = await findOwnedUpload(current.id, user.id);
   if (!updated) return NextResponse.json({ error: "unknown" }, { status: 500 });
@@ -826,16 +747,25 @@ export async function PATCH(req: NextRequest) {
             throw new PendingBatchChangedError();
           }
 
+          // Publish is where storage is finally charged: the finalized bytes
+          // move from the pending counter into usedBytes (the quota-bearing
+          // total), and the pending reservation for these photos is released.
           const previousBytes = photos.reduce((sum, photo) => sum + photo.bytes, 0);
           const finalBytes = photoIds.reduce(
             (sum, id) => sum + (finalized.get(id)?.bytes ?? 0),
             0
           );
-          const delta = finalBytes - previousBytes;
-          if (delta !== 0) {
+          if (finalBytes > 0) {
             await tx.$executeRaw`
               UPDATE "User"
-                 SET "usedBytes" = GREATEST(0, "usedBytes" + ${BigInt(delta)})
+                 SET "usedBytes" = GREATEST(0, "usedBytes" + ${BigInt(finalBytes)})
+               WHERE id = ${user.id}
+            `;
+          }
+          if (previousBytes > 0) {
+            await tx.$executeRaw`
+              UPDATE "User"
+                 SET "pendingBytes" = GREATEST(0, "pendingBytes" - ${BigInt(previousBytes)})
                WHERE id = ${user.id}
             `;
           }

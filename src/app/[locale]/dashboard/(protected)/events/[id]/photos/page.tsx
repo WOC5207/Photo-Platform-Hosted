@@ -78,7 +78,8 @@ export default async function AddPhotosPage({
         ? (photo.storagePreset === "original"
             ? photo.sourceBytes!
             : photo.candidateBytes!) + photo.renditionBytes
-        : null
+        : null,
+    compressionFailed: photo.compressionFailed
   }));
 
   return (

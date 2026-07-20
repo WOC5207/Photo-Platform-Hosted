@@ -348,8 +348,9 @@ test.describe.serial("management workflows", () => {
     await page.waitForURL(/\/dashboard\/events\/[^/]+\/photos$/);
 
     const picker = page.locator('input[type="file"][accept*="image/jpeg"]');
-    const batchQuality = page.getByLabel("Storage quality for the next selection");
-    await expect(batchQuality).toHaveValue("balanced");
+    // The upload step no longer carries its own storage-quality selector; that
+    // choice lives solely on the compression step now.
+    await expect(page.getByLabel("Storage quality for the next selection")).toHaveCount(0);
     await expect(page.getByText("Maximum size per photo: 100 MB.")).toBeVisible();
     const continueButton = page.getByRole("button", { name: "Continue" });
     await expect(continueButton).toBeDisabled();
@@ -382,7 +383,10 @@ test.describe.serial("management workflows", () => {
 
     await picker.setInputFiles({ name: "first.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("1 photo queued")).toBeVisible();
-    await expect(page.getByText("Ready to create")).toHaveCount(1);
+    // The upload settles fast (source + thumbnail); the compressed master is
+    // produced in the background, so "Ready to create" appears once compression
+    // finishes rather than at the end of the transfer.
+    await expect(page.getByText("Ready to create")).toHaveCount(1, { timeout: 15_000 });
     await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
       "aria-valuenow",
       "100"
@@ -393,7 +397,7 @@ test.describe.serial("management workflows", () => {
     // must retain the first server-backed pending photo and append this one.
     await picker.setInputFiles({ name: "second.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("2 photos queued")).toBeVisible();
-    await expect(page.getByText("Ready to create")).toHaveCount(2);
+    await expect(page.getByText("Ready to create")).toHaveCount(2, { timeout: 15_000 });
     await expect(page.getByRole("img", { name: "second.png" })).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
       "aria-valuenow",
@@ -419,7 +423,7 @@ test.describe.serial("management workflows", () => {
       buffer: tiff
     });
     await expect(page.getByText("3 photos queued")).toBeVisible();
-    await expect(page.getByText("Ready to create")).toHaveCount(3);
+    await expect(page.getByText("Ready to create")).toHaveCount(3, { timeout: 15_000 });
     await expect(page.getByRole("img", { name: "third.tiff" })).toBeVisible();
 
     await page.reload();
@@ -443,7 +447,7 @@ test.describe.serial("management workflows", () => {
     await expect(page.getByText("2 photos queued")).toBeVisible();
     await picker.setInputFiles({ name: "first.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("3 photos queued")).toBeVisible();
-    await expect(page.getByText("Ready to create")).toHaveCount(3);
+    await expect(page.getByText("Ready to create")).toHaveCount(3, { timeout: 15_000 });
 
     // Step 2 — compression: per-photo overrides via multi-select.
     await expect(continueButton).toBeEnabled();
@@ -452,6 +456,9 @@ test.describe.serial("management workflows", () => {
     await expect(grid.getByRole("button")).toHaveCount(3);
     await expect(page.getByText(/^Total size after publishing:/)).toBeVisible();
 
+    // Advancing from the previous step selects every photo by default.
+    await expect(page.getByText("3 selected")).toBeVisible();
+    await page.getByRole("button", { name: "Clear selection" }).click();
     await grid.getByRole("button", { name: "Select first.png" }).click();
     await expect(page.getByText("1 selected")).toBeVisible();
     await page.getByLabel("Storage quality", { exact: true }).selectOption("archive");
@@ -460,29 +467,35 @@ test.describe.serial("management workflows", () => {
     await expect(grid.getByText(/^Balanced/)).toHaveCount(2);
 
     // Step 3 — credits: only the first photo gets one; the rest stay
-    // uncredited on purpose.
+    // uncredited on purpose. All photos start selected on entry.
     await continueButton.click();
+    await expect(page.getByText("3 selected")).toBeVisible();
+    await page.getByRole("button", { name: "Clear selection" }).click();
     await page.getByRole("button", { name: "Select first.png" }).click();
     await page.locator('input[list="known-credits"]').fill("E2E credit");
     await page.getByRole("button", { name: "Apply to selected (1)" }).click();
     await expect(grid.getByText("E2E credit")).toBeVisible();
     await expect(grid.getByText("No credit")).toHaveCount(2);
 
-    // Step 4 — confirm: album preview, totals, and an explicit
-    // acknowledgement before uncredited photos may publish.
+    // The no-credit warning now appears on the credits step and must be
+    // acknowledged before advancing to Confirm.
+    await expect(
+      page.getByText("2 photos have no credit and will be published without attribution.")
+    ).toBeVisible();
+    await expect(continueButton).toBeDisabled();
+    await page
+      .getByRole("checkbox", { name: "Publish these photos without a credit" })
+      .check();
+    await expect(continueButton).toBeEnabled();
+
+    // Step 4 — confirm: album preview, totals and publish. The acknowledgement
+    // was already given on the credits step, so publishing is ready.
     await continueButton.click();
     await expect(page.getByText("Photos to publish")).toBeVisible();
     await expect(page.getByText("Total size after publishing")).toBeVisible();
     await expect(page.getByText("E2E credit — 1 photo")).toBeVisible();
     await expect(page.getByText("2 photos without credit")).toBeVisible();
-    await expect(
-      page.getByText("2 photos have no credit and will be published without attribution.")
-    ).toBeVisible();
     const publishButton = page.getByRole("button", { name: "Publish 3 photos" });
-    await expect(publishButton).toBeDisabled();
-    await page
-      .getByRole("checkbox", { name: "Publish these photos without a credit" })
-      .check();
     await expect(publishButton).toBeEnabled();
     await publishButton.click();
 

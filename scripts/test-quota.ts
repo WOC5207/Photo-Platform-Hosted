@@ -259,6 +259,57 @@ async function testReconcile() {
   await prisma.user.delete({ where: { id: u.id } });
 }
 
+/**
+ * Pending (unpublished) photos no longer count toward the storage quota — they
+ * are compressed in the background and charged to usedBytes only at publish.
+ * Reconcile must therefore keep them out of usedBytes and account them in
+ * pendingBytes instead.
+ */
+async function testPendingExcludedFromQuota() {
+  const u = await makeUser(100 * MB);
+  const event = await prisma.event.create({
+    data: { ownerId: u.id, slug: "pending", titleEn: "t", titleZh: "t" }
+  });
+  // One published photo (counts toward the quota) …
+  await prisma.photo.create({
+    data: {
+      eventId: event.id,
+      filename: "published",
+      originalName: "published.jpg",
+      width: 1,
+      height: 1,
+      bytes: 5 * MB
+    }
+  });
+  // … and two pending ones (must not count toward the quota).
+  await prisma.photo.createMany({
+    data: [1, 2].map((n) => ({
+      eventId: event.id,
+      filename: `pending${n}`,
+      originalName: `pending${n}.jpg`,
+      width: 1,
+      height: 1,
+      bytes: n * MB,
+      pendingBatchId: "batch",
+      uploadState: "pending"
+    }))
+  });
+
+  const usage = await reconcileQuota(u.id);
+  report(
+    "quota: pending photos are excluded from usedBytes",
+    usage.usedBytes === 5 * MB,
+    `used=${(usage.usedBytes / MB).toFixed(0)}MB, want 5MB (only the published photo)`
+  );
+  report(
+    "quota: pending photos are tracked in pendingBytes",
+    usage.pendingBytes === 3 * MB,
+    `pending=${(usage.pendingBytes / MB).toFixed(0)}MB, want 3MB (1+2 pending)`
+  );
+
+  await prisma.user.delete({ where: { id: u.id } });
+}
+
 /** Quotas are per account: one user's usage must not touch another's. */
 async function testQuotaIsPerAccount() {
   const a = await makeUser(10 * MB);
@@ -562,6 +613,7 @@ async function main() {
   await testRelease();
   await testAdjustReservation();
   await testReconcile();
+  await testPendingExcludedFromQuota();
   await testConditionalDeleteRelease();
   await testQuotaIsPerAccount();
   await testDefaultTierApplies();

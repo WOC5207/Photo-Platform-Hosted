@@ -31,11 +31,15 @@ export interface PendingPhotoValue {
   renditionBytes: number | null;
   pendingBytes: number;
   finalBytes: number | null;
+  compressionFailed: boolean;
 }
 
 export type QueueState =
   | "waiting"
   | "uploading"
+  // The source is stored and a preview exists; the compressed master is being
+  // produced by the server in the background. Browsable but not publish-ready.
+  | "compressing"
   | "optimizing"
   | "ready"
   | "failed"
@@ -68,6 +72,7 @@ export interface QueuedFile {
   renditionBytes?: number | null;
   pendingBytes?: number;
   finalBytes?: number | null;
+  compressionFailed?: boolean;
   presetError?: "quotaExceeded" | "legacyPending" | "unknown";
 }
 
@@ -114,6 +119,7 @@ function serverPhotoPatch(
   | "renditionBytes"
   | "pendingBytes"
   | "finalBytes"
+  | "compressionFailed"
 > {
   return {
     storagePreset: photo.storagePreset,
@@ -124,14 +130,48 @@ function serverPhotoPatch(
     candidateBytes: photo.candidateBytes,
     renditionBytes: photo.renditionBytes,
     pendingBytes: photo.pendingBytes,
-    finalBytes: photo.finalBytes
+    finalBytes: photo.finalBytes,
+    compressionFailed: photo.compressionFailed
   };
+}
+
+/**
+ * Map a durable server upload state to the queue's client state. "processing"
+ * spans background compression: it is browsable (a thumbnail exists) unless the
+ * compression failed, in which case it surfaces as a retryable error.
+ */
+function serverQueueState(photo: {
+  state: PendingPhotoValue["state"];
+  compressionFailed: boolean;
+}): { state: QueueState; error?: QueueError } {
+  switch (photo.state) {
+    case "pending":
+      return { state: "ready" };
+    case "deleting":
+      return { state: "discarding" };
+    case "processing":
+      return photo.compressionFailed
+        ? { state: "failed", error: "unknown" }
+        : { state: "compressing" };
+    case "finalizing":
+      return { state: "compressing" };
+    case "ready":
+    default:
+      return { state: "ready" };
+  }
 }
 
 export interface PendingUploadQueue {
   files: QueuedFile[];
+  /** Fully compressed, publish-ready photos. */
   readyFiles: (QueuedFile & { photoId: string })[];
+  /** Photos that can be browsed/selected/credited now — ready plus those still
+      compressing in the background. */
+  browsableFiles: (QueuedFile & { photoId: string })[];
   queueWorking: boolean;
+  /** A file is still transferring (waiting/uploading). Distinct from background
+      compression, which does not block advancing through the wizard. */
+  transferWorking: boolean;
   clearing: boolean;
   locked: boolean;
   setLocked: (locked: boolean) => void;
@@ -146,6 +186,7 @@ export interface PendingUploadQueue {
   ) => void;
   removeQueuedFile: (item: QueuedFile) => Promise<void>;
   retryQueuedFile: (item: QueuedFile) => Promise<void>;
+  retryCompression: (item: QueuedFile) => Promise<void>;
   clearQueue: () => Promise<void>;
   changeStoragePreset: (item: QueuedFile, preset: StoragePreset) => Promise<void>;
   finalizeBatch: (
@@ -179,31 +220,29 @@ export function usePendingUploadQueue({
   const uploadChainRef = useRef<Promise<void>>(Promise.resolve());
   const cancelledKeysRef = useRef(new Set<string>());
   const activeUploadKeysRef = useRef(new Set<string>());
+  const compressionTrackersRef = useRef(new Set<string>());
   const discardingKeysRef = useRef(new Set<string>());
   const uploadRequestsRef = useRef(new Map<string, XMLHttpRequest>());
   const lockedRef = useRef(false);
   const blobPreviewUrlsRef = useRef(new Set<string>());
 
   const [files, setFiles] = useState<QueuedFile[]>(() =>
-    initialPendingPhotos.map((photo) => ({
-      key: `server-${photo.id}`,
-      uploadId: photo.id,
-      name: photo.name,
-      previewUrl:
-        photo.state === "processing" || photo.state === "finalizing"
-          ? undefined
-          : photo.previewUrl,
-      fileBytes: photo.sourceBytes ?? undefined,
-      uploadedBytes: photo.sourceBytes ?? undefined,
-      photoId: photo.id,
-      ...serverPhotoPatch(photo),
-      state:
-        photo.state === "processing" || photo.state === "finalizing"
-          ? "uploading"
-          : photo.state === "deleting"
-            ? "discarding"
-            : "ready"
-    }))
+    initialPendingPhotos.map((photo) => {
+      const mapped = serverQueueState(photo);
+      return {
+        key: `server-${photo.id}`,
+        uploadId: photo.id,
+        name: photo.name,
+        // The thumbnail exists as soon as the source is stored, so a processing
+        // (compressing) row has a real preview; only finalizing has none.
+        previewUrl: photo.state === "finalizing" ? undefined : photo.previewUrl,
+        fileBytes: photo.sourceBytes ?? undefined,
+        uploadedBytes: photo.sourceBytes ?? undefined,
+        photoId: photo.id,
+        ...serverPhotoPatch(photo),
+        ...mapped
+      };
+    })
   );
   const [locked, setLockedState] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -219,10 +258,21 @@ export function usePendingUploadQueue({
     (item): item is QueuedFile & { photoId: string } =>
       item.state === "ready" && typeof item.photoId === "string"
   );
+  const browsableFiles = files.filter(
+    (item): item is QueuedFile & { photoId: string } =>
+      (item.state === "ready" ||
+        item.state === "compressing" ||
+        item.state === "optimizing") &&
+      typeof item.photoId === "string"
+  );
+  const transferWorking = files.some(
+    (item) => item.state === "waiting" || item.state === "uploading"
+  );
   const queueWorking = files.some(
     (item) =>
       item.state === "waiting" ||
       item.state === "uploading" ||
+      item.state === "compressing" ||
       item.state === "optimizing" ||
       item.state === "discarding"
   );
@@ -235,9 +285,12 @@ export function usePendingUploadQueue({
     if (item.state === "failed") return total;
     if (
       item.state === "ready" ||
+      item.state === "compressing" ||
       item.state === "optimizing" ||
       item.state === "discarding"
     ) {
+      // Transfer is complete once the row exists server-side; background
+      // compression is tracked separately and does not hold up the bar.
       return total + itemTotal;
     }
     return total + Math.min(item.uploadedBytes ?? 0, itemTotal);
@@ -253,6 +306,7 @@ export function usePendingUploadQueue({
     const itemTotal = item.fileBytes ?? item.sourceBytes ?? 0;
     return (
       item.state === "ready" ||
+      item.state === "compressing" ||
       item.state === "optimizing" ||
       item.state === "discarding" ||
       (itemTotal > 0 && (item.uploadedBytes ?? 0) >= itemTotal)
@@ -273,6 +327,76 @@ export function usePendingUploadQueue({
     setFiles((current) =>
       current.map((item) => (item.key === key ? { ...item, ...patch } : item))
     );
+  }
+
+  /**
+   * Poll a background-compressing photo out of band (not on the upload chain)
+   * until it becomes pending (ready), fails, or is removed. This is what lets a
+   * batch's uploads settle immediately while their compression finishes behind
+   * the scenes.
+   */
+  async function trackCompression(key: string, uploadId: string) {
+    if (compressionTrackersRef.current.has(key)) return;
+    compressionTrackersRef.current.add(key);
+    try {
+      // Compression can queue behind other jobs and a large TIFF is slow, so
+      // poll patiently rather than time out into a spurious error.
+      for (let attempt = 0; attempt < 400; attempt++) {
+        if (cancelledKeysRef.current.has(key)) return;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        if (cancelledKeysRef.current.has(key)) return;
+        let serverPhoto: PendingPhotoValue | undefined;
+        try {
+          const params = new URLSearchParams({ eventId, uploadId });
+          const response = await fetch(`/api/admin/photos?${params}`, {
+            cache: "no-store"
+          });
+          if (!response.ok) continue;
+          const data = (await response.json()) as {
+            photos?: PendingPhotoValue[];
+          };
+          serverPhoto = data.photos?.[0];
+        } catch {
+          continue;
+        }
+        if (cancelledKeysRef.current.has(key)) return;
+        if (!serverPhoto) {
+          // Discarded or finalized in another request/tab.
+          setFiles((current) => current.filter((c) => c.key !== key));
+          return;
+        }
+        if (serverPhoto.state === "pending") {
+          updateQueuedFile(key, {
+            state: "ready",
+            previewUrl:
+              serverPhoto.previewUrl || serverPreviewUrl(serverPhoto.id),
+            error: undefined,
+            ...serverPhotoPatch(serverPhoto)
+          });
+          return;
+        }
+        if (serverPhoto.state === "ready") {
+          setFiles((current) => current.filter((c) => c.key !== key));
+          router.refresh();
+          return;
+        }
+        if (serverPhoto.state === "deleting") {
+          updateQueuedFile(key, { state: "discarding" });
+          continue;
+        }
+        if (serverPhoto.compressionFailed) {
+          updateQueuedFile(key, {
+            state: "failed",
+            error: "unknown",
+            compressionFailed: true
+          });
+          return;
+        }
+        // Still compressing/finalizing: keep the compressing state and wait.
+      }
+    } finally {
+      compressionTrackersRef.current.delete(key);
+    }
   }
 
   async function waitForServerUpload(item: QueuedFile): Promise<boolean> {
@@ -323,6 +447,26 @@ export function usePendingUploadQueue({
             current.filter((candidate) => candidate.key !== item.key)
           );
           router.refresh();
+          return true;
+        }
+        if (serverPhoto.state === "processing") {
+          // Source committed; compression continues in the background. Hand off
+          // to the out-of-band tracker instead of blocking this chain.
+          releaseBlobPreview(item.previewUrl);
+          updateQueuedFile(item.key, {
+            state: serverPhoto.compressionFailed ? "failed" : "compressing",
+            error: serverPhoto.compressionFailed ? "unknown" : undefined,
+            photoId: serverPhoto.id,
+            file: undefined,
+            previewUrl:
+              serverPhoto.previewUrl || serverPreviewUrl(serverPhoto.id),
+            fileBytes: serverPhoto.sourceBytes ?? item.fileBytes,
+            uploadedBytes: serverPhoto.sourceBytes ?? item.fileBytes,
+            ...serverPhotoPatch(serverPhoto)
+          });
+          if (!serverPhoto.compressionFailed) {
+            void trackCompression(item.key, item.uploadId);
+          }
           return true;
         }
         if (serverPhoto.state === "deleting") {
@@ -402,11 +546,27 @@ export function usePendingUploadQueue({
           });
           return;
         }
-        if (
-          status === 202 ||
-          data?.state === "processing" ||
-          data?.state === "deleting"
-        ) {
+        if (data?.state === "processing" && typeof data.id === "string") {
+          // Fast path: the source and thumbnail are stored; compression runs in
+          // the background. Show the photo now and track completion out of band
+          // so the upload chain drains without waiting on Sharp.
+          releaseBlobPreview(item.previewUrl);
+          updateQueuedFile(item.key, {
+            state: data.compressionFailed ? "failed" : "compressing",
+            error: data.compressionFailed ? "unknown" : undefined,
+            photoId: data.id,
+            file: undefined,
+            previewUrl: data.previewUrl || serverPreviewUrl(data.id),
+            fileBytes: data.sourceBytes ?? item.file.size,
+            uploadedBytes: data.sourceBytes ?? item.file.size,
+            ...serverPhotoPatch(data as PendingPhotoValue)
+          });
+          if (!data.compressionFailed) {
+            void trackCompression(item.key, item.uploadId);
+          }
+          return;
+        }
+        if (status === 202 || data?.state === "deleting") {
           if (!(await waitForServerUpload(item))) {
             updateQueuedFile(item.key, { state: "failed", error: "unknown" });
           }
@@ -619,9 +779,15 @@ export function usePendingUploadQueue({
   }
 
   async function changeStoragePreset(item: QueuedFile, preset: StoragePreset) {
-    if (!item.photoId || item.state !== "ready" || lockedRef.current || clearing) {
+    if (
+      !item.photoId ||
+      (item.state !== "ready" && item.state !== "compressing") ||
+      lockedRef.current ||
+      clearing
+    ) {
       return;
     }
+    const previousState = item.state;
     updateQueuedFile(item.key, { state: "optimizing", presetError: undefined });
     try {
       const response = await fetch("/api/admin/photos", {
@@ -636,7 +802,7 @@ export function usePendingUploadQueue({
       if (!response.ok || !data || !("id" in data)) {
         const error = data && "error" in data ? data.error : undefined;
         updateQueuedFile(item.key, {
-          state: "ready",
+          state: previousState,
           presetError:
             error === "quotaExceeded"
               ? "quotaExceeded"
@@ -646,13 +812,64 @@ export function usePendingUploadQueue({
         });
         return;
       }
+      // A real re-encode is backgrounded (server returns processing); a no-op
+      // preset flip returns pending. Reflect either and track the former.
+      if (data.state === "processing") {
+        updateQueuedFile(item.key, {
+          state: "compressing",
+          presetError: undefined,
+          ...serverPhotoPatch(data)
+        });
+        void trackCompression(item.key, item.photoId);
+        return;
+      }
       updateQueuedFile(item.key, {
         state: "ready",
         presetError: undefined,
         ...serverPhotoPatch(data)
       });
     } catch {
-      updateQueuedFile(item.key, { state: "ready", presetError: "unknown" });
+      updateQueuedFile(item.key, { state: previousState, presetError: "unknown" });
+    }
+  }
+
+  async function retryCompression(item: QueuedFile) {
+    if (!item.photoId || lockedRef.current || clearing) return;
+    updateQueuedFile(item.key, {
+      state: "compressing",
+      error: undefined,
+      compressionFailed: false,
+      presetError: undefined
+    });
+    try {
+      const response = await fetch("/api/admin/photos", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          photoId: item.photoId,
+          storagePreset: item.storagePreset
+        })
+      });
+      const data = (await response.json().catch(() => null)) as
+        | (PendingPhotoValue & { error?: unknown })
+        | { error?: unknown }
+        | null;
+      if (!response.ok || !data || !("id" in data)) {
+        updateQueuedFile(item.key, {
+          state: "failed",
+          error: "unknown",
+          compressionFailed: true
+        });
+        return;
+      }
+      updateQueuedFile(item.key, { ...serverPhotoPatch(data) });
+      void trackCompression(item.key, item.photoId);
+    } catch {
+      updateQueuedFile(item.key, {
+        state: "failed",
+        error: "unknown",
+        compressionFailed: true
+      });
     }
   }
 
@@ -702,25 +919,21 @@ export function usePendingUploadQueue({
           return item.photoId ? [] : [item];
         }
         seen.add(server.id);
+        // Don't clobber a locally-tracked optimizing/compressing transition
+        // (a just-issued preset change) with a stale server snapshot.
+        if (item.state === "optimizing") return [item];
         return [
           {
             ...item,
             name: server.name,
             photoId: server.id,
             previewUrl:
-              server.state === "processing" || server.state === "finalizing"
-                ? item.previewUrl
-                : server.previewUrl,
+              server.state === "finalizing" ? item.previewUrl : server.previewUrl,
             fileBytes: server.sourceBytes ?? item.fileBytes,
             uploadedBytes: server.sourceBytes ?? item.uploadedBytes,
             ...serverPhotoPatch(server),
             file: server.state === "pending" ? undefined : item.file,
-            state:
-              server.state === "processing" || server.state === "finalizing"
-                ? ("uploading" as const)
-                : server.state === "deleting"
-                  ? ("discarding" as const)
-                  : ("ready" as const)
+            ...serverQueueState(server)
           }
         ];
       });
@@ -733,18 +946,11 @@ export function usePendingUploadQueue({
           name: server.name,
           photoId: server.id,
           previewUrl:
-            server.state === "processing" || server.state === "finalizing"
-              ? undefined
-              : server.previewUrl,
+            server.state === "finalizing" ? undefined : server.previewUrl,
           fileBytes: server.sourceBytes ?? undefined,
           uploadedBytes: server.sourceBytes ?? undefined,
           ...serverPhotoPatch(server),
-          state:
-            server.state === "processing" || server.state === "finalizing"
-              ? "uploading"
-              : server.state === "deleting"
-                ? "discarding"
-                : "ready"
+          ...serverQueueState(server)
         });
       }
       return reconciled;
@@ -761,33 +967,26 @@ export function usePendingUploadQueue({
 
   useEffect(() => {
     for (const photo of initialPendingPhotos) {
-      const item: QueuedFile = {
-        key: `server-${photo.id}`,
-        uploadId: photo.id,
-        name: photo.name,
-        photoId: photo.id,
-        previewUrl:
-          photo.state === "processing" || photo.state === "finalizing"
-            ? undefined
-            : photo.previewUrl,
-        fileBytes: photo.sourceBytes ?? undefined,
-        uploadedBytes: photo.sourceBytes ?? undefined,
-        ...serverPhotoPatch(photo),
-        state:
-          photo.state === "processing" || photo.state === "finalizing"
-            ? "uploading"
-            : photo.state === "deleting"
-              ? "discarding"
-              : "ready"
-      };
-      if (photo.state === "processing" || photo.state === "finalizing") {
-        void waitForServerUpload(item).then((settled) => {
-          if (!settled) {
-            updateQueuedFile(item.key, { state: "failed", error: "unknown" });
-          }
+      const key = `server-${photo.id}`;
+      // A row still processing (server-side) is compressing in the background:
+      // track it to completion. A failed compression is left for the user to
+      // retry from the queue.
+      if (photo.state === "processing" && !photo.compressionFailed) {
+        void trackCompression(key, photo.id);
+      }
+      if (photo.state === "finalizing") {
+        void trackCompression(key, photo.id);
+      }
+      if (photo.state === "deleting") {
+        void discardPendingPhoto({
+          key,
+          uploadId: photo.id,
+          name: photo.name,
+          photoId: photo.id,
+          storagePreset: photo.storagePreset,
+          state: "discarding"
         });
       }
-      if (photo.state === "deleting") void discardPendingPhoto(item);
     }
     // The server id set is the trigger; queue helpers deliberately use their
     // latest closures and idempotent endpoints.
@@ -797,7 +996,9 @@ export function usePendingUploadQueue({
   return {
     files,
     readyFiles,
+    browsableFiles,
     queueWorking,
+    transferWorking,
     clearing,
     locked,
     setLocked,
@@ -809,6 +1010,7 @@ export function usePendingUploadQueue({
     queueSelectedFiles,
     removeQueuedFile,
     retryQueuedFile,
+    retryCompression,
     clearQueue,
     changeStoragePreset,
     finalizeBatch

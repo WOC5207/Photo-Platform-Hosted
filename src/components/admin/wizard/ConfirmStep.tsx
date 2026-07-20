@@ -44,36 +44,29 @@ export type PublishPhase = "idle" | "publishing" | "error" | "success";
 export default function ConfirmStep({
   queue,
   creditsByPhoto,
-  ackUncredited,
-  onAckUncredited,
   publishPhase,
   publishedCount,
   onPublish
 }: {
   queue: PendingUploadQueue;
   creditsByPhoto: Record<string, AssignedCredit[]>;
-  ackUncredited: boolean;
-  onAckUncredited: (acknowledged: boolean) => void;
   publishPhase: PublishPhase;
   publishedCount: number;
   onPublish: () => void;
 }) {
   const tw = useTranslations("photoWizard");
-  const photos = queue.readyFiles;
+  // Show every browsable photo (including any still compressing) so the preview
+  // and counts reflect the whole batch; publishing itself waits for compression
+  // to finish (queueWorking) before it can start.
+  const photos = queue.browsableFiles;
   const groups = buildCreditGroups(photos, creditsByPhoto);
-  const uncreditedCount = photos.filter(
-    (item) => (creditsByPhoto[item.photoId] ?? []).length === 0
-  ).length;
   const knownFinalBytes = photos
     .map((item) => item.finalBytes)
     .filter((bytes): bytes is number => bytes != null);
   const totalFinalBytes = knownFinalBytes.reduce((sum, bytes) => sum + bytes, 0);
   const publishing = publishPhase === "publishing";
-  const canPublish =
-    photos.length > 0 &&
-    !publishing &&
-    !queue.queueWorking &&
-    (uncreditedCount === 0 || ackUncredited);
+  const finishingCompression = queue.queueWorking;
+  const canPublish = photos.length > 0 && !publishing && !finishingCompression;
 
   return (
     <div className="flex flex-col gap-4">
@@ -143,30 +136,15 @@ export default function ConfirmStep({
         ))}
       </ul>
 
-      {uncreditedCount > 0 && (
-        <div
-          role="alert"
-          className="flex flex-col gap-2 rounded-lg border border-danger-border bg-danger-surface/40 p-3 text-sm"
-        >
-          <p className="font-medium text-danger-strong">
-            {tw("uncreditedWarning", { count: uncreditedCount })}
-          </p>
-          <label className="flex items-center gap-2 text-fg">
-            <input
-              type="checkbox"
-              checked={ackUncredited}
-              disabled={publishing}
-              onChange={(event) => onAckUncredited(event.target.checked)}
-              className="h-4 w-4"
-            />
-            {tw("uncreditedAck")}
-          </label>
-        </div>
-      )}
-
       {publishPhase === "error" && (
         <p role="alert" className="text-sm font-medium text-danger">
           {tw("publishError", { published: publishedCount })}
+        </p>
+      )}
+
+      {finishingCompression && !publishing && (
+        <p role="status" className="text-sm text-fg-subtle">
+          {tw("finishingCompression")}
         </p>
       )}
 

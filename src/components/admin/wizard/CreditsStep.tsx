@@ -45,7 +45,9 @@ export default function CreditsStep({
   onAssign,
   creditProfiles,
   creditTerm,
-  subjectTerm
+  subjectTerm,
+  ackUncredited,
+  onAckUncredited
 }: {
   queue: PendingUploadQueue;
   creditsByPhoto: Record<string, AssignedCredit[]>;
@@ -53,14 +55,22 @@ export default function CreditsStep({
   creditProfiles: CreditProfile[];
   creditTerm: string;
   subjectTerm: string;
+  ackUncredited: boolean;
+  onAckUncredited: (acknowledged: boolean) => void;
 }) {
   const t = useTranslations("adminEvents");
   const tw = useTranslations("photoWizard");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const photos = queue.browsableFiles;
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(photos.map((item) => item.photoId))
+  );
   const [rows, setRows] = useState<Row[]>(() => [emptyRow()]);
 
-  const photos = queue.readyFiles;
   const busy = queue.locked || queue.clearing;
+  const uncreditedCount = photos.filter(
+    (item) => (creditsByPhoto[item.photoId] ?? []).length === 0
+  ).length;
   const selectedIds = photos
     .map((item) => item.photoId)
     .filter((photoId) => selected.has(photoId));
@@ -124,6 +134,27 @@ export default function CreditsStep({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-fg-muted">{tw("creditsIntro", { term: creditTerm })}</p>
+
+      {uncreditedCount > 0 && (
+        <div
+          role="alert"
+          className="flex flex-col gap-2 rounded-lg border border-danger-border bg-danger-surface/40 p-3 text-sm"
+        >
+          <p className="font-medium text-danger-strong">
+            {tw("uncreditedWarning", { count: uncreditedCount })}
+          </p>
+          <label className="flex items-center gap-2 text-fg">
+            <input
+              type="checkbox"
+              checked={ackUncredited}
+              disabled={busy}
+              onChange={(event) => onAckUncredited(event.target.checked)}
+              className="h-4 w-4"
+            />
+            {tw("uncreditedAck")}
+          </label>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 rounded-lg border border-border-strong/60 bg-surface/50 p-3">
         {rows.map((row) => (
@@ -233,11 +264,31 @@ export default function CreditsStep({
         <span role="status">{t("bulkSelectedCount", { count: selected.size })}</span>
       </div>
 
+      <p className="flex items-center gap-2 text-xs text-fg-subtle">
+        <span
+          aria-hidden="true"
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-danger-border bg-danger-surface text-[11px] font-bold text-danger-strong"
+        >
+          !
+        </span>
+        {tw("noCreditLegend")}
+      </p>
+
       <SelectableGrid
         photos={photos}
         selected={selected}
         onToggle={toggle}
         disabled={busy}
+        renderBadge={(photo) =>
+          (creditsByPhoto[photo.photoId] ?? []).length === 0 ? (
+            <span
+              title={tw("noCreditBadge")}
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-danger-border bg-danger-surface text-xs font-bold text-danger-strong shadow-sm"
+            >
+              !
+            </span>
+          ) : null
+        }
         renderFooter={(photo) => {
           const assigned = creditsByPhoto[photo.photoId] ?? [];
           return assigned.length > 0 ? (

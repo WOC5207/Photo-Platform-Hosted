@@ -2,7 +2,11 @@
 
 import { useTranslations } from "next-intl";
 import type { PendingUploadQueue, QueuedFile, StoragePreset } from "./usePendingUploadQueue";
-import { btnCls, formatUploadLimit, inputCls } from "./ui";
+import { btnCls, formatUploadLimit } from "./ui";
+
+// Uploads always land as the recommended Balanced master; the storage-quality
+// choice lives solely in the compression step to avoid two competing selectors.
+const DEFAULT_UPLOAD_PRESET: StoragePreset = "balanced";
 
 type AdminEventsTranslator = (
   key: string,
@@ -20,9 +24,11 @@ export function queueStateLabel(
       ? t("pendingProcessing")
       : t("pendingUploading");
   }
+  if (item.state === "compressing") return t("pendingCompressing");
   if (item.state === "optimizing") return t("pendingOptimizing");
   if (item.state === "ready") return t("pendingReady");
   if (item.state === "discarding") return t("pendingRemoving");
+  if (item.compressionFailed) return t("pendingErrorCompression");
   if (item.error === "quotaExceeded") return t("pendingErrorQuota");
   if (item.error === "queueFull") return t("pendingErrorQueueFull");
   if (item.error === "unsupportedType") return t("pendingErrorUnsupported");
@@ -33,15 +39,9 @@ export function queueStateLabel(
 
 export default function UploadStep({
   queue,
-  batchPreset,
-  onBatchPresetChange,
-  allowOriginal,
   uploadMaxBytes
 }: {
   queue: PendingUploadQueue;
-  batchPreset: StoragePreset;
-  onBatchPresetChange: (preset: StoragePreset) => void;
-  allowOriginal: boolean;
   uploadMaxBytes: number;
 }) {
   const t = useTranslations("adminEvents");
@@ -49,44 +49,24 @@ export default function UploadStep({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid gap-3 rounded-xl border border-dashed border-border-strong p-4 sm:grid-cols-[minmax(0,20rem)_auto] sm:items-end sm:justify-between">
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-fg-muted">
-          {t("storagePresetLabel")}
-          <select
-            value={batchPreset}
-            disabled={busy}
-            onChange={(event) =>
-              onBatchPresetChange(event.target.value as StoragePreset)
-            }
-            className={inputCls}
-          >
-            {allowOriginal && (
-              <option value="original">{t("storagePresetOriginal")}</option>
-            )}
-            <option value="archive">{t("storagePresetArchive")}</option>
-            <option value="balanced">{t("storagePresetBalanced")}</option>
-          </select>
-        </label>
-        <label className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-85 focus-within:ring-2 focus-within:ring-fg/40 sm:w-fit sm:justify-self-end">
+      <div className="grid gap-3 rounded-xl border border-dashed border-border-strong p-4 sm:justify-items-start">
+        <label className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-85 focus-within:ring-2 focus-within:ring-fg/40 sm:w-fit">
           <input
             type="file"
             multiple
             accept="image/jpeg,image/png,image/webp,image/tiff,image/x-tiff,.tif,.tiff"
             disabled={busy}
-            onChange={(event) => queue.queueSelectedFiles(event, batchPreset)}
+            onChange={(event) =>
+              queue.queueSelectedFiles(event, DEFAULT_UPLOAD_PRESET)
+            }
             className="sr-only"
           />
           <span>+ {t("upload")}</span>
         </label>
-        <p className="text-xs text-fg-subtle sm:col-span-2">{t("uploadHint")}</p>
-        <p className="-mt-2 text-xs text-fg-subtle sm:col-span-2">
+        <p className="text-xs text-fg-subtle">{t("uploadHint")}</p>
+        <p className="-mt-2 text-xs text-fg-subtle">
           {t("uploadSizeLimit", { maxSize: formatUploadLimit(uploadMaxBytes) })}
         </p>
-        {!allowOriginal && (
-          <p className="-mt-2 text-xs text-fg-subtle sm:col-span-2">
-            {t("storageOriginalDisabled")}
-          </p>
-        )}
       </div>
 
       {queue.oversizedSelectionCount > 0 && (
@@ -215,6 +195,16 @@ export default function UploadStep({
                           {t("retryPendingFile")}
                         </button>
                       )}
+                    {item.state === "failed" && item.compressionFailed && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void queue.retryCompression(item)}
+                        className={`${btnCls} min-h-8 px-2 py-1 max-sm:min-h-11`}
+                      >
+                        {t("retryPendingFile")}
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={busy || item.state === "discarding"}
@@ -222,7 +212,9 @@ export default function UploadStep({
                       onClick={() => void queue.removeQueuedFile(item)}
                       className={`${btnCls} min-h-8 px-2 py-1 max-sm:min-h-11`}
                     >
-                      {item.state === "uploading" || item.state === "optimizing"
+                      {item.state === "uploading" ||
+                      item.state === "optimizing" ||
+                      item.state === "compressing"
                         ? t("cancelPendingFileButton")
                         : t("removePendingFileButton")}
                     </button>

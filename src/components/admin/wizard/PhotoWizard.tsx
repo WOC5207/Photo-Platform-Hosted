@@ -7,8 +7,7 @@ import {
   usePendingUploadQueue,
   type AssignedCredit,
   type CreditProfile,
-  type PendingPhotoValue,
-  type StoragePreset
+  type PendingPhotoValue
 } from "./usePendingUploadQueue";
 import WizardStepper from "./WizardStepper";
 import UploadStep from "./UploadStep";
@@ -51,7 +50,6 @@ export default function PhotoWizard({
   });
 
   const [stepIndex, setStepIndex] = useState(0);
-  const [batchPreset, setBatchPreset] = useState<StoragePreset>("balanced");
   const [creditsByPhoto, setCreditsByPhoto] = useState<
     Record<string, AssignedCredit[]>
   >({});
@@ -66,19 +64,34 @@ export default function PhotoWizard({
     { key: "confirm", label: tw("stepConfirm") }
   ];
 
+  // Transfers must finish before advancing, but background compression need
+  // not: compressing photos are browsable and get credited while the server
+  // finishes them; only Publish waits for compression to complete.
   const uploadsSettled =
-    queue.readyFiles.length > 0 && !queue.queueWorking && !queue.clearing;
+    queue.browsableFiles.length > 0 &&
+    !queue.transferWorking &&
+    !queue.clearing;
   const publishing = publishPhase === "publishing";
+  // Photos still lacking a credit once the credits step is reached. The
+  // no-credit warning and its acknowledgement now live on that step, so the
+  // acknowledgement is what gates advancing to Confirm.
+  const uncreditedCount = queue.browsableFiles.filter(
+    (item) => (creditsByPhoto[item.photoId] ?? []).length === 0
+  ).length;
   const canContinue =
     stepIndex === 0
       ? uploadsSettled
       : stepIndex === 1
-        ? !queue.queueWorking
-        : stepIndex === 2;
+        ? queue.browsableFiles.length > 0 && !queue.transferWorking
+        : stepIndex === 2
+          ? uncreditedCount === 0 || ackUncredited
+          : true;
   const continueHint =
     stepIndex === 0 && queue.files.length > 0 && !uploadsSettled
       ? tw("waitUploads")
-      : null;
+      : stepIndex === 2 && uncreditedCount > 0 && !ackUncredited
+        ? tw("ackCreditsToContinue")
+        : null;
 
   function assignCredits(photoIds: string[], credits: AssignedCredit[]) {
     setCreditsByPhoto((current) => {
@@ -147,13 +160,7 @@ export default function PhotoWizard({
       />
 
       {stepIndex === 0 && (
-        <UploadStep
-          queue={queue}
-          batchPreset={batchPreset}
-          onBatchPresetChange={setBatchPreset}
-          allowOriginal={allowOriginal}
-          uploadMaxBytes={uploadMaxBytes}
-        />
+        <UploadStep queue={queue} uploadMaxBytes={uploadMaxBytes} />
       )}
       {stepIndex === 1 && (
         <CompressionStep queue={queue} allowOriginal={allowOriginal} />
@@ -166,14 +173,14 @@ export default function PhotoWizard({
           creditProfiles={creditProfiles}
           creditTerm={creditTerm}
           subjectTerm={subjectTerm}
+          ackUncredited={ackUncredited}
+          onAckUncredited={setAckUncredited}
         />
       )}
       {stepIndex === 3 && (
         <ConfirmStep
           queue={queue}
           creditsByPhoto={creditsByPhoto}
-          ackUncredited={ackUncredited}
-          onAckUncredited={setAckUncredited}
           publishPhase={publishPhase}
           publishedCount={publishedCount}
           onPublish={() => void publish()}
