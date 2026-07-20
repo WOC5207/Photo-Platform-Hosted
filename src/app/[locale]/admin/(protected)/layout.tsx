@@ -50,6 +50,11 @@ export default async function PlatformAdminLayout({
       icon: "tiers"
     },
     {
+      href: "/admin/notifications",
+      label: t("adminNotifications.navTitle"),
+      icon: "notifications"
+    },
+    {
       href: "/admin/storage",
       label: t("admin.platformHealth"),
       icon: "health"
