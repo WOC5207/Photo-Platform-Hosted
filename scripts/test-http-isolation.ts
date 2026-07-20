@@ -69,6 +69,20 @@ async function jpeg(): Promise<ArrayBuffer> {
   return out;
 }
 
+async function waitForPendingPhoto(photoId: string, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  let photo = await prisma.photo.findUniqueOrThrow({ where: { id: photoId } });
+  while (
+    photo.uploadState === "processing" &&
+    !photo.compressionFailed &&
+    Date.now() < deadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    photo = await prisma.photo.findUniqueOrThrow({ where: { id: photoId } });
+  }
+  return photo;
+}
+
 async function main() {
   const alice = await makeUser("alice");
   const bob = await makeUser("bob");
@@ -163,9 +177,7 @@ async function main() {
     headers: { cookie: aliceCookie, "content-type": "application/json" },
     body: JSON.stringify({ photoId, storagePreset: "archive" })
   });
-  const archiveRow = await prisma.photo.findUniqueOrThrow({
-    where: { id: uploadId }
-  });
+  const archiveRow = await waitForPendingPhoto(uploadId);
   report(
     "pending queue: owner can regenerate and persist an Archive candidate",
     archivePreset.status === 200 &&
@@ -322,14 +334,14 @@ async function main() {
 
   const beforeStalledCleanup = await prisma.user.findUniqueOrThrow({
     where: { id: alice.id },
-    select: { usedBytes: true }
+    select: { pendingBytes: true }
   });
   const stalledId = randomUUID().replace(/-/g, "");
   const stalledBytes = 321;
   await prisma.$transaction([
     prisma.user.update({
       where: { id: alice.id },
-      data: { usedBytes: { increment: stalledBytes } }
+      data: { pendingBytes: { increment: stalledBytes } }
     }),
     prisma.photo.create({
       data: {
@@ -354,16 +366,16 @@ async function main() {
     prisma.photo.findUnique({ where: { id: stalledId } }),
     prisma.user.findUniqueOrThrow({
       where: { id: alice.id },
-      select: { usedBytes: true }
+      select: { pendingBytes: true }
     })
   ]);
   report(
     "pending queue: an interrupted processing reservation can be removed",
     stalledDiscard.status === 200 &&
       stalledRow === null &&
-      afterStalledCleanup.usedBytes === beforeStalledCleanup.usedBytes,
+      afterStalledCleanup.pendingBytes === beforeStalledCleanup.pendingBytes,
     `HTTP ${stalledDiscard.status}, row=${stalledRow ? "present" : "removed"}, ` +
-      `before=${beforeStalledCleanup.usedBytes}, after=${afterStalledCleanup.usedBytes}`
+      `before=${beforeStalledCleanup.pendingBytes}, after=${afterStalledCleanup.pendingBytes}`
   );
 
   const beforeDiscard = await prisma.user.findUniqueOrThrow({
