@@ -29,11 +29,14 @@ export default async function AccountPage() {
       <ProfileForm
         username={user.username}
         initialDisplayName={user.displayName}
+        initialEmail={user.email}
         labels={{
           title: tr("displayName"),
           hint: tr("displayNameHint"),
           username: tr("username"),
           displayName: tr("displayName"),
+          email: t("email"),
+          emailHint: t("emailHint"),
           save: tc("save"),
           saved: tc("saved"),
           error: tc("error")

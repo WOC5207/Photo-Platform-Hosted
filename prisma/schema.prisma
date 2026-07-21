@@ -44,6 +44,11 @@ model User {
   // Human-readable name for the directory listing. Empty = fall back to
   // username, so an account is never nameless.
   displayName  String   @default("")
+  // Optional contact email for platform notifications: booking alerts for this
+  // owner's events and admin announcements. Empty = this account gets no email
+  // (in-app only), matching the pre-email default. Set by the account holder in
+  // Account -> Profile.
+  email        String   @default("")
 
   // The tier this account is on. NULL = the default tier, so a new account is
   // on the default without anything having to assign it.
@@ -529,6 +534,11 @@ model Booking {
   // that ContactMethod option.
   contactMethod String   @default("")
   contactValue  String   @default("")
+  // Optional email the visitor gives so they get a confirmation and status
+  // updates by mail. Separate from contactValue (which is free-form — WeChat,
+  // phone, etc.) precisely so we always have a real address to send to. Empty =
+  // no email for this booking.
+  email         String   @default("")
   notes         String   @default("")
   // "confirmed" | "cancelled" (SQLite has no enums)
   status        String   @default("confirmed")

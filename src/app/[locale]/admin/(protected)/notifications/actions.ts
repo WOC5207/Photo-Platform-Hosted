@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { notifyAnnouncement } from "@/lib/notify";
 
 /**
  * Platform notifications: messages from the admin to tenant accounts, shown
@@ -76,6 +77,26 @@ export async function sendNotification(
       }
     }
   });
+
+  // Also email the announcement to reachable accounts that set an address. The
+  // in-app banner above is the source of truth (it reaches accounts created
+  // later too); email is a best-effort extra. Same audience rule: everyone, or
+  // exactly the selected targets. Fire-and-forget — a dead SMTP server must not
+  // fail the send that already persisted.
+  const recipients = await prisma.user.findMany({
+    where: {
+      email: { not: "" },
+      ...(parsed.data.audience === "selected" ? { id: { in: targetIds } } : {})
+    },
+    select: { email: true }
+  });
+  notifyAnnouncement({
+    titleEn: parsed.data.titleEn,
+    titleZh: parsed.data.titleZh,
+    bodyEn: parsed.data.bodyEn,
+    bodyZh: parsed.data.bodyZh,
+    recipients: recipients.map((r) => r.email)
+  }).catch(() => {});
 
   revalidatePath("/", "layout");
   return { ok: true };

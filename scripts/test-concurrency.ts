@@ -67,6 +67,7 @@ function booking(i: number) {
     subject: "",
     contactMethod: "email",
     contactValue: `racer-${i}@example.com`,
+    email: "",
     notes: "",
     cancelToken: randomUUID().replace(/-/g, "")
   };

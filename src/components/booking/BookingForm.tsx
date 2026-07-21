@@ -142,6 +142,17 @@ export default function BookingForm({
         </div>
         <p className="-mt-2 text-xs text-fg-subtle">{t("contactHint")}</p>
         <label className="flex flex-col gap-1 text-sm">
+          <span className="text-fg-muted">{t("email")}</span>
+          <input
+            name="email"
+            type="email"
+            maxLength={200}
+            autoComplete="email"
+            className={inputCls}
+          />
+          <span className="text-xs text-fg-subtle">{t("emailHint")}</span>
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
           <span className="text-fg-muted">{t("notes")}</span>
           <textarea
             name="notes"

@@ -567,6 +567,8 @@
     "contactMethodPlaceholder": "选择联系方式",
     "contactValue": "联系信息",
     "contactHint": "选择你希望被联系的方式，并填写对应的账号或号码。",
+    "email": "邮箱（可选）",
+    "emailHint": "填写邮箱即可收到确认邮件，预约状态变动时也会通知你。",
     "notes": "备注（可选）",
     "notesPlaceholder": "风格、参考图，或其他需要说明的内容…",
     "submit": "预约该时间段",
@@ -787,6 +789,8 @@
   "account": {
     "title": "账号",
     "signedInAs": "当前登录：{username}。",
+    "email": "邮箱",
+    "emailHint": "平台会通过该邮箱向你发送有关你活动的预约提醒和管理员公告。留空则仅接收站内通知。",
     "changePasswordTitle": "修改密码",
     "changePasswordHint": "需要输入当前密码。如果你不记得了，请联系站点管理员重置。",
     "currentPassword": "当前密码",

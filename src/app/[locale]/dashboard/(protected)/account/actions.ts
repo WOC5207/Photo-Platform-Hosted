@@ -17,11 +17,15 @@ import { rateLimit } from "@/lib/rate-limit";
 export type UpdateProfileState = {
   error?: "validation";
   ok?: boolean;
-  value?: string;
+  displayName?: string;
+  email?: string;
 };
 
 const profileSchema = z.object({
-  displayName: z.string().trim().max(80)
+  displayName: z.string().trim().max(80),
+  // Optional. Empty means "no email, in-app notices only"; a non-empty value
+  // must be a valid address (it is what booking alerts and announcements go to).
+  email: z.string().trim().max(200).email().or(z.literal(""))
 });
 
 export async function updateProfile(
@@ -30,17 +34,22 @@ export async function updateProfile(
 ): Promise<UpdateProfileState> {
   const user = await requireUser(await getLocale());
   const parsed = profileSchema.safeParse({
-    displayName: formData.get("displayName") ?? ""
+    displayName: formData.get("displayName") ?? "",
+    email: formData.get("email") ?? ""
   });
   if (!parsed.success) return { error: "validation" };
 
   await prisma.user.updateMany({
     where: { id: user.id },
-    data: { displayName: parsed.data.displayName }
+    data: { displayName: parsed.data.displayName, email: parsed.data.email }
   });
 
   revalidatePath("/", "layout");
-  return { ok: true, value: parsed.data.displayName };
+  return {
+    ok: true,
+    displayName: parsed.data.displayName,
+    email: parsed.data.email
+  };
 }
 
 export type ChangePasswordState = {

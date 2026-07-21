@@ -145,11 +145,14 @@ export default async function SiteSettingsPage({
             <ProfileForm
               username={user.username}
               initialDisplayName={user.displayName}
+              initialEmail={user.email}
               labels={{
                 title: tr("displayName"),
                 hint: tr("displayNameHint"),
                 username: tr("username"),
                 displayName: tr("displayName"),
+                email: ta("email"),
+                emailHint: ta("emailHint"),
                 save: tc("save"),
                 saved: tc("saved"),
                 error: tc("error")

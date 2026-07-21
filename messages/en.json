@@ -567,6 +567,8 @@
     "contactMethodPlaceholder": "Choose a contact method",
     "contactValue": "Contact info",
     "contactHint": "Choose how you'd like to be reached, then enter your username or number for it.",
+    "email": "Email (optional)",
+    "emailHint": "Add your email to get a confirmation and updates if your booking changes.",
     "notes": "Notes (optional)",
     "notesPlaceholder": "Style, references, anything I should know…",
     "submit": "Book this slot",
@@ -787,6 +789,8 @@
   "account": {
     "title": "Account",
     "signedInAs": "Signed in as {username}.",
+    "email": "Email",
+    "emailHint": "Where the platform emails you about bookings for your events and admin announcements. Leave blank to receive in-app notices only.",
     "changePasswordTitle": "Change password",
     "changePasswordHint": "You need your current password. If you do not have it, ask the site admin to reset it for you.",
     "currentPassword": "Current password",
