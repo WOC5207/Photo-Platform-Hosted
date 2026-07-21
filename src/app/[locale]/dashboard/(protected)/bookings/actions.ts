@@ -14,6 +14,9 @@ import {
   findOwnedSlot
 } from "@/lib/ownership";
 import { parseNaiveDateTime } from "@/lib/datetime";
+import { pickText } from "@/lib/content";
+import { config } from "@/lib/config";
+import { notifyBookingStatusChanged } from "@/lib/notify";
 
 export type BookingEventFormState = {
   error?: "validation" | "noSlots" | "noContactMethods" | "unknown";
@@ -217,11 +220,46 @@ export async function deleteSlot(formData: FormData): Promise<void> {
 
 export type BookingStatusState = { error?: "slotFull"; ok?: boolean };
 
+/**
+ * Email the visitor that the photographer changed their booking's status. Only
+ * fired on a real transition by the callers below (never on a repeat submit),
+ * and a no-op unless the booking carries an email. Fire-and-forget: the fetch is
+ * awaited but the send is not, so the dashboard action never waits on SMTP.
+ */
+async function emailVisitorBookingStatus(
+  bookingId: string,
+  status: "confirmed" | "cancelled",
+  locale: string
+): Promise<void> {
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    include: { timeSlot: { include: { bookingEvent: true } } }
+  });
+  if (!booking || !booking.email) return;
+  const event = booking.timeSlot.bookingEvent;
+  notifyBookingStatusChanged(
+    {
+      bookingId: booking.cancelToken,
+      name: booking.name,
+      subject: booking.subject,
+      contactMethod: booking.contactMethod,
+      contactValue: booking.contactValue,
+      eventTitle: pickText(locale, event.titleEn, event.titleZh),
+      slotStart: booking.timeSlot.startTime,
+      slotEnd: booking.timeSlot.endTime,
+      manageUrl: `${config.appBaseUrl()}/${locale}/my-booking/${booking.cancelToken}`,
+      visitorEmail: booking.email,
+      ownerEmail: ""
+    },
+    status
+  ).catch(() => {});
+}
+
 export async function setBookingStatus(
   _prev: BookingStatusState,
   formData: FormData
 ): Promise<BookingStatusState> {
-  const { user } = await guard();
+  const { user, locale } = await guard();
   const bookingId = formData.get("bookingId");
   const status = formData.get("status");
   if (
@@ -241,6 +279,11 @@ export async function setBookingStatus(
       .update({ where: { id: owned.id }, data: { status: "cancelled" } })
       .catch(() => {});
     revalidatePath("/", "layout");
+    // Only on the confirmed -> cancelled transition, so re-cancelling doesn't
+    // re-email the visitor.
+    if (owned.status === "confirmed") {
+      await emailVisitorBookingStatus(owned.id, "cancelled", locale);
+    }
     return { ok: true };
   }
 
@@ -272,5 +315,11 @@ export async function setBookingStatus(
   });
 
   if (result.ok) revalidatePath("/", "layout");
+  // Only when a genuinely cancelled booking was restored (owned.status was
+  // cancelled and the restore succeeded) — not when it was already confirmed
+  // and not when the slot was full.
+  if (result.ok && owned.status === "cancelled") {
+    await emailVisitorBookingStatus(owned.id, "confirmed", locale);
+  }
   return result;
 }

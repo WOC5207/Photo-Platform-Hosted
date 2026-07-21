@@ -7,6 +7,7 @@ export interface BookingDetails {
   subject: string;
   contactMethod: string;
   contactValue: string;
+  email: string;
   notes: string;
   cancelToken: string;
 }
@@ -60,6 +61,7 @@ export async function reserveSlot(
         subject: details.subject,
         contactMethod: details.contactMethod,
         contactValue: details.contactValue,
+        email: details.email,
         notes: details.notes,
         cancelToken: details.cancelToken
       }

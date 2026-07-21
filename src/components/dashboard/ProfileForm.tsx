@@ -13,15 +13,19 @@ import StatusMessage from "@/components/ui/StatusMessage";
 export default function ProfileForm({
   username,
   initialDisplayName,
+  initialEmail,
   labels
 }: {
   username: string;
   initialDisplayName: string;
+  initialEmail: string;
   labels: {
     title: string;
     hint: string;
     username: string;
     displayName: string;
+    email: string;
+    emailHint: string;
     save: string;
     saved: string;
     error: string;
@@ -33,15 +37,21 @@ export default function ProfileForm({
   >(updateProfile, {});
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [savedName, setSavedName] = useState(initialDisplayName);
-  const dirty = displayName !== savedName;
+  const [email, setEmail] = useState(initialEmail);
+  const [savedEmail, setSavedEmail] = useState(initialEmail);
+  const dirty = displayName !== savedName || email !== savedEmail;
 
   useEffect(() => {
-    if (state.ok && state.value !== undefined) {
-      setDisplayName(state.value);
-      setSavedName(state.value);
+    if (state.ok && state.displayName !== undefined) {
+      setDisplayName(state.displayName);
+      setSavedName(state.displayName);
+    }
+    if (state.ok && state.email !== undefined) {
+      setEmail(state.email);
+      setSavedEmail(state.email);
     }
     // The action-state object changes once per submission. Depending on the
-    // field value too would mark every edit after a successful save as saved.
+    // field values too would mark every edit after a successful save as saved.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
@@ -69,6 +79,22 @@ export default function ProfileForm({
             onChange={(event) => setDisplayName(event.target.value)}
             maxLength={80}
             autoComplete="name"
+            disabled={pending}
+          />
+        </Field>
+        <Field
+          label={labels.email}
+          htmlFor="profile-email"
+          hint={labels.emailHint}
+        >
+          <Input
+            id="profile-email"
+            name="email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            maxLength={200}
+            autoComplete="email"
             disabled={pending}
           />
         </Field>

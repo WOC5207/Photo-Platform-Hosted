@@ -12,7 +12,7 @@ import { config } from "@/lib/config";
 import { rateLimit } from "@/lib/rate-limit";
 import { pickText } from "@/lib/content";
 import { formatSlotRange } from "@/lib/datetime";
-import { notifyBookingCreated } from "@/lib/notify";
+import { notifyBookingCreated, notifyBookingCancelled } from "@/lib/notify";
 import { getSiteSettings } from "@/lib/settings";
 import { reserveSlot } from "@/lib/booking";
 import { spinForEntry, uniqueEntryToken } from "@/lib/lottery";
@@ -33,6 +33,10 @@ const bookingSchema = z.object({
   subject: z.string().trim().max(200),
   contactMethod: z.string().trim().min(1).max(60),
   contactValue: z.string().trim().min(1).max(200),
+  // Optional: a real email so we can send a confirmation and status updates.
+  // Empty is allowed (the visitor may only want to give a WeChat, etc.); a
+  // non-empty value must be a valid address.
+  email: z.string().trim().max(200).email().or(z.literal("")),
   notes: z.string().trim().max(2000)
 });
 
@@ -51,6 +55,7 @@ export async function createBooking(
     subject: formData.get("subject") ?? "",
     contactMethod: formData.get("contactMethod") ?? "",
     contactValue: formData.get("contactValue") ?? "",
+    email: formData.get("email") ?? "",
     notes: formData.get("notes") ?? ""
   });
   if (!parsed.success) return { error: "validation" };
@@ -77,6 +82,7 @@ export async function createBooking(
     subject: d.subject,
     contactMethod: d.contactMethod,
     contactValue: d.contactValue,
+    email: d.email,
     notes: d.notes,
     cancelToken
   });
@@ -85,7 +91,13 @@ export async function createBooking(
 
   const locale = await getLocale();
   const manageUrl = `${config.appBaseUrl()}/${locale}/my-booking/${cancelToken}`;
-  // Fire-and-forget notification hook (no-op until SMTP is configured)
+  // The photographer's own contact address, if they set one — separate lookup
+  // because reserveSlot returns the event but not its owner.
+  const owner = await prisma.user.findUnique({
+    where: { id: result.slot.bookingEvent.ownerId },
+    select: { email: true }
+  });
+  // Fire-and-forget notification (no-op until SMTP is configured)
   notifyBookingCreated({
     bookingId: cancelToken,
     name: d.name,
@@ -99,7 +111,9 @@ export async function createBooking(
     ),
     slotStart: result.slot.startTime,
     slotEnd: result.slot.endTime,
-    manageUrl
+    manageUrl,
+    visitorEmail: d.email,
+    ownerEmail: owner?.email ?? ""
   }).catch(() => {});
 
   redirect(`/${locale}/my-booking/${cancelToken}?new=1`);
@@ -109,6 +123,14 @@ export async function cancelMyBooking(formData: FormData): Promise<void> {
   const cancelToken = formData.get("cancelToken");
   if (typeof cancelToken !== "string" || cancelToken.length > 100) return;
 
+  // Read before writing so the notification has the event/slot to describe, and
+  // so we can tell a real cancellation from a repeat click (below).
+  const booking = await prisma.booking.findUnique({
+    where: { cancelToken },
+    include: { timeSlot: { include: { bookingEvent: true } } }
+  });
+  if (!booking) return;
+
   await prisma.booking
     .update({
       where: { cancelToken },
@@ -116,6 +138,31 @@ export async function cancelMyBooking(formData: FormData): Promise<void> {
     })
     .catch(() => {});
   revalidatePath("/", "layout");
+
+  // Only mail on the confirmed -> cancelled transition, so a second submit (or a
+  // re-cancel of an already-cancelled booking) doesn't send a duplicate.
+  if (booking.status !== "confirmed") return;
+
+  const locale = await getLocale();
+  const event = booking.timeSlot.bookingEvent;
+  const owner = await prisma.user.findUnique({
+    where: { id: event.ownerId },
+    select: { email: true }
+  });
+  const manageUrl = `${config.appBaseUrl()}/${locale}/my-booking/${cancelToken}`;
+  notifyBookingCancelled({
+    bookingId: cancelToken,
+    name: booking.name,
+    subject: booking.subject,
+    contactMethod: booking.contactMethod,
+    contactValue: booking.contactValue,
+    eventTitle: pickText(locale, event.titleEn, event.titleZh),
+    slotStart: booking.timeSlot.startTime,
+    slotEnd: booking.timeSlot.endTime,
+    manageUrl,
+    visitorEmail: booking.email,
+    ownerEmail: owner?.email ?? ""
+  }).catch(() => {});
 }
 
 // ── "Check your booking" lookup ──────────────────────────────────────────

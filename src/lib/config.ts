@@ -28,6 +28,33 @@ function positiveInt(name: string, fallback: number): number {
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
+// SMTP transport settings for outbound email. Every field is optional: mail is
+// a bonus, not a requirement, so an unconfigured deploy simply sends nothing
+// (see isMailConfigured / src/lib/mailer.ts) rather than failing to boot.
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  from: string;
+  // SMTP over implicit TLS (port 465). Most providers on 587 use STARTTLS and
+  // want this false; nodemailer negotiates STARTTLS automatically.
+  secure: boolean;
+}
+
+function smtp(): SmtpConfig {
+  return {
+    host: process.env.SMTP_HOST ?? "",
+    port: positiveInt("SMTP_PORT", 587),
+    user: process.env.SMTP_USER ?? "",
+    pass: process.env.SMTP_PASS ?? "",
+    // Fall back to SMTP_USER so a provider that requires From == authenticated
+    // user works with only the credentials set.
+    from: process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "",
+    secure: process.env.SMTP_SECURE === "true"
+  };
+}
+
 export const config = {
   photosDir: () => path.resolve(required("PHOTOS_DIR")),
   sessionSecret: () => required("SESSION_SECRET"),
@@ -44,5 +71,13 @@ export const config = {
   imageMaxPixels: () => positiveInt("IMAGE_MAX_PIXELS", DEFAULT_IMAGE_MAX_PIXELS),
   imageProcessingConcurrency: () =>
     positiveInt("IMAGE_PROCESSING_CONCURRENCY", DEFAULT_IMAGE_PROCESSING_CONCURRENCY),
-  trustedProxyHops: () => positiveInt("TRUSTED_PROXY_HOPS", 1)
+  trustedProxyHops: () => positiveInt("TRUSTED_PROXY_HOPS", 1),
+  smtp,
+  // Email is only attempted when there is somewhere to send from and a server
+  // to send through. Anything short of that is a deliberate no-op, so the
+  // platform runs identically to before on deploys that never set SMTP_*.
+  isMailConfigured: () => {
+    const s = smtp();
+    return s.host !== "" && s.from !== "";
+  }
 };
