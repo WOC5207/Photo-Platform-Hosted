@@ -477,6 +477,15 @@ test.describe.serial("management workflows", () => {
     await expect(grid.getByText("E2E credit")).toBeVisible();
     await expect(grid.getByText("No credit")).toHaveCount(2);
 
+    // Attach a searchable comment to the still-selected credited photo. The
+    // note text deliberately shares no substring with the credit, so a search
+    // that finds it proves the comment itself is indexed.
+    await page.getByLabel("Comment (optional)").fill("E2E note about the shoot");
+    await page
+      .getByRole("button", { name: "Apply comment to selected (1)" })
+      .click();
+    await expect(grid.getByText("E2E note about the shoot")).toBeVisible();
+
     // The no-credit warning now appears on the credits step and must be
     // acknowledged before advancing to Confirm.
     await expect(
@@ -509,6 +518,20 @@ test.describe.serial("management workflows", () => {
     await expect(page).toHaveURL(new RegExp(`/en/u/[^/]+/gallery/${slug}$`));
     await expect(page.getByText("3 photos")).toBeVisible();
     await expect(page.getByText("E2E credit")).toBeAttached();
+
+    // The comment shows under the credit on the enlarged photo …
+    const ownerUsername = page.url().match(/\/u\/([^/]+)\/gallery\//)![1];
+    await page.getByRole("img", { name: "E2E credit" }).click();
+    await expect(page.getByText("E2E note about the shoot")).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // … and it is searchable from the homepage, even though the query matches
+    // only the comment and not the credit.
+    await page.goto(`/en/u/${ownerUsername}`);
+    await page.getByRole("combobox").fill("E2E note about the shoot");
+    await expect(
+      page.getByRole("option").filter({ hasText: "E2E credit" })
+    ).toBeVisible({ timeout: 10_000 });
 
     await page.goto(editUrl);
     page.once("dialog", (dialog) => dialog.accept());

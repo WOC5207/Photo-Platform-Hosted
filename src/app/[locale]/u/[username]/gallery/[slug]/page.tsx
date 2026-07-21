@@ -54,6 +54,7 @@ export default async function AlbumPage({
       med: urls.med,
       full: urls.full,
       caption: formatCredits(p.credits),
+      comment: p.comment,
       socialLinks: p.credits.flatMap((c) =>
         c.socialLinks.map((s) => ({
           label: s.platform,

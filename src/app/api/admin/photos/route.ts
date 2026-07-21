@@ -24,6 +24,30 @@ import {
 const BATCH_ID_PATTERN = /^[a-zA-Z0-9_-]{16,100}$/;
 const UPLOAD_ID_PATTERN = /^[a-f0-9]{32}$/;
 const MAX_PENDING_PER_EVENT = 200;
+const MAX_COMMENT_LENGTH = 2000;
+
+/**
+ * Parse the optional per-photo comment map the wizard sends alongside the
+ * finalize credits. Unknown keys and non-string values are dropped; each
+ * comment is trimmed and length-capped. Missing/invalid input → empty map.
+ */
+function parseCommentsMap(raw: unknown): Map<string, string> {
+  const map = new Map<string, string>();
+  if (typeof raw !== "string") return map;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return map;
+  }
+  if (!parsed || typeof parsed !== "object") return map;
+  for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!UPLOAD_ID_PATTERN.test(id) || typeof value !== "string") continue;
+    const comment = value.trim().slice(0, MAX_COMMENT_LENGTH);
+    if (comment) map.set(id, comment);
+  }
+  return map;
+}
 
 class QuotaExceededError extends Error {}
 class QueueFullError extends Error {}
@@ -586,6 +610,8 @@ export async function PATCH(req: NextRequest) {
   const credits = parseCreditsJson(
     typeof body?.credits === "string" ? body.credits : null
   );
+  const comments = parseCommentsMap(body?.comments);
+  const commentFor = (id: string) => comments.get(id) ?? "";
 
   // credits may be empty: the wizard's confirm step lets photos publish
   // uncredited after an explicit acknowledgement.
@@ -612,6 +638,7 @@ export async function PATCH(req: NextRequest) {
           id: true,
           pendingBatchId: true,
           uploadState: true,
+          comment: true,
           credits: {
             orderBy: { sortOrder: "asc" },
             select: {
@@ -632,7 +659,15 @@ export async function PATCH(req: NextRequest) {
       );
       if (alreadyFinalized) {
         const expectedCredits = creditSignature(credits);
-        if (!photos.every((photo) => creditSignature(photo.credits) === expectedCredits)) {
+        // A response-loss retry is idempotent only for the exact same credits
+        // AND comments; anything else means the batch changed underneath us.
+        if (
+          !photos.every(
+            (photo) =>
+              creditSignature(photo.credits) === expectedCredits &&
+              photo.comment === commentFor(photo.id)
+          )
+        ) {
           throw new PendingBatchChangedError();
         }
         return;
@@ -709,6 +744,7 @@ export async function PATCH(req: NextRequest) {
               bytes: true,
               uploadState: true,
               pendingBatchId: true,
+              comment: true,
               credits: {
                 orderBy: { sortOrder: "asc" },
                 select: {
@@ -731,7 +767,9 @@ export async function PATCH(req: NextRequest) {
             const expectedCredits = creditSignature(credits);
             if (
               !photos.every(
-                (photo) => creditSignature(photo.credits) === expectedCredits
+                (photo) =>
+                  creditSignature(photo.credits) === expectedCredits &&
+                  photo.comment === commentFor(photo.id)
               )
             ) {
               throw new PendingBatchChangedError();
@@ -787,6 +825,7 @@ export async function PATCH(req: NextRequest) {
                 pendingBatchId: null,
                 uploadState: "ready",
                 sortOrder: firstOrder + photoIndex,
+                comment: commentFor(id),
                 credits: {
                   create: credits.map((credit, creditIndex) => ({
                     creditName: credit.creditName,

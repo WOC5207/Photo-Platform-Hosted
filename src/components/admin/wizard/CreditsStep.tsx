@@ -43,6 +43,8 @@ export default function CreditsStep({
   queue,
   creditsByPhoto,
   onAssign,
+  commentByPhoto,
+  onAssignComment,
   creditProfiles,
   creditTerm,
   subjectTerm,
@@ -52,6 +54,8 @@ export default function CreditsStep({
   queue: PendingUploadQueue;
   creditsByPhoto: Record<string, AssignedCredit[]>;
   onAssign: (photoIds: string[], credits: AssignedCredit[]) => void;
+  commentByPhoto: Record<string, string>;
+  onAssignComment: (photoIds: string[], comment: string) => void;
   creditProfiles: CreditProfile[];
   creditTerm: string;
   subjectTerm: string;
@@ -66,6 +70,7 @@ export default function CreditsStep({
     () => new Set(photos.map((item) => item.photoId))
   );
   const [rows, setRows] = useState<Row[]>(() => [emptyRow()]);
+  const [comment, setComment] = useState("");
 
   const busy = queue.locked || queue.clearing;
   const uncreditedCount = photos.filter(
@@ -236,6 +241,38 @@ export default function CreditsStep({
         </div>
       </div>
 
+      <div className="flex flex-col gap-2 rounded-lg border border-border-strong/60 bg-surface/50 p-3">
+        <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          {tw("commentLabel")}
+          <textarea
+            value={comment}
+            onChange={(event) => setComment(event.target.value)}
+            maxLength={2000}
+            rows={2}
+            placeholder={tw("commentPlaceholder")}
+            className={`${inputCls} min-h-16 resize-y`}
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={busy || comment.trim().length === 0 || selectedIds.length === 0}
+            onClick={() => onAssignComment(selectedIds, comment)}
+            className={btnCls}
+          >
+            {tw("applyCommentSelected", { count: selectedIds.length })}
+          </button>
+          <button
+            type="button"
+            disabled={busy || selectedIds.length === 0}
+            onClick={() => onAssignComment(selectedIds, "")}
+            className={btnCls}
+          >
+            {tw("clearCommentSelected", { count: selectedIds.length })}
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center gap-2 text-xs text-fg-subtle">
         <button
           type="button"
@@ -291,12 +328,28 @@ export default function CreditsStep({
         }
         renderFooter={(photo) => {
           const assigned = creditsByPhoto[photo.photoId] ?? [];
-          return assigned.length > 0 ? (
-            <span className="truncate text-xs font-medium text-fg" title={formatCredits(assigned)}>
-              {formatCredits(assigned)}
-            </span>
-          ) : (
-            <span className="text-xs text-fg-subtle">{tw("noCreditBadge")}</span>
+          const photoComment = commentByPhoto[photo.photoId] ?? "";
+          return (
+            <div className="flex flex-col gap-0.5">
+              {assigned.length > 0 ? (
+                <span
+                  className="truncate text-xs font-medium text-fg"
+                  title={formatCredits(assigned)}
+                >
+                  {formatCredits(assigned)}
+                </span>
+              ) : (
+                <span className="text-xs text-fg-subtle">{tw("noCreditBadge")}</span>
+              )}
+              {photoComment && (
+                <span
+                  className="line-clamp-2 text-xs text-fg-subtle"
+                  title={photoComment}
+                >
+                  {photoComment}
+                </span>
+              )}
+            </div>
           );
         }}
       />

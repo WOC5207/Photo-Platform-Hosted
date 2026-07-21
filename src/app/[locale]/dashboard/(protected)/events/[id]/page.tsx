@@ -69,6 +69,7 @@ export default async function EditEventPage({
           url: s.url
         }))
       })),
+      comment: p.comment,
       isCover: event.coverPhotoId === p.id,
       homeHighlight: p.homeHighlight,
       exif: {

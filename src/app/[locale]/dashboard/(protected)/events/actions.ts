@@ -232,8 +232,10 @@ export async function updatePhotoCredits(formData: FormData): Promise<void> {
   if (!(await findOwnedPhoto(photoId, user))) return;
 
   const credits = parseCreditsJson(formData.get("creditsJson"));
+  const comment = String(formData.get("comment") ?? "").trim().slice(0, 2000);
 
   await prisma.$transaction([
+    prisma.photo.update({ where: { id: photoId }, data: { comment } }),
     prisma.photoCredit.deleteMany({ where: { photoId } }),
     ...credits.map((c, i) =>
       prisma.photoCredit.create({

@@ -191,7 +191,8 @@ export interface PendingUploadQueue {
   changeStoragePreset: (item: QueuedFile, preset: StoragePreset) => Promise<void>;
   finalizeBatch: (
     batch: (QueuedFile & { photoId: string })[],
-    credits: AssignedCredit[]
+    credits: AssignedCredit[],
+    comments: Record<string, string>
   ) => Promise<boolean>;
 }
 
@@ -875,13 +876,21 @@ export function usePendingUploadQueue({
 
   async function finalizeBatch(
     batch: (QueuedFile & { photoId: string })[],
-    credits: AssignedCredit[]
+    credits: AssignedCredit[],
+    comments: Record<string, string>
   ): Promise<boolean> {
     if (batch.length === 0) return true;
+    // Only carry non-empty comments for this batch's photos.
+    const batchComments: Record<string, string> = {};
+    for (const item of batch) {
+      const comment = comments[item.photoId];
+      if (comment) batchComments[item.photoId] = comment;
+    }
     const requestBody = JSON.stringify({
       eventId,
       photoIds: batch.map((item) => item.photoId),
-      credits: JSON.stringify(credits)
+      credits: JSON.stringify(credits),
+      comments: JSON.stringify(batchComments)
     });
     let response: Response | null = null;
     for (let attempt = 0; attempt < 2 && !response; attempt++) {
