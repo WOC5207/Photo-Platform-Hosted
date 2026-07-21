@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Link, useRouter } from "@/i18n/navigation";
-import { pickText, formatPhotoCredit } from "@/lib/content";
+import { pickText } from "@/lib/content";
 import type { CreditSearchResult } from "@/app/api/search/credits/route";
 
 export interface HomeSearchLabels {
@@ -159,38 +159,47 @@ export default function HomeSearchBox({
               role="listbox"
               className="flex flex-col divide-y divide-fg/5"
             >
-              {results.map((r, index) => (
-                <li
-                  key={`${r.photoId}-${r.creditName}-${r.subject}`}
-                  id={`${listboxId}-option-${index}`}
-                  role="option"
-                  aria-selected={index === activeIndex}
-                >
-                  <Link
-                    href={resultHref(r)}
-                    onClick={() => setQuery("")}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    className={`flex items-center gap-3 p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fg/40 ${
-                      index === activeIndex ? "bg-fg/5" : "hover:bg-fg/5"
-                    }`}
+              {results.map((r, index) => {
+                const eventTitle = pickText(locale, r.eventTitleEn, r.eventTitleZh);
+                // Lead with the credit; fall back to the comment (the match may
+                // be on the note alone), then the album title.
+                const primary = r.credit || r.comment || eventTitle;
+                const secondary = primary === eventTitle ? "" : eventTitle;
+                return (
+                  <li
+                    key={r.photoId}
+                    id={`${listboxId}-option-${index}`}
+                    role="option"
+                    aria-selected={index === activeIndex}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={r.thumbUrl}
-                      alt=""
-                      className="h-12 w-12 shrink-0 rounded-lg object-cover"
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-fg">
-                        {formatPhotoCredit(r.creditName, r.subject)}
-                      </p>
-                      <p className="truncate text-xs text-fg-subtle">
-                        {pickText(locale, r.eventTitleEn, r.eventTitleZh)}
-                      </p>
-                    </div>
-                  </Link>
-                </li>
-              ))}
+                    <Link
+                      href={resultHref(r)}
+                      onClick={() => setQuery("")}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      className={`flex items-center gap-3 p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fg/40 ${
+                        index === activeIndex ? "bg-fg/5" : "hover:bg-fg/5"
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={r.thumbUrl}
+                        alt=""
+                        className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-fg">
+                          {primary}
+                        </p>
+                        {secondary && (
+                          <p className="truncate text-xs text-fg-subtle">
+                            {secondary}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="p-3 text-sm text-fg-subtle">{labels.noResults}</p>

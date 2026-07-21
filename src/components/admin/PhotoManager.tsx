@@ -42,6 +42,7 @@ export interface AdminPhoto {
   id: string;
   thumbUrl: string;
   credits: AdminPhotoCredit[];
+  comment: string;
   isCover: boolean;
   homeHighlight: boolean;
   exif: AdminPhotoExif;
@@ -76,12 +77,14 @@ function makeRow(initial?: AdminPhotoCredit): CreditRow {
 function CreditsForm({
   photoId,
   initial,
+  initialComment,
   creditProfiles,
   creditTerm,
   subjectTerm
 }: {
   photoId: string;
   initial: AdminPhotoCredit[];
+  initialComment: string;
   creditProfiles: CreditProfile[];
   creditTerm: string;
   subjectTerm: string;
@@ -179,6 +182,17 @@ function CreditsForm({
       >
         + {t("addCredit", { term: creditTerm })}
       </button>
+      <label className="flex min-w-0 flex-col gap-1 text-xs text-fg-subtle">
+        {t("photoComment")}
+        <textarea
+          name="comment"
+          defaultValue={initialComment}
+          maxLength={2000}
+          rows={2}
+          placeholder={t("photoCommentPlaceholder")}
+          className={`${smallInputCls} min-h-16 resize-y`}
+        />
+      </label>
       <button type="submit" className={`${btnCls} self-start`}>
         {tc("save")}
       </button>
@@ -508,6 +522,7 @@ export default function PhotoManager({
             <CreditsForm
               photoId={photo.id}
               initial={photo.credits}
+              initialComment={photo.comment}
               creditProfiles={creditProfiles}
               creditTerm={creditTerm}
               subjectTerm={subjectTerm}

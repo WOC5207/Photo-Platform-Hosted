@@ -53,6 +53,9 @@ export default function PhotoWizard({
   const [creditsByPhoto, setCreditsByPhoto] = useState<
     Record<string, AssignedCredit[]>
   >({});
+  const [commentByPhoto, setCommentByPhoto] = useState<Record<string, string>>(
+    {}
+  );
   const [ackUncredited, setAckUncredited] = useState(false);
   const [publishPhase, setPublishPhase] = useState<PublishPhase>("idle");
   const [publishedCount, setPublishedCount] = useState(0);
@@ -107,6 +110,18 @@ export default function PhotoWizard({
     setAckUncredited(false);
   }
 
+  function assignComment(photoIds: string[], comment: string) {
+    setCommentByPhoto((current) => {
+      const next = { ...current };
+      const trimmed = comment.trim();
+      for (const photoId of photoIds) {
+        if (trimmed.length === 0) delete next[photoId];
+        else next[photoId] = trimmed;
+      }
+      return next;
+    });
+  }
+
   async function publish() {
     if (publishing || queue.locked) return;
     const groups = buildCreditGroups(queue.readyFiles, creditsByPhoto);
@@ -120,7 +135,11 @@ export default function PhotoWizard({
       // its exact id set, so a retry after a mid-sequence failure simply
       // resumes with the groups that are still pending.
       for (const group of groups) {
-        const ok = await queue.finalizeBatch(group.items, group.credits);
+        const ok = await queue.finalizeBatch(
+          group.items,
+          group.credits,
+          commentByPhoto
+        );
         if (!ok) {
           failed = true;
           break;
@@ -170,6 +189,8 @@ export default function PhotoWizard({
           queue={queue}
           creditsByPhoto={creditsByPhoto}
           onAssign={assignCredits}
+          commentByPhoto={commentByPhoto}
+          onAssignComment={assignComment}
           creditProfiles={creditProfiles}
           creditTerm={creditTerm}
           subjectTerm={subjectTerm}

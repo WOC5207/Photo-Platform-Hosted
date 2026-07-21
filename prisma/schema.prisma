@@ -259,6 +259,11 @@ model Photo {
   exifCameraModel   String?
   exifLensModel     String?
   sortOrder    Int      @default(0)
+  // A free-text note the photographer can attach to a photo, shown under the
+  // credit/subject line on the enlarged photo and included in the homepage
+  // search. Independent of PhotoCredit (which is per credited person); a photo
+  // has at most one comment. Empty string = none.
+  comment      String   @default("")
   // Non-null while the owner is still building an upload batch. Pending
   // photos are fully processed and count toward storage, but stay private and
   // out of normal photo queries until the batch is finalized with credits.

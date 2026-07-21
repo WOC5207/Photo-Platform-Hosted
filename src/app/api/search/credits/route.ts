@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { findOwner } from "@/lib/owner";
 import { photoUrls } from "@/lib/images";
+import { formatCredits } from "@/lib/content";
 
 const MAX_RESULTS = 8;
 
@@ -10,17 +11,20 @@ export interface CreditSearchResult {
   eventSlug: string;
   eventTitleEn: string;
   eventTitleZh: string;
-  creditName: string;
-  subject: string;
+  /** The combined credit line (credited person(s) + subject), or "". */
+  credit: string;
+  /** The photographer's free-text comment on the photo, or "". */
+  comment: string;
   thumbUrl: string;
 }
 
 /**
- * Public search over the credited-person/character info admins enter per
- * photo (PhotoCredit.creditName/subject) — e.g. a cosplayer looking for
- * their own photos, or a visitor looking for a specific character. Only
- * matches photos on published events; unpublished events' credits never
- * surface here.
+ * Public search over the per-photo info admins enter: the credited
+ * person/character (PhotoCredit.creditName/subject) and the free-text comment
+ * (Photo.comment) — e.g. a cosplayer looking for their own photos, a visitor
+ * looking for a specific character, or anyone searching a note the photographer
+ * left. Only matches photos on published events; unpublished events never
+ * surface here. Returns one row per photo (deduped across its credits).
  */
 export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 100);
@@ -39,38 +43,46 @@ export async function GET(req: NextRequest) {
   // `mode: "insensitive"` is required on Postgres, where `contains` maps to a
   // case-SENSITIVE LIKE. (It was implicitly case-insensitive under SQLite, so
   // dropping this silently degrades the search rather than breaking it.)
-  const credits = await prisma.photoCredit.findMany({
+  const photos = await prisma.photo.findMany({
     where: {
+      pendingBatchId: null,
+      event: { ownerId: owner.id, published: true },
       OR: [
-        { creditName: { contains: q, mode: "insensitive" } },
-        { subject: { contains: q, mode: "insensitive" } }
-      ],
-      photo: {
-        pendingBatchId: null,
-        event: { ownerId: owner.id, published: true }
-      }
+        { comment: { contains: q, mode: "insensitive" } },
+        {
+          credits: {
+            some: {
+              OR: [
+                { creditName: { contains: q, mode: "insensitive" } },
+                { subject: { contains: q, mode: "insensitive" } }
+              ]
+            }
+          }
+        }
+      ]
     },
     take: MAX_RESULTS,
-    orderBy: { photo: { createdAt: "desc" } },
-    include: {
-      photo: {
-        select: {
-          id: true,
-          eventId: true,
-          event: { select: { slug: true, titleEn: true, titleZh: true } }
-        }
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      eventId: true,
+      comment: true,
+      event: { select: { slug: true, titleEn: true, titleZh: true } },
+      credits: {
+        orderBy: { sortOrder: "asc" },
+        select: { creditName: true, subject: true }
       }
     }
   });
 
-  const results: CreditSearchResult[] = credits.map((c) => ({
-    photoId: c.photo.id,
-    eventSlug: c.photo.event.slug,
-    eventTitleEn: c.photo.event.titleEn,
-    eventTitleZh: c.photo.event.titleZh,
-    creditName: c.creditName,
-    subject: c.subject,
-    thumbUrl: photoUrls(c.photo.eventId, c.photo.id).thumb
+  const results: CreditSearchResult[] = photos.map((p) => ({
+    photoId: p.id,
+    eventSlug: p.event.slug,
+    eventTitleEn: p.event.titleEn,
+    eventTitleZh: p.event.titleZh,
+    credit: formatCredits(p.credits),
+    comment: p.comment,
+    thumbUrl: photoUrls(p.eventId, p.id).thumb
   }));
 
   return NextResponse.json({ results });
