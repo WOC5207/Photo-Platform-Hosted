@@ -12,6 +12,7 @@ import {
   resolveHomeTitle,
   resolveHomeSubtitle,
   resolveCreditTerm,
+  resolveSubjectTerm,
   resolveHomeCreditsLabel
 } from "@/lib/settings";
 import EventPhotoStream, {
@@ -50,6 +51,7 @@ export default async function HomePage({
   const heroTitle = resolveHomeTitle(settings, locale, t("title"));
   const heroSubtitle = resolveHomeSubtitle(settings, locale, t("subtitle"));
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
+  const subjectTerm = resolveSubjectTerm(settings, locale, tc("subjectTerm"));
   const defaultCreditsLabel = locale === "zh" ? creditTerm : `${creditTerm}s`;
   const creditsLabel = resolveHomeCreditsLabel(settings, locale, defaultCreditsLabel);
 
@@ -198,7 +200,7 @@ export default async function HomePage({
           locale={locale}
           className="w-full lg:w-[26rem] lg:shrink-0"
           labels={{
-            placeholder: t("searchPlaceholder"),
+            placeholder: t("searchPlaceholder", { creditTerm, subjectTerm }),
             searching: t("searching"),
             noResults: t("noSearchResults")
           }}
