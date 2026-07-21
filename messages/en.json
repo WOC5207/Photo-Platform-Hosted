@@ -56,7 +56,7 @@
     "viewGallery": "View gallery",
     "carouselPrevious": "Previous photo",
     "carouselNext": "Next photo",
-    "searchPlaceholder": "Search a cosplayer or character…",
+    "searchPlaceholder": "Search {creditTerm} or {subjectTerm}…",
     "searching": "Searching…",
     "noSearchResults": "No matches found."
   },

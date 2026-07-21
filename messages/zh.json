@@ -56,7 +56,7 @@
     "viewGallery": "查看相册",
     "carouselPrevious": "上一张",
     "carouselNext": "下一张",
-    "searchPlaceholder": "搜索Coser或角色…",
+    "searchPlaceholder": "搜索{creditTerm}或{subjectTerm}…",
     "searching": "搜索中…",
     "noSearchResults": "没有找到匹配结果。"
   },
