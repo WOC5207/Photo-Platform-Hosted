@@ -21,10 +21,11 @@ compatible ARM64 build, and this hasn't been tested on one.
 4. [Build and run in Container Manager](#4-build-and-run-in-container-manager)
 5. [First run](#5-first-run)
 6. [Connect a domain](#6-connect-a-domain)
-7. [Backups](#7-backups)
-8. [Updating the app](#8-updating-the-app)
-9. [Troubleshooting](#9-troubleshooting)
-10. [Security checklist](#10-security-checklist)
+7. [Enable email notifications (optional)](#7-enable-email-notifications-optional)
+8. [Backups](#8-backups)
+9. [Updating the app](#9-updating-the-app)
+10. [Troubleshooting](#10-troubleshooting)
+11. [Security checklist](#11-security-checklist)
 
 ---
 
@@ -106,6 +107,10 @@ invalid rather than being allowed to exhaust NAS memory.
 
 `DATABASE_URL` is **not** in `.env` — `docker-compose.yml` sets it to point at
 the database container, which is reachable only from the app.
+
+The `SMTP_*` variables are **optional** and left out here on purpose — email is
+off until you set them. To send booking and announcement emails, see
+[step 7](#7-enable-email-notifications-optional).
 
 To generate a good `SESSION_SECRET`:
 
@@ -347,7 +352,114 @@ valid padlock. Check a few things:
 
 ---
 
-## 7. Backups
+## 7. Enable email notifications (optional)
+
+The platform can email people when it matters: a visitor gets a confirmation
+when they book and a notice if the booking is cancelled; the photographer gets
+an alert on new/cancelled bookings; and platform announcements go out by email
+alongside the in-app banner. Every one of these is sent **only when an address
+is on file** — visitors add an optional email on the booking form, and accounts
+set one under **Account → Profile**.
+
+This is entirely optional. **Leave the `SMTP_*` variables unset and email is off**
+— the site behaves exactly as it does without this section, with in-app notices
+only. Nothing here is required to run the platform.
+
+### 7.1 You need an SMTP relay, not your own mail server
+
+The app doesn't run a mail server — it hands each message to an **authenticated
+SMTP provider** that does the actual delivery. Two practical reasons you can't
+skip this:
+
+- Home and most business ISPs **block outbound port 25**, so a NAS can't deliver
+  mail directly even if you set one up.
+- Mail sent straight from a residential IP is treated as spam by virtually every
+  inbox provider.
+
+So pick a provider and relay through it on **port 587 (STARTTLS)** or **465
+(implicit TLS)** — neither is blocked. Any transactional email service works
+(Resend, Amazon SES, Mailgun, Brevo, Postmark…), as does a Gmail/Google
+Workspace account for low volume. Volume here is tiny — a handful of emails per
+booking — so a free tier is plenty.
+
+### 7.2 Set the SMTP variables in `.env`
+
+Add these to the same `.env` from [step 3](#3-configure-the-environment). They
+are all optional; email turns on only once `SMTP_HOST` and a From address are
+present.
+
+| Variable | What to set |
+|---|---|
+| `SMTP_HOST` | Your provider's SMTP server, e.g. `smtp.resend.com` |
+| `SMTP_PORT` | `587` for STARTTLS (default), or `465` for implicit TLS |
+| `SMTP_USER` | The SMTP username — often an API-key name or your full email address |
+| `SMTP_PASS` | The SMTP password — usually an **API key** or **app password**, not your account login password |
+| `SMTP_FROM` | The visible From, e.g. `Pinhaoshe <no-reply@pinhaoshe.ca>`. Defaults to `SMTP_USER` if omitted |
+| `SMTP_SECURE` | `"true"` **only** with port 465; leave `"false"` for 587 (STARTTLS is negotiated automatically) |
+
+> **Treat `.env` as a secret.** It now holds an API key/password. Keep its
+> permissions tight (over SSH: `chmod 600 .env`); it is already excluded from
+> the repo.
+
+**Example — Gmail / Google Workspace** (simplest, ~500 emails/day). Turn on
+2-factor auth for the account, then create an **App password** (Google account →
+Security → App passwords) and use it as `SMTP_PASS`:
+
+```
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_SECURE="false"
+SMTP_USER="you@gmail.com"
+SMTP_PASS="the-16-char-app-password"
+SMTP_FROM="Pinhaoshe <you@gmail.com>"
+```
+
+With Gmail the From address must be the Gmail account itself.
+
+**Example — a provider on your own domain** (best deliverability, recommended
+once you have a domain). Shown for Resend; SES/Mailgun/Brevo are the same shape
+with their own host and credentials:
+
+```
+SMTP_HOST="smtp.resend.com"
+SMTP_PORT="465"
+SMTP_SECURE="true"
+SMTP_USER="resend"
+SMTP_PASS="your-api-key"
+SMTP_FROM="Pinhaoshe <no-reply@pinhaoshe.ca>"
+```
+
+> **Deliverability depends on your domain, not the app.** For any own-domain
+> setup the provider will ask you to **verify the domain** by adding **SPF and
+> DKIM** DNS records (and ideally **DMARC**) at your registrar — the same place
+> you set up DNS in [6.3](#63-point-your-domain-at-the-nas). Skip this and mail
+> either lands in spam or bounces. The domain in `SMTP_FROM` must match the
+> verified domain.
+
+### 7.3 Apply it
+
+In Container Manager, select the `photo-platform` project → **Action →
+Build/Recreate**. This matters: `.env` is read by `env_file` **when the
+container is created**, so a plain restart won't pick up new SMTP values —
+recreating the container will. Your data in `data/photos` and `data/pg` is
+untouched.
+
+### 7.4 Test it
+
+1. Sign in, open **Account → Profile**, and set your own email address.
+2. Send a platform announcement to "all" (**Admin → Notifications**), or make a
+   test booking with an email filled in.
+3. Confirm the message arrives (check spam on the first send). Most providers
+   also show a per-message delivery log in their dashboard, which is the fastest
+   way to tell a rejected send from a mistyped address.
+
+If nothing arrives and the provider log shows no attempt, re-check that the
+container was **recreated** after editing `.env` (7.3), and that `SMTP_HOST` and
+`SMTP_FROM` are both set — those two are what switch email on.
+
+---
+
+## 8. Backups
 
 Everything that matters lives in two folders next to the compose file:
 
@@ -384,7 +496,7 @@ again — but see the warning above about when that is safe to take.
 
 ---
 
-## 8. Updating the app
+## 9. Updating the app
 
 1. Replace the project files with the new version — **keep `.env` and
    `data/`**, don't overwrite or delete either.
@@ -397,7 +509,7 @@ again — but see the warning above about when that is safe to take.
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 **Build fails or hangs on the NAS.** Usually low RAM. Build on a PC instead
 and import the image — see the note at the end of [step 4](#4-build-and-run-in-container-manager).
@@ -450,7 +562,7 @@ stop the project, delete `data/pg`, update `.env` and start again.
 
 ---
 
-## 10. Security checklist
+## 11. Security checklist
 
 - Never expose port **3000** directly to the internet (no port-forwarding
   rule for it) — only DSM's reverse proxy on 443 should be public. The
@@ -469,5 +581,5 @@ stop the project, delete `data/pg`, update `.env` and start again.
 - Registration notices in **Require agreement** mode record the exact notice
   version and content hash accepted with each redeemed invitation. Editing the
   notice creates a new version automatically.
-- Back up regularly (see [step 7](#7-backups)) — it's the only real
+- Back up regularly (see [step 8](#8-backups)) — it's the only real
   protection against disk failure, accidental deletion, or a botched update.
