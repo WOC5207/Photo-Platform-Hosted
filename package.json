@@ -32,7 +32,7 @@
     "nodemailer": "^9.0.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "sharp": "^0.34.3",
+    "sharp": "^0.35.3",
     "zod": "^4.1.0"
   },
   "devDependencies": {
@@ -56,11 +56,12 @@
     "@prisma/engines@6.19.3": true,
     "@swc/core@1.15.43": true,
     "prisma@6.19.3": true,
-    "sharp@0.34.5": true
+    "sharp@0.35.3": true
   },
   "overrides": {
     "next": {
       "postcss": "8.5.10"
-    }
+    },
+    "sharp": "^0.35.3"
   }
 }

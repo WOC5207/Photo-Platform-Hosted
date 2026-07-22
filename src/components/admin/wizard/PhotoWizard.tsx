@@ -81,20 +81,28 @@ export default function PhotoWizard({
   const uncreditedCount = queue.browsableFiles.filter(
     (item) => (creditsByPhoto[item.photoId] ?? []).length === 0
   ).length;
+  // Advancing past the compression step requires every photo to have a size
+  // chosen (none left awaiting) — that choice is what starts compression. The
+  // encode itself may still be running: it finishes in the background while the
+  // user credits, and only Publish waits for it.
   const canContinue =
     stepIndex === 0
       ? uploadsSettled
       : stepIndex === 1
-        ? queue.browsableFiles.length > 0 && !queue.transferWorking
+        ? queue.browsableFiles.length > 0 &&
+          !queue.transferWorking &&
+          queue.awaitingCount === 0
         : stepIndex === 2
           ? uncreditedCount === 0 || ackUncredited
           : true;
   const continueHint =
     stepIndex === 0 && queue.files.length > 0 && !uploadsSettled
       ? tw("waitUploads")
-      : stepIndex === 2 && uncreditedCount > 0 && !ackUncredited
-        ? tw("ackCreditsToContinue")
-        : null;
+      : stepIndex === 1 && queue.awaitingCount > 0
+        ? tw("chooseSizeToContinue", { count: queue.awaitingCount })
+        : stepIndex === 2 && uncreditedCount > 0 && !ackUncredited
+          ? tw("ackCreditsToContinue")
+          : null;
 
   function assignCredits(photoIds: string[], credits: AssignedCredit[]) {
     setCreditsByPhoto((current) => {

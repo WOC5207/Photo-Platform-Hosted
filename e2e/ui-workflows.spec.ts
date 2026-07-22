@@ -383,10 +383,11 @@ test.describe.serial("management workflows", () => {
 
     await picker.setInputFiles({ name: "first.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("1 photo queued")).toBeVisible();
-    // The upload settles fast (source + thumbnail); the compressed master is
-    // produced in the background, so "Ready to create" appears once compression
-    // finishes rather than at the end of the transfer.
-    await expect(page.getByText("Ready to create")).toHaveCount(1, { timeout: 15_000 });
+    // The upload settles fast (source + thumbnail) and compression is deferred
+    // to the next step, so the file reads "Uploaded" as soon as the transfer
+    // finishes — no waiting on Sharp — and Continue unlocks immediately.
+    await expect(page.getByText("Uploaded", { exact: true })).toHaveCount(1, { timeout: 15_000 });
+    await expect(continueButton).toBeEnabled();
     await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
       "aria-valuenow",
       "100"
@@ -397,7 +398,7 @@ test.describe.serial("management workflows", () => {
     // must retain the first server-backed pending photo and append this one.
     await picker.setInputFiles({ name: "second.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("2 photos queued")).toBeVisible();
-    await expect(page.getByText("Ready to create")).toHaveCount(2, { timeout: 15_000 });
+    await expect(page.getByText("Uploaded", { exact: true })).toHaveCount(2, { timeout: 15_000 });
     await expect(page.getByRole("img", { name: "second.png" })).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
       "aria-valuenow",
@@ -423,7 +424,7 @@ test.describe.serial("management workflows", () => {
       buffer: tiff
     });
     await expect(page.getByText("3 photos queued")).toBeVisible();
-    await expect(page.getByText("Ready to create")).toHaveCount(3, { timeout: 15_000 });
+    await expect(page.getByText("Uploaded", { exact: true })).toHaveCount(3, { timeout: 15_000 });
     await expect(page.getByRole("img", { name: "third.tiff" })).toBeVisible();
 
     await page.reload();
@@ -447,23 +448,36 @@ test.describe.serial("management workflows", () => {
     await expect(page.getByText("2 photos queued")).toBeVisible();
     await picker.setInputFiles({ name: "first.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("3 photos queued")).toBeVisible();
-    await expect(page.getByText("Ready to create")).toHaveCount(3, { timeout: 15_000 });
+    await expect(page.getByText("Uploaded", { exact: true })).toHaveCount(3, { timeout: 15_000 });
 
-    // Step 2 — compression: per-photo overrides via multi-select.
+    // Step 2 — compression: nothing is compressed until the user starts it.
     await expect(continueButton).toBeEnabled();
     await continueButton.click();
     const grid = page.getByTestId("wizard-photo-grid");
     await expect(grid.getByRole("button")).toHaveCount(3);
+
+    // On entry every photo awaits a size, so Continue is blocked and only an
+    // estimated total is shown — the exact total appears after compression.
+    await expect(grid.getByText("Awaiting size")).toHaveCount(3);
+    await expect(page.getByText(/^Estimated total after publishing:/)).toBeVisible();
+    await expect(continueButton).toBeDisabled();
+
+    // Advancing from the previous step selects every photo by default; compress
+    // them all at Balanced (4096px) first, which starts the deferred encode.
+    await expect(page.getByText("3 selected")).toBeVisible();
+    await page.getByLabel("Compression size", { exact: true }).selectOption("balanced");
+    await page.getByRole("button", { name: "Compress all" }).click();
+    await expect(grid.getByText(/^Balanced/)).toHaveCount(3, { timeout: 20_000 });
     await expect(page.getByText(/^Total size after publishing:/)).toBeVisible();
 
-    // Advancing from the previous step selects every photo by default.
-    await expect(page.getByText("3 selected")).toBeVisible();
+    // Then give the first photo a different size (Archive · 6000px) to prove
+    // per-photo overrides still work after the initial compression.
     await page.getByRole("button", { name: "Clear selection" }).click();
     await grid.getByRole("button", { name: "Select first.png" }).click();
     await expect(page.getByText("1 selected")).toBeVisible();
-    await page.getByLabel("Storage quality", { exact: true }).selectOption("archive");
-    await page.getByRole("button", { name: "Apply to selected (1)" }).click();
-    await expect(grid.getByText(/^Archive/)).toBeVisible({ timeout: 15_000 });
+    await page.getByLabel("Compression size", { exact: true }).selectOption("archive");
+    await page.getByRole("button", { name: "Compress selected (1)" }).click();
+    await expect(grid.getByText(/^Archive/)).toBeVisible({ timeout: 20_000 });
     await expect(grid.getByText(/^Balanced/)).toHaveCount(2);
 
     // Step 3 — credits: only the first photo gets one; the rest stay

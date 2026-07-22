@@ -146,19 +146,21 @@ async function main() {
     `HTTP ${retryUploadRes.status} (want 200 or 202), ${pendingRowsAfterRetry} row(s) (want 1)`
   );
 
-  const pendingWithComparison = await prisma.photo.findUniqueOrThrow({
+  // Compression is deferred until a size is chosen, so the freshly-uploaded row
+  // is "awaiting": its source and thumbnail are durable, but there is no
+  // compressed candidate yet and its bytes are just source + thumbnail.
+  const awaitingUpload = await prisma.photo.findUniqueOrThrow({
     where: { id: uploadId }
   });
   report(
-    "pending queue: exact source/candidate/rendition sizes are durable",
-    pendingWithComparison.sourceBytes !== null &&
-      pendingWithComparison.candidateBytes !== null &&
-      pendingWithComparison.renditionBytes !== null &&
-      pendingWithComparison.bytes ===
-        pendingWithComparison.sourceBytes +
-          pendingWithComparison.candidateBytes +
-          pendingWithComparison.renditionBytes,
-    `source=${pendingWithComparison.sourceBytes}, candidate=${pendingWithComparison.candidateBytes}, renditions=${pendingWithComparison.renditionBytes}, total=${pendingWithComparison.bytes}`
+    "pending queue: an uploaded photo awaits a size with source + thumbnail durable",
+    awaitingUpload.uploadState === "awaiting" &&
+      awaitingUpload.sourceBytes !== null &&
+      awaitingUpload.candidateBytes === null &&
+      awaitingUpload.renditionBytes !== null &&
+      awaitingUpload.bytes ===
+        awaitingUpload.sourceBytes + awaitingUpload.renditionBytes,
+    `state=${awaitingUpload.uploadState}, source=${awaitingUpload.sourceBytes}, candidate=${awaitingUpload.candidateBytes}, renditions=${awaitingUpload.renditionBytes}, total=${awaitingUpload.bytes}`
   );
 
   const foreignPreset = await fetch(`${BASE}/api/admin/photos`, {
@@ -185,6 +187,20 @@ async function main() {
       archiveRow.candidatePreset === "archive" &&
       archiveRow.uploadState === "pending",
     `HTTP ${archivePreset.status}, selected=${archiveRow.storagePreset}, candidate=${archiveRow.candidatePreset}, state=${archiveRow.uploadState}`
+  );
+
+  // Once a size is chosen the background encode runs, and the exact
+  // source/candidate/rendition sizes it produced are persisted and sum to bytes.
+  report(
+    "pending queue: choosing a size persists exact source/candidate/rendition sizes",
+    archiveRow.sourceBytes !== null &&
+      archiveRow.candidateBytes !== null &&
+      archiveRow.renditionBytes !== null &&
+      archiveRow.bytes ===
+        archiveRow.sourceBytes +
+          archiveRow.candidateBytes +
+          archiveRow.renditionBytes,
+    `source=${archiveRow.sourceBytes}, candidate=${archiveRow.candidateBytes}, renditions=${archiveRow.renditionBytes}, total=${archiveRow.bytes}`
   );
 
   await prisma.event.update({
