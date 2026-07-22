@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getSiteSettings } from "@/lib/settings";
 import { pickText } from "@/lib/content";
-import { formatDate } from "@/lib/datetime";
+import { formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { buttonClasses } from "@/components/ui/Button";
 
@@ -18,6 +18,7 @@ export default async function AdminBookingsPage() {
     where: { ownerId: user.id },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     include: {
+      days: { orderBy: { date: "asc" }, select: { date: true } },
       slots: {
         include: {
           _count: {
@@ -59,6 +60,13 @@ export default async function AdminBookingsPage() {
               (n, s) => n + s._count.bookings,
               0
             );
+            const dateLabel =
+              event.days.length > 0
+                ? formatDateRange(
+                    event.days[0].date,
+                    event.days[event.days.length - 1].date
+                  )
+                : "";
             return (
               <li key={event.id}>
                 <Link
@@ -70,7 +78,10 @@ export default async function AdminBookingsPage() {
                       {pickText(locale, event.titleEn, event.titleZh)}
                     </h2>
                     <p className="text-sm text-fg-subtle">
-                      {formatDate(event.date)}
+                      {dateLabel}
+                      {event.days.length > 1
+                        ? ` · ${t("dayCount", { count: event.days.length })}`
+                        : ""}
                       {event.location ? ` · ${event.location}` : ""} ·{" "}
                       {t("booked", { booked, capacity })}
                     </p>

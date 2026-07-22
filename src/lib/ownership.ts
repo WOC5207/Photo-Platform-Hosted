@@ -69,6 +69,14 @@ export async function findOwnedSlot(id: string, user: User) {
   });
 }
 
+/** One day of an owned booking event — the grain slots are added under. */
+export async function findOwnedBookingDay(id: string, user: User) {
+  return prisma.bookingDay.findFirst({
+    where: { id, bookingEvent: { ownerId: user.id } },
+    select: { id: true, date: true, bookingEventId: true }
+  });
+}
+
 /** A visitor's booking, reachable only through the slot's owning event. */
 export async function findOwnedBooking(id: string, user: User) {
   return prisma.booking.findFirst({

@@ -74,19 +74,23 @@ function booking(i: number) {
 }
 
 async function makeSlot(capacity: number) {
+  const date = new Date();
   const event = await prisma.bookingEvent.create({
     data: {
       ownerId,
       token: randomUUID().replace(/-/g, ""),
       titleEn: "concurrency test",
       titleZh: "concurrency test",
-      date: new Date(),
-      open: true
-    }
+      date,
+      open: true,
+      days: { create: { date } }
+    },
+    include: { days: true }
   });
   const slot = await prisma.timeSlot.create({
     data: {
       bookingEventId: event.id,
+      bookingDayId: event.days[0].id,
       startTime: new Date(),
       endTime: new Date(Date.now() + 3600_000),
       capacity

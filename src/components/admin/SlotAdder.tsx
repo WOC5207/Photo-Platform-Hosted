@@ -11,7 +11,7 @@ import Button from "@/components/ui/Button";
 const inputCls =
   "min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11";
 
-export default function SlotAdder({ eventId }: { eventId: string }) {
+export default function SlotAdder({ bookingDayId }: { bookingDayId: string }) {
   const t = useTranslations("adminBookings");
   const [state, formAction, pending] = useActionState<SlotFormState, FormData>(
     addSlots,
@@ -24,13 +24,13 @@ export default function SlotAdder({ eventId }: { eventId: string }) {
       className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4"
     >
       <h3 className="font-semibold">{t("addSlots")}</h3>
-      <input type="hidden" name="eventId" value={eventId} />
+      <input type="hidden" name="bookingDayId" value={bookingDayId} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("firstSlotStart")}</span>
+          <span className="text-fg-muted">{t("firstSlotTime")}</span>
           <input
-            name="firstSlotStart"
-            type="datetime-local"
+            name="startTime"
+            type="time"
             required
             className={inputCls}
           />

@@ -26,7 +26,7 @@ export default async function NewBookingEventPage() {
         initial={{
           titleEn: "",
           titleZh: "",
-          date: "",
+          dates: [],
           location: "",
           descriptionEn: "",
           descriptionZh: "",

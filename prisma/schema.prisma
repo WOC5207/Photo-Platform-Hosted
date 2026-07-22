@@ -379,6 +379,11 @@ model BookingEvent {
   // default so existing/new events don't suddenly expose a "Prize draw"
   // link and public entry page until the admin opts in.
   lotteryEnabled Boolean   @default(false)
+  // The days this event spans. A one-day event has a single BookingDay; a
+  // multi-day event has one per selected calendar date. `date` above is kept as
+  // a denormalized copy of the earliest day (maintained by the booking actions)
+  // so list ordering and legacy `date` reads keep working.
+  days          BookingDay[]
   slots         TimeSlot[]
   lotteryDraw   LotteryDraw?
   createdAt     DateTime   @default(now())
@@ -387,10 +392,31 @@ model BookingEvent {
   @@index([ownerId])
 }
 
+// One calendar day of a BookingEvent. Availability (TimeSlots) hangs off a day,
+// so the admin sets slots per day and visitors pick a day then a slot. The
+// naive-UTC convention matches BookingEvent.date and slot times: midnight UTC
+// stands for the wall-clock day, with no timezone conversion.
+model BookingDay {
+  id             String       @id @default(cuid())
+  bookingEventId String
+  bookingEvent   BookingEvent @relation(fields: [bookingEventId], references: [id], onDelete: Cascade)
+  date           DateTime
+  slots          TimeSlot[]
+  createdAt      DateTime     @default(now())
+
+  @@unique([bookingEventId, date])
+  @@index([bookingEventId])
+}
+
 model TimeSlot {
   id             String       @id @default(cuid())
   bookingEventId String
   bookingEvent   BookingEvent @relation(fields: [bookingEventId], references: [id], onDelete: Cascade)
+  // The day this slot belongs to. Redundant with bookingEventId (a day belongs
+  // to exactly one event) but kept alongside it so event-scoped ownership joins
+  // and the FOR UPDATE reserve path stay unchanged.
+  bookingDayId   String
+  bookingDay     BookingDay   @relation(fields: [bookingDayId], references: [id], onDelete: Cascade)
   startTime      DateTime
   endTime        DateTime
   capacity       Int          @default(1)

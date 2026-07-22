@@ -72,13 +72,23 @@ export default async function HomePage({
     }),
     settings.bookingEnabled
       ? prisma.bookingEvent.findMany({
-          where: { ownerId: owner.id, open: true, date: { gte: today } },
+          where: {
+            ownerId: owner.id,
+            open: true,
+            days: { some: { date: { gte: today } } }
+          },
           orderBy: [{ date: "asc" }, { createdAt: "asc" }],
           include: {
-            slots: {
+            days: {
+              where: { date: { gte: today } },
+              orderBy: { date: "asc" },
               include: {
-                _count: {
-                  select: { bookings: { where: { status: "confirmed" } } }
+                slots: {
+                  include: {
+                    _count: {
+                      select: { bookings: { where: { status: "confirmed" } } }
+                    }
+                  }
                 }
               }
             }
@@ -104,15 +114,19 @@ export default async function HomePage({
     ).size
   };
 
-  const calendarSessions: CalendarSession[] = bookingEvents.map((e) => ({
-    date: formatDate(e.date),
-    title: pickText(locale, e.titleEn, e.titleZh),
-    token: e.token,
-    remaining: e.slots.reduce(
-      (n, s) => n + Math.max(0, s.capacity - s._count.bookings),
-      0
-    )
-  }));
+  // One calendar entry per future day of each open event, so a multi-day event
+  // shows up on every day it runs.
+  const calendarSessions: CalendarSession[] = bookingEvents.flatMap((e) =>
+    e.days.map((day) => ({
+      date: formatDate(day.date),
+      title: pickText(locale, e.titleEn, e.titleZh),
+      token: e.token,
+      remaining: day.slots.reduce(
+        (n, s) => n + Math.max(0, s.capacity - s._count.bookings),
+        0
+      )
+    }))
+  );
 
   const personalLinkItems: PersonalLinkItem[] = personalLinks.map((l) => ({
     id: l.id,
