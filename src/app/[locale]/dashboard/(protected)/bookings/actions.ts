@@ -18,6 +18,7 @@ import { formatDate, parseNaiveDateTime } from "@/lib/datetime";
 import { pickText } from "@/lib/content";
 import { config } from "@/lib/config";
 import { notifyBookingStatusChanged } from "@/lib/notify";
+import { mergeEvents, splitEvent } from "@/lib/booking";
 
 export type BookingEventFormState = {
   error?:
@@ -412,4 +413,62 @@ export async function setBookingStatus(
     await emailVisitorBookingStatus(owned.id, "confirmed", locale);
   }
   return result;
+}
+
+export type MergeEventsState = {
+  error?: "invalid" | "lotteryConflict";
+};
+
+/**
+ * Consolidate several booking events under one shared link. The target keeps
+ * its link and details; the rest fold into it and are removed. Ownership and
+ * the lottery gate live in mergeEvents (src/lib/booking.ts).
+ */
+export async function mergeBookingEvents(
+  _prev: MergeEventsState,
+  formData: FormData
+): Promise<MergeEventsState> {
+  const { locale, user } = await guard();
+  const targetId = formData.get("targetId");
+  const sourceIds = formData
+    .getAll("sourceId")
+    .filter((value): value is string => typeof value === "string");
+  if (typeof targetId !== "string" || sourceIds.length === 0) {
+    return { error: "invalid" };
+  }
+
+  const result = await mergeEvents(user.id, targetId, sourceIds);
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/", "layout");
+  redirect(`/${locale}/dashboard/bookings/${result.targetId}`);
+}
+
+export type SplitEventState = {
+  error?: "invalid" | "lotterySplit";
+};
+
+/**
+ * Break selected days out of an event into a new event with its own link. The
+ * new event's edit page is where the photographer picks up that link, so we
+ * redirect there. Validation and the lottery gate live in splitEvent.
+ */
+export async function splitBookingEvent(
+  _prev: SplitEventState,
+  formData: FormData
+): Promise<SplitEventState> {
+  const { locale, user } = await guard();
+  const eventId = formData.get("eventId");
+  const dayIds = formData
+    .getAll("dayId")
+    .filter((value): value is string => typeof value === "string");
+  if (typeof eventId !== "string" || dayIds.length === 0) {
+    return { error: "invalid" };
+  }
+
+  const result = await splitEvent(user.id, eventId, dayIds);
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/", "layout");
+  redirect(`/${locale}/dashboard/bookings/${result.newEventId}`);
 }

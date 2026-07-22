@@ -16,6 +16,7 @@
     "test:images": "tsx --conditions=react-server scripts/test-image-compression.ts",
     "test:security": "tsx --conditions=react-server scripts/test-security-remediation.ts",
     "test:security:db": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-security-db.ts",
+    "test:bookingorg": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-booking-orgs.ts",
     "test:email": "tsx --conditions=react-server scripts/test-email.ts",
     "test:http": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-http-isolation.ts",
     "test:e2e": "playwright test",
