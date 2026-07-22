@@ -5,8 +5,14 @@ import { requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { getSiteSettings } from "@/lib/settings";
 import { pickText } from "@/lib/content";
-import { formatSlotRange, formatDateTime } from "@/lib/datetime";
+import {
+  formatDate,
+  formatDayTab,
+  formatSlotRange,
+  formatDateTime
+} from "@/lib/datetime";
 import BookingEventForm from "@/components/admin/BookingEventForm";
+import BookingDayTabs, { type DayTab } from "@/components/admin/BookingDayTabs";
 import SlotAdder from "@/components/admin/SlotAdder";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import CopyButton from "@/components/admin/CopyButton";
@@ -35,10 +41,15 @@ export default async function EditBookingEventPage({
     where: { id, ownerId: user.id },
     include: {
       lotteryDraw: { select: { id: true } },
-      slots: {
-        orderBy: { startTime: "asc" },
+      days: {
+        orderBy: { date: "asc" },
         include: {
-          bookings: { orderBy: { createdAt: "asc" } }
+          slots: {
+            orderBy: { startTime: "asc" },
+            include: {
+              bookings: { orderBy: { createdAt: "asc" } }
+            }
+          }
         }
       }
     }
@@ -100,7 +111,7 @@ export default async function EditBookingEventPage({
           id: event.id,
           titleEn: event.titleEn,
           titleZh: event.titleZh,
-          date: event.date.toISOString().slice(0, 10),
+          dates: event.days.map((day) => formatDate(day.date)),
           location: event.location,
           descriptionEn: event.descriptionEn,
           descriptionZh: event.descriptionZh,
@@ -137,94 +148,108 @@ export default async function EditBookingEventPage({
       <section className="flex flex-col gap-4 border-t border-border pt-6">
         <h2 className="text-lg font-semibold">{t("slots")}</h2>
 
-        {event.slots.length === 0 ? (
-          <p className="text-sm text-fg-subtle">{t("noSlots")}</p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {event.slots.map((slot) => {
-              const confirmed = slot.bookings.filter(
-                (b) => b.status === "confirmed"
-              );
-              const description = pickText(
-                locale,
-                slot.descriptionEn,
-                slot.descriptionZh
-              );
-              return (
-                <li
-                  key={slot.id}
-                  className="rounded-xl border border-border bg-surface p-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-mono text-sm font-semibold">
-                      {formatSlotRange(slot.startTime, slot.endTime)}
-                      <span className="ml-3 font-sans font-normal text-fg-subtle">
-                        {t("booked", {
-                          booked: confirmed.length,
-                          capacity: slot.capacity
-                        })}
-                      </span>
-                      {description && (
-                        <span className="ml-3 font-sans font-normal text-fg-subtle">
-                          · {description}
-                        </span>
-                      )}
-                    </p>
-                    <form action={deleteSlot}>
-                      <input type="hidden" name="slotId" value={slot.id} />
-                      <ConfirmSubmit
-                        label={t("deleteSlot")}
-                        confirmText={t("confirmDeleteSlot")}
-                      />
-                    </form>
-                  </div>
-
-                  {slot.bookings.length > 0 && (
-                    <ul className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-                      {slot.bookings.map((b) => (
-                        <li
-                          key={b.id}
-                          className="flex flex-wrap items-center justify-between gap-2 text-sm"
-                        >
-                          <div
-                            className={
-                              b.status === "cancelled"
-                                ? "text-fg-faint line-through"
-                                : ""
-                            }
+        <BookingDayTabs
+          tabs={event.days.map(
+            (day): DayTab => ({
+              id: day.id,
+              label: formatDayTab(day.date, locale),
+              content: (
+                <div className="flex flex-col gap-4">
+                  {day.slots.length === 0 ? (
+                    <p className="text-sm text-fg-subtle">{t("noSlotsThisDay")}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-3">
+                      {day.slots.map((slot) => {
+                        const confirmed = slot.bookings.filter(
+                          (b) => b.status === "confirmed"
+                        );
+                        const description = pickText(
+                          locale,
+                          slot.descriptionEn,
+                          slot.descriptionZh
+                        );
+                        return (
+                          <li
+                            key={slot.id}
+                            className="rounded-xl border border-border bg-surface p-4"
                           >
-                            <span className="font-semibold">
-                              {b.subject ? `${b.name} · ${b.subject}` : b.name}
-                            </span>
-                            <span className="ml-2 text-fg-subtle">
-                              {[b.contactMethod, b.contactValue]
-                                .filter(Boolean)
-                                .join(": ")}
-                            </span>
-                            {b.notes && (
-                              <p className="mt-0.5 max-w-xl whitespace-pre-line text-xs text-fg-subtle">
-                                {b.notes}
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="font-mono text-sm font-semibold">
+                                {formatSlotRange(slot.startTime, slot.endTime)}
+                                <span className="ml-3 font-sans font-normal text-fg-subtle">
+                                  {t("booked", {
+                                    booked: confirmed.length,
+                                    capacity: slot.capacity
+                                  })}
+                                </span>
+                                {description && (
+                                  <span className="ml-3 font-sans font-normal text-fg-subtle">
+                                    · {description}
+                                  </span>
+                                )}
                               </p>
+                              <form action={deleteSlot}>
+                                <input type="hidden" name="slotId" value={slot.id} />
+                                <ConfirmSubmit
+                                  label={t("deleteSlot")}
+                                  confirmText={t("confirmDeleteSlot")}
+                                />
+                              </form>
+                            </div>
+
+                            {slot.bookings.length > 0 && (
+                              <ul className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                                {slot.bookings.map((b) => (
+                                  <li
+                                    key={b.id}
+                                    className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                                  >
+                                    <div
+                                      className={
+                                        b.status === "cancelled"
+                                          ? "text-fg-faint line-through"
+                                          : ""
+                                      }
+                                    >
+                                      <span className="font-semibold">
+                                        {b.subject
+                                          ? `${b.name} · ${b.subject}`
+                                          : b.name}
+                                      </span>
+                                      <span className="ml-2 text-fg-subtle">
+                                        {[b.contactMethod, b.contactValue]
+                                          .filter(Boolean)
+                                          .join(": ")}
+                                      </span>
+                                      {b.notes && (
+                                        <p className="mt-0.5 max-w-xl whitespace-pre-line text-xs text-fg-subtle">
+                                          {b.notes}
+                                        </p>
+                                      )}
+                                      <p className="text-xs text-fg-subtle">
+                                        {t("bookedAt")}: {formatDateTime(b.createdAt)}
+                                      </p>
+                                    </div>
+                                    <BookingStatusButton
+                                      bookingId={b.id}
+                                      status={b.status}
+                                    />
+                                  </li>
+                                ))}
+                              </ul>
                             )}
-                            <p className="text-xs text-fg-subtle">
-                              {t("bookedAt")}: {formatDateTime(b.createdAt)}
-                            </p>
-                          </div>
-                          <BookingStatusButton
-                            bookingId={b.id}
-                            status={b.status}
-                          />
-                        </li>
-                      ))}
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
 
-        <SlotAdder eventId={event.id} />
+                  <SlotAdder bookingDayId={day.id} />
+                </div>
+              )
+            })
+          )}
+        />
       </section>
 
       <section className="rounded-xl border border-danger-border bg-danger-surface/40 p-5">

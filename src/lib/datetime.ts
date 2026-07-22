@@ -28,6 +28,16 @@ export function formatSlotRange(start: Date, end: Date): string {
   return `${formatDate(start)} ${formatTime(start)}–${formatTime(end)}`;
 }
 
+/** Short label for a booking day tab, e.g. "Sat Jul 26" (naive-UTC). */
+export function formatDayTab(d: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC"
+  }).format(d);
+}
+
 /** Format an event's date range; falls back gracefully when either end is unset. */
 export function formatDateRange(
   start: Date | null,

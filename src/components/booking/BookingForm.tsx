@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { useTranslations } from "next-intl";
+import { useActionState, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import {
   createBooking,
   type BookingFormState
@@ -15,6 +15,12 @@ export interface PublicSlot {
   description: string;
 }
 
+export interface PublicDay {
+  id: string;
+  date: string; // yyyy-mm-dd
+  slots: PublicSlot[];
+}
+
 export interface PublicContactMethod {
   id: string;
   label: string; // already resolved to the current locale
@@ -23,24 +29,37 @@ export interface PublicContactMethod {
 const inputCls =
   "rounded-lg border border-border-strong bg-surface px-3 py-2 text-fg outline-none focus:border-fg-subtle";
 
-function fmt(iso: string): string {
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+function dayLabel(date: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC"
+  }).format(new Date(`${date}T00:00:00Z`));
 }
 
 export default function BookingForm({
-  slots,
+  days,
   contactMethods,
   subjectTerm
 }: {
-  slots: PublicSlot[];
+  days: PublicDay[];
   contactMethods: PublicContactMethod[];
   subjectTerm: string;
 }) {
   const t = useTranslations("booking");
+  const locale = useLocale();
   const [state, formAction, pending] = useActionState<
     BookingFormState,
     FormData
   >(createBooking, {});
+
+  // Default to the first day that actually has availability, so a visitor
+  // doesn't land on an empty tab when earlier days are sold out/unset.
+  const [activeDayId, setActiveDayId] = useState(
+    () => (days.find((d) => d.slots.length > 0) ?? days[0])?.id ?? ""
+  );
+  const activeDay = days.find((d) => d.id === activeDayId) ?? days[0];
 
   const errorMessage = state.error
     ? {
@@ -54,49 +73,79 @@ export default function BookingForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
-      <fieldset className="flex flex-col gap-2">
+      <fieldset className="flex flex-col gap-3">
         <legend className="mb-2 text-lg font-semibold">
           {t("chooseSlot")}
         </legend>
-        {slots.map((slot) => {
-          const full = slot.remaining === 0;
-          return (
-            <label
-              key={slot.id}
-              className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-4 transition ${
-                full
-                  ? "cursor-not-allowed border-border bg-surface/50 text-fg-faint"
-                  : "border-border-strong bg-surface hover:border-fg-subtle has-[:checked]:border-fg has-[:checked]:bg-surface-2"
-              }`}
-            >
-              <span className="flex items-center gap-3">
-                <input
-                  type="radio"
-                  name="slotId"
-                  value={slot.id}
-                  disabled={full}
-                  required
-                  className="h-4 w-4 accent-fg"
-                />
-                <span className="flex flex-col">
-                  <span className="font-mono text-sm">
-                    {fmt(slot.start)}–{slot.end.slice(11, 16)}
-                  </span>
-                  {slot.description && (
-                    <span className="text-xs text-fg-subtle">
-                      {slot.description}
-                    </span>
-                  )}
-                </span>
-              </span>
-              <span
-                className={`text-xs ${full ? "" : "text-success"}`}
+
+        {days.length > 1 && (
+          <div role="tablist" aria-label={t("chooseDay")} className="flex flex-wrap gap-2">
+            {days.map((day) => {
+              const selected = day.id === activeDay?.id;
+              return (
+                <button
+                  key={day.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setActiveDayId(day.id)}
+                  className={[
+                    "inline-flex min-h-9 items-center rounded-full border px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11",
+                    selected
+                      ? "border-fg bg-fg text-page"
+                      : "border-border-strong text-fg-muted hover:border-fg-subtle hover:text-fg"
+                  ].join(" ")}
+                >
+                  {dayLabel(day.date, locale)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {!activeDay || activeDay.slots.length === 0 ? (
+          <p className="rounded-xl border border-border bg-surface p-4 text-center text-sm text-fg-subtle">
+            {t("noSlotsThisDay")}
+          </p>
+        ) : (
+          activeDay.slots.map((slot) => {
+            const full = slot.remaining === 0;
+            return (
+              <label
+                key={slot.id}
+                className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-4 transition ${
+                  full
+                    ? "cursor-not-allowed border-border bg-surface/50 text-fg-faint"
+                    : "border-border-strong bg-surface hover:border-fg-subtle has-[:checked]:border-fg has-[:checked]:bg-surface-2"
+                }`}
               >
-                {full ? t("full") : t("slotsLeft", { count: slot.remaining })}
-              </span>
-            </label>
-          );
-        })}
+                <span className="flex items-center gap-3">
+                  <input
+                    type="radio"
+                    name="slotId"
+                    value={slot.id}
+                    disabled={full}
+                    required
+                    className="h-4 w-4 accent-fg"
+                  />
+                  <span className="flex flex-col">
+                    <span className="font-mono text-sm">
+                      {slot.start.slice(11, 16)}–{slot.end.slice(11, 16)}
+                    </span>
+                    {slot.description && (
+                      <span className="text-xs text-fg-subtle">
+                        {slot.description}
+                      </span>
+                    )}
+                  </span>
+                </span>
+                <span className={`text-xs ${full ? "" : "text-success"}`}>
+                  {full ? t("full") : t("slotsLeft", { count: slot.remaining })}
+                </span>
+              </label>
+            );
+          })
+        )}
       </fieldset>
 
       <fieldset className="flex flex-col gap-4">

@@ -4,13 +4,14 @@ import { useActionState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
+import BookingDayPicker from "@/components/admin/BookingDayPicker";
 import type { BookingEventFormState } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
 
 export interface BookingEventFormValues {
   id?: string;
   titleEn: string;
   titleZh: string;
-  date: string; // yyyy-mm-dd
+  dates: string[]; // yyyy-mm-dd, the days the event spans
   location: string;
   descriptionEn: string;
   descriptionZh: string;
@@ -70,27 +71,17 @@ export default function BookingEventForm({
       </div>
       <p className="-mt-2 text-xs text-fg-subtle">{t("titleHint")}</p>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("date")}</span>
-          <input
-            name="date"
-            type="date"
-            required
-            defaultValue={initial.date}
-            className={inputCls}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-          <span className="text-fg-muted">{t("location")}</span>
-          <input
-            name="location"
-            defaultValue={initial.location}
-            maxLength={300}
-            className={inputCls}
-          />
-        </label>
-      </div>
+      <BookingDayPicker initialDates={initial.dates} />
+
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-fg-muted">{t("location")}</span>
+        <input
+          name="location"
+          defaultValue={initial.location}
+          maxLength={300}
+          className={inputCls}
+        />
+      </label>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
@@ -138,7 +129,9 @@ export default function BookingEventForm({
               ? t("noSlots")
               : state.error === "noContactMethods"
                 ? ts("noContactMethods")
-                : tc("error")}
+                : state.error === "dayHasBookings"
+                  ? t("dayHasBookings")
+                  : tc("error")}
         </p>
       )}
       {state.ok && (

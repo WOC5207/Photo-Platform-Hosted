@@ -3,7 +3,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { resolveOwner } from "@/lib/owner";
 import { pickText } from "@/lib/content";
-import { formatDate } from "@/lib/datetime";
+import { formatDate, formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { getSiteSettings } from "@/lib/settings";
 
@@ -25,6 +25,7 @@ export default async function BookingListPage({
     where: { ownerId: owner.id, open: true },
     orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     include: {
+      days: { orderBy: { date: "asc" }, select: { date: true } },
       slots: {
         include: {
           _count: { select: { bookings: { where: { status: "confirmed" } } } }
@@ -63,7 +64,15 @@ export default async function BookingListPage({
                         {pickText(locale, event.titleEn, event.titleZh)}
                       </h2>
                       <p className="text-sm text-fg-subtle">
-                        {[formatDate(event.date), event.location || null]
+                        {[
+                          event.days.length > 0
+                            ? formatDateRange(
+                                event.days[0].date,
+                                event.days[event.days.length - 1].date
+                              )
+                            : formatDate(event.date),
+                          event.location || null
+                        ]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>

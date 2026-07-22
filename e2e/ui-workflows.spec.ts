@@ -596,25 +596,89 @@ test.describe.serial("management workflows", () => {
     await expect(sentItem).toHaveCount(0);
   });
 
-  test("booking cannot open without readiness requirements", async ({ page }) => {
-    const title = `E2E booking ${Date.now()}`;
-    const date = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+  test("multi-day booking: calendar day-picker, per-day availability tabs, public day tabs", async ({ page }) => {
+    const title = `E2E multiday ${Date.now()}`;
+    // Two specific days in next month, so the calendar cells always exist (day
+    // 10 and 12 are present in every month) and are safely in the future.
+    const now = new Date();
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const isoDay = (day: number) =>
+      `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const day1 = isoDay(10);
+    const day2 = isoDay(12);
+
     await page.goto("/en/dashboard/bookings/new");
     await page.getByLabel("Title (English)").fill(title);
-    await page.getByLabel("Event date").fill(date);
+
+    // Calendar day-picker: advance to next month, then pick two specific days.
+    await page.getByRole("button", { name: "Next month" }).click();
+    await page.getByRole("button", { name: day1, exact: true }).click();
+    await page.getByRole("button", { name: day2, exact: true }).click();
+    await expect(page.getByText("2 days selected")).toBeVisible();
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await page.waitForURL(/\/dashboard\/bookings\/(?!new$)[^/]+$/);
 
+    // The availability section is now tabbed — one tab per selected day.
+    const dayTabs = page.getByRole("tablist").getByRole("tab");
+    await expect(dayTabs).toHaveCount(2);
+
+    // Opening for public booking is still blocked until there are slots.
     await page.getByRole("checkbox", { name: "Open for public booking" }).check();
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("alert").filter({ hasText: "No time slots yet" })).toBeVisible();
 
-    await page.getByLabel("First slot starts").fill(`${date}T10:00`);
+    // Add a slot under each day tab. Only the active day's adder is mounted.
+    await page.getByLabel("First slot time").fill("10:00");
     await page.getByRole("button", { name: "Add slots" }).click();
     await expect(page.getByText(/10:00/).first()).toBeVisible();
 
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "Delete booking event" }).click();
-    await expect(page).toHaveURL(/\/en\/dashboard\/bookings$/);
+    await dayTabs.nth(1).click();
+    await page.getByLabel("First slot time").fill("14:00");
+    await page.getByRole("button", { name: "Add slots" }).click();
+    await expect(page.getByText(/14:00/).first()).toBeVisible();
+
+    // Booking also needs a contact method configured; seed one, then open.
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: adminUsername! }
+    });
+    const contact = await prisma.contactMethod.create({
+      data: { ownerId: admin.id, labelEn: "Email", labelZh: "邮箱" }
+    });
+    const event = await prisma.bookingEvent.findFirstOrThrow({
+      where: { titleEn: title },
+      orderBy: { createdAt: "desc" }
+    });
+
+    try {
+      await page.getByRole("checkbox", { name: "Open for public booking" }).check();
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
+
+      // Public page: two day tabs; switch to the second day and book its slot.
+      await page.goto(`/en/book/${event.token}`);
+      const publicDayTabs = page
+        .getByRole("tablist", { name: "Choose a day" })
+        .getByRole("tab");
+      await expect(publicDayTabs).toHaveCount(2);
+      await publicDayTabs.nth(1).click();
+
+      await page.getByRole("radio").first().check();
+      await page.getByLabel("CN").fill("E2E Visitor");
+      await page.getByLabel("Contact method").selectOption({ label: "Email" });
+      await page.getByLabel("Contact info").fill("visitor@example.com");
+      await page.getByRole("button", { name: "Book this slot" }).click();
+      await expect(page).toHaveURL(/\/en\/my-booking\/[a-z0-9]+/);
+
+      // The booking landed on the *second* day's slot, proving the tab routed
+      // the reservation to the right day.
+      const booking = await prisma.booking.findFirstOrThrow({
+        where: { name: "E2E Visitor", timeSlot: { bookingEventId: event.id } },
+        include: { timeSlot: { include: { bookingDay: true } } }
+      });
+      expect(booking.timeSlot.bookingDay.date.toISOString().slice(0, 10)).toBe(day2);
+    } finally {
+      await prisma.bookingEvent.delete({ where: { id: event.id } }).catch(() => {});
+      await prisma.contactMethod.delete({ where: { id: contact.id } }).catch(() => {});
+    }
   });
 });

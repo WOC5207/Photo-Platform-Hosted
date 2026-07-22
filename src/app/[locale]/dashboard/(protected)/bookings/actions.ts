@@ -10,19 +10,59 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import {
   findOwnedBooking,
+  findOwnedBookingDay,
   findOwnedBookingEvent,
   findOwnedSlot
 } from "@/lib/ownership";
-import { parseNaiveDateTime } from "@/lib/datetime";
+import { formatDate, parseNaiveDateTime } from "@/lib/datetime";
 import { pickText } from "@/lib/content";
 import { config } from "@/lib/config";
 import { notifyBookingStatusChanged } from "@/lib/notify";
 
 export type BookingEventFormState = {
-  error?: "validation" | "noSlots" | "noContactMethods" | "unknown";
+  error?:
+    | "validation"
+    | "noSlots"
+    | "noContactMethods"
+    | "dayHasBookings"
+    | "unknown";
   ok?: boolean;
 };
 export type SlotFormState = { error?: "validation"; ok?: boolean };
+
+// The calendar day-picker submits its selected days as a JSON array of
+// yyyy-mm-dd strings. At most this many days per event — a generous cap that
+// still stops a crafted request from creating thousands of rows.
+const MAX_EVENT_DAYS = 60;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parse and normalize the selected days: deduped, sorted ascending, each a
+ * valid yyyy-mm-dd. Returns null when the input is missing, malformed, empty or
+ * over the cap — the caller treats that as a validation error.
+ */
+function parseSelectedDates(raw: FormDataEntryValue | null): string[] | null {
+  if (typeof raw !== "string") return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  const days = Array.from(
+    new Set(
+      parsed.filter(
+        (d): d is string =>
+          typeof d === "string" &&
+          DATE_PATTERN.test(d) &&
+          !Number.isNaN(Date.parse(`${d}T00:00:00Z`))
+      )
+    )
+  ).sort();
+  if (days.length === 0 || days.length > MAX_EVENT_DAYS) return null;
+  return days;
+}
 
 /** See the note in the events actions: signed in is not the same as owns it. */
 async function guard(): Promise<{ locale: string; user: User }> {
@@ -35,7 +75,6 @@ const bookingEventSchema = z
   .object({
     titleEn: z.string().trim().max(300),
     titleZh: z.string().trim().max(300),
-    date: z.string().trim().max(30),
     location: z.string().trim().max(300),
     descriptionEn: z.string().trim().max(5000),
     descriptionZh: z.string().trim().max(5000),
@@ -47,7 +86,6 @@ function parseBookingEventForm(formData: FormData) {
   return bookingEventSchema.safeParse({
     titleEn: formData.get("titleEn") ?? "",
     titleZh: formData.get("titleZh") ?? "",
-    date: formData.get("date") ?? "",
     location: formData.get("location") ?? "",
     descriptionEn: formData.get("descriptionEn") ?? "",
     descriptionZh: formData.get("descriptionZh") ?? "",
@@ -66,7 +104,8 @@ export async function createBookingEvent(
 ): Promise<BookingEventFormState> {
   const { locale, user } = await guard();
   const parsed = parseBookingEventForm(formData);
-  if (!parsed.success) return { error: "validation" };
+  const dates = parseSelectedDates(formData.get("dates"));
+  if (!parsed.success || !dates) return { error: "validation" };
   const d = parsed.data;
 
   const event = await prisma.bookingEvent.create({
@@ -78,11 +117,14 @@ export async function createBookingEvent(
       descriptionEn: d.descriptionEn,
       descriptionZh: d.descriptionZh,
       location: d.location,
-      date: toDate(d.date),
+      // `date` is the denormalized earliest day; the days themselves are the
+      // source of truth (dates is sorted ascending).
+      date: toDate(dates[0]),
       // A new event cannot have slots yet, so it always starts as a closed
       // draft. The edit action below is the only path that can publish it and
       // enforces the public-booking prerequisites before doing so.
-      open: false
+      open: false,
+      days: { create: dates.map((day) => ({ date: toDate(day) })) }
     }
   });
 
@@ -98,7 +140,8 @@ export async function updateBookingEvent(
   const id = formData.get("id");
   if (typeof id !== "string") return { error: "unknown" };
   const parsed = parseBookingEventForm(formData);
-  if (!parsed.success) return { error: "validation" };
+  const dates = parseSelectedDates(formData.get("dates"));
+  if (!parsed.success || !dates) return { error: "validation" };
   const d = parsed.data;
 
   const existing = await findOwnedBookingEvent(id, user);
@@ -117,17 +160,57 @@ export async function updateBookingEvent(
     if (contactMethodCount === 0) return { error: "noContactMethods" };
   }
 
+  // Reconcile the event's days with the calendar selection: keep the days that
+  // are still selected, add the newly-selected ones, and drop the deselected
+  // ones (their slots cascade). A day that already holds a confirmed booking
+  // cannot be removed — that would silently orphan a visitor's reservation.
+  const desiredTimes = new Set(dates.map((day) => toDate(day).getTime()));
+  const currentDays = await prisma.bookingDay.findMany({
+    where: { bookingEventId: existing.id },
+    select: { id: true, date: true }
+  });
+  const currentTimes = new Set(currentDays.map((day) => day.date.getTime()));
+  const removedDayIds = currentDays
+    .filter((day) => !desiredTimes.has(day.date.getTime()))
+    .map((day) => day.id);
+  const addedDates = dates.filter(
+    (day) => !currentTimes.has(toDate(day).getTime())
+  );
+
+  if (removedDayIds.length > 0) {
+    const blocked = await prisma.bookingDay.count({
+      where: {
+        id: { in: removedDayIds },
+        slots: { some: { bookings: { some: { status: "confirmed" } } } }
+      }
+    });
+    if (blocked > 0) return { error: "dayHasBookings" };
+  }
+
   try {
-    await prisma.bookingEvent.update({
-      where: { id: existing.id },
-      data: {
-        titleEn: d.titleEn,
-        titleZh: d.titleZh,
-        descriptionEn: d.descriptionEn,
-        descriptionZh: d.descriptionZh,
-        location: d.location,
-        date: toDate(d.date),
-        open: d.open
+    await prisma.$transaction(async (tx) => {
+      await tx.bookingEvent.update({
+        where: { id: existing.id },
+        data: {
+          titleEn: d.titleEn,
+          titleZh: d.titleZh,
+          descriptionEn: d.descriptionEn,
+          descriptionZh: d.descriptionZh,
+          location: d.location,
+          date: toDate(dates[0]),
+          open: d.open
+        }
+      });
+      if (addedDates.length > 0) {
+        await tx.bookingDay.createMany({
+          data: addedDates.map((day) => ({
+            bookingEventId: existing.id,
+            date: toDate(day)
+          }))
+        });
+      }
+      if (removedDayIds.length > 0) {
+        await tx.bookingDay.deleteMany({ where: { id: { in: removedDayIds } } });
       }
     });
   } catch {
@@ -154,7 +237,10 @@ export async function deleteBookingEvent(formData: FormData): Promise<void> {
 }
 
 const slotsSchema = z.object({
-  firstSlotStart: z.string(),
+  bookingDayId: z.string().min(1),
+  // Time of day for the first slot on the chosen day (the day itself is fixed
+  // by which tab the admin is on), as "HH:MM".
+  startTime: z.string().regex(/^\d{2}:\d{2}$/),
   slotMinutes: z.coerce.number().int().min(5).max(24 * 60),
   slotCount: z.coerce.number().int().min(1).max(100),
   capacity: z.coerce.number().int().min(1).max(1000),
@@ -167,11 +253,10 @@ export async function addSlots(
   formData: FormData
 ): Promise<SlotFormState> {
   const { user } = await guard();
-  const eventId = formData.get("eventId");
-  if (typeof eventId !== "string") return { error: "validation" };
 
   const parsed = slotsSchema.safeParse({
-    firstSlotStart: formData.get("firstSlotStart") ?? "",
+    bookingDayId: formData.get("bookingDayId") ?? "",
+    startTime: formData.get("startTime") ?? "",
     slotMinutes: formData.get("slotMinutes") ?? "",
     slotCount: formData.get("slotCount") ?? "",
     capacity: formData.get("capacity") ?? "",
@@ -180,11 +265,15 @@ export async function addSlots(
   });
   if (!parsed.success) return { error: "validation" };
 
-  const start = parseNaiveDateTime(parsed.data.firstSlotStart);
-  if (!start) return { error: "validation" };
+  const day = await findOwnedBookingDay(parsed.data.bookingDayId, user);
+  if (!day) return { error: "validation" };
 
-  const event = await findOwnedBookingEvent(eventId, user);
-  if (!event) return { error: "validation" };
+  // Compose the first slot's start from the day's calendar date and the typed
+  // time of day, then chain the rest off it — all in the same naive-UTC space.
+  const start = parseNaiveDateTime(
+    `${formatDate(day.date)}T${parsed.data.startTime}`
+  );
+  if (!start) return { error: "validation" };
 
   const { slotMinutes, slotCount, capacity, descriptionEn, descriptionZh } =
     parsed.data;
@@ -192,7 +281,8 @@ export async function addSlots(
     const s = new Date(start.getTime() + i * slotMinutes * 60_000);
     const e = new Date(s.getTime() + slotMinutes * 60_000);
     return {
-      bookingEventId: eventId,
+      bookingEventId: day.bookingEventId,
+      bookingDayId: day.id,
       startTime: s,
       endTime: e,
       capacity,

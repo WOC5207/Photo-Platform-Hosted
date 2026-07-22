@@ -245,18 +245,22 @@ async function seed(owner: User) {
       uploadState: "pending"
     }
   });
+  const bookingDate = new Date();
   const bookingEvent = await prisma.bookingEvent.create({
     data: {
       ownerId: owner.id,
       token: randomUUID().replace(/-/g, ""),
       titleEn: "B",
       titleZh: "B",
-      date: new Date()
-    }
+      date: bookingDate,
+      days: { create: { date: bookingDate } }
+    },
+    include: { days: true }
   });
   const slot = await prisma.timeSlot.create({
     data: {
       bookingEventId: bookingEvent.id,
+      bookingDayId: bookingEvent.days[0].id,
       startTime: new Date(),
       endTime: new Date(Date.now() + 3600_000),
       capacity: 5

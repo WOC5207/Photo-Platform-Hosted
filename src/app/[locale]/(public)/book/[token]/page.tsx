@@ -2,10 +2,10 @@ import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { pickText } from "@/lib/content";
-import { formatDate } from "@/lib/datetime";
+import { formatDate, formatDateRange } from "@/lib/datetime";
 import { getContactMethods, getSiteSettings, resolveSubjectTerm } from "@/lib/settings";
 import { Link } from "@/i18n/navigation";
-import BookingForm, { type PublicSlot } from "@/components/booking/BookingForm";
+import BookingForm, { type PublicDay } from "@/components/booking/BookingForm";
 
 export const dynamic = "force-dynamic";
 
@@ -27,11 +27,16 @@ export default async function BookPage({
   const event = await prisma.bookingEvent.findUnique({
     where: { token },
     include: {
-      slots: {
-        orderBy: { startTime: "asc" },
+      days: {
+        orderBy: { date: "asc" },
         include: {
-          _count: {
-            select: { bookings: { where: { status: "confirmed" } } }
+          slots: {
+            orderBy: { startTime: "asc" },
+            include: {
+              _count: {
+                select: { bookings: { where: { status: "confirmed" } } }
+              }
+            }
           }
         }
       }
@@ -43,13 +48,25 @@ export default async function BookPage({
   const subjectTerm = resolveSubjectTerm(settings, locale, tc("subjectTerm"));
   if (!settings.bookingEnabled) notFound();
 
-  const slots: PublicSlot[] = event.slots.map((s) => ({
-    id: s.id,
-    start: s.startTime.toISOString(),
-    end: s.endTime.toISOString(),
-    remaining: Math.max(0, s.capacity - s._count.bookings),
-    description: pickText(locale, s.descriptionEn, s.descriptionZh)
+  const days: PublicDay[] = event.days.map((day) => ({
+    id: day.id,
+    date: formatDate(day.date),
+    slots: day.slots.map((s) => ({
+      id: s.id,
+      start: s.startTime.toISOString(),
+      end: s.endTime.toISOString(),
+      remaining: Math.max(0, s.capacity - s._count.bookings),
+      description: pickText(locale, s.descriptionEn, s.descriptionZh)
+    }))
   }));
+  const totalSlots = days.reduce((n, day) => n + day.slots.length, 0);
+  const dateLabel =
+    event.days.length > 0
+      ? formatDateRange(
+          event.days[0].date,
+          event.days[event.days.length - 1].date
+        )
+      : formatDate(event.date);
 
   const description = pickText(locale, event.descriptionEn, event.descriptionZh);
   const contactMethods = (await getContactMethods(event.ownerId)).map((m) => ({
@@ -65,9 +82,7 @@ export default async function BookPage({
             {pickText(locale, event.titleEn, event.titleZh)}
           </h1>
           <p className="mt-1 text-sm text-fg-subtle">
-            {[formatDate(event.date), event.location || null]
-              .filter(Boolean)
-              .join(" · ")}
+            {[dateLabel, event.location || null].filter(Boolean).join(" · ")}
           </p>
           {description && (
             <p className="mt-3 whitespace-pre-line text-fg-muted">
@@ -90,12 +105,12 @@ export default async function BookPage({
         <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
           {t("closedNotice")}
         </p>
-      ) : slots.length === 0 ? (
+      ) : totalSlots === 0 ? (
         <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
           {t("noSlotsNotice")}
         </p>
       ) : (
-        <BookingForm slots={slots} contactMethods={contactMethods} subjectTerm={subjectTerm} />
+        <BookingForm days={days} contactMethods={contactMethods} subjectTerm={subjectTerm} />
       )}
     </div>
   );
