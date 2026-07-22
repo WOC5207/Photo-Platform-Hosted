@@ -51,11 +51,14 @@ export default async function AddPhotosPage({
     name: photo.originalName,
     previewUrl: photoUrls(event.id, photo.id).thumb,
     state:
-      photo.uploadState === "processing" || photo.uploadState === "finalizing"
-        ? "processing"
-        : photo.uploadState === "deleting"
-          ? "deleting"
-          : "pending",
+      photo.uploadState === "awaiting"
+        ? "awaiting"
+        : photo.uploadState === "processing" ||
+            photo.uploadState === "finalizing"
+          ? "processing"
+          : photo.uploadState === "deleting"
+            ? "deleting"
+            : "pending",
     storagePreset:
       photo.storagePreset === "archive" || photo.storagePreset === "balanced"
         ? photo.storagePreset

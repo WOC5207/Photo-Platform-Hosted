@@ -208,7 +208,7 @@ async function cleanupDeletingPhoto(
 }
 
 /** Move an unfinished upload into the durable, retryable cleanup state. */
-async function markProcessingForDeletion(
+async function markAwaitingForDeletion(
   userId: string,
   eventId: string,
   photoId: string
@@ -217,7 +217,9 @@ async function markProcessingForDeletion(
     where: {
       id: photoId,
       eventId,
-      uploadState: "processing",
+      // The source-storing half leaves the row "awaiting" (a size has not been
+      // chosen yet), so a mid-store failure is cleaned up from that state.
+      uploadState: "awaiting",
       event: { ownerId: userId }
     },
     data: { uploadState: "deleting" }
@@ -366,7 +368,10 @@ export async function POST(req: NextRequest) {
           bytes: reserved,
           sortOrder: 0,
           pendingBatchId: batchId,
-          uploadState: "processing",
+          // The source and thumbnail are stored below, but compression is
+          // deferred: the row stays "awaiting" until the user chooses a size in
+          // the wizard's compression step, which is what starts the encode.
+          uploadState: "awaiting",
           storagePreset,
           candidatePreset,
           sourceFilename: expectedSourceFilename,
@@ -393,14 +398,15 @@ export async function POST(req: NextRequest) {
 
   // Fast path: store the exact source and a thumbnail only, so the wizard has an
   // instant preview. The remaining renditions and the compressed master are
-  // produced by the background worker enqueued below.
+  // produced later by the background worker — but only once the user picks a
+  // size in the compression step (see PUT), never automatically here.
   let stored;
   try {
     stored = await withImageProcessingSlot(() =>
       storePendingSource(user.id, eventId, uploadId, file.path, ext)
     );
   } catch {
-    const claimed = await markProcessingForDeletion(user.id, eventId, uploadId);
+    const claimed = await markAwaitingForDeletion(user.id, eventId, uploadId);
     const current = claimed ? null : await findOwnedUpload(uploadId, user.id);
     if (claimed || current?.uploadState === "deleting" || !current) {
       await cleanupDeletingPhoto(
@@ -434,7 +440,7 @@ export async function POST(req: NextRequest) {
           id: uploadId,
           eventId,
           pendingBatchId: batchId,
-          uploadState: "processing"
+          uploadState: "awaiting"
         },
         data: {
           width: stored.width,
@@ -470,10 +476,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unknown" }, { status: 500 });
   }
 
-  // Kick background compression (renditions + compressed master). Fire-and-
-  // forget: the durable "processing" row and startup sweep make it recoverable.
-  enqueueCompression(uploadId);
-
+  // Compression is intentionally NOT started here. The row stays "awaiting"
+  // until the user selects a compression size in the wizard's second step,
+  // which triggers the background worker via PUT. This lets the upload settle
+  // (advancing to the next step) without committing to a size or paying for an
+  // encode the user may want to change.
   const completed = await findOwnedUpload(uploadId, user.id);
   if (!completed) {
     return NextResponse.json({ error: "unknown" }, { status: 500 });
@@ -510,9 +517,15 @@ export async function PUT(req: NextRequest) {
   if (!current || current.pendingBatchId === null) {
     return NextResponse.json({ error: "photoNotFound" }, { status: 404 });
   }
-  // Only pending or still-compressing (processing) uploads accept a quality
-  // change; finalizing/deleting are terminal for this endpoint.
-  if (current.uploadState !== "pending" && current.uploadState !== "processing") {
+  // A size choice is accepted while the upload is awaiting a choice, already
+  // compressed (pending), or still compressing (processing) — this endpoint is
+  // both the first compression trigger and the way to change it. Only
+  // finalizing/deleting are terminal here.
+  if (
+    current.uploadState !== "awaiting" &&
+    current.uploadState !== "pending" &&
+    current.uploadState !== "processing"
+  ) {
     return NextResponse.json(
       pendingPhotoJson(current),
       { status: statusForUploadState(current.uploadState) }
@@ -568,7 +581,7 @@ export async function PUT(req: NextRequest) {
     where: {
       id: current.id,
       pendingBatchId: { not: null },
-      uploadState: { in: ["pending", "processing"] }
+      uploadState: { in: ["awaiting", "pending", "processing"] }
     },
     data: {
       storagePreset,
@@ -887,7 +900,9 @@ export async function DELETE(req: NextRequest) {
       where: {
         id: photoId,
         pendingBatchId: { not: null },
-        uploadState: { in: ["processing", "pending", "finalizing", "deleting"] },
+        uploadState: {
+          in: ["awaiting", "processing", "pending", "finalizing", "deleting"]
+        },
         event: { ownerId: user.id }
       }
     });

@@ -21,7 +21,13 @@ export interface PendingPhotoValue {
   id: string;
   name: string;
   previewUrl: string;
-  state: "processing" | "pending" | "finalizing" | "ready" | "deleting";
+  state:
+    | "awaiting"
+    | "processing"
+    | "pending"
+    | "finalizing"
+    | "ready"
+    | "deleting";
   storagePreset: StoragePreset;
   candidatePreset: "archive" | "balanced" | null;
   width: number;
@@ -37,6 +43,11 @@ export interface PendingPhotoValue {
 export type QueueState =
   | "waiting"
   | "uploading"
+  // The source and thumbnail are stored, but no compression size has been
+  // chosen yet, so no encode has started. Browsable (a preview exists) and
+  // transfer-complete, but not publish-ready. The compression step turns this
+  // into "compressing" the moment the user picks a size.
+  | "awaiting"
   // The source is stored and a preview exists; the compressed master is being
   // produced by the server in the background. Browsable but not publish-ready.
   | "compressing"
@@ -145,6 +156,8 @@ function serverQueueState(photo: {
   compressionFailed: boolean;
 }): { state: QueueState; error?: QueueError } {
   switch (photo.state) {
+    case "awaiting":
+      return { state: "awaiting" };
     case "pending":
       return { state: "ready" };
     case "deleting":
@@ -166,8 +179,11 @@ export interface PendingUploadQueue {
   /** Fully compressed, publish-ready photos. */
   readyFiles: (QueuedFile & { photoId: string })[];
   /** Photos that can be browsed/selected/credited now — ready plus those still
-      compressing in the background. */
+      awaiting a size choice or compressing in the background. */
   browsableFiles: (QueuedFile & { photoId: string })[];
+  /** Photos whose transfer is done but that still need a compression size
+      chosen before they can be compressed and published. */
+  awaitingCount: number;
   queueWorking: boolean;
   /** A file is still transferring (waiting/uploading). Distinct from background
       compression, which does not block advancing through the wizard. */
@@ -262,13 +278,18 @@ export function usePendingUploadQueue({
   const browsableFiles = files.filter(
     (item): item is QueuedFile & { photoId: string } =>
       (item.state === "ready" ||
+        item.state === "awaiting" ||
         item.state === "compressing" ||
         item.state === "optimizing") &&
       typeof item.photoId === "string"
   );
+  const awaitingCount = files.filter((item) => item.state === "awaiting").length;
   const transferWorking = files.some(
     (item) => item.state === "waiting" || item.state === "uploading"
   );
+  // "awaiting" is deliberately excluded: a photo waiting for a size choice is
+  // not work in progress — it is idle until the user acts, and publishing is
+  // gated separately (the compression step won't advance while any remain).
   const queueWorking = files.some(
     (item) =>
       item.state === "waiting" ||
@@ -286,12 +307,14 @@ export function usePendingUploadQueue({
     if (item.state === "failed") return total;
     if (
       item.state === "ready" ||
+      item.state === "awaiting" ||
       item.state === "compressing" ||
       item.state === "optimizing" ||
       item.state === "discarding"
     ) {
-      // Transfer is complete once the row exists server-side; background
-      // compression is tracked separately and does not hold up the bar.
+      // Transfer is complete once the row exists server-side; the size choice
+      // and background compression are tracked separately and do not hold up
+      // the bar.
       return total + itemTotal;
     }
     return total + Math.min(item.uploadedBytes ?? 0, itemTotal);
@@ -307,6 +330,7 @@ export function usePendingUploadQueue({
     const itemTotal = item.fileBytes ?? item.sourceBytes ?? 0;
     return (
       item.state === "ready" ||
+      item.state === "awaiting" ||
       item.state === "compressing" ||
       item.state === "optimizing" ||
       item.state === "discarding" ||
@@ -450,6 +474,22 @@ export function usePendingUploadQueue({
           router.refresh();
           return true;
         }
+        if (serverPhoto.state === "awaiting") {
+          // Source committed; the row waits for a size choice. Nothing to track.
+          releaseBlobPreview(item.previewUrl);
+          updateQueuedFile(item.key, {
+            state: "awaiting",
+            error: undefined,
+            photoId: serverPhoto.id,
+            file: undefined,
+            previewUrl:
+              serverPhoto.previewUrl || serverPreviewUrl(serverPhoto.id),
+            fileBytes: serverPhoto.sourceBytes ?? item.fileBytes,
+            uploadedBytes: serverPhoto.sourceBytes ?? item.fileBytes,
+            ...serverPhotoPatch(serverPhoto)
+          });
+          return true;
+        }
         if (serverPhoto.state === "processing") {
           // Source committed; compression continues in the background. Hand off
           // to the out-of-band tracker instead of blocking this chain.
@@ -547,10 +587,27 @@ export function usePendingUploadQueue({
           });
           return;
         }
+        if (data?.state === "awaiting" && typeof data.id === "string") {
+          // The source and thumbnail are stored; the row is browsable and its
+          // transfer is complete, but compression waits for the user to pick a
+          // size in the next step. Nothing to track in the background yet.
+          releaseBlobPreview(item.previewUrl);
+          updateQueuedFile(item.key, {
+            state: "awaiting",
+            error: undefined,
+            photoId: data.id,
+            file: undefined,
+            previewUrl: data.previewUrl || serverPreviewUrl(data.id),
+            fileBytes: data.sourceBytes ?? item.file.size,
+            uploadedBytes: data.sourceBytes ?? item.file.size,
+            ...serverPhotoPatch(data as PendingPhotoValue)
+          });
+          return;
+        }
         if (data?.state === "processing" && typeof data.id === "string") {
-          // Fast path: the source and thumbnail are stored; compression runs in
-          // the background. Show the photo now and track completion out of band
-          // so the upload chain drains without waiting on Sharp.
+          // A resumed/idempotent re-POST of a row whose compression is already
+          // running: show it and track completion out of band so the upload
+          // chain drains without waiting on Sharp.
           releaseBlobPreview(item.previewUrl);
           updateQueuedFile(item.key, {
             state: data.compressionFailed ? "failed" : "compressing",
@@ -700,7 +757,13 @@ export function usePendingUploadQueue({
       setFiles((current) => current.filter((candidate) => candidate.key !== item.key));
       return;
     }
-    if (item.state === "ready" && !confirmRemoveReady(item.name)) {
+    // A ready or awaiting row is a stored, server-backed upload with real files
+    // on disk, so removing it is a real deletion worth confirming (unlike an
+    // in-flight transfer, which is merely cancelled).
+    if (
+      (item.state === "ready" || item.state === "awaiting") &&
+      !confirmRemoveReady(item.name)
+    ) {
       return;
     }
     cancelledKeysRef.current.add(item.key);
@@ -782,7 +845,9 @@ export function usePendingUploadQueue({
   async function changeStoragePreset(item: QueuedFile, preset: StoragePreset) {
     if (
       !item.photoId ||
-      (item.state !== "ready" && item.state !== "compressing") ||
+      (item.state !== "ready" &&
+        item.state !== "awaiting" &&
+        item.state !== "compressing") ||
       lockedRef.current ||
       clearing
     ) {
@@ -1006,6 +1071,7 @@ export function usePendingUploadQueue({
     files,
     readyFiles,
     browsableFiles,
+    awaitingCount,
     queueWorking,
     transferWorking,
     clearing,

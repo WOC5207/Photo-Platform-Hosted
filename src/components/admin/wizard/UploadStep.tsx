@@ -24,6 +24,9 @@ export function queueStateLabel(
       ? t("pendingProcessing")
       : t("pendingUploading");
   }
+  // Transfer complete; the compression size is chosen in the next wizard step,
+  // so from the upload step's point of view the file is simply uploaded.
+  if (item.state === "awaiting") return t("pendingUploaded");
   if (item.state === "compressing") return t("pendingCompressing");
   if (item.state === "optimizing") return t("pendingOptimizing");
   if (item.state === "ready") return t("pendingReady");
