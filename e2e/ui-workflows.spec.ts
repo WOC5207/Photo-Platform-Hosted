@@ -240,15 +240,21 @@ test.describe.serial("management workflows", () => {
   }) => {
     await page.goto("/en/admin/invites");
 
-    const enabled = page.getByRole("checkbox", {
+    const registrationNotice = page.locator("section").filter({
+      has: page.getByRole("heading", {
+        name: "Registration notice",
+        exact: true
+      })
+    });
+    const enabled = registrationNotice.getByRole("checkbox", {
       name: "Show this notice before registration"
     });
-    const delay = page.getByLabel("Continue delay (seconds)");
-    const mode = page.getByLabel("Notice behavior");
-    const titleEn = page.getByLabel("Notice title (English)");
-    const titleZh = page.getByLabel("Notice title (Chinese)");
-    const bodyEn = page.getByLabel("Notice or EULA (English)");
-    const bodyZh = page.getByLabel("Notice or EULA (Chinese)");
+    const delay = registrationNotice.getByLabel("Continue delay (seconds)");
+    const mode = registrationNotice.getByLabel("Notice behavior");
+    const titleEn = registrationNotice.getByLabel("Notice title (English)");
+    const titleZh = registrationNotice.getByLabel("Notice title (Chinese)");
+    const bodyEn = registrationNotice.getByLabel("Notice or EULA (English)");
+    const bodyZh = registrationNotice.getByLabel("Notice or EULA (Chinese)");
     const original = {
       enabled: await enabled.isChecked(),
       delay: await delay.inputValue(),
@@ -267,8 +273,12 @@ test.describe.serial("management workflows", () => {
       await mode.selectOption("consent");
       await titleEn.fill("E2E terms before registration");
       await bodyEn.fill("Please read this test notice before continuing.");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible();
+      await registrationNotice
+        .getByRole("button", { name: "Save", exact: true })
+        .click();
+      await expect(
+        registrationNotice.getByRole("status").filter({ hasText: /^Saved$/ })
+      ).toBeVisible();
 
       const admin = await prisma.user.findUniqueOrThrow({
         where: { username: adminUsername! },
@@ -319,17 +329,33 @@ test.describe.serial("management workflows", () => {
       await guestContext?.close();
       await prisma.invite.deleteMany({ where: { code: inviteCode } });
       await page.goto("/en/admin/invites");
-      await page
+      await registrationNotice
         .getByRole("checkbox", { name: "Show this notice before registration" })
         .setChecked(original.enabled);
-      await page.getByLabel("Continue delay (seconds)").fill(original.delay);
-      await page.getByLabel("Notice behavior").selectOption(original.mode);
-      await page.getByLabel("Notice title (English)").fill(original.titleEn);
-      await page.getByLabel("Notice title (Chinese)").fill(original.titleZh);
-      await page.getByLabel("Notice or EULA (English)").fill(original.bodyEn);
-      await page.getByLabel("Notice or EULA (Chinese)").fill(original.bodyZh);
-      await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible();
+      await registrationNotice
+        .getByLabel("Continue delay (seconds)")
+        .fill(original.delay);
+      await registrationNotice
+        .getByLabel("Notice behavior")
+        .selectOption(original.mode);
+      await registrationNotice
+        .getByLabel("Notice title (English)")
+        .fill(original.titleEn);
+      await registrationNotice
+        .getByLabel("Notice title (Chinese)")
+        .fill(original.titleZh);
+      await registrationNotice
+        .getByLabel("Notice or EULA (English)")
+        .fill(original.bodyEn);
+      await registrationNotice
+        .getByLabel("Notice or EULA (Chinese)")
+        .fill(original.bodyZh);
+      await registrationNotice
+        .getByRole("button", { name: "Save", exact: true })
+        .click();
+      await expect(
+        registrationNotice.getByRole("status").filter({ hasText: /^Saved$/ })
+      ).toBeVisible();
     }
   });
 
