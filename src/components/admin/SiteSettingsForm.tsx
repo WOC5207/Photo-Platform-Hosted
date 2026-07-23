@@ -238,7 +238,7 @@ export default function SiteSettingsForm({
                 />
               </label>
             </div>
-            <IndependentWidget label={t("savedAutomatically")}>
+            <IndependentWidget label={t("imageChangesSaveAutomatically")}>
               {logoSlot}
             </IndependentWidget>
           </Group>
@@ -287,7 +287,7 @@ export default function SiteSettingsForm({
                 />
               </div>
             </div>
-            <IndependentWidget label={t("savedAutomatically")}>
+            <IndependentWidget label={t("imageChangesSaveAutomatically")}>
               {backgroundImageSlot}
             </IndependentWidget>
           </Group>
@@ -338,9 +338,7 @@ export default function SiteSettingsForm({
               />
             </label>
           </div>
-          <IndependentWidget label={t("savedAutomatically")}>
-            {personalLinksSlot}
-          </IndependentWidget>
+          {personalLinksSlot}
           <div className="border-t border-border pt-6">
             <label className="flex min-h-11 items-center gap-2 text-sm">
               <input
@@ -352,9 +350,7 @@ export default function SiteSettingsForm({
               />
               <span>{t("announcementsEnabledLabel")}</span>
             </label>
-            <IndependentWidget label={t("savedAutomatically")}>
-              {announcementsSlot}
-            </IndependentWidget>
+            {announcementsSlot}
           </div>
         </Group>
       )}
@@ -396,7 +392,7 @@ export default function SiteSettingsForm({
                   className={inputCls}
                 />
               </label>
-              <IndependentWidget label={t("savedAutomatically")}>
+              <IndependentWidget label={t("imageChangesSaveAutomatically")}>
                 {contactQrEnSlot}
               </IndependentWidget>
             </div>
@@ -424,7 +420,7 @@ export default function SiteSettingsForm({
                   className={inputCls}
                 />
               </label>
-              <IndependentWidget label={t("savedAutomatically")}>
+              <IndependentWidget label={t("imageChangesSaveAutomatically")}>
                 {contactQrZhSlot}
               </IndependentWidget>
             </div>
@@ -620,9 +616,7 @@ export default function SiteSettingsForm({
               )}
             </div>
 
-            <IndependentWidget label={t("savedAutomatically")}>
-              {contactMethodsSlot}
-            </IndependentWidget>
+            {contactMethodsSlot}
           </Group>
 
           <Group title={t("groupCreditsTitle")} hint={t("groupCreditsHint")}>
