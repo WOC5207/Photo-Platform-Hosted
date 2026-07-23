@@ -107,6 +107,7 @@ export default async function DashboardLayout({
         workspacePlatform: t("admin.platformAdmin"),
         account: t("admin.account"),
         viewSite: t("platform.viewSite"),
+        directory: t("nav.directory"),
         language: t("languageSwitcher.label"),
         theme: t("common.toggleTheme"),
         logout: t("auth.logout"),
