@@ -285,7 +285,7 @@
     "settingsTabProfile": "个人资料与安全",
     "unsavedChanges": "有未保存的更改",
     "unsavedNavigationConfirm": "网站设置中有未保存的更改。确定离开并放弃这些更改吗？",
-    "savedAutomatically": "自动保存",
+    "imageChangesSaveAutomatically": "图片更改会自动保存",
     "lotteryRequiresBooking": "开启预约后才能启用抽奖。",
     "groupHeaderTitle": "页眉",
     "groupHeaderHint": "页眉中显示的网站名称与 Logo。网站名称也会显示在页脚和浏览器标签页。标题留空则使用“拼好摄摄影师平台”。",

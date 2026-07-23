@@ -285,7 +285,7 @@
     "settingsTabProfile": "Profile & security",
     "unsavedChanges": "Unsaved changes",
     "unsavedNavigationConfirm": "You have unsaved settings changes. Leave this page and discard them?",
-    "savedAutomatically": "Saved automatically",
+    "imageChangesSaveAutomatically": "Image changes save automatically",
     "lotteryRequiresBooking": "Turn on Booking to enable Lottery.",
     "groupHeaderTitle": "Header",
     "groupHeaderHint": "The site name and logo shown in the header. The site name also appears in the footer and browser tab. Leave title fields empty to use Pinhaoshe Photographer Platform.",
