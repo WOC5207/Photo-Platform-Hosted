@@ -319,8 +319,7 @@ export type BookingStatusState = { error?: "slotFull"; ok?: boolean };
  */
 async function emailVisitorBookingStatus(
   bookingId: string,
-  status: "confirmed" | "cancelled",
-  locale: string
+  status: "confirmed" | "cancelled"
 ): Promise<void> {
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
@@ -328,6 +327,9 @@ async function emailVisitorBookingStatus(
   });
   if (!booking || !booking.email) return;
   const event = booking.timeSlot.bookingEvent;
+  // The visitor's language, not the photographer's dashboard locale — this
+  // email is going to the visitor, who may have booked in the other language.
+  const locale = booking.locale;
   notifyBookingStatusChanged(
     {
       bookingId: booking.cancelToken,
@@ -339,6 +341,7 @@ async function emailVisitorBookingStatus(
       slotStart: booking.timeSlot.startTime,
       slotEnd: booking.timeSlot.endTime,
       manageUrl: `${config.appBaseUrl()}/${locale}/my-booking/${booking.cancelToken}`,
+      locale,
       visitorEmail: booking.email,
       ownerEmail: ""
     },
@@ -350,7 +353,7 @@ export async function setBookingStatus(
   _prev: BookingStatusState,
   formData: FormData
 ): Promise<BookingStatusState> {
-  const { user, locale } = await guard();
+  const { user } = await guard();
   const bookingId = formData.get("bookingId");
   const status = formData.get("status");
   if (
@@ -373,7 +376,7 @@ export async function setBookingStatus(
     // Only on the confirmed -> cancelled transition, so re-cancelling doesn't
     // re-email the visitor.
     if (owned.status === "confirmed") {
-      await emailVisitorBookingStatus(owned.id, "cancelled", locale);
+      await emailVisitorBookingStatus(owned.id, "cancelled");
     }
     return { ok: true };
   }
@@ -410,7 +413,7 @@ export async function setBookingStatus(
   // cancelled and the restore succeeded) — not when it was already confirmed
   // and not when the slot was full.
   if (result.ok && owned.status === "cancelled") {
-    await emailVisitorBookingStatus(owned.id, "confirmed", locale);
+    await emailVisitorBookingStatus(owned.id, "confirmed");
   }
   return result;
 }

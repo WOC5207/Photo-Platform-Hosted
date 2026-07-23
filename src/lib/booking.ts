@@ -11,6 +11,9 @@ export interface BookingDetails {
   email: string;
   notes: string;
   cancelToken: string;
+  // Site language the visitor booked in, stored on the booking so later emails
+  // reach them in their own language (see Booking.locale in schema.prisma).
+  locale: string;
 }
 
 export type ReserveSlotResult =
@@ -64,7 +67,8 @@ export async function reserveSlot(
         contactValue: details.contactValue,
         email: details.email,
         notes: details.notes,
-        cancelToken: details.cancelToken
+        cancelToken: details.cancelToken,
+        locale: details.locale
       }
     });
     return { ok: true, slot } as const;

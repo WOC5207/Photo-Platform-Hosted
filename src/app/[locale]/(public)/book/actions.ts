@@ -75,6 +75,10 @@ export async function createBooking(
   }
 
   const cancelToken = randomUUID().replace(/-/g, "");
+  // The site language this visitor is booking in — stored on the booking so a
+  // later status-change email (sent from the photographer's dashboard, in their
+  // locale) still reaches this visitor in their own language.
+  const locale = await getLocale();
 
   // Atomic capacity check + insert; see reserveSlot for why it's locked.
   const result = await reserveSlot(d.slotId, {
@@ -84,12 +88,12 @@ export async function createBooking(
     contactValue: d.contactValue,
     email: d.email,
     notes: d.notes,
-    cancelToken
+    cancelToken,
+    locale
   });
 
   if (!result.ok) return { error: result.error };
 
-  const locale = await getLocale();
   const manageUrl = `${config.appBaseUrl()}/${locale}/my-booking/${cancelToken}`;
   // The photographer's own contact address, if they set one — separate lookup
   // because reserveSlot returns the event but not its owner.
@@ -112,6 +116,7 @@ export async function createBooking(
     slotStart: result.slot.startTime,
     slotEnd: result.slot.endTime,
     manageUrl,
+    locale,
     visitorEmail: d.email,
     ownerEmail: owner?.email ?? ""
   }).catch(() => {});
@@ -143,7 +148,9 @@ export async function cancelMyBooking(formData: FormData): Promise<void> {
   // re-cancel of an already-cancelled booking) doesn't send a duplicate.
   if (booking.status !== "confirmed") return;
 
-  const locale = await getLocale();
+  // The visitor's own language, captured when they booked — not getLocale(),
+  // which here is only the locale of the page the cancel was clicked from.
+  const locale = booking.locale;
   const event = booking.timeSlot.bookingEvent;
   const owner = await prisma.user.findUnique({
     where: { id: event.ownerId },
@@ -160,6 +167,7 @@ export async function cancelMyBooking(formData: FormData): Promise<void> {
     slotStart: booking.timeSlot.startTime,
     slotEnd: booking.timeSlot.endTime,
     manageUrl,
+    locale,
     visitorEmail: booking.email,
     ownerEmail: owner?.email ?? ""
   }).catch(() => {});
