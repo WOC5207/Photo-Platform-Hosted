@@ -6,6 +6,9 @@ import { pickText } from "@/lib/content";
 import { formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { buttonClasses } from "@/components/ui/Button";
+import BookingMergePanel, {
+  type MergeEventItem
+} from "@/components/admin/BookingMergePanel";
 
 export default async function AdminBookingsPage() {
   const locale = await getLocale();
@@ -19,6 +22,7 @@ export default async function AdminBookingsPage() {
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     include: {
       days: { orderBy: { date: "asc" }, select: { date: true } },
+      lotteryDraw: { select: { id: true } },
       slots: {
         include: {
           _count: {
@@ -27,6 +31,38 @@ export default async function AdminBookingsPage() {
         }
       }
     }
+  });
+
+  const mergeItems: MergeEventItem[] = events.map((event) => {
+    const capacity = event.slots.reduce((n, s) => n + s.capacity, 0);
+    const booked = event.slots.reduce((n, s) => n + s._count.bookings, 0);
+    const dateLabel =
+      event.days.length > 0
+        ? formatDateRange(
+            event.days[0].date,
+            event.days[event.days.length - 1].date
+          )
+        : "";
+    const meta = [
+      dateLabel,
+      event.days.length > 1 ? t("dayCount", { count: event.days.length }) : null,
+      event.location || null,
+      t("booked", { booked, capacity })
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return {
+      id: event.id,
+      title: pickText(locale, event.titleEn, event.titleZh),
+      meta,
+      statusLabel: !settings.bookingEnabled
+        ? t("offPublicly")
+        : event.open
+          ? t("open")
+          : t("closed"),
+      statusOpen: settings.bookingEnabled && event.open,
+      hasLottery: !!event.lotteryDraw
+    };
   });
 
   return (
@@ -53,57 +89,7 @@ export default async function AdminBookingsPage() {
       {events.length === 0 ? (
         <p className="text-fg-subtle">{t("noEvents")}</p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {events.map((event) => {
-            const capacity = event.slots.reduce((n, s) => n + s.capacity, 0);
-            const booked = event.slots.reduce(
-              (n, s) => n + s._count.bookings,
-              0
-            );
-            const dateLabel =
-              event.days.length > 0
-                ? formatDateRange(
-                    event.days[0].date,
-                    event.days[event.days.length - 1].date
-                  )
-                : "";
-            return (
-              <li key={event.id}>
-                <Link
-                  href={`/dashboard/bookings/${event.id}`}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4 transition hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
-                >
-                  <div>
-                    <h2 className="font-semibold">
-                      {pickText(locale, event.titleEn, event.titleZh)}
-                    </h2>
-                    <p className="text-sm text-fg-subtle">
-                      {dateLabel}
-                      {event.days.length > 1
-                        ? ` · ${t("dayCount", { count: event.days.length })}`
-                        : ""}
-                      {event.location ? ` · ${event.location}` : ""} ·{" "}
-                      {t("booked", { booked, capacity })}
-                    </p>
-                  </div>
-                  <span
-                    className={
-                      settings.bookingEnabled && event.open
-                        ? "rounded-md bg-success-surface px-2 py-0.5 text-xs text-success"
-                        : "rounded-md bg-surface-2 px-2 py-0.5 text-xs text-fg-subtle"
-                    }
-                  >
-                    {!settings.bookingEnabled
-                      ? t("offPublicly")
-                      : event.open
-                        ? t("open")
-                        : t("closed")}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <BookingMergePanel events={mergeItems} lotteryLabel={t("lotteryTool")} />
       )}
     </div>
   );

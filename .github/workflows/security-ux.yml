@@ -65,6 +65,7 @@ jobs:
       - run: npm run test:isolation
       - run: npm run test:quota
       - run: npm run test:security:db
+      - run: npm run test:bookingorg
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - name: HTTP isolation and browser coverage

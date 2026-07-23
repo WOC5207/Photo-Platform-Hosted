@@ -13,6 +13,7 @@ import {
 } from "@/lib/datetime";
 import BookingEventForm from "@/components/admin/BookingEventForm";
 import BookingDayTabs, { type DayTab } from "@/components/admin/BookingDayTabs";
+import BookingEventSplit from "@/components/admin/BookingEventSplit";
 import SlotAdder from "@/components/admin/SlotAdder";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import CopyButton from "@/components/admin/CopyButton";
@@ -251,6 +252,16 @@ export default async function EditBookingEventPage({
           )}
         />
       </section>
+
+      {event.days.length >= 2 && (
+        <BookingEventSplit
+          eventId={event.id}
+          days={event.days.map((day) => ({
+            id: day.id,
+            label: formatDayTab(day.date, locale)
+          }))}
+        />
+      )}
 
       <section className="rounded-xl border border-danger-border bg-danger-surface/40 p-5">
         <h2 className="text-lg font-semibold text-danger-strong">{tc("dangerZone")}</h2>

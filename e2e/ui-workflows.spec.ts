@@ -681,4 +681,75 @@ test.describe.serial("management workflows", () => {
       await prisma.contactMethod.delete({ where: { id: contact.id } }).catch(() => {});
     }
   });
+
+  test("booking events can be merged under one link and split back apart", async ({ page }) => {
+    const tag = Date.now();
+    const now = new Date();
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const isoDay = (day: number) =>
+      `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+    async function createOneDayEvent(title: string, day: number): Promise<string> {
+      await page.goto("/en/dashboard/bookings/new");
+      await page.getByLabel("Title (English)").fill(title);
+      await page.getByRole("button", { name: "Next month" }).click();
+      await page.getByRole("button", { name: isoDay(day), exact: true }).click();
+      await page.getByRole("button", { name: "Create", exact: true }).click();
+      await page.waitForURL(/\/dashboard\/bookings\/(?!new$)[^/]+$/);
+      return page.url().match(/bookings\/([^/?#]+)/)![1];
+    }
+
+    const titleA = `E2E merge A ${tag}`;
+    const titleB = `E2E merge B ${tag}`;
+    const eventAId = await createOneDayEvent(titleA, 10);
+    await createOneDayEvent(titleB, 12);
+
+    try {
+      // Merge both events into A (keeps A's link).
+      await page.goto("/en/dashboard/bookings");
+      await page.getByRole("checkbox", { name: `Select ${titleA}` }).check();
+      await page.getByRole("checkbox", { name: `Select ${titleB}` }).check();
+      await page
+        .getByRole("radio", { name: new RegExp(titleA) })
+        .check();
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.getByRole("button", { name: /Merge into/ }).click();
+
+      // Redirected to A's page, now spanning both days (two tabs); B is gone.
+      await page.waitForURL(new RegExp(`/dashboard/bookings/${eventAId}$`));
+      await expect(page.getByRole("tablist").getByRole("tab")).toHaveCount(2);
+      expect(
+        await prisma.bookingEvent.count({ where: { titleEn: titleB } })
+      ).toBe(0);
+      expect(
+        await prisma.bookingDay.count({ where: { bookingEventId: eventAId } })
+      ).toBe(2);
+
+      // Split the second day back out into a new event with its own link. The
+      // day toggle is a visually-hidden checkbox behind a styled pill label, so
+      // force the check past the label's pointer interception.
+      await page.getByRole("checkbox", { name: /12/ }).check({ force: true });
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.getByRole("button", { name: /Split off/ }).click();
+      // Split redirects to the *new* event; wait for an id different from A's
+      // (A's page already matches a generic booking-URL pattern).
+      await page.waitForURL((url) => {
+        const match = url.pathname.match(/\/dashboard\/bookings\/([^/]+)$/);
+        return !!match && match[1] !== "new" && match[1] !== eventAId;
+      });
+      const newEventId = page.url().match(/bookings\/([^/?#]+)/)![1];
+
+      expect(newEventId).not.toBe(eventAId);
+      expect(
+        await prisma.bookingDay.count({ where: { bookingEventId: eventAId } })
+      ).toBe(1);
+      expect(
+        await prisma.bookingDay.count({ where: { bookingEventId: newEventId } })
+      ).toBe(1);
+    } finally {
+      await prisma.bookingEvent
+        .deleteMany({ where: { titleEn: { in: [titleA, titleB] } } })
+        .catch(() => {});
+    }
+  });
 });
