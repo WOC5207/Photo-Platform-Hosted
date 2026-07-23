@@ -18,26 +18,27 @@ jobs:
         env:
           POSTGRES_USER: photo
           POSTGRES_PASSWORD: photo-test-password
-          POSTGRES_DB: photo
+          POSTGRES_DB: photo_e2e
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U photo -d photo"
+          --health-cmd "pg_isready -U photo -d photo_e2e"
           --health-interval 2s
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgresql://photo:photo-test-password@127.0.0.1:5432/photo?schema=public&connection_limit=20
+      DATABASE_URL: postgresql://photo:photo-test-password@127.0.0.1:5432/photo_e2e?schema=public&connection_limit=20
+      E2E_DATABASE_URL: postgresql://photo:photo-test-password@127.0.0.1:5432/photo_e2e?schema=public&connection_limit=20
       PHOTOS_DIR: /tmp/photo-platform-ci
       SESSION_SECRET: ci-only-session-secret-with-at-least-thirty-two-characters
-      APP_BASE_URL: http://127.0.0.1:3000
+      APP_BASE_URL: http://127.0.0.1:3001
       ADMIN_USERNAME: ci-admin
       ADMIN_PASSWORD: ci-admin-password-123
       E2E_ADMIN_USERNAME: ci-admin
       E2E_ADMIN_PASSWORD: ci-admin-password-123
       E2E_SESSION_SECRET: ci-only-session-secret-with-at-least-thirty-two-characters
       E2E_ALLOW_MUTATIONS: "1"
-      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3001
       PLAYWRIGHT_CHANNEL: chromium
       TRUSTED_PROXY_HOPS: "1"
       IMAGE_MAX_PIXELS: "100000000"
@@ -90,3 +91,4 @@ jobs:
           npm run test:e2e
         env:
           NODE_ENV: production
+          PORT: "3001"
