@@ -39,6 +39,7 @@ export interface ManagementShellLabels {
   workspacePlatform: string;
   account: string;
   viewSite: string;
+  directory: string;
   language: string;
   theme: string;
   logout: string;
@@ -364,6 +365,17 @@ function ProfileMenu({
             className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
           >
             {labels.viewSite}
+            <span aria-hidden="true">↗</span>
+          </Link>
+          {/* Back to the platform root — the directory of every photographer
+              hosted here (what pinhaoshe.ca serves). "/" resolves to the
+              locale-prefixed directory home. */}
+          <Link
+            href="/"
+            onClick={() => setOpen(false)}
+            className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+          >
+            {labels.directory}
             <span aria-hidden="true">↗</span>
           </Link>
           <div className="my-1 border-t border-border" />
