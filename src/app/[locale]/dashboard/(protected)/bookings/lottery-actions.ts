@@ -13,6 +13,7 @@ import {
   findOwnedPrize
 } from "@/lib/ownership";
 import {
+  deleteLotteryPrizeForOwner,
   ensureLotteryDraw,
   spinForEntry,
   uniqueEntryToken,
@@ -114,7 +115,11 @@ export async function updateLotteryDrawOpen(formData: FormData): Promise<void> {
   revalidatePath("/", "layout");
 }
 
-export type LotteryPrizeState = { error?: "validation"; ok?: boolean };
+export type LotteryPrizeState = {
+  error?: "validation" | "quantityBelowWinners";
+  minimumQuantity?: number;
+  ok?: boolean;
+};
 
 const prizeSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -155,32 +160,66 @@ export async function addLotteryPrize(
   return { ok: true };
 }
 
-export async function updateLotteryPrize(formData: FormData): Promise<void> {
+export async function updateLotteryPrize(
+  _prev: LotteryPrizeState,
+  formData: FormData
+): Promise<LotteryPrizeState> {
   const user = await guard();
   const prizeId = formData.get("prizeId");
-  if (typeof prizeId !== "string") return;
+  if (typeof prizeId !== "string") return { error: "validation" };
 
   const prize = await findOwnedPrize(prizeId, user);
-  if (!prize) return;
+  if (!prize) return { error: "validation" };
 
   const parsed = prizeSchema.safeParse({
     name: formData.get("name") ?? "",
     quantity: formData.get("quantity") ?? "",
     weight: formData.get("weight") ?? ""
   });
-  if (!parsed.success) return;
+  if (!parsed.success) return { error: "validation" };
 
-  await prisma.lotteryPrize
-    .update({
-      where: { id: prize.id },
+  const result = await prisma.$transaction(async (tx) => {
+    // Spins lock the draw before counting prize stock. Take the same lock here
+    // so a concurrent spin cannot add a winner between this validation and the
+    // quantity update.
+    await tx.$queryRaw`
+      SELECT id FROM "LotteryDraw" WHERE id = ${prize.drawId} FOR UPDATE
+    `;
+    const lockedPrize = await tx.lotteryPrize.findFirst({
+      where: {
+        id: prize.id,
+        drawId: prize.drawId,
+        draw: { bookingEvent: { ownerId: user.id } }
+      },
+      select: { id: true }
+    });
+    if (!lockedPrize) {
+      return { error: "validation" } satisfies LotteryPrizeState;
+    }
+    const winnerCount = await tx.lotteryEntry.count({
+      where: { wonPrizeId: lockedPrize.id }
+    });
+    if (parsed.data.quantity < winnerCount) {
+      return {
+        error: "quantityBelowWinners",
+        minimumQuantity: winnerCount
+      } satisfies LotteryPrizeState;
+    }
+
+    await tx.lotteryPrize.update({
+      where: { id: lockedPrize.id },
       data: {
         name: parsed.data.name,
         quantity: parsed.data.quantity,
         weight: parsed.data.weight
       }
-    })
-    .catch(() => {});
+    });
+    return { ok: true } satisfies LotteryPrizeState;
+  });
+
+  if (result.error) return result;
   revalidatePath("/", "layout");
+  return result;
 }
 
 /**
@@ -193,16 +232,7 @@ export async function deleteLotteryPrize(formData: FormData): Promise<void> {
   const prizeId = formData.get("prizeId");
   if (typeof prizeId !== "string") return;
 
-  const prize = await findOwnedPrize(prizeId, user);
-  if (!prize) return;
-
-  await prisma.$transaction([
-    prisma.lotteryEntry.updateMany({
-      where: { wonPrizeId: prize.id },
-      data: { wonPrizeId: null, wonAt: null }
-    }),
-    prisma.lotteryPrize.delete({ where: { id: prize.id } })
-  ]);
+  await deleteLotteryPrizeForOwner(prizeId, user.id);
   revalidatePath("/", "layout");
 }
 

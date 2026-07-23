@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import type { EventFormState } from "@/app/[locale]/dashboard/(protected)/events/actions";
 
 export interface EventFormValues {
@@ -48,9 +49,30 @@ export default function EventForm({
   const [endFollowsStart, setEndFollowsStart] = useState(
     initial.dateEnd === "" || initial.dateEnd === initial.dateStart
   );
+  const [dirty, setDirty] = useState(false);
+  const changeVersion = useRef(0);
+  const submittedVersion = useRef(0);
+  const markDirty = () => {
+    changeVersion.current += 1;
+    setDirty(true);
+  };
+  useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
+
+  useEffect(() => {
+    if (state.ok && submittedVersion.current === changeVersion.current) {
+      setDirty(false);
+    }
+  }, [state]);
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form
+      action={formAction}
+      onChange={markDirty}
+      onSubmit={() => {
+        submittedVersion.current = changeVersion.current;
+      }}
+      className="flex flex-col gap-4"
+    >
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
 
       <div className="grid gap-4 sm:grid-cols-2">

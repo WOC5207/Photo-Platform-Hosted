@@ -18,6 +18,9 @@ export interface PublicLotteryPrize {
 }
 
 type LotteryWinner = Extract<PublicSpinResult, { ok: true }>["winner"];
+type LotterySpinError =
+  | Extract<PublicSpinResult, { ok: false }>["error"]
+  | "unknown";
 
 export default function PublicLotteryDraw({
   drawToken,
@@ -44,7 +47,7 @@ export default function PublicLotteryDraw({
   const [targetIndex, setTargetIndex] = useState<number | null>(null);
   const [pendingWinner, setPendingWinner] = useState<LotteryWinner | null>(null);
   const [revealedWinner, setRevealedWinner] = useState<LotteryWinner>();
-  const [spinError, setSpinError] = useState<string>();
+  const [spinError, setSpinError] = useState<LotterySpinError>();
   const [busy, setBusy] = useState(false);
 
   if (entry.wonPrizeId) {
@@ -71,20 +74,27 @@ export default function PublicLotteryDraw({
     setSpinError(undefined);
     setRevealedWinner(undefined);
     setBusy(true);
-    const result = await spinMyLotteryEntry(drawToken);
-    setBusy(false);
-    if (!result.ok) {
-      setSpinError(result.error);
-      return;
+    try {
+      const result = await spinMyLotteryEntry(drawToken, entry.id);
+      if (!result.ok) {
+        setSpinError(result.error);
+        return;
+      }
+      const index = wheelSlices.findIndex(
+        (slice) => slice.id === result.winner.prizeId
+      );
+      if (index === -1) {
+        setRevealedWinner(result.winner);
+        return;
+      }
+      setPendingWinner(result.winner);
+      setTargetIndex(index);
+      setSpinning(true);
+    } catch {
+      setSpinError("unknown");
+    } finally {
+      setBusy(false);
     }
-    const index = wheelSlices.findIndex((slice) => slice.id === result.winner.prizeId);
-    if (index === -1) {
-      setRevealedWinner(result.winner);
-      return;
-    }
-    setPendingWinner(result.winner);
-    setTargetIndex(index);
-    setSpinning(true);
   }
 
   function handleSpinComplete() {
@@ -94,10 +104,14 @@ export default function PublicLotteryDraw({
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-surface p-6">
+    <div
+      aria-busy={busy || spinning}
+      className="flex flex-col items-center gap-4 rounded-xl border border-border bg-surface p-6"
+    >
       <h2 className="text-lg font-semibold">{t("spinTitle")}</h2>
       <LotteryWheel
         slices={wheelSlices}
+        accessibleLabel={t("prizesOnWheel")}
         spinning={spinning}
         targetIndex={targetIndex}
         onSpinComplete={handleSpinComplete}
@@ -108,16 +122,22 @@ export default function PublicLotteryDraw({
         disabled={!canSpin}
         className="rounded-full bg-fg px-6 py-3 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
       >
-        {spinning ? t("spinning") : t("spin")}
+        {spinning || busy ? t("spinning") : t("spin")}
       </button>
       {wheelSlices.length === 0 && (
         <p className="text-xs text-fg-subtle">{t("noPrizesYet")}</p>
       )}
       {spinError && (
-        <p className="text-xs text-danger">{t(`spinError_${spinError}`)}</p>
+        <p role="alert" className="text-xs text-danger">
+          {t(`spinError_${spinError}`)}
+        </p>
       )}
       {revealedWinner && (
-        <div className="w-full rounded-lg border border-success-border bg-success-surface p-4 text-center">
+        <div
+          role="status"
+          aria-live="polite"
+          className="w-full rounded-lg border border-success-border bg-success-surface p-4 text-center"
+        >
           <p className="text-xs uppercase tracking-wide text-success">
             {t("winnerNotice")}
           </p>

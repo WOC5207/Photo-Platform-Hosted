@@ -6,6 +6,7 @@ import { formatDate, formatDateRange } from "@/lib/datetime";
 import { getContactMethods, getSiteSettings, resolveSubjectTerm } from "@/lib/settings";
 import { Link } from "@/i18n/navigation";
 import BookingForm, { type PublicDay } from "@/components/booking/BookingForm";
+import { isNaiveDateTimePast } from "@/lib/timeZone";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,15 @@ export default async function BookPage({
   const subjectTerm = resolveSubjectTerm(settings, locale, tc("subjectTerm"));
   if (!settings.bookingEnabled) notFound();
 
-  const days: PublicDay[] = event.days.map((day) => ({
+  const visibleEventDays = event.days
+    .map((day) => ({
+      ...day,
+      slots: day.slots.filter(
+        (slot) => !isNaiveDateTimePast(slot.startTime, settings.timeZone)
+      )
+    }))
+    .filter((day) => day.slots.length > 0);
+  const days: PublicDay[] = visibleEventDays.map((day) => ({
     id: day.id,
     date: formatDate(day.date),
     slots: day.slots.map((s) => ({
@@ -56,15 +65,25 @@ export default async function BookPage({
       start: s.startTime.toISOString(),
       end: s.endTime.toISOString(),
       remaining: Math.max(0, s.capacity - s._count.bookings),
+      pricePerPerson: settings.bookingPriceEnabled ? s.pricePerPerson : "",
       description: pickText(locale, s.descriptionEn, s.descriptionZh)
     }))
   }));
   const totalSlots = days.reduce((n, day) => n + day.slots.length, 0);
+  const totalAvailable = days.reduce(
+    (sum, day) =>
+      sum +
+      day.slots.reduce(
+        (daySum, slot) => daySum + Math.max(0, slot.remaining),
+        0
+      ),
+    0
+  );
   const dateLabel =
-    event.days.length > 0
+    visibleEventDays.length > 0
       ? formatDateRange(
-          event.days[0].date,
-          event.days[event.days.length - 1].date
+          visibleEventDays[0].date,
+          visibleEventDays[visibleEventDays.length - 1].date
         )
       : formatDate(event.date);
 
@@ -81,6 +100,9 @@ export default async function BookPage({
           <h1 className="text-3xl font-bold">
             {pickText(locale, event.titleEn, event.titleZh)}
           </h1>
+          <p className="mt-1 text-xs text-fg-subtle">
+            {t("timeZoneNotice", { timeZone: settings.timeZone })}
+          </p>
           <p className="mt-1 text-sm text-fg-subtle">
             {[dateLabel, event.location || null].filter(Boolean).join(" · ")}
           </p>
@@ -105,9 +127,13 @@ export default async function BookPage({
         <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
           {t("closedNotice")}
         </p>
-      ) : totalSlots === 0 ? (
+      ) : totalSlots === 0 || totalAvailable === 0 ? (
         <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
           {t("noSlotsNotice")}
+        </p>
+      ) : contactMethods.length === 0 ? (
+        <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
+          {t("temporarilyUnavailable")}
         </p>
       ) : (
         <BookingForm days={days} contactMethods={contactMethods} subjectTerm={subjectTerm} />

@@ -1,11 +1,16 @@
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import BookingEventForm from "@/components/admin/BookingEventForm";
 import { Link } from "@/i18n/navigation";
 import { createBookingEvent } from "../actions";
+import { requireUser } from "@/lib/auth";
+import { getSiteSettings } from "@/lib/settings";
 
 export default async function NewBookingEventPage() {
   const t = await getTranslations("adminBookings");
   const tc = await getTranslations("common");
+  const locale = await getLocale();
+  const user = await requireUser(locale);
+  const settings = await getSiteSettings(user.id);
 
   return (
     <div className="flex flex-col gap-6">
@@ -23,6 +28,7 @@ export default async function NewBookingEventPage() {
         submitLabel={tc("create")}
         showOpenToggle={false}
         cancelHref="/dashboard/bookings"
+        timeZone={settings.timeZone}
         initial={{
           titleEn: "",
           titleZh: "",

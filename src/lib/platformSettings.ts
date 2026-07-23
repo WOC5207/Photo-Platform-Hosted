@@ -11,6 +11,11 @@ export interface PlatformSettings {
   registrationNoticeBodyZh: string;
   registrationNoticeMode: "information" | "consent";
   registrationNoticeVersion: number;
+  bookingPriceNoticeTitleEn: string;
+  bookingPriceNoticeTitleZh: string;
+  bookingPriceNoticeBodyEn: string;
+  bookingPriceNoticeBodyZh: string;
+  bookingPriceNoticeVersion: number;
 }
 
 const DEFAULTS: PlatformSettings = {
@@ -21,7 +26,12 @@ const DEFAULTS: PlatformSettings = {
   registrationNoticeBodyEn: "",
   registrationNoticeBodyZh: "",
   registrationNoticeMode: "information",
-  registrationNoticeVersion: 1
+  registrationNoticeVersion: 1,
+  bookingPriceNoticeTitleEn: "",
+  bookingPriceNoticeTitleZh: "",
+  bookingPriceNoticeBodyEn: "",
+  bookingPriceNoticeBodyZh: "",
+  bookingPriceNoticeVersion: 1
 };
 
 /** Platform-wide settings with usable defaults before the singleton is saved. */

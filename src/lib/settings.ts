@@ -22,6 +22,11 @@ export interface SiteSettings {
   homeCreditsLabelEn: string;
   homeCreditsLabelZh: string;
   bookingEnabled: boolean;
+  bookingPriceEnabled: boolean;
+  bookingPriceNoticeAcceptedVersion: number | null;
+  bookingPriceNoticeAcceptedLocale: string | null;
+  bookingPriceNoticeAcceptedAt: Date | null;
+  timeZone: string;
   lotteryEnabled: boolean;
   creditProfilesEnabled: boolean;
   announcementsEnabled: boolean;
@@ -52,6 +57,11 @@ const DEFAULTS: Omit<SiteSettings, "id" | "ownerId"> = {
   homeCreditsLabelEn: "",
   homeCreditsLabelZh: "",
   bookingEnabled: true,
+  bookingPriceEnabled: false,
+  bookingPriceNoticeAcceptedVersion: null,
+  bookingPriceNoticeAcceptedLocale: null,
+  bookingPriceNoticeAcceptedAt: null,
+  timeZone: "UTC",
   lotteryEnabled: true,
   creditProfilesEnabled: true,
   announcementsEnabled: true,

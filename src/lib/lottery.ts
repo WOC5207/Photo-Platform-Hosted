@@ -40,6 +40,52 @@ export async function ensureLotteryDraw(bookingEventId: string) {
   });
 }
 
+/**
+ * Deletes one owned prize and releases its winners back into the draw.
+ *
+ * Spins serialize on the LotteryDraw row before reading prize stock. Deletion
+ * must take that same lock before resetting winners or removing the prize;
+ * otherwise a spin can award the prize between the reset and delete, or make a
+ * decision from stock that is being removed concurrently.
+ */
+export async function deleteLotteryPrizeForOwner(
+  prizeId: string,
+  ownerId: string
+): Promise<boolean> {
+  // Unlocked, ownership-scoped peek used only to discover which draw to lock.
+  // Every decision and mutation is repeated after the lock is held.
+  const target = await prisma.lotteryPrize.findFirst({
+    where: { id: prizeId, draw: { bookingEvent: { ownerId } } },
+    select: { drawId: true }
+  });
+  if (!target) return false;
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT id FROM "LotteryDraw" WHERE id = ${target.drawId} FOR UPDATE
+    `;
+
+    // The prize may have been deleted while this transaction waited, and the
+    // caller's ownership must not be trusted from the pre-lock peek.
+    const prize = await tx.lotteryPrize.findFirst({
+      where: {
+        id: prizeId,
+        drawId: target.drawId,
+        draw: { bookingEvent: { ownerId } }
+      },
+      select: { id: true, drawId: true }
+    });
+    if (!prize) return false;
+
+    await tx.lotteryEntry.updateMany({
+      where: { drawId: prize.drawId, wonPrizeId: prize.id },
+      data: { wonPrizeId: null, wonAt: null }
+    });
+    await tx.lotteryPrize.delete({ where: { id: prize.id } });
+    return true;
+  });
+}
+
 export type SpinResult =
   | {
       ok: true;

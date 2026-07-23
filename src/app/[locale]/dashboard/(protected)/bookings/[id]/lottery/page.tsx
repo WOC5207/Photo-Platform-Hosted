@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { ensureLotteryDraw } from "@/lib/lottery";
 import { getSiteSettings } from "@/lib/settings";
+import { pickText } from "@/lib/content";
 import { Link } from "@/i18n/navigation";
 import CopyButton from "@/components/admin/CopyButton";
 import LotteryOpenToggle from "@/components/admin/LotteryOpenToggle";
@@ -20,6 +21,7 @@ export default async function LotteryPage({
   const t = await getTranslations("adminLottery");
   const tb = await getTranslations("adminBookings");
   const ts = await getTranslations("adminSite");
+  const tc = await getTranslations("common");
 
   const settings = await getSiteSettings(user.id);
 
@@ -94,7 +96,7 @@ export default async function LotteryPage({
         <h1 className="text-2xl font-bold">
           {t("title")}
           <span className="ml-3 text-base font-normal text-fg-subtle">
-            {event.titleZh || event.titleEn}
+            {pickText(locale, event.titleEn, event.titleZh)}
           </span>
         </h1>
         <Link
@@ -127,7 +129,11 @@ export default async function LotteryPage({
           <code className="break-all rounded-md bg-page px-3 py-2 text-xs text-success">
             {shareUrl}
           </code>
-          <CopyButton text={shareUrl} />
+          <CopyButton
+            text={shareUrl}
+            label={tc("copyLink")}
+            copiedLabel={tc("copied")}
+          />
         </div>
         <p className="mt-2 text-xs text-fg-subtle">{t("shareLinkHint")}</p>
         <div className="mt-3 flex flex-col gap-2">

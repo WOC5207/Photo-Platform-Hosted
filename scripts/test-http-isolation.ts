@@ -524,16 +524,26 @@ async function main() {
       headers: { cookie: aliceCookie }
     })
   ]);
+  const publishedEtag = publishedRendition.headers.get("etag");
+  const revalidatedRendition = await fetch(
+    `${BASE}/api/images/${aliceEvent.id}/${photoId}-med.webp`,
+    {
+      headers: publishedEtag ? { "if-none-match": publishedEtag } : undefined
+    }
+  );
   report(
-    "GET /api/images: only a published non-original rendition is publicly immutable",
+    "GET /api/images: a published rendition is public but revalidates authorization",
     publishedRendition.status === 200 &&
       publishedRendition.headers.get("cache-control") ===
-        "public, max-age=31536000, immutable" &&
+        "public, max-age=0, must-revalidate" &&
+      Boolean(publishedEtag) &&
+      revalidatedRendition.status === 304 &&
       publishedRendition.headers.get("x-content-type-options") === "nosniff" &&
       publishedOriginal.status === 200 &&
       publishedOriginal.headers.get("cache-control") === "private, no-store" &&
       publishedOriginal.headers.get("vary")?.toLowerCase().includes("cookie") === true,
     `rendition=${publishedRendition.status}/${publishedRendition.headers.get("cache-control")}, ` +
+      `etag=${publishedEtag ?? "missing"}, conditional=${revalidatedRendition.status}, ` +
       `original=${publishedOriginal.status}/${publishedOriginal.headers.get("cache-control")}`
   );
   const aliceSearch = await fetch(
@@ -590,9 +600,20 @@ async function main() {
     }
   });
   const siteImageBefore = await fetch(`${BASE}/api/site/${siteImageToken}.webp`);
+  const siteImageEtag = siteImageBefore.headers.get("etag");
+  const siteImageRevalidated = await fetch(
+    `${BASE}/api/site/${siteImageToken}.webp`,
+    {
+      headers: siteImageEtag ? { "if-none-match": siteImageEtag } : undefined
+    }
+  );
   report(
-    "setup: Alice's site image serves while she is active",
-    siteImageBefore.status === 200,
+    "setup: Alice's site image serves with authorization revalidation while active",
+    siteImageBefore.status === 200 &&
+      siteImageBefore.headers.get("cache-control") ===
+        "public, max-age=0, must-revalidate" &&
+      Boolean(siteImageEtag) &&
+      siteImageRevalidated.status === 304,
     `HTTP ${siteImageBefore.status} (want 200) — the suspension check below is vacuous if this 404s`
   );
 
@@ -616,12 +637,13 @@ async function main() {
 
   // Suspension is the tool for taking content down, so the content is the part
   // that has to actually go. The page 404ing is not enough: these URLs are
-  // public, already shared, and served immutable-cached for a year, so anyone
-  // holding one keeps the photo unless the route itself refuses.
+  // public and already shared, so even a conditional ETag request must recheck
+  // the account before the route can return a response.
   // Only the webp: renditions are always webp, so a -med.jpg URL 404s on a
   // missing file whether or not suspension works, and would pass either way.
   const suspendedPhoto = await fetch(
-    `${BASE}/api/images/${aliceEvent.id}/${photoId}-med.webp`
+    `${BASE}/api/images/${aliceEvent.id}/${photoId}-med.webp`,
+    { headers: publishedEtag ? { "if-none-match": publishedEtag } : undefined }
   );
   report(
     "suspension: a published photo stops serving from /api/images",
@@ -630,7 +652,9 @@ async function main() {
       `the orig nor the unpublished branch covers it`
   );
 
-  const suspendedSiteImage = await fetch(`${BASE}/api/site/${siteImageToken}.webp`);
+  const suspendedSiteImage = await fetch(`${BASE}/api/site/${siteImageToken}.webp`, {
+    headers: siteImageEtag ? { "if-none-match": siteImageEtag } : undefined
+  });
   report(
     "suspension: a site image stops serving from /api/site",
     suspendedSiteImage.status === 404,

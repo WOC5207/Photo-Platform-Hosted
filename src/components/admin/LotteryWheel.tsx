@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface WheelSlice {
   id: string;
@@ -38,29 +38,47 @@ function sliceRanges(slices: WheelSlice[]): { start: number; end: number }[] {
 
 export default function LotteryWheel({
   slices,
+  accessibleLabel,
   spinning,
   targetIndex,
   onSpinComplete
 }: {
   slices: WheelSlice[];
+  accessibleLabel: string;
   spinning: boolean;
   targetIndex: number | null;
   onSpinComplete: () => void;
 }) {
   const [rotation, setRotation] = useState(0);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const completedRef = useRef(false);
+  const onSpinCompleteRef = useRef(onSpinComplete);
 
   const n = slices.length;
   const ranges = sliceRanges(slices);
 
+  useEffect(() => {
+    onSpinCompleteRef.current = onSpinComplete;
+  }, [onSpinComplete]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduceMotion(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!spinning || targetIndex === null || n === 0) return;
+    completedRef.current = false;
     const range = ranges[targetIndex];
     if (!range) return;
     const sliceWidth = range.end - range.start;
     const sliceCenter = range.start + sliceWidth / 2;
     const jitter = (Math.random() - 0.5) * sliceWidth * 0.6;
-    const extraSpins = 5 + Math.floor(Math.random() * 3);
+    const extraSpins = reduceMotion ? 0 : 5 + Math.floor(Math.random() * 3);
     setRotation((prev) => {
       const prevMod = ((prev % 360) + 360) % 360;
       const targetMod = (((360 - sliceCenter - jitter) % 360) + 360) % 360;
@@ -68,24 +86,49 @@ export default function LotteryWheel({
       if (delta < 0) delta += 360;
       return prev + delta + extraSpins * 360;
     });
+    const timeout = window.setTimeout(
+      () => {
+        if (completedRef.current) return;
+        completedRef.current = true;
+        onSpinCompleteRef.current();
+      },
+      reduceMotion ? 80 : 4600
+    );
+    return () => window.clearTimeout(timeout);
     // Intentionally only re-triggers on a fresh spin (spinning flipping to
     // true with a target index), not on every slice-count change.
-  }, [spinning, targetIndex]);
+  }, [spinning, targetIndex, reduceMotion]);
+
+  function finishSpin() {
+    if (!spinning || completedRef.current) return;
+    completedRef.current = true;
+    onSpinCompleteRef.current();
+  }
 
   return (
     <div className="relative mx-auto w-full max-w-xs">
+      {slices.length > 0 && (
+        <div className="sr-only">
+          <p>{accessibleLabel}</p>
+          <ul>
+            {slices.map((slice) => (
+              <li key={slice.id}>{slice.label}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1">
         <div className="h-0 w-0 border-x-[10px] border-t-[18px] border-x-transparent border-t-red-500 drop-shadow" />
       </div>
       <div className="aspect-square overflow-hidden rounded-full border-4 border-border-strong shadow-lg">
         <div
-          onTransitionEnd={() => {
-            if (spinning) onSpinComplete();
-          }}
+          onTransitionEnd={finishSpin}
           style={{
             transform: `rotate(${rotation}deg)`,
             transition: spinning
-              ? "transform 4.2s cubic-bezier(0.13,0.66,0.15,1)"
+              ? reduceMotion
+                ? "transform 1ms linear"
+                : "transform 4.2s cubic-bezier(0.13,0.66,0.15,1)"
               : "none"
           }}
           className="h-full w-full"
@@ -95,7 +138,12 @@ export default function LotteryWheel({
               —
             </div>
           ) : (
-            <svg viewBox="0 0 200 200" className="h-full w-full">
+            <svg
+              viewBox="0 0 200 200"
+              aria-hidden="true"
+              focusable="false"
+              className="h-full w-full"
+            >
               {n === 1 ? (
                 <>
                   <circle cx={100} cy={100} r={100} fill={SLICE_COLORS[0]} />
@@ -106,6 +154,10 @@ export default function LotteryWheel({
                     fontSize="12"
                     fontWeight="700"
                     fill="#fff"
+                    stroke="rgba(0,0,0,0.85)"
+                    strokeWidth="2.5"
+                    paintOrder="stroke"
+                    strokeLinejoin="round"
                   >
                     {slices[0].label}
                   </text>
@@ -134,6 +186,10 @@ export default function LotteryWheel({
                         fontSize={n > 16 ? "6" : "9"}
                         fontWeight="700"
                         fill="#fff"
+                        stroke="rgba(0,0,0,0.85)"
+                        strokeWidth="2.5"
+                        paintOrder="stroke"
+                        strokeLinejoin="round"
                       >
                         {s.label}
                       </text>

@@ -3,12 +3,14 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: photo
-      POSTGRES_DB: photo
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: photo_e2e
+      POSTGRES_PASSWORD: ${E2E_POSTGRES_PASSWORD:-photo-e2e-only}
+    ports:
+      - "127.0.0.1:${E2E_DATABASE_PORT:-5433}:5432"
     volumes:
       - e2e-db:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U photo -d photo"]
+      test: ["CMD-SHELL", "pg_isready -U photo -d photo_e2e"]
       interval: 2s
       timeout: 5s
       retries: 20
@@ -19,15 +21,16 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     env_file:
       - .env
     environment:
-      DATABASE_URL: "postgresql://photo:${POSTGRES_PASSWORD}@db:5432/photo?schema=public&connection_limit=10"
+      DATABASE_URL: "postgresql://photo:${E2E_POSTGRES_PASSWORD:-photo-e2e-only}@db:5432/photo_e2e?schema=public&connection_limit=10"
       PHOTOS_DIR: "/data/photos"
     volumes:
-      - e2e-photos:/data/photos
+      # Bind this disposable folder so host-side HTTP isolation tests and the
+      # app container exercise the same files as well as the same database.
+      - ./data/e2e-photos:/data/photos
 
 volumes:
   e2e-db:
-  e2e-photos:

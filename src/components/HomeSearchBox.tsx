@@ -34,6 +34,7 @@ export default function HomeSearchBox({
   const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
+  const requestSequenceRef = useRef(0);
   const inputId = useId();
   const listboxId = useId();
   const statusId = useId();
@@ -42,26 +43,50 @@ export default function HomeSearchBox({
   const trimmedQuery = query.trim();
 
   useEffect(() => {
+    const requestSequence = ++requestSequenceRef.current;
+    const controller = new AbortController();
+
     if (trimmedQuery.length === 0) {
       setResults(null);
       setSearching(false);
       setActiveIndex(-1);
       return;
     }
+
     setSearching(true);
-    const handle = setTimeout(() => {
-      fetch(
-        `/api/search/credits?owner=${encodeURIComponent(owner)}&q=${encodeURIComponent(trimmedQuery)}`
-      )
-        .then((res) => res.json())
-        .then((data) => {
+    setActiveIndex(-1);
+    const handle = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/search/credits?owner=${encodeURIComponent(owner)}&q=${encodeURIComponent(trimmedQuery)}`,
+          { signal: controller.signal }
+        );
+        if (!response.ok) {
+          throw new Error(`Credit search failed with status ${response.status}`);
+        }
+        const data = (await response.json()) as {
+          results?: CreditSearchResult[];
+        };
+        if (requestSequence === requestSequenceRef.current) {
           setResults(data.results ?? []);
           setActiveIndex(-1);
-        })
-        .catch(() => setResults([]))
-        .finally(() => setSearching(false));
+        }
+      } catch {
+        if (!controller.signal.aborted && requestSequence === requestSequenceRef.current) {
+          setResults([]);
+          setActiveIndex(-1);
+        }
+      } finally {
+        if (requestSequence === requestSequenceRef.current) {
+          setSearching(false);
+        }
+      }
     }, 300);
-    return () => clearTimeout(handle);
+
+    return () => {
+      clearTimeout(handle);
+      controller.abort();
+    };
   }, [trimmedQuery, owner]);
 
   useEffect(() => {
@@ -83,6 +108,7 @@ export default function HomeSearchBox({
   }, [trimmedQuery]);
 
   const showDropdown = trimmedQuery.length > 0;
+  const listboxOpen = showDropdown && !searching && Boolean(results?.length);
   const activeResult =
     activeIndex >= 0 && results ? results[activeIndex] : undefined;
 
@@ -113,16 +139,21 @@ export default function HomeSearchBox({
         type="search"
         role="combobox"
         aria-autocomplete="list"
-        aria-expanded={showDropdown}
-        aria-controls={showDropdown ? listboxId : undefined}
+        aria-expanded={listboxOpen}
+        aria-controls={listboxOpen ? listboxId : undefined}
         aria-activedescendant={
-          activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined
+          listboxOpen && activeIndex >= 0
+            ? `${listboxId}-option-${activeIndex}`
+            : undefined
         }
         aria-describedby={statusId}
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setActiveIndex(-1);
+        }}
         onKeyDown={(e) => {
-          if (!showDropdown || !results?.length) return;
+          if (!listboxOpen || !results?.length) return;
           if (e.key === "ArrowDown") {
             e.preventDefault();
             setActiveIndex((i) => (i + 1) % results.length);
@@ -149,13 +180,13 @@ export default function HomeSearchBox({
       </span>
       {showDropdown && (
         <div
-          id={listboxId}
           className="absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-y-auto rounded-xl border border-fg/10 bg-page shadow-2xl"
         >
           {searching ? (
             <p className="p-3 text-sm text-fg-subtle">{labels.searching}</p>
           ) : results && results.length > 0 ? (
             <ul
+              id={listboxId}
               role="listbox"
               className="flex flex-col divide-y divide-fg/5"
             >
@@ -168,11 +199,13 @@ export default function HomeSearchBox({
                 return (
                   <li
                     key={r.photoId}
-                    id={`${listboxId}-option-${index}`}
-                    role="option"
-                    aria-selected={index === activeIndex}
+                    role="none"
                   >
                     <Link
+                      id={`${listboxId}-option-${index}`}
+                      role="option"
+                      aria-selected={index === activeIndex}
+                      tabIndex={-1}
                       href={resultHref(r)}
                       onClick={() => setQuery("")}
                       onMouseEnter={() => setActiveIndex(index)}

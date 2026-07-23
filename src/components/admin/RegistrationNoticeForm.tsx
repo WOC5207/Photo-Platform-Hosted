@@ -9,6 +9,8 @@ import type { PlatformSettings } from "@/lib/platformSettings";
 import Button from "@/components/ui/Button";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import StatusMessage from "@/components/ui/StatusMessage";
+import { useTranslations } from "next-intl";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 interface Labels {
   title: string;
@@ -38,11 +40,13 @@ export default function RegistrationNoticeForm({
   settings: PlatformSettings;
   labels: Labels;
 }) {
+  const tc = useTranslations("common");
   const [state, action, pending] = useActionState<RegistrationNoticeState, FormData>(
     saveRegistrationNotice,
     {}
   );
   const [dirty, setDirty] = useState(false);
+  useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
 
   useEffect(() => {
     if (state.ok) setDirty(false);

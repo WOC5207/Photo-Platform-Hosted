@@ -272,6 +272,76 @@ export async function saveRegistrationNotice(
   return { ok: true };
 }
 
+export type BookingPriceNoticeState = {
+  error?: "validation";
+  ok?: boolean;
+};
+
+const bookingPriceNoticeSchema = z
+  .object({
+    titleEn: z.string().trim().max(200),
+    titleZh: z.string().trim().max(200),
+    bodyEn: z.string().trim().max(20_000),
+    bodyZh: z.string().trim().max(20_000)
+  })
+  .refine((data) => data.titleEn.length > 0 || data.titleZh.length > 0)
+  .refine((data) => data.bodyEn.length > 0 || data.bodyZh.length > 0);
+
+export async function saveBookingPriceNotice(
+  _prev: BookingPriceNoticeState,
+  formData: FormData
+): Promise<BookingPriceNoticeState> {
+  await guard();
+  const parsed = bookingPriceNoticeSchema.safeParse({
+    titleEn: formData.get("titleEn") ?? "",
+    titleZh: formData.get("titleZh") ?? "",
+    bodyEn: formData.get("bodyEn") ?? "",
+    bodyZh: formData.get("bodyZh") ?? ""
+  });
+  if (!parsed.success) return { error: "validation" };
+
+  const data = parsed.data;
+  await prisma.$transaction(async (tx) => {
+    await tx.platformSettings.upsert({
+      where: { id: "platform" },
+      create: { id: "platform" },
+      update: {}
+    });
+    const rows = await tx.$queryRaw<
+      {
+        bookingPriceNoticeTitleEn: string;
+        bookingPriceNoticeTitleZh: string;
+        bookingPriceNoticeBodyEn: string;
+        bookingPriceNoticeBodyZh: string;
+        bookingPriceNoticeVersion: number;
+      }[]
+    >`SELECT * FROM "PlatformSettings" WHERE id = 'platform' FOR UPDATE`;
+    const current = rows[0];
+    const versionChanged =
+      !current ||
+      current.bookingPriceNoticeTitleEn !== data.titleEn ||
+      current.bookingPriceNoticeTitleZh !== data.titleZh ||
+      current.bookingPriceNoticeBodyEn !== data.bodyEn ||
+      current.bookingPriceNoticeBodyZh !== data.bodyZh;
+    const bookingPriceNoticeVersion = current
+      ? current.bookingPriceNoticeVersion + (versionChanged ? 1 : 0)
+      : 1;
+
+    await tx.platformSettings.update({
+      where: { id: "platform" },
+      data: {
+        bookingPriceNoticeTitleEn: data.titleEn,
+        bookingPriceNoticeTitleZh: data.titleZh,
+        bookingPriceNoticeBodyEn: data.bodyEn,
+        bookingPriceNoticeBodyZh: data.bodyZh,
+        bookingPriceNoticeVersion
+      }
+    });
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
 const inviteSchema = z.object({
   note: z.string().trim().max(200)
 });

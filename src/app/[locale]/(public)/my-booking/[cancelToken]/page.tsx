@@ -99,7 +99,15 @@ export default async function MyBookingPage({
           <span className="font-mono">
             {formatSlotRange(booking.timeSlot.startTime, booking.timeSlot.endTime)}
           </span>
+          <span className="ml-2 text-xs text-fg-subtle">
+            ({settings.timeZone})
+          </span>
         </Row>
+        {settings.bookingPriceEnabled && booking.timeSlot.pricePerPerson && (
+          <Row label={t("pricePerPersonLabel")}>
+            {booking.timeSlot.pricePerPerson}
+          </Row>
+        )}
         <Row label={t("nameLabel")}>{booking.name}</Row>
         {booking.subject && <Row label={subjectTerm}>{booking.subject}</Row>}
         <Row label={t("statusLabel")}>

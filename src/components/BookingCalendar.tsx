@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
+import { todayInTimeZone } from "@/lib/timeZone";
 
 export interface CalendarSession {
   date: string; // yyyy-mm-dd
@@ -15,11 +16,13 @@ type Cell = { day: number; dateStr: string };
 
 export default function BookingCalendar({
   basePath,
-  sessions
+  sessions,
+  timeZone
 }: {
   /** Root of the owner's site, e.g. "/u/alice" — locale is added by Link. */
   basePath: string;
   sessions: CalendarSession[];
+  timeZone: string;
 }) {
   const locale = useLocale();
   const t = useTranslations("home");
@@ -80,13 +83,13 @@ export default function BookingCalendar({
     });
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = todayInTimeZone(timeZone);
 
   return (
     <div className="rounded-2xl border border-fg/10 bg-page/85 p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-sm font-semibold">{t("calendarTitle")}</h3>
-        <div className="flex items-center gap-1">
+        <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-1 sm:flex">
           <button
             type="button"
             aria-label={t("calendarPrevMonth")}
@@ -95,7 +98,7 @@ export default function BookingCalendar({
           >
             ‹
           </button>
-          <span className="w-28 text-center text-xs text-fg-subtle">
+          <span className="min-w-0 text-center text-xs text-fg-subtle sm:w-28">
             {monthLabel}
           </span>
           <button

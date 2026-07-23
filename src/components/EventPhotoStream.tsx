@@ -18,7 +18,7 @@ export interface StreamEvent {
 }
 
 /**
- * The homepage's scroll-down photo stream: every published album with
+ * The homepage's bounded recent-work stream: recent published albums with
  * photos, each as its own labeled section (title/date/location) followed by
  * a justified "poster" mosaic of that album's photos — the same photos you'd
  * see on the album page, just all inline so visitors can browse without
@@ -26,11 +26,13 @@ export interface StreamEvent {
  */
 export default function EventPhotoStream({
   basePath,
-  events
+  events,
+  openPhotoLabel
 }: {
   /** Root of the owner's site, e.g. "/u/alice" — locale is added by Link. */
   basePath: string;
   events: StreamEvent[];
+  openPhotoLabel: string;
 }) {
   if (events.length === 0) return null;
 
@@ -59,8 +61,12 @@ export default function EventPhotoStream({
             rough per-row height (responsive).
           */}
           <ul className="flex flex-wrap gap-1 [--row-h:140px] sm:[--row-h:190px] lg:[--row-h:230px]">
-            {event.photos.map((photo) => {
+            {event.photos.map((photo, index) => {
               const ar = photo.height ? photo.width / photo.height : 1;
+              const fallbackLabel = `${event.title} — ${openPhotoLabel} ${index + 1}`;
+              const linkLabel = photo.alt
+                ? `${openPhotoLabel}: ${photo.alt}`
+                : fallbackLabel;
               return (
                 <li
                   key={photo.id}
@@ -71,13 +77,14 @@ export default function EventPhotoStream({
                   }}
                 >
                   <Link
-                    href={`${basePath}/gallery/${event.slug}`}
+                    href={`${basePath}/gallery/${event.slug}?photo=${encodeURIComponent(photo.id)}`}
+                    aria-label={linkLabel}
                     className="group relative block h-full"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={photo.url}
-                      alt={photo.alt}
+                      alt={photo.alt || fallbackLabel}
                       loading="lazy"
                       width={photo.width}
                       height={photo.height}

@@ -31,6 +31,8 @@ export interface BookingNotification {
   eventTitle: string;
   slotStart: Date;
   slotEnd: Date;
+  timeZone?: string;
+  pricePerPerson?: string;
   manageUrl: string; // visitor's cancel/view link
   // The owner's dashboard link for this booking's event — the "View in
   // dashboard" button on their alert. Optional: when absent the owner card
@@ -180,10 +182,10 @@ function bookingEmailHtml(view: {
       const divider = i === 0 ? "" : "border-top:1px solid #f0efed;";
       return (
         `<tr>` +
-        `<td style="padding:11px 16px;font-size:13px;color:#78716c;white-space:nowrap;vertical-align:top;${divider}">${escapeHtml(
+        `<td style="width:34%;padding:11px 16px;font-size:13px;color:#78716c;white-space:nowrap;vertical-align:top;${divider}">${escapeHtml(
           r.label
         )}</td>` +
-        `<td style="padding:11px 16px;font-size:14px;font-weight:600;color:${
+        `<td style="padding:11px 16px;font-size:14px;font-weight:600;word-break:break-word;overflow-wrap:anywhere;color:${
           r.color ?? "#1c1917"
         };text-align:right;${divider}">${escapeHtml(r.value)}</td>` +
         `</tr>`
@@ -204,7 +206,7 @@ function bookingEmailHtml(view: {
     )}</p>` +
     `</div>` +
     `<div style="padding:0 28px ${view.action ? "20px" : "28px"};">` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e7e5e4;border-radius:12px;border-collapse:separate;overflow:hidden;">${rowsHtml}</table>` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="table-layout:fixed;border:1px solid #e7e5e4;border-radius:12px;border-collapse:separate;overflow:hidden;">${rowsHtml}</table>` +
     `</div>` +
     (view.action ? actionHtml(view.action) : "") +
     `</div></div></div>`
@@ -239,16 +241,22 @@ function visitorMessage(
   const lang = langOf(info.locale);
   const s = STRINGS[lang];
   const k = VISITOR_KIND[kind][lang];
-  const slot = formatSlotRange(info.slotStart, info.slotEnd);
+  const slot = bookingSlotLabel(info);
   const statusText = kind === "confirmed" ? s.confirmed : s.cancelled;
   const statusColor =
     kind === "confirmed" ? STATUS_CONFIRMED_COLOR : STATUS_CANCELLED_COLOR;
 
   const rows: EmailRow[] = [
     { label: s.event, value: info.eventTitle },
-    { label: s.time, value: slot },
-    { label: s.name, value: info.name }
+    { label: s.time, value: slot }
   ];
+  if (info.pricePerPerson) {
+    rows.push({
+      label: lang === "en" ? "Price per person" : "每人价格",
+      value: info.pricePerPerson
+    });
+  }
+  rows.push({ label: s.name, value: info.name });
   if (info.subject) rows.push({ label: s.subject, value: info.subject });
   rows.push({ label: s.status, value: statusText, color: statusColor });
 
@@ -276,16 +284,22 @@ function visitorCancelledMessage(info: BookingNotification): MailMessage {
 }
 
 function ownerBookingLine(info: BookingNotification): { en: string; zh: string } {
-  const slot = formatSlotRange(info.slotStart, info.slotEnd);
+  const slot = bookingSlotLabel(info);
   const subjectEn = info.subject ? `\nSubject: ${info.subject}` : "";
+  const priceEn = info.pricePerPerson
+    ? `\nPrice per person: ${info.pricePerPerson}`
+    : "";
+  const priceZh = info.pricePerPerson
+    ? `\n每人价格：${info.pricePerPerson}`
+    : "";
   const subjectZh = info.subject ? `\n主题：${info.subject}` : "";
   const contact = `${info.contactMethod}: ${info.contactValue}`;
   return {
     en:
-      `Event: ${info.eventTitle}\nTime: ${slot}\n` +
+      `Event: ${info.eventTitle}\nTime: ${slot}${priceEn}\n` +
       `Name: ${info.name}${subjectEn}\nContact: ${contact}`,
     zh:
-      `活动：${info.eventTitle}\n时间：${slot}\n` +
+      `活动：${info.eventTitle}\n时间：${slot}${priceZh}\n` +
       `姓名：${info.name}${subjectZh}\n联系方式：${contact}`
   };
 }
@@ -303,12 +317,18 @@ const OWNER_LABELS = {
 
 /** Rows shared by both owner alerts, plus the trailing bilingual status row. */
 function ownerRows(info: BookingNotification, statusText: string, statusColor: string): EmailRow[] {
-  const slot = formatSlotRange(info.slotStart, info.slotEnd);
+  const slot = bookingSlotLabel(info);
   const rows: EmailRow[] = [
     { label: OWNER_LABELS.event, value: info.eventTitle },
-    { label: OWNER_LABELS.time, value: slot },
-    { label: OWNER_LABELS.name, value: info.name }
+    { label: OWNER_LABELS.time, value: slot }
   ];
+  if (info.pricePerPerson) {
+    rows.push({
+      label: "Price per person · 每人价格",
+      value: info.pricePerPerson
+    });
+  }
+  rows.push({ label: OWNER_LABELS.name, value: info.name });
   if (info.subject) rows.push({ label: OWNER_LABELS.subject, value: info.subject });
   rows.push({
     label: OWNER_LABELS.contact,
@@ -316,6 +336,11 @@ function ownerRows(info: BookingNotification, statusText: string, statusColor: s
   });
   rows.push({ label: OWNER_LABELS.status, value: statusText, color: statusColor });
   return rows;
+}
+
+function bookingSlotLabel(info: BookingNotification): string {
+  const slot = formatSlotRange(info.slotStart, info.slotEnd);
+  return info.timeZone ? `${slot} (${info.timeZone})` : slot;
 }
 
 /** A "View in dashboard" action for the owner card, when a dashboard link exists. */

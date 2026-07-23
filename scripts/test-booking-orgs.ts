@@ -51,6 +51,7 @@ async function makeEvent(ownerId: string, opts: SeedOptions) {
       titleZh: "seed",
       date: opts.dates[0],
       open: true,
+      lotteryEnabled: opts.withDraw ?? false,
       days: { create: opts.dates.map((date) => ({ date })) }
     },
     include: { days: { orderBy: { date: "asc" } } }
@@ -162,10 +163,17 @@ async function main() {
       const draw = await prisma.lotteryDraw.findUnique({
         where: { bookingEventId: g.event.id }
       });
+      const target = await prisma.bookingEvent.findUnique({
+        where: { id: g.event.id },
+        select: { lotteryEnabled: true }
+      });
       report(
-        "merge: a lone prize draw is reassigned to the surviving event",
-        result.ok && !!draw && draw.id === h.draw!.id,
-        `drawOnTarget=${!!draw} sameDraw=${draw?.id === h.draw?.id}`
+        "merge: a lone prize draw and its enabled state move to the surviving event",
+        result.ok &&
+          !!draw &&
+          draw.id === h.draw!.id &&
+          target?.lotteryEnabled === true,
+        `drawOnTarget=${!!draw} sameDraw=${draw?.id === h.draw?.id} enabled=${target?.lotteryEnabled}`
       );
     }
 

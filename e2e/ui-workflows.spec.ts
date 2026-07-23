@@ -682,6 +682,135 @@ test.describe.serial("management workflows", () => {
     }
   });
 
+  test(
+    "lottery identity and recovery survive a locale switch",
+    { tag: "@desktop-only" },
+    async ({ page, context }) => {
+      const admin = await prisma.user.findUniqueOrThrow({
+        where: { username: adminUsername! },
+        include: { settings: true }
+      });
+      const originalLotteryEnabled = admin.settings?.lotteryEnabled ?? false;
+      let lotterySettingChanged = false;
+      let contactId: string | null = null;
+      let eventId: string | null = null;
+      let drawId: string | null = null;
+      let drawToken: string | null = null;
+
+      try {
+        await prisma.siteSettings.update({
+          where: { ownerId: admin.id },
+          data: { lotteryEnabled: true }
+        });
+        lotterySettingChanged = true;
+
+        const contact = await prisma.contactMethod.create({
+          data: {
+            ownerId: admin.id,
+            labelEn: `E2E Email ${Date.now()}`,
+            labelZh: `E2E 邮箱 ${Date.now()}`
+          }
+        });
+        contactId = contact.id;
+
+        const event = await prisma.bookingEvent.create({
+          data: {
+            ownerId: admin.id,
+            token: randomUUID().replace(/-/g, ""),
+            titleEn: "E2E locale lottery",
+            titleZh: "E2E 多语言抽奖",
+            date: new Date(Date.now() + 86_400_000),
+            open: false,
+            lotteryEnabled: true
+          }
+        });
+        eventId = event.id;
+
+        const draw = await prisma.lotteryDraw.create({
+          data: {
+            bookingEventId: event.id,
+            token: randomUUID().replace(/-/g, ""),
+            prizes: {
+              create: { name: "E2E prize", quantity: 2, weight: 1 }
+            }
+          }
+        });
+        drawId = draw.id;
+        drawToken = draw.token;
+
+        await page.goto(`/en/draw/${drawToken}`);
+        const entryForm = page.locator("form").first();
+        await entryForm.locator('input[name="name"]').fill("Locale Visitor");
+        await entryForm
+          .locator('select[name="contactMethodId"]')
+          .selectOption(contactId);
+        await entryForm
+          .locator('input[name="contactValue"]')
+          .fill("visitor@example.com");
+        await entryForm.getByRole("button", { name: "Enter the draw" }).click();
+
+        const token = await page
+          .getByRole("textbox", { name: "Your entry token" })
+          .inputValue();
+        expect(token).toMatch(/^[A-Z0-9]{5,12}$/);
+        const storedEntry = await prisma.lotteryEntry.findFirstOrThrow({
+          where: { drawId, token }
+        });
+        expect(storedEntry.contactMethodId).toBe(contactId);
+
+        // Simulate returning without the authorization cookie, then switch
+        // locale. The localized label changes, but the stable method ID must
+        // still block a duplicate and recover the original entry.
+        await context.clearCookies({ name: "visitor-session" });
+        await page.goto(`/zh/draw/${drawToken}`);
+        const duplicateForm = page.locator("form").first();
+        await duplicateForm.locator('input[name="name"]').fill("Locale Visitor");
+        await duplicateForm
+          .locator('select[name="contactMethodId"]')
+          .selectOption(contactId);
+        await duplicateForm
+          .locator('input[name="contactValue"]')
+          .fill("visitor@example.com");
+        await duplicateForm.locator('button[type="submit"]').click();
+        await expect(duplicateForm.getByRole("alert")).toBeVisible();
+        await expect
+          .poll(() => prisma.lotteryEntry.count({ where: { drawId: draw.id } }))
+          .toBe(1);
+
+        await page.locator("details > summary").click();
+        const recoveryForm = page.locator("details form");
+        await recoveryForm.locator('input[name="entryToken"]').fill(token);
+        await recoveryForm.locator('input[name="name"]').fill("Locale Visitor");
+        await recoveryForm
+          .locator('select[name="contactMethodId"]')
+          .selectOption(contactId);
+        await recoveryForm
+          .locator('input[name="contactValue"]')
+          .fill("visitor@example.com");
+        await recoveryForm.locator('button[type="submit"]').click();
+        await expect(page.locator(`input[readonly][value="${token}"]`)).toBeVisible();
+      } finally {
+        if (drawId) {
+          await prisma.lotteryDraw.deleteMany({ where: { id: drawId } }).catch(() => {});
+        }
+        if (eventId) {
+          await prisma.bookingEvent.deleteMany({ where: { id: eventId } }).catch(() => {});
+        }
+        if (contactId) {
+          await prisma.contactMethod.deleteMany({ where: { id: contactId } }).catch(() => {});
+        }
+        if (lotterySettingChanged) {
+          await prisma.siteSettings
+            .update({
+              where: { ownerId: admin.id },
+              data: { lotteryEnabled: originalLotteryEnabled }
+            })
+            .catch(() => {});
+        }
+      }
+    }
+  );
+
   test("booking events can be merged under one link and split back apart", async ({ page }) => {
     const tag = Date.now();
     const now = new Date();

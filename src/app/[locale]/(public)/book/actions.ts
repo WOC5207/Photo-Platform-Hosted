@@ -45,11 +45,6 @@ export async function createBooking(
   _prev: BookingFormState,
   formData: FormData
 ): Promise<BookingFormState> {
-  const ip = clientIp(await headers());
-  if (!rateLimit(`book:${ip}`, { limit: 8, windowMs: 60 * 60 * 1000 })) {
-    return { error: "rateLimited" };
-  }
-
   const parsed = bookingSchema.safeParse({
     slotId: formData.get("slotId") ?? "",
     name: formData.get("name") ?? "",
@@ -61,6 +56,19 @@ export async function createBooking(
   });
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
+  const ip = clientIp(await headers());
+
+  // Keep random-but-well-formed slot IDs from turning this public action into
+  // an unbounded database probe. The generous short-window limit protects the
+  // lookup while the event-scoped limit below remains the visitor-facing gate.
+  if (
+    !rateLimit(`book-preflight:${ip}`, {
+      limit: 120,
+      windowMs: 60 * 1000
+    })
+  ) {
+    return { error: "rateLimited" };
+  }
 
   // "Booking enabled" is the slot owner's setting, so the slot has to be
   // resolved before it can be read — it is no longer one switch for the whole
@@ -68,10 +76,23 @@ export async function createBooking(
   // answers whose it is.
   const slot = await prisma.timeSlot.findUnique({
     where: { id: d.slotId },
-    select: { bookingEvent: { select: { ownerId: true } } }
+    select: { bookingEvent: { select: { id: true, ownerId: true } } }
   });
   if (!slot) return { error: "slotUnavailable" };
-  if (!(await getSiteSettings(slot.bookingEvent.ownerId)).bookingEnabled) {
+
+  // Consume an attempt only after basic validation, and scope the limit to the
+  // event so visitors on shared Wi-Fi do not block unrelated photographers.
+  if (
+    !rateLimit(`book:${slot.bookingEvent.id}:${ip}`, {
+      limit: 30,
+      windowMs: 60 * 60 * 1000
+    })
+  ) {
+    return { error: "rateLimited" };
+  }
+
+  const settings = await getSiteSettings(slot.bookingEvent.ownerId);
+  if (!settings.bookingEnabled) {
     return { error: "closed" };
   }
 
@@ -80,12 +101,22 @@ export async function createBooking(
   // later status-change email (sent from the photographer's dashboard, in their
   // locale) still reaches this visitor in their own language.
   const locale = await getLocale();
+  const contactMethod = await prisma.contactMethod.findFirst({
+    where: { id: d.contactMethod, ownerId: slot.bookingEvent.ownerId },
+    select: { labelEn: true, labelZh: true }
+  });
+  if (!contactMethod) return { error: "validation" };
+  const contactMethodLabel = pickText(
+    locale,
+    contactMethod.labelEn,
+    contactMethod.labelZh
+  );
 
   // Atomic capacity check + insert; see reserveSlot for why it's locked.
   const result = await reserveSlot(d.slotId, {
     name: d.name,
     subject: d.subject,
-    contactMethod: d.contactMethod,
+    contactMethod: contactMethodLabel,
     contactValue: d.contactValue,
     email: d.email,
     notes: d.notes,
@@ -107,7 +138,7 @@ export async function createBooking(
     bookingId: cancelToken,
     name: d.name,
     subject: d.subject,
-    contactMethod: d.contactMethod,
+    contactMethod: contactMethodLabel,
     contactValue: d.contactValue,
     eventTitle: pickText(
       locale,
@@ -116,6 +147,10 @@ export async function createBooking(
     ),
     slotStart: result.slot.startTime,
     slotEnd: result.slot.endTime,
+    timeZone: settings.timeZone,
+    pricePerPerson: settings.bookingPriceEnabled
+      ? result.slot.pricePerPerson
+      : "",
     manageUrl,
     // The owner's own locale isn't known, so the dashboard deep-link uses the
     // platform default; the dashboard UI is bilingual either way.
@@ -140,22 +175,20 @@ export async function cancelMyBooking(formData: FormData): Promise<void> {
   });
   if (!booking) return;
 
-  await prisma.booking
-    .update({
-      where: { cancelToken },
-      data: { status: "cancelled" }
-    })
-    .catch(() => {});
+  // The conditional write is the idempotency gate: concurrent requests may
+  // both read the booking, but exactly one can transition and send notices.
+  const transition = await prisma.booking.updateMany({
+    where: { id: booking.id, status: "confirmed" },
+    data: { status: "cancelled" }
+  });
+  if (transition.count !== 1) return;
   revalidatePath("/", "layout");
-
-  // Only mail on the confirmed -> cancelled transition, so a second submit (or a
-  // re-cancel of an already-cancelled booking) doesn't send a duplicate.
-  if (booking.status !== "confirmed") return;
 
   // The visitor's own language, captured when they booked — not getLocale(),
   // which here is only the locale of the page the cancel was clicked from.
   const locale = booking.locale;
   const event = booking.timeSlot.bookingEvent;
+  const settings = await getSiteSettings(event.ownerId);
   const owner = await prisma.user.findUnique({
     where: { id: event.ownerId },
     select: { email: true }
@@ -170,6 +203,10 @@ export async function cancelMyBooking(formData: FormData): Promise<void> {
     eventTitle: pickText(locale, event.titleEn, event.titleZh),
     slotStart: booking.timeSlot.startTime,
     slotEnd: booking.timeSlot.endTime,
+    timeZone: settings.timeZone,
+    pricePerPerson: settings.bookingPriceEnabled
+      ? booking.timeSlot.pricePerPerson
+      : "",
     manageUrl,
     dashboardUrl: `${config.appBaseUrl()}/${routing.defaultLocale}/dashboard/bookings/${event.id}`,
     locale,
@@ -184,6 +221,7 @@ export interface BookingLookupResult {
   cancelToken: string;
   eventTitle: string;
   slotLabel: string;
+  pricePerPerson: string;
   name: string;
   subject: string;
   cancelled: boolean;
@@ -233,7 +271,7 @@ export async function lookupMyBooking(
   const event = await prisma.bookingEvent.findUnique({
     where: { token: d.eventToken },
     include: {
-      lotteryDraw: { select: { id: true } },
+      lotteryDraw: { select: { token: true } },
       slots: {
         include: {
           bookings: {
@@ -247,9 +285,9 @@ export async function lookupMyBooking(
 
   const wantName = d.name.toLowerCase();
   const wantContact = d.contactValue.toLowerCase();
-  const lotteryLive = event.lotteryEnabled && !!event.lotteryDraw;
   const locale = await getLocale();
   const eventTitle = pickText(locale, event.titleEn, event.titleZh);
+  const settings = await getSiteSettings(event.ownerId);
 
   const matches = event.slots
     .flatMap((s) => s.bookings.map((b) => ({ slot: s, booking: b })))
@@ -260,11 +298,15 @@ export async function lookupMyBooking(
     );
 
   if (matches.length === 0) return { error: "notFound" };
+  const lotteryLive = event.lotteryDraw
+    ? Boolean(await findAvailablePublicDraw(event.lotteryDraw.token))
+    : false;
 
   const results: BookingLookupResult[] = matches.map(({ slot, booking }) => ({
     cancelToken: booking.cancelToken,
     eventTitle,
     slotLabel: formatSlotRange(slot.startTime, slot.endTime),
+    pricePerPerson: settings.bookingPriceEnabled ? slot.pricePerPerson : "",
     name: booking.name,
     subject: booking.subject,
     cancelled: booking.status === "cancelled",

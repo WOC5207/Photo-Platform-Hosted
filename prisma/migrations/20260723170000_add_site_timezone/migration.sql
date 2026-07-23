@@ -1,0 +1,2 @@
+ALTER TABLE "SiteSettings"
+ADD COLUMN "timeZone" TEXT NOT NULL DEFAULT 'UTC';

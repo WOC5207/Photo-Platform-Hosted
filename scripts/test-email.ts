@@ -355,6 +355,7 @@ async function testVisitorEmailHtml() {
       visitorEmail: "v@test",
       locale: "en",
       eventTitle: "Spring shoot",
+      pricePerPerson: "CAD 50",
       manageUrl: "https://example.com/en/my-booking/tok"
     }),
     "confirmed",
@@ -366,6 +367,9 @@ async function testVisitorEmailHtml() {
     !!msg &&
       typeof msg.html === "string" &&
       msg.html.includes("Spring shoot") &&
+      msg.html.includes("Price per person") &&
+      msg.html.includes("CAD 50") &&
+      msg.text.includes("Price per person: CAD 50") &&
       msg.html.includes("https://example.com/en/my-booking/tok"),
     `html present=${typeof msg?.html === "string"}, len=${msg?.html?.length ?? 0}`
   );

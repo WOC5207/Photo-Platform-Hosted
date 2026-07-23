@@ -15,6 +15,7 @@ import CompressionStep from "./CompressionStep";
 import CreditsStep from "./CreditsStep";
 import ConfirmStep, { buildCreditGroups, type PublishPhase } from "./ConfirmStep";
 import { btnCls, formatBytes, primaryBtnCls } from "./ui";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 export default function PhotoWizard({
   eventId,
@@ -35,6 +36,7 @@ export default function PhotoWizard({
 }) {
   const t = useTranslations("adminEvents");
   const tw = useTranslations("photoWizard");
+  const tc = useTranslations("common");
   const router = useRouter();
 
   const queue = usePendingUploadQueue({
@@ -59,6 +61,12 @@ export default function PhotoWizard({
   const [ackUncredited, setAckUncredited] = useState(false);
   const [publishPhase, setPublishPhase] = useState<PublishPhase>("idle");
   const [publishedCount, setPublishedCount] = useState(0);
+  const hasDraft =
+    publishPhase !== "success" &&
+    (queue.files.length > 0 ||
+      Object.keys(creditsByPhoto).length > 0 ||
+      Object.keys(commentByPhoto).length > 0);
+  useUnsavedChanges(hasDraft, tc("unsavedNavigationConfirm"));
 
   const steps = [
     { key: "upload", label: tw("stepUpload") },
@@ -70,8 +78,10 @@ export default function PhotoWizard({
   // Transfers must finish before advancing, but background compression need
   // not: compressing photos are browsable and get credited while the server
   // finishes them; only Publish waits for compression to complete.
+  const failedCount = queue.files.filter((item) => item.state === "failed").length;
   const uploadsSettled =
     queue.browsableFiles.length > 0 &&
+    failedCount === 0 &&
     !queue.transferWorking &&
     !queue.clearing;
   const publishing = publishPhase === "publishing";
@@ -90,13 +100,17 @@ export default function PhotoWizard({
       ? uploadsSettled
       : stepIndex === 1
         ? queue.browsableFiles.length > 0 &&
+          failedCount === 0 &&
           !queue.transferWorking &&
           queue.awaitingCount === 0
         : stepIndex === 2
-          ? uncreditedCount === 0 || ackUncredited
+          ? failedCount === 0 &&
+            (uncreditedCount === 0 || ackUncredited)
           : true;
   const continueHint =
-    stepIndex === 0 && queue.files.length > 0 && !uploadsSettled
+    failedCount > 0
+      ? tw("resolveFailedFiles", { count: failedCount })
+      : stepIndex === 0 && queue.files.length > 0 && !uploadsSettled
       ? tw("waitUploads")
       : stepIndex === 1 && queue.awaitingCount > 0
         ? tw("chooseSizeToContinue", { count: queue.awaitingCount })
@@ -210,6 +224,7 @@ export default function PhotoWizard({
         <ConfirmStep
           queue={queue}
           creditsByPhoto={creditsByPhoto}
+          failedCount={failedCount}
           publishPhase={publishPhase}
           publishedCount={publishedCount}
           onPublish={() => void publish()}

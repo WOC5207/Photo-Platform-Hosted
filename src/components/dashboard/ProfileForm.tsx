@@ -9,6 +9,8 @@ import Button from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import SectionHeading from "@/components/ui/SectionHeading";
 import StatusMessage from "@/components/ui/StatusMessage";
+import { useTranslations } from "next-intl";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 export default function ProfileForm({
   username,
@@ -31,6 +33,7 @@ export default function ProfileForm({
     error: string;
   };
 }) {
+  const tc = useTranslations("common");
   const [state, action, pending] = useActionState<
     UpdateProfileState,
     FormData
@@ -40,6 +43,7 @@ export default function ProfileForm({
   const [email, setEmail] = useState(initialEmail);
   const [savedEmail, setSavedEmail] = useState(initialEmail);
   const dirty = displayName !== savedName || email !== savedEmail;
+  useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
 
   useEffect(() => {
     if (state.ok && state.displayName !== undefined) {

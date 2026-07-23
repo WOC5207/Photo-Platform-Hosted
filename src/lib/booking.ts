@@ -2,6 +2,8 @@ import "server-only";
 import { randomUUID } from "crypto";
 import { Prisma, type BookingEvent, type TimeSlot } from "@prisma/client";
 import { prisma } from "./db";
+import { DEFAULT_TIME_ZONE, isNaiveDateTimePast } from "./timeZone";
+import { formatDate, parseNaiveDateTime } from "./datetime";
 
 export interface BookingDetails {
   name: string;
@@ -19,6 +21,96 @@ export interface BookingDetails {
 export type ReserveSlotResult =
   | { ok: true; slot: TimeSlot & { bookingEvent: BookingEvent } }
   | { ok: false; error: "slotUnavailable" | "closed" | "slotFull" };
+
+export interface SlotBatchInput {
+  bookingDayId: string;
+  startTime: string;
+  slotMinutes: number;
+  slotCount: number;
+  capacity: number;
+  pricePerPerson: string;
+  descriptionEn: string;
+  descriptionZh: string;
+  syncAcrossDays: boolean;
+}
+
+/**
+ * Add one slot batch, optionally copying the first batch of a new multi-day
+ * event to every day. The event row lock keeps two concurrent setup tabs from
+ * both observing an empty schedule and producing duplicates.
+ */
+export async function addSlotBatchForOwner(
+  ownerId: string,
+  input: SlotBatchInput
+): Promise<boolean> {
+  const day = await prisma.bookingDay.findFirst({
+    where: { id: input.bookingDayId, bookingEvent: { ownerId } }
+  });
+  if (!day) return false;
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "BookingEvent" WHERE id = ${day.bookingEventId} FOR UPDATE`;
+    const event = await tx.bookingEvent.findFirst({
+      where: { id: day.bookingEventId, ownerId },
+      select: { open: true, slotsInitialized: true }
+    });
+    if (!event) return false;
+
+    let targetDays = [day];
+    if (input.syncAcrossDays) {
+      const existingSlots = await tx.timeSlot.count({
+        where: { bookingEventId: day.bookingEventId }
+      });
+      if (event.open || event.slotsInitialized || existingSlots > 0) {
+        return false;
+      }
+      targetDays = await tx.bookingDay.findMany({
+        where: { bookingEventId: day.bookingEventId },
+        orderBy: { date: "asc" }
+      });
+      if (targetDays.length < 2) return false;
+    }
+
+    const slots = targetDays.flatMap((targetDay) => {
+      const start = parseNaiveDateTime(
+        `${formatDate(targetDay.date)}T${input.startTime}`
+      );
+      if (!start) return [];
+      const finalEnd = new Date(
+        start.getTime() + input.slotMinutes * input.slotCount * 60_000
+      );
+      const nextDayStart = new Date(start);
+      nextDayStart.setUTCHours(24, 0, 0, 0);
+      if (finalEnd.getTime() > nextDayStart.getTime()) return [];
+
+      return Array.from({ length: input.slotCount }, (_, i) => {
+        const slotStart = new Date(
+          start.getTime() + i * input.slotMinutes * 60_000
+        );
+        return {
+          bookingEventId: day.bookingEventId,
+          bookingDayId: targetDay.id,
+          startTime: slotStart,
+          endTime: new Date(
+            slotStart.getTime() + input.slotMinutes * 60_000
+          ),
+          capacity: input.capacity,
+          pricePerPerson: input.pricePerPerson,
+          descriptionEn: input.descriptionEn,
+          descriptionZh: input.descriptionZh
+        };
+      });
+    });
+    if (slots.length !== targetDays.length * input.slotCount) return false;
+
+    await tx.timeSlot.createMany({ data: slots });
+    await tx.bookingEvent.update({
+      where: { id: day.bookingEventId },
+      data: { slotsInitialized: true }
+    });
+    return true;
+  });
+}
 
 /**
  * Books one spot in a time slot if capacity allows, as a single atomic unit.
@@ -52,6 +144,18 @@ export async function reserveSlot(
     });
     if (!slot) return { ok: false, error: "slotUnavailable" } as const;
     if (!slot.bookingEvent.open) return { ok: false, error: "closed" } as const;
+    const settings = await tx.siteSettings.findUnique({
+      where: { ownerId: slot.bookingEvent.ownerId },
+      select: { timeZone: true }
+    });
+    if (
+      isNaiveDateTimePast(
+        slot.startTime,
+        settings?.timeZone ?? DEFAULT_TIME_ZONE
+      )
+    ) {
+      return { ok: false, error: "slotUnavailable" } as const;
+    }
 
     const confirmed = await tx.booking.count({
       where: { timeSlotId: slot.id, status: "confirmed" }
@@ -107,7 +211,11 @@ export async function mergeEvents(
 
   const owned = await prisma.bookingEvent.findMany({
     where: { id: { in: allIds }, ownerId },
-    select: { id: true, lotteryDraw: { select: { id: true } } }
+    select: {
+      id: true,
+      lotteryEnabled: true,
+      lotteryDraw: { select: { id: true } }
+    }
   });
   if (owned.length !== allIds.length) return { ok: false, error: "invalid" };
 
@@ -116,6 +224,8 @@ export async function mergeEvents(
   if (withDraw.length > 1) return { ok: false, error: "lotteryConflict" };
   const drawToReassign =
     withDraw.length === 1 && withDraw[0].id !== targetId ? withDraw[0].id : null;
+  const preserveLotteryEnabled =
+    drawToReassign !== null && withDraw[0].lotteryEnabled;
 
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw(
@@ -166,6 +276,15 @@ export async function mergeEvents(
         where: { bookingEventId: drawToReassign },
         data: { bookingEventId: targetId }
       });
+      // The draw's event-level gate belongs to the feature being moved. Without
+      // preserving it, choosing a non-lottery event as the merge target silently
+      // makes the surviving public draw URL return 404.
+      if (preserveLotteryEnabled) {
+        await tx.bookingEvent.update({
+          where: { id: targetId },
+          data: { lotteryEnabled: true }
+        });
+      }
     }
 
     // Sources now hold no days/slots/draw, so nothing cascades away.

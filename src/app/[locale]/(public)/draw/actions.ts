@@ -1,8 +1,10 @@
 "use server";
 
 import { headers } from "next/headers";
+import { getLocale } from "next-intl/server";
 import { z } from "zod";
 import { clientIp } from "@/lib/clientIp";
+import { pickText } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { spinForEntry, uniqueEntryToken } from "@/lib/lottery";
 import {
@@ -30,7 +32,7 @@ export type LotteryEntryFormState = {
 const entrySchema = z.object({
   drawToken: z.string().trim().min(1).max(100),
   name: z.string().trim().min(1).max(200),
-  contactMethod: z.string().trim().min(1).max(60),
+  contactMethodId: z.string().trim().min(1).max(100),
   contactValue: z.string().trim().min(1).max(200)
 });
 
@@ -46,30 +48,57 @@ export async function submitLotteryEntry(
   _prev: LotteryEntryFormState,
   formData: FormData
 ): Promise<LotteryEntryFormState> {
-  const ip = clientIp(await headers());
-  if (!rateLimit(`lottery-entry:${ip}`, { limit: 8, windowMs: 60 * 60 * 1000 })) {
-    return { error: "rateLimited" };
-  }
-
   const parsed = entrySchema.safeParse({
     drawToken: formData.get("drawToken") ?? "",
     name: formData.get("name") ?? "",
-    contactMethod: formData.get("contactMethod") ?? "",
+    contactMethodId: formData.get("contactMethodId") ?? "",
     contactValue: formData.get("contactValue") ?? ""
   });
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
+  const ip = clientIp(await headers());
+  if (
+    !rateLimit(`lottery-entry:${d.drawToken}:${ip}`, {
+      limit: 30,
+      windowMs: 60 * 60 * 1000
+    })
+  ) {
+    return { error: "rateLimited" };
+  }
+  const locale = await getLocale();
 
   const result = await prisma.$transaction(async (tx) => {
     const draw = await lockAvailablePublicDrawByToken(tx, d.drawToken, true);
     if (!draw) return { error: "closed" } as const;
 
+    const contactMethod = await tx.contactMethod.findFirst({
+      where: {
+        id: d.contactMethodId,
+        ownerId: draw.bookingEvent.ownerId
+      },
+      select: { id: true, labelEn: true, labelZh: true }
+    });
+    if (!contactMethod) return { error: "validation" } as const;
+    const contactMethodLabel = pickText(
+      locale,
+      contactMethod.labelEn,
+      contactMethod.labelZh
+    );
+    const legacyLabels = [contactMethod.labelEn, contactMethod.labelZh].filter(
+      Boolean
+    );
     const normalizedValue = normalizeIdentity(d.contactValue);
     const possibleDuplicates = await tx.lotteryEntry.findMany({
       where: {
         drawId: draw.id,
         bookingId: null,
-        contactMethod: d.contactMethod
+        OR: [
+          { contactMethodId: contactMethod.id },
+          {
+            contactMethodId: null,
+            contactMethod: { in: legacyLabels }
+          }
+        ]
       },
       select: { contactValue: true }
     });
@@ -86,7 +115,8 @@ export async function submitLotteryEntry(
       data: {
         drawId: draw.id,
         name: d.name,
-        contactMethod: d.contactMethod,
+        contactMethodId: contactMethod.id,
+        contactMethod: contactMethodLabel,
         contactValue: d.contactValue,
         token
       },
@@ -104,22 +134,35 @@ export async function recoverLotteryEntry(
   _prev: LotteryEntryFormState,
   formData: FormData
 ): Promise<LotteryEntryFormState> {
-  const ip = clientIp(await headers());
-  if (!rateLimit(`lottery-recover:${ip}`, { limit: 5, windowMs: 60 * 60 * 1000 })) {
-    return { error: "rateLimited" };
-  }
   const parsed = recoverySchema.safeParse({
     drawToken: formData.get("drawToken") ?? "",
     entryToken: formData.get("entryToken") ?? "",
     name: formData.get("name") ?? "",
-    contactMethod: formData.get("contactMethod") ?? "",
+    contactMethodId: formData.get("contactMethodId") ?? "",
     contactValue: formData.get("contactValue") ?? ""
   });
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
+  const ip = clientIp(await headers());
+  if (
+    !rateLimit(`lottery-recover:${d.drawToken}:${ip}`, {
+      limit: 15,
+      windowMs: 60 * 60 * 1000
+    })
+  ) {
+    return { error: "rateLimited" };
+  }
 
   const draw = await findAvailablePublicDraw(d.drawToken);
   if (!draw) return { error: "notFound" };
+  const contactMethod = await prisma.contactMethod.findFirst({
+    where: {
+      id: d.contactMethodId,
+      ownerId: draw.bookingEvent.ownerId
+    },
+    select: { id: true, labelEn: true, labelZh: true }
+  });
+  if (!contactMethod) return { error: "notFound" };
   const entry = await prisma.lotteryEntry.findUnique({
     where: {
       drawId_token: { drawId: draw.id, token: d.entryToken.toUpperCase() }
@@ -128,15 +171,21 @@ export async function recoverLotteryEntry(
       id: true,
       token: true,
       name: true,
+      contactMethodId: true,
       contactMethod: true,
       contactValue: true,
       wonPrizeId: true
     }
   });
+  const contactMethodMatches = entry?.contactMethodId
+    ? entry.contactMethodId === contactMethod.id
+    : [contactMethod.labelEn, contactMethod.labelZh].includes(
+        entry?.contactMethod ?? ""
+      );
   if (
     !entry ||
     normalizeIdentity(entry.name) !== normalizeIdentity(d.name) ||
-    entry.contactMethod !== d.contactMethod ||
+    !contactMethodMatches ||
     normalizeIdentity(entry.contactValue) !== normalizeIdentity(d.contactValue)
   ) {
     return { error: "notFound" };
@@ -162,24 +211,36 @@ const ERROR_MAP = {
   no_prizes_left: "noPrizesLeft"
 } as const;
 
-export async function spinMyLotteryEntry(drawToken: string): Promise<PublicSpinResult> {
+export async function spinMyLotteryEntry(
+  drawToken: string,
+  entryId: string
+): Promise<PublicSpinResult> {
+  const parsed = z
+    .object({
+      drawToken: z.string().trim().min(1).max(100),
+      entryId: z.string().trim().min(1).max(100)
+    })
+    .safeParse({ drawToken, entryId });
+  if (!parsed.success) return { ok: false, error: "notFound" };
+
   const ip = clientIp(await headers());
   if (!rateLimit(`lottery-spin:${ip}`, { limit: 20, windowMs: 60 * 60 * 1000 })) {
     return { ok: false, error: "rateLimited" };
   }
 
-  const draw = await findAvailablePublicDraw(drawToken);
+  const draw = await findAvailablePublicDraw(parsed.data.drawToken);
   if (!draw) return { ok: false, error: "notFound" };
   const authorizedIds = await getAuthorizedLotteryEntryIds();
-  const entries = await prisma.lotteryEntry.findMany({
-    where: { id: { in: authorizedIds }, drawId: draw.id },
+  if (!authorizedIds.includes(parsed.data.entryId)) {
+    return { ok: false, error: "notFound" };
+  }
+  const entry = await prisma.lotteryEntry.findFirst({
+    where: { id: parsed.data.entryId, drawId: draw.id },
     select: { id: true }
   });
-  const allowed = new Set(entries.map((entry) => entry.id));
-  const entryId = [...authorizedIds].reverse().find((id) => allowed.has(id));
-  if (!entryId) return { ok: false, error: "notFound" };
+  if (!entry) return { ok: false, error: "notFound" };
 
-  const result = await spinForEntry(entryId, draw.id, true);
+  const result = await spinForEntry(entry.id, draw.id, true);
   if (result.ok) {
     return {
       ok: true,

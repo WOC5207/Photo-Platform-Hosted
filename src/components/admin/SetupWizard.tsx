@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { useTranslations } from "next-intl";
 import {
   setupUpdateCredentials,
@@ -50,7 +51,7 @@ const inputCls =
 const primaryBtnCls =
   "rounded-lg bg-fg px-5 py-2 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50";
 const secondaryBtnCls =
-  "rounded-lg border border-border-strong px-4 py-2 text-sm text-fg-muted transition hover:border-fg-faint hover:text-fg";
+  "rounded-lg border border-border-strong px-4 py-2 text-sm text-fg-muted transition hover:border-fg-faint hover:text-fg disabled:cursor-not-allowed disabled:opacity-50";
 
 interface WizardSettings {
   siteTitleEn: string;
@@ -172,10 +173,17 @@ function StepNav({
   nextDisabled?: boolean;
 }) {
   const tc = useTranslations("common");
+  const { pending: formPending } = useFormStatus();
+  const isPending = pending || formPending;
   return (
     <div className="flex items-center justify-between pt-2">
       {onBack ? (
-        <button type="button" onClick={onBack} className={secondaryBtnCls}>
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={isPending}
+          className={secondaryBtnCls}
+        >
           {tc("back")}
         </button>
       ) : (
@@ -185,7 +193,7 @@ function StepNav({
         <button
           type="button"
           onClick={onNext}
-          disabled={nextDisabled}
+          disabled={isPending || nextDisabled}
           className={primaryBtnCls}
         >
           {nextLabel}
@@ -193,7 +201,7 @@ function StepNav({
       ) : (
         <button
           type="submit"
-          disabled={pending || nextDisabled}
+          disabled={isPending || nextDisabled}
           className={primaryBtnCls}
         >
           {nextLabel}
@@ -428,7 +436,8 @@ function FeatureToggleCard({
   onChange,
   label,
   preview,
-  icon
+  icon,
+  disabled = false
 }: {
   name: string;
   checked: boolean;
@@ -436,17 +445,23 @@ function FeatureToggleCard({
   label: string;
   preview: string;
   icon: string;
+  disabled?: boolean;
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
-        checked ? "border-fg-subtle bg-surface" : "border-border bg-surface/50"
+      className={`flex items-start gap-3 rounded-xl border p-4 transition ${
+        disabled
+          ? "cursor-not-allowed border-border bg-surface/40 opacity-60"
+          : checked
+            ? "cursor-pointer border-fg-subtle bg-surface"
+            : "cursor-pointer border-border bg-surface/50"
       }`}
     >
       <input
         type="checkbox"
         name={name}
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         className="mt-1 h-4 w-4 accent-fg"
       />
@@ -479,7 +494,9 @@ function FeaturesStep({
   const ts = useTranslations("adminSite");
   const tc = useTranslations("common");
   const [booking, setBooking] = useState(initial.bookingEnabled);
-  const [lottery, setLottery] = useState(initial.lotteryEnabled);
+  const [lottery, setLottery] = useState(
+    initial.bookingEnabled && initial.lotteryEnabled
+  );
   const [creditProfiles, setCreditProfiles] = useState(
     initial.creditProfilesEnabled
   );
@@ -504,15 +521,19 @@ function FeaturesStep({
         <FeatureToggleCard
           name="bookingEnabled"
           checked={booking}
-          onChange={setBooking}
+          onChange={(enabled) => {
+            setBooking(enabled);
+            if (!enabled) setLottery(false);
+          }}
           label={ts("bookingEnabledLabel")}
           preview={t("bookingPreview")}
           icon="📅"
         />
         <FeatureToggleCard
           name="lotteryEnabled"
-          checked={lottery}
+          checked={booking && lottery}
           onChange={setLottery}
+          disabled={!booking}
           label={ts("lotteryEnabledLabel")}
           preview={t("lotteryPreview")}
           icon="🎡"

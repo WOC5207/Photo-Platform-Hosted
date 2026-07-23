@@ -18,7 +18,7 @@ export type LoginState = {
 };
 
 const loginSchema = z.object({
-  username: z.string().min(1).max(200),
+  username: z.string().trim().min(1).max(200),
   password: z.string().min(1).max(500)
 });
 

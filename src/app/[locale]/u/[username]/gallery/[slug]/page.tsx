@@ -10,16 +10,20 @@ import { Link } from "@/i18n/navigation";
 import AlbumViewer, { type AlbumPhoto } from "@/components/gallery/AlbumViewer";
 
 export const dynamic = "force-dynamic";
+const ALBUM_PAGE_SIZE = 48;
 
 export default async function AlbumPage({
   params,
   searchParams
 }: {
   params: Promise<{ slug: string; username: string }>;
-  searchParams: Promise<{ photo?: string }>;
+  searchParams: Promise<{ photo?: string; page?: string }>;
 }) {
   const { slug, username } = await params;
-  const { photo: initialPhotoId } = await searchParams;
+  const {
+    photo: initialPhotoId,
+    page: requestedPage
+  } = await searchParams;
   const locale = await getLocale();
   const t = await getTranslations("gallery");
 
@@ -30,23 +34,63 @@ export default async function AlbumPage({
   // album under this one's URL.
   const event = await prisma.event.findFirst({
     where: { ownerId: owner.id, slug },
-    include: {
-      photos: {
-        where: { pendingBatchId: null },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        include: {
-          credits: {
-            orderBy: { sortOrder: "asc" },
-            include: { socialLinks: { orderBy: { sortOrder: "asc" } } }
-          }
-        }
-      }
-    }
   });
   // Unpublished events are fully hidden from the public.
   if (!event || !event.published) notFound();
 
-  const photos: AlbumPhoto[] = event.photos.map((p) => {
+  const photoWhere = { eventId: event.id, pendingBatchId: null };
+  const totalPhotos = await prisma.photo.count({ where: photoWhere });
+  const totalPages = Math.max(1, Math.ceil(totalPhotos / ALBUM_PAGE_SIZE));
+  let page = Math.min(
+    totalPages,
+    Math.max(1, Number.parseInt(requestedPage ?? "1", 10) || 1)
+  );
+
+  if (initialPhotoId) {
+    const target = await prisma.photo.findFirst({
+      where: { ...photoWhere, id: initialPhotoId },
+      select: { id: true, sortOrder: true, createdAt: true }
+    });
+    if (target) {
+      const preceding = await prisma.photo.count({
+        where: {
+          ...photoWhere,
+          OR: [
+            { sortOrder: { lt: target.sortOrder } },
+            {
+              sortOrder: target.sortOrder,
+              createdAt: { lt: target.createdAt }
+            },
+            {
+              sortOrder: target.sortOrder,
+              createdAt: target.createdAt,
+              id: { lt: target.id }
+            }
+          ]
+        }
+      });
+      page = Math.floor(preceding / ALBUM_PAGE_SIZE) + 1;
+    }
+  }
+
+  const pagePhotos = await prisma.photo.findMany({
+    where: photoWhere,
+    orderBy: [
+      { sortOrder: "asc" },
+      { createdAt: "asc" },
+      { id: "asc" }
+    ],
+    skip: (page - 1) * ALBUM_PAGE_SIZE,
+    take: ALBUM_PAGE_SIZE,
+    include: {
+      credits: {
+        orderBy: { sortOrder: "asc" },
+        include: { socialLinks: { orderBy: { sortOrder: "asc" } } }
+      }
+    }
+  });
+
+  const photos: AlbumPhoto[] = pagePhotos.map((p) => {
     const urls = photoUrls(event.id, p.id);
     return {
       id: p.id,
@@ -85,7 +129,7 @@ export default async function AlbumPage({
           {[
             formatDateRange(event.dateStart, event.dateEnd) || null,
             event.location || null,
-            t("photosCount", { count: photos.length })
+            t("photosCount", { count: totalPhotos })
           ]
             .filter(Boolean)
             .join(" · ")}
@@ -101,11 +145,52 @@ export default async function AlbumPage({
         photos={photos}
         initialPhotoId={initialPhotoId}
         labels={{
+          open: t("openPhoto"),
           close: t("close"),
           previous: t("previous"),
           next: t("next")
         }}
+        positionOffset={(page - 1) * ALBUM_PAGE_SIZE}
+        totalPhotos={totalPhotos}
       />
+      {totalPages > 1 && (
+        <nav
+          aria-label={t("paginationLabel")}
+          className="flex items-center justify-center gap-3 border-t border-fg/10 pt-5"
+        >
+          {page > 1 ? (
+            <Link
+              href={
+                page === 2
+                  ? `${base}/gallery/${slug}`
+                  : `${base}/gallery/${slug}?page=${page - 1}`
+              }
+              className="inline-flex min-h-11 items-center rounded-lg border border-border-strong px-4 py-2 text-sm font-semibold text-fg-muted hover:text-fg"
+            >
+              {t("previousPage")}
+            </Link>
+          ) : (
+            <span className="min-h-11 px-4 py-2 text-sm text-fg-faint">
+              {t("previousPage")}
+            </span>
+          )}
+          <span className="text-sm text-fg-subtle">
+            {t("pageStatus", { page, total: totalPages })}
+          </span>
+          {page < totalPages ? (
+            <Link
+              href={`${base}/gallery/${slug}?page=${page + 1}`}
+              className="inline-flex min-h-11 items-center rounded-lg border border-border-strong px-4 py-2 text-sm font-semibold text-fg-muted hover:text-fg"
+            >
+              {t("nextPage")}
+            </Link>
+          ) : (
+            <span className="min-h-11 px-4 py-2 text-sm text-fg-faint">
+              {t("nextPage")}
+            </span>
+          )}
+        </nav>
+      )}
     </div>
   );
 }

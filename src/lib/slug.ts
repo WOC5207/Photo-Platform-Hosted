@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 export function slugify(input: string): string {
@@ -20,12 +21,13 @@ export function slugify(input: string): string {
 export async function uniqueEventSlug(
   ownerId: string,
   base: string,
-  excludeId?: string
+  excludeId?: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<string> {
   const root = base || `event-${Date.now().toString(36)}`;
   let candidate = root;
   for (let i = 2; ; i++) {
-    const existing = await prisma.event.findFirst({
+    const existing = await client.event.findFirst({
       where: { ownerId, slug: candidate }
     });
     if (!existing || existing.id === excludeId) return candidate;
