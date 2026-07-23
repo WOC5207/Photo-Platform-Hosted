@@ -232,7 +232,11 @@ async function testNotifyBookingCreated() {
 
   const both = fakeTransport();
   await notifyBookingCreated(
-    bookingInfo({ visitorEmail: "v@test", ownerEmail: "o@test" }),
+    bookingInfo({
+      visitorEmail: "v@test",
+      ownerEmail: "o@test",
+      dashboardUrl: "https://example.com/zh/dashboard/bookings/evt1"
+    }),
     both.transport
   );
   const toSet = new Set(both.sent.map((m) => m.to));
@@ -256,6 +260,17 @@ async function testNotifyBookingCreated() {
       ownerMsg.text.includes("A new booking has been made") &&
       ownerMsg.text.includes("收到一条新预约"),
     `owner text=${JSON.stringify(ownerMsg?.text.slice(0, 48))} (want EN + 中文)`
+  );
+  // The owner alert now also carries the styled HTML card — bilingual, with the
+  // dashboard deep-link — same interface the visitor email got.
+  report(
+    "booking created: the owner alert has a bilingual HTML card with the dashboard link",
+    !!ownerMsg &&
+      typeof ownerMsg.html === "string" &&
+      ownerMsg.html.includes("收到新预约") &&
+      ownerMsg.html.includes("Event · 活动") &&
+      ownerMsg.html.includes("https://example.com/zh/dashboard/bookings/evt1"),
+    `owner html present=${typeof ownerMsg?.html === "string"}`
   );
 
   const visitorOnly = fakeTransport();
