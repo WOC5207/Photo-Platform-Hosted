@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
+import { routing } from "@/i18n/routing";
 import { prisma } from "@/lib/db";
 import { clientIp } from "@/lib/clientIp";
 import { config } from "@/lib/config";
@@ -116,6 +117,9 @@ export async function createBooking(
     slotStart: result.slot.startTime,
     slotEnd: result.slot.endTime,
     manageUrl,
+    // The owner's own locale isn't known, so the dashboard deep-link uses the
+    // platform default; the dashboard UI is bilingual either way.
+    dashboardUrl: `${config.appBaseUrl()}/${routing.defaultLocale}/dashboard/bookings/${result.slot.bookingEvent.id}`,
     locale,
     visitorEmail: d.email,
     ownerEmail: owner?.email ?? ""
@@ -167,6 +171,7 @@ export async function cancelMyBooking(formData: FormData): Promise<void> {
     slotStart: booking.timeSlot.startTime,
     slotEnd: booking.timeSlot.endTime,
     manageUrl,
+    dashboardUrl: `${config.appBaseUrl()}/${routing.defaultLocale}/dashboard/bookings/${event.id}`,
     locale,
     visitorEmail: booking.email,
     ownerEmail: owner?.email ?? ""

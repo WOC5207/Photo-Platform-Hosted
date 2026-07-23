@@ -32,6 +32,10 @@ export interface BookingNotification {
   slotStart: Date;
   slotEnd: Date;
   manageUrl: string; // visitor's cancel/view link
+  // The owner's dashboard link for this booking's event — the "View in
+  // dashboard" button on their alert. Optional: when absent the owner card
+  // simply renders without a button. Never used for the visitor email.
+  dashboardUrl?: string;
   // Site language the visitor booked in ("zh" | "en"); picks the single language
   // their confirmation/cancellation email is written in. Anything other than
   // "en" falls back to Chinese, the platform default.
@@ -167,11 +171,10 @@ function bookingEmailHtml(view: {
   heading: string;
   intro: string;
   rows: EmailRow[];
-  buttonLabel: string;
-  manageLabel: string;
-  manageUrl: string;
+  // The call-to-action button + the small note/raw-link beneath it. Optional so
+  // a card can stand without one (e.g. a link-less variant).
+  action?: { buttonLabel: string; noteLabel: string; url: string };
 }): string {
-  const url = escapeHtml(view.manageUrl);
   const rowsHtml = view.rows
     .map((r, i) => {
       const divider = i === 0 ? "" : "border-top:1px solid #f0efed;";
@@ -200,19 +203,31 @@ function bookingEmailHtml(view: {
       view.intro
     )}</p>` +
     `</div>` +
-    `<div style="padding:0 28px 20px;">` +
+    `<div style="padding:0 28px ${view.action ? "20px" : "28px"};">` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e7e5e4;border-radius:12px;border-collapse:separate;overflow:hidden;">${rowsHtml}</table>` +
     `</div>` +
+    (view.action ? actionHtml(view.action) : "") +
+    `</div></div></div>`
+  );
+}
+
+/** The button + note + raw-link footer of a booking card. */
+function actionHtml(action: {
+  buttonLabel: string;
+  noteLabel: string;
+  url: string;
+}): string {
+  const url = escapeHtml(action.url);
+  return (
     `<div style="padding:0 28px 28px;">` +
     `<a href="${url}" style="display:inline-block;background:#1c1917;color:#ffffff;text-decoration:none;padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;">${escapeHtml(
-      view.buttonLabel
+      action.buttonLabel
     )}</a>` +
     `<p style="margin:14px 0 0;font-size:12px;color:#57534e;">${escapeHtml(
-      view.manageLabel
+      action.noteLabel
     )}</p>` +
     `<p style="margin:4px 0 0;font-size:12px;word-break:break-all;"><a href="${url}" style="color:#a8a29e;">${url}</a></p>` +
-    `</div>` +
-    `</div></div></div>`
+    `</div>`
   );
 }
 
@@ -246,9 +261,7 @@ function visitorMessage(
     heading: k.heading,
     intro: k.intro(info.name),
     rows,
-    buttonLabel: s.view,
-    manageLabel: s.manage,
-    manageUrl: info.manageUrl
+    action: { buttonLabel: s.view, noteLabel: s.manage, url: info.manageUrl }
   });
 
   return { to: info.visitorEmail, subject: k.subject, text, html };
@@ -277,27 +290,82 @@ function ownerBookingLine(info: BookingNotification): { en: string; zh: string }
   };
 }
 
+// Owner cards are bilingual — the photographer sees visitors from both sites and
+// has no single locale — so every label pairs the two languages (`EN · 中文`).
+const OWNER_LABELS = {
+  event: "Event · 活动",
+  time: "Time · 时间",
+  name: "Name · 姓名",
+  subject: "Subject · 主题",
+  contact: "Contact · 联系方式",
+  status: "Status · 状态"
+};
+
+/** Rows shared by both owner alerts, plus the trailing bilingual status row. */
+function ownerRows(info: BookingNotification, statusText: string, statusColor: string): EmailRow[] {
+  const slot = formatSlotRange(info.slotStart, info.slotEnd);
+  const rows: EmailRow[] = [
+    { label: OWNER_LABELS.event, value: info.eventTitle },
+    { label: OWNER_LABELS.time, value: slot },
+    { label: OWNER_LABELS.name, value: info.name }
+  ];
+  if (info.subject) rows.push({ label: OWNER_LABELS.subject, value: info.subject });
+  rows.push({
+    label: OWNER_LABELS.contact,
+    value: `${info.contactMethod}: ${info.contactValue}`
+  });
+  rows.push({ label: OWNER_LABELS.status, value: statusText, color: statusColor });
+  return rows;
+}
+
+/** A "View in dashboard" action for the owner card, when a dashboard link exists. */
+function ownerAction(info: BookingNotification) {
+  return info.dashboardUrl
+    ? {
+        buttonLabel: "View in dashboard · 在后台查看",
+        noteLabel: "Manage this booking · 管理此预约",
+        url: info.dashboardUrl
+      }
+    : undefined;
+}
+
 function ownerCreatedMessage(info: BookingNotification): MailMessage {
   const d = ownerBookingLine(info);
+  const heading = "New booking · 收到新预约";
+  const intro = "A new booking has been made. · 收到一条新预约。";
   return {
     to: info.ownerEmail,
     subject: "New booking received · 收到新预约",
     text: bilingual(
       `A new booking has been made.\n\n${d.en}`,
       `收到一条新预约。\n\n${d.zh}`
-    )
+    ),
+    html: bookingEmailHtml({
+      heading,
+      intro,
+      rows: ownerRows(info, "Confirmed · 已确认", STATUS_CONFIRMED_COLOR),
+      action: ownerAction(info)
+    })
   };
 }
 
 function ownerCancelledMessage(info: BookingNotification): MailMessage {
   const d = ownerBookingLine(info);
+  const heading = "Booking cancelled · 预约已取消";
+  const intro = "A booking has been cancelled. · 一条预约已被取消。";
   return {
     to: info.ownerEmail,
     subject: "Booking cancelled · 预约已取消",
     text: bilingual(
       `A booking has been cancelled.\n\n${d.en}`,
       `一条预约已被取消。\n\n${d.zh}`
-    )
+    ),
+    html: bookingEmailHtml({
+      heading,
+      intro,
+      rows: ownerRows(info, "Cancelled · 已取消", STATUS_CANCELLED_COLOR),
+      action: ownerAction(info)
+    })
   };
 }
 
