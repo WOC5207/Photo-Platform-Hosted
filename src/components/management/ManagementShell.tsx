@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode
 } from "react";
+import { useSearchParams } from "next/navigation";
 import { Link, usePathname } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -259,6 +260,10 @@ function ProfileMenu({
   const panelRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const profileIsActive =
+    pathname === "/dashboard/settings" &&
+    searchParams.get("section") === "profile";
   const initial = (displayName || username).trim().charAt(0).toUpperCase() || "?";
 
   useEffect(() => {
@@ -353,7 +358,7 @@ function ProfileMenu({
           <Link
             href="/dashboard/settings?section=profile"
             onClick={() => setOpen(false)}
-            aria-current={pathname.startsWith("/dashboard/account") ? "page" : undefined}
+            aria-current={profileIsActive ? "page" : undefined}
             className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
           >
             {labels.account}

@@ -23,8 +23,16 @@
  */
 import { randomUUID } from "crypto";
 import { PrismaClient } from "@prisma/client";
-import { reserveSlot } from "../src/lib/booking";
-import { spinForEntry } from "../src/lib/lottery";
+import {
+  addSlotBatchForOwner,
+  reserveSlot
+} from "../src/lib/booking";
+import {
+  deleteLotteryPrizeForOwner,
+  spinForEntry
+} from "../src/lib/lottery";
+import { completeOwnerSetup } from "../src/lib/setup";
+import { wallClockNow } from "../src/lib/timeZone";
 
 const prisma = new PrismaClient();
 
@@ -92,7 +100,7 @@ async function makeSlot(capacity: number) {
     data: {
       bookingEventId: event.id,
       bookingDayId: event.days[0].id,
-      startTime: new Date(),
+      startTime: new Date(Date.now() + 60_000),
       endTime: new Date(Date.now() + 3600_000),
       capacity
     }
@@ -241,6 +249,170 @@ async function testLotteryLockIsHonoured() {
   await prisma.bookingEvent.delete({ where: { id: eventId } });
 }
 
+async function testExpiredSlotIsRejectedInOwnerTimeZone() {
+  const timeZone = "America/Toronto";
+  await prisma.siteSettings.upsert({
+    where: { ownerId },
+    create: { ownerId, timeZone },
+    update: { timeZone }
+  });
+  const now = wallClockNow(timeZone);
+  const event = await prisma.bookingEvent.create({
+    data: {
+      ownerId,
+      token: randomUUID().replace(/-/g, ""),
+      titleEn: "expired slot test",
+      titleZh: "expired slot test",
+      date: now,
+      open: true,
+      days: { create: { date: now } }
+    },
+    include: { days: true }
+  });
+  const slot = await prisma.timeSlot.create({
+    data: {
+      bookingEventId: event.id,
+      bookingDayId: event.days[0].id,
+      startTime: new Date(now.getTime() - 3_600_000),
+      endTime: new Date(now.getTime() - 60_000),
+      capacity: 1
+    }
+  });
+
+  const result = await reserveSlot(slot.id, booking(0));
+  const persisted = await prisma.booking.count({
+    where: { timeSlotId: slot.id }
+  });
+  report(
+    "booking: a started wall-clock slot is rejected in the owner's time zone",
+    !result.ok && result.error === "slotUnavailable" && persisted === 0,
+    `result=${result.ok ? "ok" : result.error} persisted=${persisted}`
+  );
+
+  await prisma.bookingEvent.delete({ where: { id: event.id } });
+  await prisma.siteSettings.update({
+    where: { ownerId },
+    data: { timeZone: "UTC" }
+  });
+}
+
+async function testNewEventSlotBatchSync() {
+  const event = await prisma.bookingEvent.create({
+    data: {
+      ownerId,
+      token: randomUUID().replace(/-/g, ""),
+      titleEn: "slot sync test",
+      titleZh: "slot sync test",
+      date: new Date("2030-08-01T00:00:00Z"),
+      open: false,
+      days: {
+        create: [
+          { date: new Date("2030-08-01T00:00:00Z") },
+          { date: new Date("2030-08-02T00:00:00Z") }
+        ]
+      }
+    },
+    include: { days: { orderBy: { date: "asc" } } }
+  });
+  const input = {
+    bookingDayId: event.days[0].id,
+    startTime: "10:00",
+    slotMinutes: 30,
+    slotCount: 2,
+    capacity: 3,
+    pricePerPerson: "CAD 50",
+    descriptionEn: "Studio A",
+    descriptionZh: "Studio A",
+    syncAcrossDays: true
+  };
+
+  const added = await addSlotBatchForOwner(ownerId, input);
+  const duplicate = await addSlotBatchForOwner(ownerId, input);
+  const fresh = await prisma.bookingEvent.findUnique({
+    where: { id: event.id },
+    include: { slots: { orderBy: { startTime: "asc" } } }
+  });
+  const dates = new Set(
+    fresh?.slots.map((slot) => slot.startTime.toISOString().slice(0, 10))
+  );
+  report(
+    "booking setup: first slot batch syncs to every day once with display price",
+    added &&
+      !duplicate &&
+      fresh?.slotsInitialized === true &&
+      fresh.slots.length === 4 &&
+      fresh.slots.every(
+        (slot) =>
+          slot.capacity === 3 &&
+          slot.pricePerPerson === "CAD 50" &&
+          slot.descriptionEn === "Studio A"
+      ) &&
+      dates.size === 2,
+    `added=${added} duplicate=${duplicate} slots=${fresh?.slots.length ?? 0} dates=${dates.size}`
+  );
+
+  await prisma.bookingEvent.delete({ where: { id: event.id } });
+}
+
+async function testLotteryPrizeDeleteLockIsHonoured() {
+  const { eventId, drawId } = await makeDraw();
+  const prize = await prisma.lotteryPrize.create({
+    data: { drawId, name: "prize being removed", quantity: 1, weight: 1 }
+  });
+  const winner = await prisma.lotteryEntry.create({
+    data: {
+      ...entryData(drawId, 0),
+      wonPrizeId: prize.id,
+      wonAt: new Date()
+    }
+  });
+
+  let releaseHolder!: () => void;
+  const holderMayCommit = new Promise<void>((r) => (releaseHolder = r));
+  const holder = prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "LotteryDraw" WHERE id = ${drawId} FOR UPDATE`;
+      await holderMayCommit;
+    },
+    { timeout: 15_000 }
+  );
+
+  await sleep(300);
+
+  let settled = false;
+  const contender = deleteLotteryPrizeForOwner(prize.id, ownerId).then((result) => {
+    settled = true;
+    return result;
+  });
+
+  await sleep(700);
+  const blockedWhileLocked = !settled;
+
+  releaseHolder();
+  await holder;
+  const deleted = await contender;
+  const [freshPrize, freshWinner] = await Promise.all([
+    prisma.lotteryPrize.findUnique({ where: { id: prize.id } }),
+    prisma.lotteryEntry.findUnique({ where: { id: winner.id } })
+  ]);
+
+  report(
+    "lottery: deleting a prize uses the draw lock and atomically releases winners",
+    blockedWhileLocked &&
+      deleted &&
+      freshPrize === null &&
+      freshWinner?.wonPrizeId === null &&
+      freshWinner.wonAt === null,
+    blockedWhileLocked
+      ? `blocked as expected; prize ${freshPrize ? "remains (WRONG)" : "deleted"} and winner ${
+          freshWinner?.wonPrizeId ? "still holds it (WRONG)" : "was released"
+        }`
+      : "returned while the draw was locked — deletion can race a spin"
+  );
+
+  await prisma.bookingEvent.delete({ where: { id: eventId } });
+}
+
 async function testLotteryPrizeStock() {
   const { eventId, drawId } = await makeDraw();
   const prize = await prisma.lotteryPrize.create({
@@ -284,13 +456,61 @@ async function testLotteryPrizeStock() {
   await prisma.bookingEvent.delete({ where: { id: eventId } });
 }
 
+async function testSetupCompletionIsIdempotent() {
+  const setupOwner = await prisma.user.create({
+    data: {
+      username: `setup-concurrency-${randomUUID().slice(0, 8)}`,
+      passwordHash: "not-a-real-hash-this-account-cannot-log-in",
+      role: "user",
+      settings: { create: {} }
+    }
+  });
+
+  const attempts = await Promise.all(
+    Array.from({ length: 8 }, () => completeOwnerSetup(setupOwner.id))
+  );
+  const [settings, albums, bookingEvents, repeated] = await Promise.all([
+    prisma.siteSettings.findUnique({ where: { ownerId: setupOwner.id } }),
+    prisma.event.findMany({
+      where: { ownerId: setupOwner.id, titleEn: "My First Album" }
+    }),
+    prisma.bookingEvent.findMany({
+      where: { ownerId: setupOwner.id, titleEn: "Sample Photoshoot" },
+      include: { days: true }
+    }),
+    completeOwnerSetup(setupOwner.id)
+  ]);
+
+  const completedAttempts = attempts.filter(Boolean).length;
+  report(
+    "setup: concurrent completion creates one atomic seed set",
+    completedAttempts === 1 &&
+      repeated === false &&
+      settings?.setupCompleted === true &&
+      albums.length === 1 &&
+      bookingEvents.length === 1 &&
+      bookingEvents[0].days.length === 1,
+    `${completedAttempts} attempt(s) seeded; ${albums.length} album(s), ${
+      bookingEvents.length
+    } booking event(s), ${
+      bookingEvents.reduce((sum, event) => sum + event.days.length, 0)
+    } booking day(s)`
+  );
+
+  await prisma.user.delete({ where: { id: setupOwner.id } });
+}
+
 async function main() {
   console.log(`Running with ${CONCURRENCY}x concurrency\n`);
   await createOwner();
   await testBookingLockIsHonoured();
   await testBookingStampede();
+  await testExpiredSlotIsRejectedInOwnerTimeZone();
+  await testNewEventSlotBatchSync();
   await testLotteryLockIsHonoured();
+  await testLotteryPrizeDeleteLockIsHonoured();
   await testLotteryPrizeStock();
+  await testSetupCompletionIsIdempotent();
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);
   // Cascades to anything the tests left behind.
   await prisma.user.delete({ where: { id: ownerId } });

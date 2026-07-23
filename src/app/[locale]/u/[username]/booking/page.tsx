@@ -6,6 +6,7 @@ import { pickText } from "@/lib/content";
 import { formatDate, formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { getSiteSettings } from "@/lib/settings";
+import { wallClockNow } from "@/lib/timeZone";
 
 export const dynamic = "force-dynamic";
 
@@ -19,14 +20,25 @@ export default async function BookingListPage({
   const t = await getTranslations("booking");
 
   const owner = await resolveOwner(username);
-  if (!(await getSiteSettings(owner.id)).bookingEnabled) notFound();
+  const settings = await getSiteSettings(owner.id);
+  if (!settings.bookingEnabled) notFound();
+  const now = wallClockNow(settings.timeZone);
 
   const events = await prisma.bookingEvent.findMany({
-    where: { ownerId: owner.id, open: true },
+    where: {
+      ownerId: owner.id,
+      open: true,
+      slots: { some: { startTime: { gt: now } } }
+    },
     orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     include: {
-      days: { orderBy: { date: "asc" }, select: { date: true } },
+      days: {
+        where: { slots: { some: { startTime: { gt: now } } } },
+        orderBy: { date: "asc" },
+        select: { date: true }
+      },
       slots: {
+        where: { startTime: { gt: now } },
         include: {
           _count: { select: { bookings: { where: { status: "confirmed" } } } }
         }
@@ -37,6 +49,9 @@ export default async function BookingListPage({
   return (
     <div className="flex flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
       <h1 className="text-3xl font-bold">{t("listTitle")}</h1>
+      <p className="-mt-4 text-xs text-fg-subtle">
+        {t("timeZoneNotice", { timeZone: settings.timeZone })}
+      </p>
 
       {events.length === 0 ? (
         <p className="py-16 text-center text-fg-subtle">{t("listEmpty")}</p>

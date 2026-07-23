@@ -1,6 +1,7 @@
 # Build fresh inside the image — never copy host artifacts (especially the
 # OneDrive-poisoned .next/standalone) into the build context.
 node_modules
+.npm-cache
 .next
 out
 

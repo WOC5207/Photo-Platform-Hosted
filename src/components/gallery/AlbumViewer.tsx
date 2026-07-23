@@ -19,6 +19,7 @@ export interface AlbumPhoto {
 }
 
 export interface LightboxLabels {
+  open: string;
   close: string;
   previous: string;
   next: string;
@@ -27,17 +28,27 @@ export interface LightboxLabels {
 export default function AlbumViewer({
   photos,
   initialPhotoId,
-  labels
+  labels,
+  positionOffset = 0,
+  totalPhotos = photos.length
 }: {
   photos: AlbumPhoto[];
   initialPhotoId?: string;
   labels: LightboxLabels;
+  positionOffset?: number;
+  totalPhotos?: number;
 }) {
+  const [mounted, setMounted] = useState(false);
   const [openIndex, setOpenIndex] = useState<number | null>(() => {
     if (!initialPhotoId) return null;
     const index = photos.findIndex((photo) => photo.id === initialPhotoId);
     return index >= 0 ? index : null;
   });
+
+  // Client components are also rendered on the server. A search result may
+  // deep-link straight into the lightbox with ?photo=..., but createPortal
+  // cannot target document.body until hydration has completed.
+  useEffect(() => setMounted(true), []);
 
   return (
     <>
@@ -60,6 +71,10 @@ export default function AlbumViewer({
               <button
                 type="button"
                 onClick={() => setOpenIndex(i)}
+                aria-label={
+                  photo.caption ||
+                  `${labels.open} ${positionOffset + i + 1} / ${totalPhotos}`
+                }
                 className="group relative block h-full w-full cursor-zoom-in rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-offset-2 focus-visible:ring-offset-page"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -78,11 +93,13 @@ export default function AlbumViewer({
         })}
       </ul>
 
-      {openIndex !== null && (
+      {mounted && openIndex !== null && (
         <Lightbox
           photos={photos}
           index={openIndex}
           labels={labels}
+          positionOffset={positionOffset}
+          totalPhotos={totalPhotos}
           onNavigate={setOpenIndex}
           onClose={() => setOpenIndex(null)}
         />
@@ -95,12 +112,16 @@ function Lightbox({
   photos,
   index,
   labels,
+  positionOffset,
+  totalPhotos,
   onNavigate,
   onClose
 }: {
   photos: AlbumPhoto[];
   index: number;
   labels: LightboxLabels;
+  positionOffset: number;
+  totalPhotos: number;
   onNavigate: (i: number) => void;
   onClose: () => void;
 }) {
@@ -109,14 +130,14 @@ function Lightbox({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
-  const prev = useCallback(
-    () => onNavigate(index > 0 ? index - 1 : photos.length - 1),
-    [index, photos.length, onNavigate]
-  );
-  const next = useCallback(
-    () => onNavigate(index < photos.length - 1 ? index + 1 : 0),
-    [index, photos.length, onNavigate]
-  );
+  const hasPrevious = index > 0;
+  const hasNext = index < photos.length - 1;
+  const prev = useCallback(() => {
+    if (hasPrevious) onNavigate(index - 1);
+  }, [hasPrevious, index, onNavigate]);
+  const next = useCallback(() => {
+    if (hasNext) onNavigate(index + 1);
+  }, [hasNext, index, onNavigate]);
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -173,7 +194,7 @@ function Lightbox({
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label={`${index + 1} / ${photos.length}`}
+      aria-label={`${positionOffset + index + 1} / ${totalPhotos}`}
       tabIndex={-1}
       className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-black"
       onClick={onClose}
@@ -202,7 +223,7 @@ function Lightbox({
 
       <div className="relative z-10 flex items-center justify-between bg-black/30 p-4 backdrop-blur-sm">
         <span className="text-sm text-neutral-300">
-          {index + 1} / {photos.length}
+          {positionOffset + index + 1} / {totalPhotos}
         </span>
         <button
           ref={closeRef}
@@ -230,22 +251,24 @@ function Lightbox({
         <button
           type="button"
           aria-label={labels.previous}
+          disabled={!hasPrevious}
           onClick={(e) => {
             e.stopPropagation();
             prev();
           }}
-          className="absolute left-2 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 px-3 py-3 text-white hover:bg-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          className="absolute left-2 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 px-3 py-3 text-white hover:bg-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-25"
         >
           ‹
         </button>
         <button
           type="button"
           aria-label={labels.next}
+          disabled={!hasNext}
           onClick={(e) => {
             e.stopPropagation();
             next();
           }}
-          className="absolute right-2 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 px-3 py-3 text-white hover:bg-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          className="absolute right-2 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 px-3 py-3 text-white hover:bg-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-25"
         >
           ›
         </button>

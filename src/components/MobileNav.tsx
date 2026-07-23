@@ -62,8 +62,9 @@ export default function MobileNav({
         type="button"
         aria-label={labels.menu}
         aria-expanded={open}
+        aria-controls="public-mobile-navigation"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-9 items-center justify-center rounded-lg border border-border-strong text-fg-muted transition hover:border-fg-faint hover:text-fg"
+        className="flex h-11 w-11 items-center justify-center rounded-lg border border-border-strong text-fg-muted transition hover:border-fg-faint hover:text-fg"
       >
         <svg
           viewBox="0 0 24 24"
@@ -76,7 +77,7 @@ export default function MobileNav({
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 flex w-48 flex-col gap-1 rounded-xl border border-fg/10 bg-page/95 p-2 text-sm shadow-2xl backdrop-blur-xl">
+        <div id="public-mobile-navigation" className="absolute right-0 top-full z-50 mt-2 flex w-48 flex-col gap-1 rounded-xl border border-fg/10 bg-page/95 p-2 text-sm shadow-2xl backdrop-blur-xl">
           <Link href={`${basePath}/gallery`} onClick={() => setOpen(false)} className={linkClass}>
             {labels.gallery}
           </Link>

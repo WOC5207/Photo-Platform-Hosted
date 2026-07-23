@@ -9,6 +9,7 @@ import CopyButton from "@/components/admin/CopyButton";
 import InviteForm from "@/components/admin/InviteForm";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import RegistrationNoticeForm from "@/components/admin/RegistrationNoticeForm";
+import BookingPriceNoticeForm from "@/components/admin/BookingPriceNoticeForm";
 import { revokeInvite } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +68,22 @@ export default async function PlatformInvitesPage() {
           save: tc("save"),
           saved: tc("saved"),
           error: t("registrationNoticeError")
+        }}
+      />
+
+      <BookingPriceNoticeForm
+        settings={platformSettings}
+        labels={{
+          title: t("bookingPriceNoticeTitle"),
+          description: t("bookingPriceNoticeDescription"),
+          titleEn: t("bookingPriceNoticeTitleEn"),
+          titleZh: t("bookingPriceNoticeTitleZh"),
+          bodyEn: t("bookingPriceNoticeBodyEn"),
+          bodyZh: t("bookingPriceNoticeBodyZh"),
+          bodyHint: t("bookingPriceNoticeBodyHint"),
+          save: tc("save"),
+          saved: tc("saved"),
+          error: t("bookingPriceNoticeError")
         }}
       />
 

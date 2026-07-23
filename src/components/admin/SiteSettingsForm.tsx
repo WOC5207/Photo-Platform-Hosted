@@ -18,6 +18,7 @@ import {
   type SiteSettingsSection,
   type SiteSettingsState
 } from "@/app/[locale]/dashboard/(protected)/settings/actions";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 const inputCls =
   "h-10 rounded-lg border border-border-strong bg-surface px-3 text-sm text-fg outline-none transition focus:border-fg-subtle focus:ring-2 focus:ring-fg-faint/20";
@@ -70,6 +71,8 @@ function IndependentWidget({
 export default function SiteSettingsForm({
   activeSection,
   initial,
+  bookingPriceNotice,
+  timeZones,
   creditTerm,
   logoSlot,
   backgroundImageSlot,
@@ -96,6 +99,8 @@ export default function SiteSettingsForm({
     homeCreditsLabelEn: string;
     homeCreditsLabelZh: string;
     bookingEnabled: boolean;
+    bookingPriceEnabled: boolean;
+    timeZone: string;
     lotteryEnabled: boolean;
     creditProfilesEnabled: boolean;
     announcementsEnabled: boolean;
@@ -105,6 +110,12 @@ export default function SiteSettingsForm({
     contactUrlEn: string;
     contactUrlZh: string;
   };
+  bookingPriceNotice: {
+    title: string;
+    body: string;
+    version: number;
+  };
+  timeZones: string[];
   creditTerm: string;
   logoSlot: ReactNode;
   backgroundImageSlot: ReactNode;
@@ -126,40 +137,30 @@ export default function SiteSettingsForm({
   const submittedVersion = useRef(0);
   const [color, setColor] = useState(initial.backgroundColor);
   const [bookingEnabled, setBookingEnabled] = useState(initial.bookingEnabled);
+  const [bookingPriceEnabled, setBookingPriceEnabled] = useState(
+    initial.bookingPriceEnabled
+  );
+  const [bookingPriceNoticeOpen, setBookingPriceNoticeOpen] = useState(false);
+  const [bookingPriceAcknowledged, setBookingPriceAcknowledged] =
+    useState(false);
+  const [acceptedBookingPriceNoticeVersion, setAcceptedBookingPriceNoticeVersion] =
+    useState(0);
   const [lotteryEnabled, setLotteryEnabled] = useState(
     initial.bookingEnabled && initial.lotteryEnabled
   );
-
   useEffect(() => {
     if (state.ok && submittedVersion.current === changeVersion.current) {
       setDirty(false);
     }
+    if (state.error === "priceNoticeRequired") {
+      setBookingPriceEnabled(false);
+      setAcceptedBookingPriceNoticeVersion(0);
+      setBookingPriceAcknowledged(false);
+      setBookingPriceNoticeOpen(true);
+    }
   }, [state]);
 
-  useEffect(() => {
-    if (!dirty) return;
-    const message = t("unsavedNavigationConfirm");
-    const beforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    const interceptLinks = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const link = target.closest("a[href]");
-      if (!link || link.getAttribute("target") === "_blank") return;
-      if (!window.confirm(message)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    };
-    window.addEventListener("beforeunload", beforeUnload);
-    document.addEventListener("click", interceptLinks, true);
-    return () => {
-      window.removeEventListener("beforeunload", beforeUnload);
-      document.removeEventListener("click", interceptLinks, true);
-    };
-  }, [dirty, t]);
+  useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
 
   function markDirty() {
     changeVersion.current += 1;
@@ -172,7 +173,8 @@ export default function SiteSettingsForm({
       (target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement) &&
-      target.form?.id === FORM_ID
+      target.form?.id === FORM_ID &&
+      target.dataset.manualDirty !== "true"
     ) {
       markDirty();
     }
@@ -185,6 +187,9 @@ export default function SiteSettingsForm({
     { id: "features", label: t("settingsTabFeatures") },
     { id: "profile", label: t("settingsTabProfile") }
   ];
+  const bookingPriceNoticeAvailable = Boolean(
+    bookingPriceNotice.title.trim() && bookingPriceNotice.body.trim()
+  );
 
   return (
     <div className="flex flex-col gap-6" onChangeCapture={handleSettingsChange}>
@@ -439,11 +444,148 @@ export default function SiteSettingsForm({
                 onChange={(event) => {
                   const enabled = event.target.checked;
                   setBookingEnabled(enabled);
-                  if (!enabled) setLotteryEnabled(false);
+                  if (!enabled) {
+                    setLotteryEnabled(false);
+                    setBookingPriceEnabled(false);
+                    setBookingPriceNoticeOpen(false);
+                  }
                 }}
                 className={checkboxCls}
               />
               <span>{t("bookingEnabledLabel")}</span>
+            </label>
+
+            <div className="ml-2 rounded-r-xl border-l-2 border-border-strong bg-page/60 p-4 sm:ml-4">
+              <label className="flex items-start gap-3 text-sm">
+                <input
+                  form={FORM_ID}
+                  type="checkbox"
+                  role="switch"
+                  name="bookingPriceEnabled"
+                  checked={bookingEnabled && bookingPriceEnabled}
+                  disabled={
+                    !bookingEnabled ||
+                    (!bookingPriceNoticeAvailable && !bookingPriceEnabled)
+                  }
+                  data-manual-dirty="true"
+                  onChange={(event) => {
+                    if (!event.target.checked) {
+                      setBookingPriceEnabled(false);
+                      setBookingPriceNoticeOpen(false);
+                      setBookingPriceAcknowledged(false);
+                      setAcceptedBookingPriceNoticeVersion(0);
+                      markDirty();
+                      return;
+                    }
+                    setBookingPriceAcknowledged(false);
+                    setBookingPriceNoticeOpen(true);
+                  }}
+                  aria-describedby="booking-price-toggle-hint"
+                  className="peer sr-only"
+                />
+                <span
+                  aria-hidden="true"
+                  className="relative mt-0.5 h-6 w-11 shrink-0 rounded-full bg-fg-faint transition after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-success peer-checked:after:translate-x-5 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-fg/40 peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
+                />
+                <span className="flex flex-col gap-1">
+                  <span className="font-semibold">
+                    {t("bookingPriceEnabledLabel")}
+                  </span>
+                  <span
+                    id="booking-price-toggle-hint"
+                    className="text-xs leading-relaxed text-fg-subtle"
+                  >
+                    {t("bookingPriceEnabledHint")}
+                  </span>
+                </span>
+              </label>
+              <input
+                form={FORM_ID}
+                type="hidden"
+                name="bookingPriceNoticeAcceptedVersion"
+                value={acceptedBookingPriceNoticeVersion || ""}
+              />
+
+              {!bookingPriceNoticeAvailable && !bookingPriceEnabled && (
+                <StatusMessage kind="error">
+                  {t("bookingPriceNoticeUnavailable")}
+                </StatusMessage>
+              )}
+
+              {bookingPriceNoticeOpen && bookingPriceNoticeAvailable && (
+                <div
+                  role="dialog"
+                  aria-labelledby="booking-price-notice-title"
+                  className="mt-4 rounded-xl border border-border-strong bg-surface p-4"
+                >
+                  <h3
+                    id="booking-price-notice-title"
+                    className="font-semibold text-fg"
+                  >
+                    {bookingPriceNotice.title}
+                  </h3>
+                  <div className="mt-3 whitespace-pre-line text-sm leading-relaxed text-fg-muted">
+                    {bookingPriceNotice.body}
+                  </div>
+                  <label className="mt-4 flex items-start gap-3 rounded-lg border border-border p-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={bookingPriceAcknowledged}
+                      onChange={(event) =>
+                        setBookingPriceAcknowledged(event.target.checked)
+                      }
+                      className={checkboxCls}
+                    />
+                    <span>{t("bookingPriceAcknowledge")}</span>
+                  </label>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      disabled={!bookingPriceAcknowledged}
+                      onClick={() => {
+                        setBookingPriceEnabled(true);
+                        setAcceptedBookingPriceNoticeVersion(
+                          bookingPriceNotice.version
+                        );
+                        setBookingPriceNoticeOpen(false);
+                        setBookingPriceAcknowledged(false);
+                        markDirty();
+                      }}
+                    >
+                      {t("bookingPriceAcceptEnable")}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setBookingPriceNoticeOpen(false);
+                        setBookingPriceAcknowledged(false);
+                      }}
+                    >
+                      {t("bookingPriceCancelEnable")}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <label className="flex max-w-xl flex-col gap-1 text-sm">
+              <span className="text-fg-muted">{t("timeZoneLabel")}</span>
+              <select
+                form={FORM_ID}
+                name="timeZone"
+                defaultValue={initial.timeZone}
+                className={inputCls}
+              >
+                {timeZones.map((zone) => (
+                  <option key={zone} value={zone}>
+                    {zone}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-fg-subtle">
+                {t("timeZoneHint")}
+              </span>
             </label>
 
             <div className="ml-2 rounded-r-xl border-l-2 border-border-strong bg-page/60 p-4 sm:ml-4">
@@ -568,7 +710,7 @@ export default function SiteSettingsForm({
       {activeSection === "profile" && profileSlot}
 
       {activeSection !== "profile" && (
-      <div className="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-page/95 p-3 shadow-lg backdrop-blur-xl">
+      <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-page/95 p-3 shadow-lg backdrop-blur-xl sm:sticky sm:bottom-4 sm:z-10">
         <Button
           type="submit"
           form={FORM_ID}
@@ -585,7 +727,9 @@ export default function SiteSettingsForm({
         )}
         {state.error && (
           <StatusMessage kind="error">
-            {t("saveError")}
+            {state.error === "priceNoticeRequired"
+              ? t("bookingPriceSaveError")
+              : t("saveError")}
           </StatusMessage>
         )}
         {state.ok && !dirty && (

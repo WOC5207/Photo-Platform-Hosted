@@ -16,6 +16,9 @@ import ContactMethodsManager from "@/components/admin/ContactMethodsManager";
 import ProfileForm from "@/components/dashboard/ProfileForm";
 import ChangePasswordForm from "@/components/dashboard/ChangePasswordForm";
 import type { SiteSettingsSection } from "./actions";
+import { supportedTimeZones } from "@/lib/timeZone";
+import { getPlatformSettings } from "@/lib/platformSettings";
+import { pickText } from "@/lib/content";
 
 type SettingsPageSection = SiteSettingsSection | "profile";
 
@@ -47,11 +50,33 @@ export default async function SiteSettingsPage({
   const user = await requireUser(locale);
   const section = resolveSection((await searchParams).section);
 
-  const settings = await getSiteSettings(user.id);
-  const personalLinks = await getPersonalLinks(user.id);
-  const announcements = await getAnnouncements(user.id);
-  const contactMethods = await getContactMethods(user.id);
+  const [
+    settings,
+    platformSettings,
+    personalLinks,
+    announcements,
+    contactMethods
+  ] = await Promise.all([
+    getSiteSettings(user.id),
+    getPlatformSettings(),
+    getPersonalLinks(user.id),
+    getAnnouncements(user.id),
+    getContactMethods(user.id)
+  ]);
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
+  const bookingPriceNotice = {
+    title: pickText(
+      locale,
+      platformSettings.bookingPriceNoticeTitleEn,
+      platformSettings.bookingPriceNoticeTitleZh
+    ),
+    body: pickText(
+      locale,
+      platformSettings.bookingPriceNoticeBodyEn,
+      platformSettings.bookingPriceNoticeBodyZh
+    ),
+    version: platformSettings.bookingPriceNoticeVersion
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -63,6 +88,12 @@ export default async function SiteSettingsPage({
       <SiteSettingsForm
         key={section}
         activeSection={section}
+        timeZones={[
+          settings.timeZone,
+          ...supportedTimeZones().filter(
+            (zone) => zone !== settings.timeZone
+          )
+        ]}
         initial={{
           siteTitleEn: settings.siteTitleEn,
           siteTitleZh: settings.siteTitleZh,
@@ -78,6 +109,8 @@ export default async function SiteSettingsPage({
           homeCreditsLabelEn: settings.homeCreditsLabelEn,
           homeCreditsLabelZh: settings.homeCreditsLabelZh,
           bookingEnabled: settings.bookingEnabled,
+          bookingPriceEnabled: settings.bookingPriceEnabled,
+          timeZone: settings.timeZone,
           lotteryEnabled: settings.lotteryEnabled,
           creditProfilesEnabled: settings.creditProfilesEnabled,
           announcementsEnabled: settings.announcementsEnabled,
@@ -87,6 +120,7 @@ export default async function SiteSettingsPage({
           contactUrlEn: settings.contactUrlEn,
           contactUrlZh: settings.contactUrlZh
         }}
+        bookingPriceNotice={bookingPriceNotice}
         creditTerm={creditTerm}
         logoSlot={
           <SiteImageUploader kind="logo" currentUrl={siteImageUrl(settings.logo)} />

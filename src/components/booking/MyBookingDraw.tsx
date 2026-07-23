@@ -6,7 +6,9 @@ import {
   spinMyBooking,
   type BookingSpinResult
 } from "@/app/[locale]/(public)/book/actions";
-import LotteryWheel from "@/components/admin/LotteryWheel";
+import LotteryWheel, {
+  type WheelSlice
+} from "@/components/admin/LotteryWheel";
 
 export interface MyBookingPrize {
   id: string;
@@ -16,14 +18,17 @@ export interface MyBookingPrize {
   wonCount: number;
 }
 
-type SpinError = Extract<BookingSpinResult, { ok: false }>["error"];
+type SpinError =
+  | Extract<BookingSpinResult, { ok: false }>["error"]
+  | "unknown";
 
 const SPIN_ERROR_KEY: Record<SpinError, string> = {
   rateLimited: "spinError_rateLimited",
   notReady: "spinError_notReady",
   notFound: "spinError_notFound",
   alreadySpun: "spinError_alreadySpun",
-  noPrizesLeft: "spinError_noPrizesLeft"
+  noPrizesLeft: "spinError_noPrizesLeft",
+  unknown: "spinError_unknown"
 };
 
 /**
@@ -58,9 +63,17 @@ export default function MyBookingDraw({
   );
   const [spinError, setSpinError] = useState<SpinError | null>(null);
   const [busy, setBusy] = useState(false);
+  const [spinSlices, setSpinSlices] = useState<WheelSlice[] | null>(null);
+  const displayedWheelSlices = spinSlices ?? wheelSlices;
 
   // Already spun (this visit or a previous one) — just show what they won.
-  if (alreadyWonPrizeName) {
+  if (
+    alreadyWonPrizeName &&
+    !busy &&
+    !spinning &&
+    !pendingPrizeName &&
+    !revealedPrizeName
+  ) {
     return (
       <div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-surface p-6">
         <h2 className="text-lg font-semibold">{t("spinTitle")}</h2>
@@ -76,43 +89,65 @@ export default function MyBookingDraw({
     );
   }
 
-  const canSpin = !spinning && !busy && wheelSlices.length > 0;
+  const canSpin =
+    !spinning &&
+    !busy &&
+    !pendingPrizeName &&
+    !revealedPrizeName &&
+    wheelSlices.length > 0;
 
   async function handleSpin() {
     if (!canSpin) return;
     setSpinError(null);
     setRevealedPrizeName(null);
+    const slicesAtStart = wheelSlices;
+    setSpinSlices(slicesAtStart);
     setBusy(true);
-    const result = await spinMyBooking(cancelToken);
-    setBusy(false);
-    if (!result.ok) {
-      setSpinError(result.error);
-      return;
+    try {
+      const result = await spinMyBooking(cancelToken);
+      if (!result.ok) {
+        setSpinSlices(null);
+        setSpinError(result.error);
+        return;
+      }
+      const idx = slicesAtStart.findIndex(
+        (slice) => slice.id === result.winner.prizeId
+      );
+      if (idx === -1) {
+        // Local slice list is stale (prize sold out between render and spin) —
+        // reveal directly instead of animating to a slice that isn't there.
+        setSpinSlices(null);
+        setRevealedPrizeName(result.winner.prizeName);
+        return;
+      }
+      setPendingPrizeName(result.winner.prizeName);
+      setTargetIndex(idx);
+      setSpinning(true);
+    } catch {
+      setSpinSlices(null);
+      setSpinError("unknown");
+    } finally {
+      setBusy(false);
     }
-    const idx = wheelSlices.findIndex((s) => s.id === result.winner.prizeId);
-    if (idx === -1) {
-      // Local slice list is stale (prize sold out between render and spin) —
-      // reveal directly instead of animating to a slice that isn't there.
-      setRevealedPrizeName(result.winner.prizeName);
-      return;
-    }
-    setPendingPrizeName(result.winner.prizeName);
-    setTargetIndex(idx);
-    setSpinning(true);
   }
 
   function handleSpinComplete() {
     setSpinning(false);
     setRevealedPrizeName(pendingPrizeName);
     setPendingPrizeName(null);
+    setSpinSlices(null);
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-surface p-6">
+    <div
+      aria-busy={busy || spinning}
+      className="flex flex-col items-center gap-4 rounded-xl border border-border bg-surface p-6"
+    >
       <h2 className="text-lg font-semibold">{t("spinTitle")}</h2>
 
       <LotteryWheel
-        slices={wheelSlices}
+        slices={displayedWheelSlices}
+        accessibleLabel={t("prizesOnWheel")}
         spinning={spinning}
         targetIndex={targetIndex}
         onSpinComplete={handleSpinComplete}
@@ -124,19 +159,24 @@ export default function MyBookingDraw({
         disabled={!canSpin}
         className="rounded-full bg-fg px-6 py-3 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
       >
-        {spinning ? t("spinning") : t("spin")}
+        {spinning || busy ? t("spinning") : t("spin")}
       </button>
 
-      {wheelSlices.length === 0 && !revealedPrizeName && (
+      {displayedWheelSlices.length === 0 && !revealedPrizeName && (
         <p className="text-xs text-fg-subtle">{t("noPrizesYet")}</p>
       )}
 
       {spinError && (
-        <p className="text-xs text-danger">{t(SPIN_ERROR_KEY[spinError])}</p>
+        <p role="alert" className="text-xs text-danger">
+          {t(SPIN_ERROR_KEY[spinError])}
+        </p>
       )}
 
       {revealedPrizeName && (
-        <div className="w-full rounded-lg border border-success-border bg-success-surface p-4 text-center">
+        <div
+          role="status"
+          className="w-full rounded-lg border border-success-border bg-success-surface p-4 text-center"
+        >
           <p className="text-xs uppercase tracking-wide text-success">
             {t("winnerNotice")}
           </p>

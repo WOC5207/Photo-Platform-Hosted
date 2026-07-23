@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -10,6 +11,12 @@ import RegistrationGate from "./RegistrationGate";
 
 // Reads the invite and the session cookie — never prerender.
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false
+  }
+};
 
 /**
  * Invite redemption. There is no public signup form anywhere; an account can

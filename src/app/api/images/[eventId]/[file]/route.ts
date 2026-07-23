@@ -18,7 +18,7 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ eventId: string; file: string }> }
 ) {
   const { eventId, file } = await params;
@@ -97,22 +97,42 @@ export async function GET(
     return new NextResponse("Not found", { status: 404 });
   }
 
+  const publicRendition = !isPending && variant !== "orig" && photo.event.published;
+  const publicEtag = publicRendition
+    ? `"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`
+    : null;
+  const cacheControl = publicRendition
+    ? "public, max-age=0, must-revalidate"
+    : "private, no-store";
+  const commonHeaders = {
+    "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream",
+    "Cache-Control": cacheControl,
+    ...(publicEtag ? { ETag: publicEtag } : {}),
+    ...(publicRendition ? {} : { Vary: "Cookie" }),
+    "X-Content-Type-Options": "nosniff"
+  };
+
+  // Public URLs remain cacheable, but every reuse must revalidate through this
+  // authorization path. That keeps repeat transfers cheap (304) without
+  // leaving a year-long immutable copy visible after an album is unpublished
+  // or its owner is suspended.
+  if (
+    publicEtag &&
+    req.headers.get("if-none-match")?.split(/\s*,\s*/).includes(publicEtag)
+  ) {
+    return new NextResponse(null, {
+      status: 304,
+      headers: commonHeaders
+    });
+  }
+
   const stream = Readable.toWeb(
     createReadStream(filePath)
   ) as ReadableStream<Uint8Array>;
-  const publicRendition = !isPending && variant !== "orig" && photo.event.published;
-
   return new NextResponse(stream, {
     headers: {
-      "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream",
-      "Content-Length": String(stat.size),
-      // Queue previews can be regenerated or deleted before Create and must
-      // never enter a shared cache. Published filenames are immutable.
-      "Cache-Control": publicRendition
-        ? "public, max-age=31536000, immutable"
-        : "private, no-store",
-      ...(publicRendition ? {} : { Vary: "Cookie" }),
-      "X-Content-Type-Options": "nosniff"
+      ...commonHeaders,
+      "Content-Length": String(stat.size)
     }
   });
 }

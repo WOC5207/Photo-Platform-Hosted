@@ -1,6 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import {
+  useActionState,
+  useId,
+  useState,
+  type KeyboardEvent
+} from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   createBooking,
@@ -12,6 +17,7 @@ export interface PublicSlot {
   start: string; // ISO, naive-as-UTC
   end: string;
   remaining: number;
+  pricePerPerson: string;
   description: string;
 }
 
@@ -53,13 +59,48 @@ export default function BookingForm({
     BookingFormState,
     FormData
   >(createBooking, {});
+  const tabsId = useId().replace(/:/g, "");
 
   // Default to the first day that actually has availability, so a visitor
   // doesn't land on an empty tab when earlier days are sold out/unset.
   const [activeDayId, setActiveDayId] = useState(
-    () => (days.find((d) => d.slots.length > 0) ?? days[0])?.id ?? ""
+    () =>
+      (
+        days.find((d) => d.slots.some((slot) => slot.remaining > 0)) ??
+        days.find((d) => d.slots.length > 0) ??
+        days[0]
+      )?.id ?? ""
   );
   const activeDay = days.find((d) => d.id === activeDayId) ?? days[0];
+  const hasAvailableSlot = days.some((day) =>
+    day.slots.some((slot) => slot.remaining > 0)
+  );
+
+  function selectDay(index: number, focus = false) {
+    const day = days[index];
+    if (!day) return;
+    setActiveDayId(day.id);
+    if (focus) {
+      requestAnimationFrame(() => {
+        document.getElementById(`${tabsId}-tab-${index}`)?.focus();
+      });
+    }
+  }
+
+  function handleTabKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number
+  ) {
+    let next = index;
+    if (event.key === "ArrowRight") next = (index + 1) % days.length;
+    else if (event.key === "ArrowLeft")
+      next = (index - 1 + days.length) % days.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = days.length - 1;
+    else return;
+    event.preventDefault();
+    selectDay(next, true);
+  }
 
   const errorMessage = state.error
     ? {
@@ -80,15 +121,19 @@ export default function BookingForm({
 
         {days.length > 1 && (
           <div role="tablist" aria-label={t("chooseDay")} className="flex flex-wrap gap-2">
-            {days.map((day) => {
+            {days.map((day, index) => {
               const selected = day.id === activeDay?.id;
               return (
                 <button
                   key={day.id}
                   type="button"
                   role="tab"
+                  id={`${tabsId}-tab-${index}`}
+                  aria-controls={`${tabsId}-panel`}
                   aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
                   onClick={() => setActiveDayId(day.id)}
+                  onKeyDown={(event) => handleTabKeyDown(event, index)}
                   className={[
                     "inline-flex min-h-9 items-center rounded-full border px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11",
                     selected
@@ -103,6 +148,16 @@ export default function BookingForm({
           </div>
         )}
 
+        <div
+          role={days.length > 1 ? "tabpanel" : undefined}
+          id={activeDay ? `${tabsId}-panel` : undefined}
+          aria-labelledby={
+            days.length > 1 && activeDay
+              ? `${tabsId}-tab-${days.findIndex((day) => day.id === activeDay.id)}`
+              : undefined
+          }
+          className="flex flex-col gap-3"
+        >
         {!activeDay || activeDay.slots.length === 0 ? (
           <p className="rounded-xl border border-border bg-surface p-4 text-center text-sm text-fg-subtle">
             {t("noSlotsThisDay")}
@@ -137,6 +192,13 @@ export default function BookingForm({
                         {slot.description}
                       </span>
                     )}
+                    {slot.pricePerPerson && (
+                      <span className="text-xs font-medium text-fg-muted">
+                        {t("pricePerPersonDisplay", {
+                          price: slot.pricePerPerson
+                        })}
+                      </span>
+                    )}
                   </span>
                 </span>
                 <span className={`text-xs ${full ? "" : "text-success"}`}>
@@ -146,6 +208,7 @@ export default function BookingForm({
             );
           })
         )}
+        </div>
       </fieldset>
 
       <fieldset className="flex flex-col gap-4">
@@ -173,7 +236,7 @@ export default function BookingForm({
                 {t("contactMethodPlaceholder")}
               </option>
               {contactMethods.map((m) => (
-                <option key={m.id} value={m.label}>
+                <option key={m.id} value={m.id}>
                   {m.label}
                 </option>
               ))}
@@ -221,7 +284,7 @@ export default function BookingForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || !hasAvailableSlot || contactMethods.length === 0}
         className="rounded-full bg-fg px-6 py-3 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
       >
         {t("submit")}

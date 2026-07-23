@@ -44,12 +44,14 @@ export type PublishPhase = "idle" | "publishing" | "error" | "success";
 export default function ConfirmStep({
   queue,
   creditsByPhoto,
+  failedCount,
   publishPhase,
   publishedCount,
   onPublish
 }: {
   queue: PendingUploadQueue;
   creditsByPhoto: Record<string, AssignedCredit[]>;
+  failedCount: number;
   publishPhase: PublishPhase;
   publishedCount: number;
   onPublish: () => void;
@@ -66,7 +68,11 @@ export default function ConfirmStep({
   const totalFinalBytes = knownFinalBytes.reduce((sum, bytes) => sum + bytes, 0);
   const publishing = publishPhase === "publishing";
   const finishingCompression = queue.queueWorking;
-  const canPublish = photos.length > 0 && !publishing && !finishingCompression;
+  const canPublish =
+    photos.length > 0 &&
+    failedCount === 0 &&
+    !publishing &&
+    !finishingCompression;
 
   return (
     <div className="flex flex-col gap-4">
@@ -139,6 +145,12 @@ export default function ConfirmStep({
       {publishPhase === "error" && (
         <p role="alert" className="text-sm font-medium text-danger">
           {tw("publishError", { published: publishedCount })}
+        </p>
+      )}
+
+      {failedCount > 0 && (
+        <p role="alert" className="text-sm font-medium text-danger">
+          {tw("resolveFailedFiles", { count: failedCount })}
         </p>
       )}
 

@@ -9,7 +9,7 @@ import { siteDir } from "@/lib/images";
 const FILE_PATTERN = /^[a-z0-9]+\.webp$/;
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ file: string }> }
 ) {
   const { file } = await params;
@@ -42,16 +42,32 @@ export async function GET(
     return new NextResponse("Not found", { status: 404 });
   }
 
+  const etag = `"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`;
+  const commonHeaders = {
+    "Content-Type": "image/webp",
+    "Cache-Control": "public, max-age=0, must-revalidate",
+    ETag: etag,
+    "X-Content-Type-Options": "nosniff"
+  };
+
+  // Site-image tokens are stable until replacement, so conditional requests
+  // retain the bandwidth benefit of caching. Revalidation is still required:
+  // otherwise a suspended account's cached logo, background or QR code would
+  // remain visible for the old one-year immutable lifetime.
+  if (req.headers.get("if-none-match")?.split(/\s*,\s*/).includes(etag)) {
+    return new NextResponse(null, {
+      status: 304,
+      headers: commonHeaders
+    });
+  }
+
   const stream = Readable.toWeb(
     createReadStream(filePath)
   ) as ReadableStream<Uint8Array>;
-
   return new NextResponse(stream, {
     headers: {
-      "Content-Type": "image/webp",
-      "Content-Length": String(stat.size),
-      // The token changes on every upload, so caching immutably is safe.
-      "Cache-Control": "public, max-age=31536000, immutable"
+      ...commonHeaders,
+      "Content-Length": String(stat.size)
     }
   });
 }

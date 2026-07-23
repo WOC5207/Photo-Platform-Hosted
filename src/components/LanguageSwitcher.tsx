@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocale } from "next-intl";
+import { useSearchParams } from "next/navigation";
 import { Link, usePathname } from "@/i18n/navigation";
 import { routing, type AppLocale } from "@/i18n/routing";
 
@@ -12,9 +13,12 @@ const LABELS: Record<AppLocale, string> = {
 
 export default function LanguageSwitcher() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const current = useLocale();
-  const [suffix, setSuffix] = useState("");
-  useEffect(() => setSuffix(`${window.location.search}${window.location.hash}`), []);
+  const [hash, setHash] = useState("");
+  const query = searchParams.toString();
+  useEffect(() => setHash(window.location.hash), [pathname, query]);
+  const suffix = `${query ? `?${query}` : ""}${hash}`;
   const href = `${pathname}${suffix}`;
 
   return (

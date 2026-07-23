@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { todayInTimeZone } from "@/lib/timeZone";
 
 /** Inclusive list of yyyy-mm-dd strings from `a` to `b` (order-independent). */
 function rangeBetween(a: string, b: string): string[] {
@@ -26,9 +27,13 @@ function rangeBetween(a: string, b: string): string[] {
  * selection is emitted as a hidden `dates` input (JSON array) for the form.
  */
 export default function BookingDayPicker({
-  initialDates
+  initialDates,
+  timeZone,
+  onSelectionChange
 }: {
   initialDates: string[];
+  timeZone: string;
+  onSelectionChange?: () => void;
 }) {
   const locale = useLocale();
   const t = useTranslations("adminBookings");
@@ -99,13 +104,14 @@ export default function BookingDayPicker({
         if (current && current.from !== current.to) {
           const range = rangeBetween(current.from, current.to);
           setSelected((prev) => new Set([...prev, ...range]));
+          onSelectionChange?.();
         }
         return null;
       });
     }
     window.addEventListener("pointerup", commit);
     return () => window.removeEventListener("pointerup", commit);
-  }, [drag]);
+  }, [drag, onSelectionChange]);
 
   function shiftMonth(delta: number) {
     setView((v) => {
@@ -123,6 +129,7 @@ export default function BookingDayPicker({
     if (event.shiftKey && anchorRef.current) {
       const range = rangeBetween(anchorRef.current, dateStr);
       setSelected((prev) => new Set([...prev, ...range]));
+      onSelectionChange?.();
       return;
     }
     setSelected((prev) => {
@@ -132,6 +139,7 @@ export default function BookingDayPicker({
       return next;
     });
     anchorRef.current = dateStr;
+    onSelectionChange?.();
   }
 
   function onDayPointerDown(dateStr: string) {
@@ -146,7 +154,7 @@ export default function BookingDayPicker({
     () => [...selected].sort(),
     [selected]
   );
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = todayInTimeZone(timeZone);
 
   return (
     <div className="flex flex-col gap-2">
@@ -218,6 +226,7 @@ export default function BookingDayPicker({
           onClick={() => {
             setSelected(new Set());
             anchorRef.current = null;
+            onSelectionChange?.();
           }}
           className="inline-flex min-h-8 items-center rounded-lg border border-border-strong px-2 py-1 text-xs font-semibold text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40 max-sm:min-h-11"
         >

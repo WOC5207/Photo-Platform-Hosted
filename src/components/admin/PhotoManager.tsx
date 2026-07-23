@@ -16,6 +16,7 @@ import SocialLinksEditor, {
   emptySocialLink,
   type SocialLinkValue
 } from "./SocialLinksEditor";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 export interface AdminPhotoCredit {
   creditName: string;
@@ -94,6 +95,7 @@ function CreditsForm({
   const [rows, setRows] = useState<CreditRow[]>(() =>
     initial.length > 0 ? initial.map((c) => makeRow(c)) : [makeRow()]
   );
+  const [comment, setComment] = useState(initialComment);
 
   function updateRow(key: number, patch: Partial<CreditRow>) {
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -120,13 +122,31 @@ function CreditsForm({
     );
   }
 
-  const creditsJson = JSON.stringify(
-    rows.map((r) => ({
+  const currentCredits = rows
+    .map((r) => ({
       creditName: r.creditName,
       subject: r.subject,
-      socialLinks: r.socialLinks.map((s) => ({ platform: s.platform, url: s.url }))
+      socialLinks: r.socialLinks.map((s) => ({
+        platform: s.platform,
+        url: s.url
+      }))
+    }))
+    .filter(
+      (credit) =>
+        credit.creditName ||
+        credit.subject ||
+        credit.socialLinks.some((link) => link.platform || link.url)
+    );
+  const creditsJson = JSON.stringify(currentCredits);
+  const initialJson = JSON.stringify(
+    initial.map((credit) => ({
+      creditName: credit.creditName,
+      subject: credit.subject,
+      socialLinks: credit.socialLinks
     }))
   );
+  const dirty = creditsJson !== initialJson || comment !== initialComment;
+  useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
 
   return (
     <form action={updatePhotoCredits} className="flex flex-col gap-2">
@@ -186,14 +206,19 @@ function CreditsForm({
         {t("photoComment")}
         <textarea
           name="comment"
-          defaultValue={initialComment}
+          value={comment}
+          onChange={(event) => setComment(event.target.value)}
           maxLength={2000}
           rows={2}
           placeholder={t("photoCommentPlaceholder")}
           className={`${smallInputCls} min-h-16 resize-y`}
         />
       </label>
-      <button type="submit" className={`${btnCls} self-start`}>
+      <button
+        type="submit"
+        disabled={!dirty}
+        className={`${btnCls} self-start`}
+      >
         {tc("save")}
       </button>
     </form>
@@ -221,6 +246,8 @@ function ExifForm({
       !initial.cameraModel &&
       !initial.lensModel
   );
+  const [dirty, setDirty] = useState(false);
+  useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
 
   if (!open) {
     return (
@@ -237,6 +264,8 @@ function ExifForm({
   return (
     <form
       action={updatePhotoExif}
+      onChange={() => setDirty(true)}
+      onSubmit={() => setDirty(false)}
       className="flex flex-col gap-1 rounded-md border border-border-strong/40 p-1.5"
     >
       <input type="hidden" name="photoId" value={photoId} />
@@ -276,7 +305,12 @@ function ExifForm({
         </button>
         <button
           type="button"
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            if (!dirty || window.confirm(tc("unsavedNavigationConfirm"))) {
+              setDirty(false);
+              setOpen(false);
+            }
+          }}
           className={`${btnCls} self-start`}
         >
           {tc("cancel")}
@@ -471,6 +505,12 @@ export default function PhotoManager({
 
   return (
     <div className="flex flex-col gap-4">
+      <datalist id="known-credits">
+        {creditProfiles.map((profile) => (
+          <option key={profile.creditName} value={profile.creditName} />
+        ))}
+      </datalist>
+
       <BulkToolbar
         creditTerm={creditTerm}
         subjectTerm={subjectTerm}

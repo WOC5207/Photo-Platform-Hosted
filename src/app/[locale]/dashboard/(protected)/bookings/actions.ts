@@ -10,15 +10,18 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import {
   findOwnedBooking,
-  findOwnedBookingDay,
   findOwnedBookingEvent,
   findOwnedSlot
 } from "@/lib/ownership";
-import { formatDate, parseNaiveDateTime } from "@/lib/datetime";
 import { pickText } from "@/lib/content";
 import { config } from "@/lib/config";
 import { notifyBookingStatusChanged } from "@/lib/notify";
-import { mergeEvents, splitEvent } from "@/lib/booking";
+import {
+  addSlotBatchForOwner,
+  mergeEvents,
+  splitEvent
+} from "@/lib/booking";
+import { getSiteSettings } from "@/lib/settings";
 
 export type BookingEventFormState = {
   error?:
@@ -245,8 +248,10 @@ const slotsSchema = z.object({
   slotMinutes: z.coerce.number().int().min(5).max(24 * 60),
   slotCount: z.coerce.number().int().min(1).max(100),
   capacity: z.coerce.number().int().min(1).max(1000),
+  pricePerPerson: z.string().trim().max(60),
   descriptionEn: z.string().trim().max(120),
-  descriptionZh: z.string().trim().max(120)
+  descriptionZh: z.string().trim().max(120),
+  syncAcrossDays: z.boolean()
 });
 
 export async function addSlots(
@@ -261,38 +266,24 @@ export async function addSlots(
     slotMinutes: formData.get("slotMinutes") ?? "",
     slotCount: formData.get("slotCount") ?? "",
     capacity: formData.get("capacity") ?? "",
+    pricePerPerson: formData.get("pricePerPerson") ?? "",
     descriptionEn: formData.get("descriptionEn") ?? "",
-    descriptionZh: formData.get("descriptionZh") ?? ""
+    descriptionZh: formData.get("descriptionZh") ?? "",
+    syncAcrossDays: formData.get("syncAcrossDays") === "on"
   });
   if (!parsed.success) return { error: "validation" };
 
-  const day = await findOwnedBookingDay(parsed.data.bookingDayId, user);
-  if (!day) return { error: "validation" };
-
-  // Compose the first slot's start from the day's calendar date and the typed
-  // time of day, then chain the rest off it — all in the same naive-UTC space.
-  const start = parseNaiveDateTime(
-    `${formatDate(day.date)}T${parsed.data.startTime}`
-  );
-  if (!start) return { error: "validation" };
-
-  const { slotMinutes, slotCount, capacity, descriptionEn, descriptionZh } =
-    parsed.data;
-  const slots = Array.from({ length: slotCount }, (_, i) => {
-    const s = new Date(start.getTime() + i * slotMinutes * 60_000);
-    const e = new Date(s.getTime() + slotMinutes * 60_000);
-    return {
-      bookingEventId: day.bookingEventId,
-      bookingDayId: day.id,
-      startTime: s,
-      endTime: e,
-      capacity,
-      descriptionEn,
-      descriptionZh
-    };
+  const settings = await getSiteSettings(user.id);
+  const added = await addSlotBatchForOwner(user.id, {
+    ...parsed.data,
+    // The site-level gate is enforced on the server too. A handcrafted form
+    // post cannot store a new display price while the feature is disabled.
+    pricePerPerson: settings.bookingPriceEnabled
+      ? parsed.data.pricePerPerson
+      : ""
   });
+  if (!added) return { error: "validation" };
 
-  await prisma.timeSlot.createMany({ data: slots });
   revalidatePath("/", "layout");
   return { ok: true };
 }
@@ -310,6 +301,7 @@ export async function deleteSlot(formData: FormData): Promise<void> {
 }
 
 export type BookingStatusState = { error?: "slotFull"; ok?: boolean };
+type BookingStatusTransition = BookingStatusState & { changed?: boolean };
 
 /**
  * Email the visitor that the photographer changed their booking's status. Only
@@ -327,6 +319,7 @@ async function emailVisitorBookingStatus(
   });
   if (!booking || !booking.email) return;
   const event = booking.timeSlot.bookingEvent;
+  const settings = await getSiteSettings(event.ownerId);
   // The visitor's language, not the photographer's dashboard locale — this
   // email is going to the visitor, who may have booked in the other language.
   const locale = booking.locale;
@@ -340,6 +333,10 @@ async function emailVisitorBookingStatus(
       eventTitle: pickText(locale, event.titleEn, event.titleZh),
       slotStart: booking.timeSlot.startTime,
       slotEnd: booking.timeSlot.endTime,
+      timeZone: settings.timeZone,
+      pricePerPerson: settings.bookingPriceEnabled
+        ? booking.timeSlot.pricePerPerson
+        : "",
       manageUrl: `${config.appBaseUrl()}/${locale}/my-booking/${booking.cancelToken}`,
       locale,
       visitorEmail: booking.email,
@@ -369,19 +366,18 @@ export async function setBookingStatus(
   // respect the slot's capacity — otherwise the freed spot may have been
   // re-booked, and restoring would overbook.
   if (status === "cancelled") {
-    await prisma.booking
-      .update({ where: { id: owned.id }, data: { status: "cancelled" } })
-      .catch(() => {});
-    revalidatePath("/", "layout");
-    // Only on the confirmed -> cancelled transition, so re-cancelling doesn't
-    // re-email the visitor.
-    if (owned.status === "confirmed") {
+    const transition = await prisma.booking.updateMany({
+      where: { id: owned.id, status: "confirmed" },
+      data: { status: "cancelled" }
+    });
+    if (transition.count === 1) {
+      revalidatePath("/", "layout");
       await emailVisitorBookingStatus(owned.id, "cancelled");
     }
     return { ok: true };
   }
 
-  const result: BookingStatusState = await prisma.$transaction(async (tx) => {
+  const result: BookingStatusTransition = await prisma.$transaction(async (tx) => {
     // Same lock, and for the same reason, as the public booking path (see
     // reserveSlot in src/lib/booking.ts): this counts confirmed bookings and
     // then writes, so without holding the slot an admin restore racing a
@@ -394,7 +390,7 @@ export async function setBookingStatus(
       include: { timeSlot: true }
     });
     if (!booking) return {};
-    if (booking.status === "confirmed") return { ok: true };
+    if (booking.status === "confirmed") return { ok: true, changed: false };
 
     const confirmed = await tx.booking.count({
       where: { timeSlotId: booking.timeSlotId, status: "confirmed" }
@@ -405,17 +401,17 @@ export async function setBookingStatus(
       where: { id: booking.id },
       data: { status: "confirmed" }
     });
-    return { ok: true };
+    return { ok: true, changed: true };
   });
 
   if (result.ok) revalidatePath("/", "layout");
   // Only when a genuinely cancelled booking was restored (owned.status was
   // cancelled and the restore succeeded) — not when it was already confirmed
   // and not when the slot was full.
-  if (result.ok && owned.status === "cancelled") {
+  if (result.ok && result.changed) {
     await emailVisitorBookingStatus(owned.id, "confirmed");
   }
-  return result;
+  return result.error ? { error: result.error } : { ok: result.ok };
 }
 
 export type MergeEventsState = {

@@ -240,15 +240,21 @@ test.describe.serial("management workflows", () => {
   }) => {
     await page.goto("/en/admin/invites");
 
-    const enabled = page.getByRole("checkbox", {
+    const registrationNotice = page.locator("section").filter({
+      has: page.getByRole("heading", {
+        name: "Registration notice",
+        exact: true
+      })
+    });
+    const enabled = registrationNotice.getByRole("checkbox", {
       name: "Show this notice before registration"
     });
-    const delay = page.getByLabel("Continue delay (seconds)");
-    const mode = page.getByLabel("Notice behavior");
-    const titleEn = page.getByLabel("Notice title (English)");
-    const titleZh = page.getByLabel("Notice title (Chinese)");
-    const bodyEn = page.getByLabel("Notice or EULA (English)");
-    const bodyZh = page.getByLabel("Notice or EULA (Chinese)");
+    const delay = registrationNotice.getByLabel("Continue delay (seconds)");
+    const mode = registrationNotice.getByLabel("Notice behavior");
+    const titleEn = registrationNotice.getByLabel("Notice title (English)");
+    const titleZh = registrationNotice.getByLabel("Notice title (Chinese)");
+    const bodyEn = registrationNotice.getByLabel("Notice or EULA (English)");
+    const bodyZh = registrationNotice.getByLabel("Notice or EULA (Chinese)");
     const original = {
       enabled: await enabled.isChecked(),
       delay: await delay.inputValue(),
@@ -267,8 +273,12 @@ test.describe.serial("management workflows", () => {
       await mode.selectOption("consent");
       await titleEn.fill("E2E terms before registration");
       await bodyEn.fill("Please read this test notice before continuing.");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible();
+      await registrationNotice
+        .getByRole("button", { name: "Save", exact: true })
+        .click();
+      await expect(
+        registrationNotice.getByRole("status").filter({ hasText: /^Saved$/ })
+      ).toBeVisible();
 
       const admin = await prisma.user.findUniqueOrThrow({
         where: { username: adminUsername! },
@@ -319,17 +329,33 @@ test.describe.serial("management workflows", () => {
       await guestContext?.close();
       await prisma.invite.deleteMany({ where: { code: inviteCode } });
       await page.goto("/en/admin/invites");
-      await page
+      await registrationNotice
         .getByRole("checkbox", { name: "Show this notice before registration" })
         .setChecked(original.enabled);
-      await page.getByLabel("Continue delay (seconds)").fill(original.delay);
-      await page.getByLabel("Notice behavior").selectOption(original.mode);
-      await page.getByLabel("Notice title (English)").fill(original.titleEn);
-      await page.getByLabel("Notice title (Chinese)").fill(original.titleZh);
-      await page.getByLabel("Notice or EULA (English)").fill(original.bodyEn);
-      await page.getByLabel("Notice or EULA (Chinese)").fill(original.bodyZh);
-      await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible();
+      await registrationNotice
+        .getByLabel("Continue delay (seconds)")
+        .fill(original.delay);
+      await registrationNotice
+        .getByLabel("Notice behavior")
+        .selectOption(original.mode);
+      await registrationNotice
+        .getByLabel("Notice title (English)")
+        .fill(original.titleEn);
+      await registrationNotice
+        .getByLabel("Notice title (Chinese)")
+        .fill(original.titleZh);
+      await registrationNotice
+        .getByLabel("Notice or EULA (English)")
+        .fill(original.bodyEn);
+      await registrationNotice
+        .getByLabel("Notice or EULA (Chinese)")
+        .fill(original.bodyZh);
+      await registrationNotice
+        .getByRole("button", { name: "Save", exact: true })
+        .click();
+      await expect(
+        registrationNotice.getByRole("status").filter({ hasText: /^Saved$/ })
+      ).toBeVisible();
     }
   });
 
@@ -681,6 +707,135 @@ test.describe.serial("management workflows", () => {
       await prisma.contactMethod.delete({ where: { id: contact.id } }).catch(() => {});
     }
   });
+
+  test(
+    "lottery identity and recovery survive a locale switch",
+    { tag: "@desktop-only" },
+    async ({ page, context }) => {
+      const admin = await prisma.user.findUniqueOrThrow({
+        where: { username: adminUsername! },
+        include: { settings: true }
+      });
+      const originalLotteryEnabled = admin.settings?.lotteryEnabled ?? false;
+      let lotterySettingChanged = false;
+      let contactId: string | null = null;
+      let eventId: string | null = null;
+      let drawId: string | null = null;
+      let drawToken: string | null = null;
+
+      try {
+        await prisma.siteSettings.update({
+          where: { ownerId: admin.id },
+          data: { lotteryEnabled: true }
+        });
+        lotterySettingChanged = true;
+
+        const contact = await prisma.contactMethod.create({
+          data: {
+            ownerId: admin.id,
+            labelEn: `E2E Email ${Date.now()}`,
+            labelZh: `E2E 邮箱 ${Date.now()}`
+          }
+        });
+        contactId = contact.id;
+
+        const event = await prisma.bookingEvent.create({
+          data: {
+            ownerId: admin.id,
+            token: randomUUID().replace(/-/g, ""),
+            titleEn: "E2E locale lottery",
+            titleZh: "E2E 多语言抽奖",
+            date: new Date(Date.now() + 86_400_000),
+            open: false,
+            lotteryEnabled: true
+          }
+        });
+        eventId = event.id;
+
+        const draw = await prisma.lotteryDraw.create({
+          data: {
+            bookingEventId: event.id,
+            token: randomUUID().replace(/-/g, ""),
+            prizes: {
+              create: { name: "E2E prize", quantity: 2, weight: 1 }
+            }
+          }
+        });
+        drawId = draw.id;
+        drawToken = draw.token;
+
+        await page.goto(`/en/draw/${drawToken}`);
+        const entryForm = page.locator("form").first();
+        await entryForm.locator('input[name="name"]').fill("Locale Visitor");
+        await entryForm
+          .locator('select[name="contactMethodId"]')
+          .selectOption(contactId);
+        await entryForm
+          .locator('input[name="contactValue"]')
+          .fill("visitor@example.com");
+        await entryForm.getByRole("button", { name: "Enter the draw" }).click();
+
+        const token = await page
+          .getByRole("textbox", { name: "Your entry token" })
+          .inputValue();
+        expect(token).toMatch(/^[A-Z0-9]{5,12}$/);
+        const storedEntry = await prisma.lotteryEntry.findFirstOrThrow({
+          where: { drawId, token }
+        });
+        expect(storedEntry.contactMethodId).toBe(contactId);
+
+        // Simulate returning without the authorization cookie, then switch
+        // locale. The localized label changes, but the stable method ID must
+        // still block a duplicate and recover the original entry.
+        await context.clearCookies({ name: "visitor-session" });
+        await page.goto(`/zh/draw/${drawToken}`);
+        const duplicateForm = page.locator("form").first();
+        await duplicateForm.locator('input[name="name"]').fill("Locale Visitor");
+        await duplicateForm
+          .locator('select[name="contactMethodId"]')
+          .selectOption(contactId);
+        await duplicateForm
+          .locator('input[name="contactValue"]')
+          .fill("visitor@example.com");
+        await duplicateForm.locator('button[type="submit"]').click();
+        await expect(duplicateForm.getByRole("alert")).toBeVisible();
+        await expect
+          .poll(() => prisma.lotteryEntry.count({ where: { drawId: draw.id } }))
+          .toBe(1);
+
+        await page.locator("details > summary").click();
+        const recoveryForm = page.locator("details form");
+        await recoveryForm.locator('input[name="entryToken"]').fill(token);
+        await recoveryForm.locator('input[name="name"]').fill("Locale Visitor");
+        await recoveryForm
+          .locator('select[name="contactMethodId"]')
+          .selectOption(contactId);
+        await recoveryForm
+          .locator('input[name="contactValue"]')
+          .fill("visitor@example.com");
+        await recoveryForm.locator('button[type="submit"]').click();
+        await expect(page.locator(`input[readonly][value="${token}"]`)).toBeVisible();
+      } finally {
+        if (drawId) {
+          await prisma.lotteryDraw.deleteMany({ where: { id: drawId } }).catch(() => {});
+        }
+        if (eventId) {
+          await prisma.bookingEvent.deleteMany({ where: { id: eventId } }).catch(() => {});
+        }
+        if (contactId) {
+          await prisma.contactMethod.deleteMany({ where: { id: contactId } }).catch(() => {});
+        }
+        if (lotterySettingChanged) {
+          await prisma.siteSettings
+            .update({
+              where: { ownerId: admin.id },
+              data: { lotteryEnabled: originalLotteryEnabled }
+            })
+            .catch(() => {});
+        }
+      }
+    }
+  );
 
   test("booking events can be merged under one link and split back apart", async ({ page }) => {
     const tag = Date.now();

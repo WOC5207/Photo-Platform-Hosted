@@ -1,6 +1,5 @@
 "use server";
 
-import { randomUUID } from "crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
@@ -9,7 +8,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getSiteSettings } from "@/lib/settings";
-import { slugify, uniqueEventSlug } from "@/lib/slug";
+import { completeOwnerSetup } from "@/lib/setup";
 import { usernameError } from "@/lib/username";
 import type { User } from "@prisma/client";
 
@@ -169,7 +168,8 @@ export async function setupUpdateFeatures(
 ): Promise<FeaturesState> {
   const { user } = await guard();
   const bookingEnabled = formData.get("bookingEnabled") === "on";
-  const lotteryEnabled = formData.get("lotteryEnabled") === "on";
+  const lotteryEnabled =
+    bookingEnabled && formData.get("lotteryEnabled") === "on";
   const creditProfilesEnabled = formData.get("creditProfilesEnabled") === "on";
 
   await prisma.siteSettings.upsert({
@@ -194,47 +194,7 @@ export async function setupUpdateFeatures(
  */
 export async function completeSetup(): Promise<void> {
   const { locale, user } = await guard();
-  const settings = await getSiteSettings(user.id);
-
-  const albumSlug = await uniqueEventSlug(
-    user.id,
-    slugify("my-first-album") || "my-first-album"
-  );
-  await prisma.event.create({
-    data: {
-      ownerId: user.id,
-      slug: albumSlug,
-      titleEn: "My First Album",
-      titleZh: "我的第一个相册",
-      descriptionEn:
-        "A draft album to get you started — add photos, then publish when ready.",
-      descriptionZh: "示例相册，帮助你快速上手——添加照片后即可发布。",
-      published: false
-    }
-  });
-
-  if (settings.bookingEnabled) {
-    const date = new Date();
-    date.setUTCDate(date.getUTCDate() + 14);
-    await prisma.bookingEvent.create({
-      data: {
-        ownerId: user.id,
-        token: randomUUID().replace(/-/g, ""),
-        titleEn: "Sample Photoshoot",
-        titleZh: "示例场照活动",
-        descriptionEn:
-          "A draft booking event to get you started — add time slots, then open it when ready.",
-        descriptionZh: "示例预约活动，帮助你快速上手——添加时间段后即可开放预约。",
-        date,
-        open: false
-      }
-    });
-  }
-
-  await prisma.siteSettings.update({
-    where: { ownerId: user.id },
-    data: { setupCompleted: true }
-  });
+  await completeOwnerSetup(user.id);
 
   revalidatePath("/", "layout");
   redirect(`/${locale}/dashboard`);

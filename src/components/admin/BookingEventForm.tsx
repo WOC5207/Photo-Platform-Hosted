@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import BookingDayPicker from "@/components/admin/BookingDayPicker";
 import type { BookingEventFormState } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 export interface BookingEventFormValues {
   id?: string;
@@ -26,7 +27,8 @@ export default function BookingEventForm({
   initial,
   submitLabel,
   showOpenToggle = true,
-  cancelHref
+  cancelHref,
+  timeZone
 }: {
   action: (
     prev: BookingEventFormState,
@@ -36,6 +38,7 @@ export default function BookingEventForm({
   submitLabel: string;
   showOpenToggle?: boolean;
   cancelHref: string;
+  timeZone: string;
 }) {
   const t = useTranslations("adminBookings");
   const ts = useTranslations("adminSite");
@@ -44,9 +47,30 @@ export default function BookingEventForm({
     BookingEventFormState,
     FormData
   >(action, {});
+  const [dirty, setDirty] = useState(false);
+  const changeVersion = useRef(0);
+  const submittedVersion = useRef(0);
+  const markDirty = () => {
+    changeVersion.current += 1;
+    setDirty(true);
+  };
+  useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
+
+  useEffect(() => {
+    if (state.ok && submittedVersion.current === changeVersion.current) {
+      setDirty(false);
+    }
+  }, [state]);
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form
+      action={formAction}
+      onChange={markDirty}
+      onSubmit={() => {
+        submittedVersion.current = changeVersion.current;
+      }}
+      className="flex flex-col gap-4"
+    >
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -71,7 +95,14 @@ export default function BookingEventForm({
       </div>
       <p className="-mt-2 text-xs text-fg-subtle">{t("titleHint")}</p>
 
-      <BookingDayPicker initialDates={initial.dates} />
+      <BookingDayPicker
+        initialDates={initial.dates}
+        timeZone={timeZone}
+        onSelectionChange={markDirty}
+      />
+      <p className="-mt-2 text-xs text-fg-subtle">
+        {t("timeZoneNotice", { timeZone })}
+      </p>
 
       <label className="flex flex-col gap-1 text-sm">
         <span className="text-fg-muted">{t("location")}</span>

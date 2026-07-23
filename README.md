@@ -331,6 +331,13 @@ disposable stack. Optional `E2E_USER_USERNAME` and `E2E_USER_PASSWORD` values
 exercise the regular-account role directly; otherwise the suite can derive a
 read-only regular-user session when a second account exists.
 
+Mutation mode is intentionally fixed to `http://127.0.0.1:3001` and a
+loopback PostgreSQL database named `photo_e2e`. Before the suite starts, it
+creates a one-time marker in that database and requires the target app to
+render it, then deletes it. This app/database handshake prevents a disposable
+runner database from being paired accidentally with another local or remote
+site.
+
 ```sh
 docker compose -p photo-platform-e2e -f docker-compose.e2e.yml up -d --build
 
@@ -339,12 +346,15 @@ E2E_ADMIN_USERNAME=admin \
 E2E_ADMIN_PASSWORD='replace-with-the-disposable-admin-password' \
 E2E_SESSION_SECRET='replace-with-the-disposable-session-secret' \
 E2E_ALLOW_MUTATIONS=1 \
+E2E_DATABASE_URL='postgresql://photo:photo-e2e-only@127.0.0.1:5433/photo_e2e?schema=public&connection_limit=10' \
 npm run test:e2e
 
 docker compose -p photo-platform-e2e -f docker-compose.e2e.yml down -v
+rm -rf -- ./data/e2e-photos
 ```
 
-The final `down -v` removes the isolated database and photo volumes.
+The final two commands remove the isolated database volume and test-only photo
+folder. They do not touch `data/photos` or `data/pg`.
 
 ### Migrations
 

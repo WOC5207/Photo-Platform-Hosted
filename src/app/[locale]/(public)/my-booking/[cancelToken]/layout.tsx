@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import SiteChrome from "@/components/SiteChrome";
 import { prisma } from "@/lib/db";
 
 // Resolves the owner from the request token — never prerender.
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false
+  }
+};
 
 /**
  * A visitor's own booking page. Reached only by holding the unguessable cancel

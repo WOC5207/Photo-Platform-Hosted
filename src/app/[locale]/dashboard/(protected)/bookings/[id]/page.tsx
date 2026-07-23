@@ -8,9 +8,9 @@ import { pickText } from "@/lib/content";
 import {
   formatDate,
   formatDayTab,
-  formatSlotRange,
-  formatDateTime
+  formatSlotRange
 } from "@/lib/datetime";
+import { formatInstantInTimeZone } from "@/lib/timeZone";
 import BookingEventForm from "@/components/admin/BookingEventForm";
 import BookingDayTabs, { type DayTab } from "@/components/admin/BookingDayTabs";
 import BookingEventSplit from "@/components/admin/BookingEventSplit";
@@ -60,6 +60,10 @@ export default async function EditBookingEventPage({
   const shareUrl = `${config.appBaseUrl()}/${locale}/book/${event.token}`;
   const showLotteryManagement =
     settings.lotteryEnabled || event.lotteryEnabled || !!event.lotteryDraw;
+  const allowMultiDaySlotSync =
+    event.days.length > 1 &&
+    !event.slotsInitialized &&
+    event.days.every((day) => day.slots.length === 0);
 
   return (
     <div className="flex flex-col gap-8">
@@ -108,6 +112,7 @@ export default async function EditBookingEventPage({
         action={updateBookingEvent}
         submitLabel={tc("save")}
         cancelHref="/dashboard/bookings"
+        timeZone={settings.timeZone}
         initial={{
           id: event.id,
           titleEn: event.titleEn,
@@ -183,6 +188,14 @@ export default async function EditBookingEventPage({
                                     capacity: slot.capacity
                                   })}
                                 </span>
+                                {settings.bookingPriceEnabled &&
+                                  slot.pricePerPerson && (
+                                  <span className="ml-3 font-sans font-medium text-fg-muted">
+                                    {t("pricePerPersonDisplay", {
+                                      price: slot.pricePerPerson
+                                    })}
+                                  </span>
+                                )}
                                 {description && (
                                   <span className="ml-3 font-sans font-normal text-fg-subtle">
                                     · {description}
@@ -228,7 +241,12 @@ export default async function EditBookingEventPage({
                                         </p>
                                       )}
                                       <p className="text-xs text-fg-subtle">
-                                        {t("bookedAt")}: {formatDateTime(b.createdAt)}
+                                        {t("bookedAt")}:{" "}
+                                        {formatInstantInTimeZone(
+                                          b.createdAt,
+                                          locale,
+                                          settings.timeZone
+                                        )}
                                       </p>
                                     </div>
                                     <BookingStatusButton
@@ -245,7 +263,12 @@ export default async function EditBookingEventPage({
                     </ul>
                   )}
 
-                  <SlotAdder bookingDayId={day.id} />
+                  <SlotAdder
+                    bookingDayId={day.id}
+                    timeZone={settings.timeZone}
+                    allowMultiDaySync={allowMultiDaySlotSync}
+                    priceEnabled={settings.bookingPriceEnabled}
+                  />
                 </div>
               )
             })

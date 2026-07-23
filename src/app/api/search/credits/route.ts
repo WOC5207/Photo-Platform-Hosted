@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { findOwner } from "@/lib/owner";
 import { photoUrls } from "@/lib/images";
 import { formatCredits } from "@/lib/content";
+import { clientIp } from "@/lib/clientIp";
+import { rateLimit } from "@/lib/rate-limit";
 
 const MAX_RESULTS = 8;
 
@@ -39,6 +41,17 @@ export async function GET(req: NextRequest) {
   const username = (req.nextUrl.searchParams.get("owner") ?? "").trim();
   const owner = username ? await findOwner(username) : null;
   if (!owner) return NextResponse.json({ results: [] });
+  if (
+    !rateLimit(`credit-search:${owner.id}:${clientIp(req.headers)}`, {
+      limit: 120,
+      windowMs: 60 * 1000
+    })
+  ) {
+    return NextResponse.json(
+      { results: [] },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
 
   // `mode: "insensitive"` is required on Postgres, where `contains` maps to a
   // case-SENSITIVE LIKE. (It was implicitly case-insensitive under SQLite, so

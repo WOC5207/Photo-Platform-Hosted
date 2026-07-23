@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   recoverLotteryEntry,
@@ -46,10 +46,10 @@ function ContactFields({ contactMethods }: { contactMethods: PublicContactMethod
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-fg-muted">{t("contactMethod")} *</span>
-          <select name="contactMethod" required defaultValue="" className={inputCls}>
+          <select name="contactMethodId" required defaultValue="" className={inputCls}>
             <option value="" disabled>{t("contactMethodPlaceholder")}</option>
             {contactMethods.map((method) => (
-              <option key={method.id} value={method.label}>{method.label}</option>
+              <option key={method.id} value={method.id}>{method.label}</option>
             ))}
           </select>
         </label>
@@ -83,19 +83,52 @@ export default function LotteryEntryForm({
     FormData
   >(recoverLotteryEntry, {});
   const activeEntry = entryState.entry ?? recoveryState.entry ?? initialEntry;
+  const tokenInputRef = useRef<HTMLInputElement>(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
+
+  async function copyActiveToken() {
+    if (!activeEntry) return;
+    try {
+      await navigator.clipboard.writeText(activeEntry.token);
+      setTokenCopied(true);
+    } catch {
+      tokenInputRef.current?.focus();
+      tokenInputRef.current?.select();
+    }
+  }
 
   if (activeEntry) {
+    const justRecoveredOrEntered = Boolean(entryState.ok || recoveryState.ok);
     return (
       <div className="flex flex-col gap-6">
-        {(entryState.ok || recoveryState.ok) && (
-          <div role="status" className="rounded-xl border border-success-border bg-success-surface p-6 text-center">
+        <div
+          role={justRecoveredOrEntered ? "status" : undefined}
+          className="rounded-xl border border-success-border bg-success-surface p-6 text-center"
+        >
+          {justRecoveredOrEntered && (
             <p className="text-sm text-success">{t("successNotice")}</p>
-            <p className="mt-2 text-xs uppercase tracking-wide text-success">{t("yourToken")}</p>
-            <p className="mt-1 font-mono text-2xl font-bold text-success-strong">
-              {activeEntry.token}
-            </p>
+          )}
+          <div className="mt-2 text-xs uppercase tracking-wide text-success">
+            <span>{t("yourToken")}</span>
+            <span className="mx-auto mt-2 flex max-w-sm items-stretch gap-2">
+              <input
+                ref={tokenInputRef}
+                readOnly
+                value={activeEntry.token}
+                aria-label={t("yourToken")}
+                onFocus={(event) => event.currentTarget.select()}
+                className="min-w-0 flex-1 rounded-lg border border-success-border bg-page/70 px-3 py-2 text-center font-mono text-xl font-bold normal-case tracking-normal text-success-strong outline-none focus-visible:ring-2 focus-visible:ring-success"
+              />
+              <button
+                type="button"
+                onClick={copyActiveToken}
+                className="min-h-11 rounded-lg border border-success-border bg-page/70 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-success-strong transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success"
+              >
+                {tokenCopied ? t("copied") : t("copyToken")}
+              </button>
+            </span>
           </div>
-        )}
+        </div>
         <PublicLotteryDraw drawToken={drawToken} entry={activeEntry} prizes={prizes} />
       </div>
     );

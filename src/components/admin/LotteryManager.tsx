@@ -83,26 +83,49 @@ export default function LotteryManager({
   const [revealedWinner, setRevealedWinner] = useState<LotteryWinner | undefined>();
   const [spinError, setSpinError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [spinSlices, setSpinSlices] = useState<typeof wheelSlices | null>(null);
+  const [resolvedEntryIds, setResolvedEntryIds] = useState<Set<string>>(
+    () => new Set()
+  );
 
+  const activePool = pool.filter((entry) => !resolvedEntryIds.has(entry.id));
+  const displayedWheelSlices = spinSlices ?? wheelSlices;
   const canSpin = !spinning && !busy && !!selectedEntryId && wheelSlices.length > 0;
 
   async function handleSpin() {
     if (!canSpin) return;
+    const slicesAtStart = wheelSlices;
     setSpinError(null);
     setRevealedWinner(undefined);
+    setSpinSlices(slicesAtStart);
     setBusy(true);
-    const result = await spinLotteryEntry(selectedEntryId);
-    setBusy(false);
+    let result: SpinResult;
+    try {
+      result = await spinLotteryEntry(selectedEntryId);
+    } catch {
+      setSpinError("unknown");
+      setSpinSlices(null);
+      return;
+    } finally {
+      setBusy(false);
+    }
     if (!result.ok) {
       setSpinError(result.error);
+      setSpinSlices(null);
       return;
     }
-    const idx = wheelSlices.findIndex((s) => s.id === result.winner.prizeId);
+    const completedEntryId = selectedEntryId;
+    setResolvedEntryIds((current) => new Set(current).add(completedEntryId));
+    setSelectedEntryId(
+      activePool.find((entry) => entry.id !== completedEntryId)?.id ?? ""
+    );
+    const idx = slicesAtStart.findIndex((s) => s.id === result.winner.prizeId);
     if (idx === -1) {
       // Local slice list is stale (e.g. the prize sold out between render
       // and this spin) — reveal directly instead of animating to a slice
       // that no longer matches what's on screen.
       setRevealedWinner(result.winner);
+      setSpinSlices(null);
       return;
     }
     setPendingWinner(result.winner);
@@ -114,13 +137,16 @@ export default function LotteryManager({
     setSpinning(false);
     setRevealedWinner(pendingWinner ?? undefined);
     setPendingWinner(null);
+    setTargetIndex(null);
+    setSpinSlices(null);
   }
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_22rem]">
       <section className="flex flex-col items-center gap-4 rounded-xl border border-border bg-surface p-6">
         <LotteryWheel
-          slices={wheelSlices}
+          slices={displayedWheelSlices}
+          accessibleLabel={t("prizesOnWheel")}
           spinning={spinning}
           targetIndex={targetIndex}
           onSpinComplete={handleSpinComplete}
@@ -132,7 +158,7 @@ export default function LotteryManager({
           className="w-full max-w-xs flex-none rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-fg-subtle"
         >
           <option value="">{t("chooseEntrant")}</option>
-          {pool.map((e) => (
+          {activePool.map((e) => (
             <option key={e.id} value={e.id}>
               {e.token} · {displayName(e)}
             </option>
@@ -148,19 +174,24 @@ export default function LotteryManager({
           {spinning ? t("spinning") : t("spin")}
         </button>
 
-        {pool.length === 0 && (
+        {activePool.length === 0 && (
           <p className="text-xs text-fg-subtle">{t("noEntriesLeft")}</p>
         )}
-        {pool.length > 0 && wheelSlices.length === 0 && (
+        {activePool.length > 0 && wheelSlices.length === 0 && (
           <p className="text-xs text-fg-subtle">{t("noPrizesYet")}</p>
         )}
 
         {spinError && (
-          <p className="text-xs text-danger">{t(`spinError_${spinError}`)}</p>
+          <p role="alert" className="text-xs text-danger">
+            {t(`spinError_${spinError}`)}
+          </p>
         )}
 
         {revealedWinner && (
-          <div className="w-full rounded-lg border border-success-border bg-success-surface p-4 text-center">
+          <div
+            role="status"
+            className="w-full rounded-lg border border-success-border bg-success-surface p-4 text-center"
+          >
             <p className="text-xs uppercase tracking-wide text-success">
               {t("winnerPrize", { prize: revealedWinner.prizeName })}
             </p>
@@ -195,7 +226,11 @@ export default function LotteryManager({
       </section>
 
       <div className="flex flex-col gap-6">
-        <PrizeManager bookingEventId={bookingEventId} prizes={prizesWithRemaining} />
+        <PrizeManager
+          bookingEventId={bookingEventId}
+          prizes={prizesWithRemaining}
+          locked={busy || spinning}
+        />
         <EntryManager
           bookingEventId={bookingEventId}
           availableBookings={availableBookings}
@@ -208,13 +243,14 @@ export default function LotteryManager({
 
 function PrizeManager({
   bookingEventId,
-  prizes
+  prizes,
+  locked
 }: {
   bookingEventId: string;
   prizes: (AdminLotteryPrize & { remaining: number })[];
+  locked: boolean;
 }) {
   const t = useTranslations("adminLottery");
-  const tc = useTranslations("common");
   const [state, formAction, pending] = useActionState<LotteryPrizeState, FormData>(
     addLotteryPrize,
     {}
@@ -227,64 +263,7 @@ function PrizeManager({
       {prizes.length > 0 && (
         <ul className="flex flex-col gap-2">
           {prizes.map((p) => (
-            <li key={p.id} className="rounded-lg border border-border-strong/40 p-2">
-              <form action={updateLotteryPrize} className="flex flex-col gap-1.5">
-                <input type="hidden" name="prizeId" value={p.id} />
-                <label className="flex flex-col gap-1 text-xs text-fg-subtle">
-                  {t("prizeName")}
-                  <input
-                    name="name"
-                    defaultValue={p.name}
-                    maxLength={200}
-                    className={inputCls}
-                  />
-                </label>
-                <div className="flex gap-2">
-                  <label className="flex flex-1 items-center gap-1 text-xs text-fg-subtle">
-                    {t("prizeQuantity")}
-                    <input
-                      name="quantity"
-                      type="number"
-                      min={1}
-                      max={9999}
-                      defaultValue={p.quantity}
-                      className={`${inputCls} w-16 flex-none`}
-                    />
-                  </label>
-                  <label className="flex flex-1 items-center gap-1 text-xs text-fg-subtle">
-                    {t("prizeChance")}
-                    <input
-                      name="weight"
-                      type="number"
-                      min={1}
-                      max={9999}
-                      defaultValue={p.weight}
-                      className={`${inputCls} w-16 flex-none`}
-                    />
-                  </label>
-                  <button type="submit" className={btnCls}>
-                    {tc("save")}
-                  </button>
-                </div>
-              </form>
-              <div className="mt-1 flex items-center justify-between">
-                <span className="text-xs text-fg-subtle">
-                  {t("prizeRemaining", { remaining: p.remaining, quantity: p.quantity })}
-                </span>
-                <form action={deleteLotteryPrize}>
-                  <input type="hidden" name="prizeId" value={p.id} />
-                  <button
-                    type="submit"
-                    onClick={(event) => {
-                      if (!confirm(t("confirmDeletePrize"))) event.preventDefault();
-                    }}
-                    className={`${btnCls} border-danger-border text-danger hover:border-danger hover:text-danger-strong`}
-                  >
-                    {tc("delete")}
-                  </button>
-                </form>
-              </div>
-            </li>
+            <PrizeRow key={p.id} prize={p} locked={locked} />
           ))}
         </ul>
       )}
@@ -325,7 +304,11 @@ function PrizeManager({
           </label>
         </div>
         <p className="text-xs text-fg-subtle">{t("prizeChanceHint")}</p>
-        <button type="submit" disabled={pending} className={`${btnCls} self-start`}>
+        <button
+          type="submit"
+          disabled={pending || locked}
+          className={`${btnCls} self-start`}
+        >
           + {t("addPrize")}
         </button>
         {state.error && (
@@ -333,6 +316,98 @@ function PrizeManager({
         )}
       </form>
     </section>
+  );
+}
+
+function PrizeRow({
+  prize,
+  locked
+}: {
+  prize: AdminLotteryPrize & { remaining: number };
+  locked: boolean;
+}) {
+  const t = useTranslations("adminLottery");
+  const tc = useTranslations("common");
+  const [state, formAction, pending] = useActionState<
+    LotteryPrizeState,
+    FormData
+  >(updateLotteryPrize, {});
+
+  return (
+    <li className="rounded-lg border border-border-strong/40 p-2">
+      <form action={formAction} className="flex flex-col gap-1.5">
+        <input type="hidden" name="prizeId" value={prize.id} />
+        <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+          {t("prizeName")}
+          <input
+            name="name"
+            defaultValue={prize.name}
+            maxLength={200}
+            required
+            className={inputCls}
+          />
+        </label>
+        <div className="flex gap-2">
+          <label className="flex flex-1 items-center gap-1 text-xs text-fg-subtle">
+            {t("prizeQuantity")}
+            <input
+              name="quantity"
+              type="number"
+              min={Math.max(1, prize.wonCount)}
+              max={9999}
+              defaultValue={prize.quantity}
+              required
+              className={`${inputCls} w-16 flex-none`}
+            />
+          </label>
+          <label className="flex flex-1 items-center gap-1 text-xs text-fg-subtle">
+            {t("prizeChance")}
+            <input
+              name="weight"
+              type="number"
+              min={1}
+              max={9999}
+              defaultValue={prize.weight}
+              required
+              className={`${inputCls} w-16 flex-none`}
+            />
+          </label>
+          <button type="submit" disabled={pending || locked} className={btnCls}>
+            {tc("save")}
+          </button>
+        </div>
+        {state.error && (
+          <p role="alert" className="text-xs text-danger">
+            {state.error === "quantityBelowWinners"
+              ? t("prizeQuantityMinimum", {
+                  count: state.minimumQuantity ?? prize.wonCount
+                })
+              : t("prizeValidationError")}
+          </p>
+        )}
+      </form>
+      <div className="mt-1 flex items-center justify-between">
+        <span className="text-xs text-fg-subtle">
+          {t("prizeRemaining", {
+            remaining: prize.remaining,
+            quantity: prize.quantity
+          })}
+        </span>
+        <form action={deleteLotteryPrize}>
+          <input type="hidden" name="prizeId" value={prize.id} />
+          <button
+            type="submit"
+            disabled={locked}
+            onClick={(event) => {
+              if (!confirm(t("confirmDeletePrize"))) event.preventDefault();
+            }}
+            className={`${btnCls} border-danger-border text-danger hover:border-danger hover:text-danger-strong`}
+          >
+            {tc("delete")}
+          </button>
+        </form>
+      </div>
+    </li>
   );
 }
 

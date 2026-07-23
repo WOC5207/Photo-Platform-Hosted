@@ -29,31 +29,31 @@ datasource db {
 // Every content model points back here via ownerId. Nothing is globally
 // scoped any more: a query without an owner filter is a cross-tenant read.
 model User {
-  id           String   @id @default(cuid())
+  id           String @id @default(cuid())
   // Doubles as the public URL identity (/u/<username>), so it stays globally
   // unique even once content is scoped per owner.
-  username     String   @unique
+  username     String @unique
   passwordHash String
   // "user" | "admin". Plain strings to match Booking.status, which is a string
   // because SQLite had no enums; Postgres does, so converting them all is a
   // worthwhile follow-up, but not this phase's business.
-  role         String   @default("user")
+  role         String @default("user")
   // "active" | "suspended". Never cached in the session cookie — see
   // getCurrentUser in src/lib/auth.ts for why.
-  status       String   @default("active")
+  status       String @default("active")
   // Human-readable name for the directory listing. Empty = fall back to
   // username, so an account is never nameless.
-  displayName  String   @default("")
+  displayName  String @default("")
   // Optional contact email for platform notifications: booking alerts for this
   // owner's events and admin announcements. Empty = this account gets no email
   // (in-app only), matching the pre-email default. Set by the account holder in
   // Account -> Profile.
-  email        String   @default("")
+  email        String @default("")
 
   // The tier this account is on. NULL = the default tier, so a new account is
   // on the default without anything having to assign it.
-  tierId       String?
-  tier         Tier?    @relation(fields: [tierId], references: [id], onDelete: SetNull)
+  tierId        String?
+  tier          Tier?     @relation(fields: [tierId], references: [id], onDelete: SetNull)
   // When this account's tier assignment lapses. NULL = it does not.
   //
   // Expiry is resolved lazily, at the moment the tier is read, rather than by a
@@ -77,16 +77,16 @@ model User {
   // check they should not. See src/lib/quota.ts.
   //
   // The cost is drift, which reconcileQuota() exists to correct.
-  usedBytes    BigInt   @default(0)
+  usedBytes    BigInt  @default(0)
   // On-disk bytes held by pending (not yet published) uploads. Tracked apart
   // from usedBytes because pending photos no longer count toward the storage
   // quota — they are compressed in the background and only charged to usedBytes
   // at publish. This counter bounds pending disk so a runaway upload cannot
   // fill the NAS (config.pendingMaxBytes), using the same atomic check-and-claim
   // pattern as usedBytes. reconcileQuota() corrects its drift too.
-  pendingBytes BigInt   @default(0)
+  pendingBytes BigInt  @default(0)
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 
   // Everything this account owns. Cascade means deleting a User removes all of
   // it in one statement — but NOT their files on disk, which must be removed
@@ -100,8 +100,8 @@ model User {
   creditProfiles CreditProfile[]
   siteImages     SiteImage[]
 
-  invitesIssued  Invite[] @relation("InviteIssuer")
-  invite         Invite?  @relation("InviteRedeemer")
+  invitesIssued Invite[] @relation("InviteIssuer")
+  invite        Invite?  @relation("InviteRedeemer")
 
   notificationTargets    PlatformNotificationTarget[]
   notificationDismissals PlatformNotificationDismissal[]
@@ -152,25 +152,25 @@ model Tier {
   // SetNull rather than Cascade: deleting a tier must never delete accounts.
   // Deleting one that is in use is blocked in the action anyway; this is the
   // backstop, and NULL already means "on the default tier".
-  users      User[]
+  users User[]
 }
 
 // Registration is invite-only: there is no public signup form, so an account
 // can only exist because an admin handed out one of these.
 model Invite {
-  id           String    @id @default(cuid())
+  id                   String    @id @default(cuid())
   // Random, unguessable — it is the whole of the /register/<code> URL.
-  code         String    @unique
-  issuedById   String
-  issuedBy     User      @relation("InviteIssuer", fields: [issuedById], references: [id], onDelete: Cascade)
+  code                 String    @unique
+  issuedById           String
+  issuedBy             User      @relation("InviteIssuer", fields: [issuedById], references: [id], onDelete: Cascade)
   // Free-text reminder of who it was meant for; admin-only, never public.
-  note         String    @default("")
-  expiresAt    DateTime?
-  redeemedAt   DateTime?
+  note                 String    @default("")
+  expiresAt            DateTime?
+  redeemedAt           DateTime?
   // One account per invite, enforced by the DB rather than by a check —
   // redemption also locks the row, so a shared link cannot be used twice.
-  redeemedById String?   @unique
-  redeemedBy   User?     @relation("InviteRedeemer", fields: [redeemedById], references: [id], onDelete: SetNull)
+  redeemedById         String?   @unique
+  redeemedBy           User?     @relation("InviteRedeemer", fields: [redeemedById], references: [id], onDelete: SetNull)
   // Populated only when the platform notice required affirmative consent at
   // redemption time. Historical invites remain null rather than implying an
   // agreement that was never collected.
@@ -178,7 +178,7 @@ model Invite {
   consentNoticeHash    String?
   consentLocale        String?
   consentAcceptedAt    DateTime?
-  createdAt    DateTime  @default(now())
+  createdAt            DateTime  @default(now())
 
   @@index([issuedById])
 }
@@ -186,18 +186,26 @@ model Invite {
 // One platform-wide row controlled by administrators. The registration notice
 // appears before the account form for every usable invite link.
 model PlatformSettings {
-  id                              String   @id @default("platform")
-  registrationNoticeEnabled       Boolean  @default(false)
-  registrationNoticeDelaySeconds  Int      @default(5)
-  registrationNoticeTitleEn       String   @default("")
-  registrationNoticeTitleZh       String   @default("")
-  registrationNoticeBodyEn        String   @default("")
-  registrationNoticeBodyZh        String   @default("")
+  id                             String   @id @default("platform")
+  registrationNoticeEnabled      Boolean  @default(false)
+  registrationNoticeDelaySeconds Int      @default(5)
+  registrationNoticeTitleEn      String   @default("")
+  registrationNoticeTitleZh      String   @default("")
+  registrationNoticeBodyEn       String   @default("")
+  registrationNoticeBodyZh       String   @default("")
   // information | consent. Version increments whenever notice content or mode
   // changes so a registration form cannot accept stale legal text.
-  registrationNoticeMode          String   @default("information")
-  registrationNoticeVersion       Int      @default(1)
-  updatedAt                       DateTime @updatedAt
+  registrationNoticeMode         String   @default("information")
+  registrationNoticeVersion      Int      @default(1)
+  // Responsibility notice shown when a photographer opts into displaying
+  // prices. Version increments with its content so stale acknowledgements
+  // cannot enable the feature.
+  bookingPriceNoticeTitleEn      String   @default("")
+  bookingPriceNoticeTitleZh      String   @default("")
+  bookingPriceNoticeBodyEn       String   @default("")
+  bookingPriceNoticeBodyZh       String   @default("")
+  bookingPriceNoticeVersion      Int      @default(1)
+  updatedAt                      DateTime @updatedAt
 }
 
 // A gallery event = one photo album (a con, a shoot, etc.)
@@ -227,52 +235,52 @@ model Event {
 }
 
 model Photo {
-  id           String   @id @default(cuid())
-  eventId      String
-  event        Event    @relation("EventPhotos", fields: [eventId], references: [id], onDelete: Cascade)
+  id                   String        @id @default(cuid())
+  eventId              String
+  event                Event         @relation("EventPhotos", fields: [eventId], references: [id], onDelete: Cascade)
   // Final master filename, or the active versioned candidate while pending.
   // Public renditions use the photo id and never expose pending filenames.
-  filename     String
-  originalName String
-  width        Int
-  height       Int
+  filename             String
+  originalName         String
+  width                Int
+  height               Int
   // Total on-disk size of this photo: the original plus all three renditions.
   // Recorded at upload because nothing else knows it — sizing the files later
   // means an fs.stat per photo, which is what the storage page used to do.
   // Int (2GB) is ample for one photo; only the per-user totals need BigInt.
-  bytes        Int      @default(0)
+  bytes                Int           @default(0)
   // Storage choice for new pending uploads: original | archive | balanced.
   // Existing photos default to original and require no filesystem migration.
-  storagePreset  String  @default("original")
+  storagePreset        String        @default("original")
   // While pending, the exact source and one compressed comparison candidate
   // coexist. These persisted sizes make the queue recoverable after reloads.
-  candidatePreset String?
-  sourceFilename  String?
-  sourceBytes     Int?
-  candidateBytes  Int?
-  renditionBytes  Int?
+  candidatePreset      String?
+  sourceFilename       String?
+  sourceBytes          Int?
+  candidateBytes       Int?
+  renditionBytes       Int?
   // One or more (credited person, subject) credits — most photos have one,
   // group shots have several.
-  credits      PhotoCredit[]
+  credits              PhotoCredit[]
   // EXIF read from the uploaded original at upload time (before it's
   // stripped for the displayed renditions). Null when the file had none.
-  exifFocalLengthMm Float?
-  exifAperture      Float?
-  exifExposureTime  Float?
-  exifIso           Int?
-  exifTakenAt       DateTime?
-  exifCameraModel   String?
-  exifLensModel     String?
-  sortOrder    Int      @default(0)
+  exifFocalLengthMm    Float?
+  exifAperture         Float?
+  exifExposureTime     Float?
+  exifIso              Int?
+  exifTakenAt          DateTime?
+  exifCameraModel      String?
+  exifLensModel        String?
+  sortOrder            Int           @default(0)
   // A free-text note the photographer can attach to a photo, shown under the
   // credit/subject line on the enlarged photo and included in the homepage
   // search. Independent of PhotoCredit (which is per credited person); a photo
   // has at most one comment. Empty string = none.
-  comment      String   @default("")
+  comment              String        @default("")
   // Non-null while the owner is still building an upload batch. Pending
   // photos are fully processed and count toward storage, but stay private and
   // out of normal photo queries until the batch is finalized with credits.
-  pendingBatchId String?
+  pendingBatchId       String?
   // ready | processing | pending | finalizing | deleting. Existing/directly-created photos
   // default to ready; the database check constraint keeps this in sync with
   // pendingBatchId so forgotten query paths fail closed.
@@ -281,7 +289,7 @@ model Photo {
   // the source and thumbnail (so a preview exists immediately) and leaves the
   // row processing while a background worker generates the remaining renditions
   // and the compressed master, then flips it to "pending".
-  uploadState String @default("ready")
+  uploadState          String        @default("ready")
   // Set while a background worker owns this row's compression. Lets exactly one
   // worker (even across app instances) claim a processing row via
   // FOR UPDATE SKIP LOCKED, and lets the startup sweep reclaim a row whose
@@ -289,14 +297,14 @@ model Photo {
   compressionClaimedAt DateTime?
   // True when background compression failed and the source was kept for retry.
   // Distinguishes a stuck/failed processing row from one still being worked.
-  compressionFailed    Boolean @default(false)
-  createdAt    DateTime @default(now())
-  coverOf      Event?   @relation("EventCover")
+  compressionFailed    Boolean       @default(false)
+  createdAt            DateTime      @default(now())
+  coverOf              Event?        @relation("EventCover")
   // Admin-picked for the homepage's per-event carousel. Independent of
   // coverPhotoId (which is exactly one photo per event, used for gallery
   // listing thumbnails) — any number of a published event's photos can be
   // marked here, and that's what populates its homepage carousel slides.
-  homeHighlight Boolean @default(false)
+  homeHighlight        Boolean       @default(false)
 
   @@index([eventId, pendingBatchId])
 }
@@ -305,13 +313,13 @@ model Photo {
 // both the zh and en sites (these are names, not translatable content). A
 // photo with multiple credited people gets one row per person.
 model PhotoCredit {
-  id            String       @id @default(cuid())
-  photoId       String
-  photo         Photo        @relation(fields: [photoId], references: [id], onDelete: Cascade)
-  creditName    String
-  subject       String       @default("")
-  sortOrder     Int          @default(0)
-  socialLinks   SocialLink[]
+  id          String       @id @default(cuid())
+  photoId     String
+  photo       Photo        @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  creditName  String
+  subject     String       @default("")
+  sortOrder   Int          @default(0)
+  socialLinks SocialLink[]
 }
 
 // A credited person's social-media profile link, shown as a button on the
@@ -361,33 +369,36 @@ model CreditProfileSocialLink {
 
 // A bookable photoshoot event with time slots (separate from gallery events)
 model BookingEvent {
-  id            String     @id @default(cuid())
-  ownerId       String
-  owner         User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id               String       @id @default(cuid())
+  ownerId          String
+  owner            User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   // Unguessable token used in the shareable public URL. Stays globally unique:
   // the token alone identifies the event *and* resolves its owner, which is
   // why /book/[token] needs no /u/<username> prefix.
-  token         String     @unique
-  titleEn       String
-  titleZh       String
-  descriptionEn String     @default("")
-  descriptionZh String     @default("")
-  location      String     @default("")
-  date          DateTime
-  open          Boolean    @default(true)
+  token            String       @unique
+  titleEn          String
+  titleZh          String
+  descriptionEn    String       @default("")
+  descriptionZh    String       @default("")
+  location         String       @default("")
+  date             DateTime
+  open             Boolean      @default(true)
   // Whether the prize-draw tool is enabled for this event at all. Off by
   // default so existing/new events don't suddenly expose a "Prize draw"
   // link and public entry page until the admin opts in.
-  lotteryEnabled Boolean   @default(false)
+  lotteryEnabled   Boolean      @default(false)
+  // Becomes true after the event's first slot batch is added. It keeps the
+  // "copy first batch to every day" setup shortcut limited to new schedules.
+  slotsInitialized Boolean      @default(false)
   // The days this event spans. A one-day event has a single BookingDay; a
   // multi-day event has one per selected calendar date. `date` above is kept as
   // a denormalized copy of the earliest day (maintained by the booking actions)
   // so list ordering and legacy `date` reads keep working.
-  days          BookingDay[]
-  slots         TimeSlot[]
-  lotteryDraw   LotteryDraw?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  days             BookingDay[]
+  slots            TimeSlot[]
+  lotteryDraw      LotteryDraw?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   @@index([ownerId])
 }
@@ -420,6 +431,9 @@ model TimeSlot {
   startTime      DateTime
   endTime        DateTime
   capacity       Int          @default(1)
+  // Display-only price text such as "CAD 50" or "¥200". No payment or total
+  // calculation is performed; each booking still reserves one capacity unit.
+  pricePerPerson String       @default("")
   // Optional label shown to visitors alongside the time (e.g. which
   // photographer is working that slot, when multiple are onsite the same
   // day). Set once per batch in the admin "add slots" form. Empty = no label.
@@ -433,46 +447,55 @@ model TimeSlot {
 // one photographer's portfolio; now each account gets its own row, which is
 // what makes per-user homepages, branding and feature toggles possible.
 model SiteSettings {
-  id                  String   @id @default(cuid())
-  ownerId             String   @unique
-  owner               User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  siteTitleEn         String   @default("")
-  siteTitleZh         String   @default("")
+  id                                String    @id @default(cuid())
+  ownerId                           String    @unique
+  owner                             User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  siteTitleEn                       String    @default("")
+  siteTitleZh                       String    @default("")
   // Homepage hero headline/subtitle. Empty = use the built-in default copy.
-  homeTitleEn         String   @default("")
-  homeTitleZh         String   @default("")
-  homeSubtitleEn      String   @default("")
-  homeSubtitleZh      String   @default("")
+  homeTitleEn                       String    @default("")
+  homeTitleZh                       String    @default("")
+  homeSubtitleEn                    String    @default("")
+  homeSubtitleZh                    String    @default("")
   // Empty = use the default dark theme color. Otherwise a CSS hex like "#0a0a0a".
-  backgroundColor     String   @default("")
+  backgroundColor                   String    @default("")
   // Empty = no background image. Otherwise a token; file lives at
   // <PHOTOS_DIR>/_site/<token>.webp, served via /api/site/<token>.webp.
-  backgroundImage     String   @default("")
+  backgroundImage                   String    @default("")
   // Logo shown in the admin header (links to the homepage). Empty = none.
   // Same token/storage scheme as backgroundImage.
-  logo                String   @default("")
+  logo                              String    @default("")
   // Vocabulary override for the "credited person" / "subject" concepts used
   // across the photo-credit editor and booking form (e.g. a
   // cosplay-photography operator might set "Cosplayer"/"Character"). Empty =
   // use the built-in generic default copy. The homepage quick-stats label
   // defaults to this term too, unless overridden below.
-  creditTermEn        String   @default("")
-  creditTermZh        String   @default("")
-  subjectTermEn       String   @default("")
-  subjectTermZh       String   @default("")
+  creditTermEn                      String    @default("")
+  creditTermZh                      String    @default("")
+  subjectTermEn                     String    @default("")
+  subjectTermZh                     String    @default("")
   // Homepage quick-stats label for the credited-person count, independent
   // from creditTermEn/Zh above (e.g. the credit term shown in the photo
   // editor might be "Cosplayer" while the homepage stat reads "CN" for
   // brevity). Empty = fall back to creditTermEn/Zh (pluralized for English).
-  homeCreditsLabelEn   String   @default("")
-  homeCreditsLabelZh   String   @default("")
+  homeCreditsLabelEn                String    @default("")
+  homeCreditsLabelZh                String    @default("")
   // Site-wide feature switches. Off hides the feature's nav links and
   // homepage elements and blocks its public routes; admin management pages
   // for existing data stay reachable so nothing already collected is lost.
-  bookingEnabled       Boolean  @default(true)
-  lotteryEnabled       Boolean  @default(true)
-  creditProfilesEnabled Boolean @default(true)
-  announcementsEnabled Boolean  @default(true)
+  bookingEnabled                    Boolean   @default(true)
+  // Prices are display-only and opt-in. Enabling requires accepting the
+  // current platform-admin notice; stored slot prices remain intact when off.
+  bookingPriceEnabled               Boolean   @default(false)
+  bookingPriceNoticeAcceptedVersion Int?
+  bookingPriceNoticeAcceptedLocale  String?
+  bookingPriceNoticeAcceptedAt      DateTime?
+  // IANA zone used to decide which booking slots are still in the future.
+  // Slot values remain naive wall-clock DateTimes, preserving entered times.
+  timeZone                          String    @default("UTC")
+  lotteryEnabled                    Boolean   @default(true)
+  creditProfilesEnabled             Boolean   @default(true)
+  announcementsEnabled              Boolean   @default(true)
   // "Contact us" card shown behind a header/footer button on the public
   // site. Off hides the button entirely, site-wide. titleEn/Zh label the
   // card (empty = built-in default copy). The link and QR code are set
@@ -481,17 +504,17 @@ model SiteSettings {
   // method for that language (the button just doesn't render on that
   // locale, even if the other language has one configured). QR image
   // fields use the same token/storage scheme as backgroundImage/logo.
-  contactEnabled       Boolean  @default(false)
-  contactTitleEn       String   @default("")
-  contactTitleZh       String   @default("")
-  contactUrlEn         String   @default("")
-  contactUrlZh         String   @default("")
-  contactQrImageEn     String   @default("")
-  contactQrImageZh     String   @default("")
+  contactEnabled                    Boolean   @default(false)
+  contactTitleEn                    String    @default("")
+  contactTitleZh                    String    @default("")
+  contactUrlEn                      String    @default("")
+  contactUrlZh                      String    @default("")
+  contactQrImageEn                  String    @default("")
+  contactQrImageZh                  String    @default("")
   // Flips to true once a non-admin account finishes the first-run setup wizard.
   // Platform admins bypass onboarding and configure their site in the dashboard.
-  setupCompleted       Boolean  @default(false)
-  updatedAt           DateTime @updatedAt
+  setupCompleted                    Boolean   @default(false)
+  updatedAt                         DateTime  @updatedAt
 }
 
 // Admin-managed links to the photographer's other sites/profiles, shown in
@@ -547,36 +570,36 @@ model Announcement {
 }
 
 model Booking {
-  id            String   @id @default(cuid())
+  id            String        @id @default(cuid())
   timeSlotId    String
-  timeSlot      TimeSlot @relation(fields: [timeSlotId], references: [id], onDelete: Cascade)
+  timeSlot      TimeSlot      @relation(fields: [timeSlotId], references: [id], onDelete: Cascade)
   // Visitor's name/handle (shown to the photographer)
   name          String
   // Subject of the shoot (character, role, theme...), optional.
-  subject       String   @default("")
+  subject       String        @default("")
   // Chosen contact-method label (e.g. "WeChat") and the value for it (e.g.
   // the visitor's WeChat ID). Both stored as plain text, not a foreign key,
   // so the booking stays intact even if the admin later edits or removes
   // that ContactMethod option.
-  contactMethod String   @default("")
-  contactValue  String   @default("")
+  contactMethod String        @default("")
+  contactValue  String        @default("")
   // Optional email the visitor gives so they get a confirmation and status
   // updates by mail. Separate from contactValue (which is free-form — WeChat,
   // phone, etc.) precisely so we always have a real address to send to. Empty =
   // no email for this booking.
-  email         String   @default("")
-  notes         String   @default("")
+  email         String        @default("")
+  notes         String        @default("")
   // Which site language the visitor booked in ("zh" | "en"). Captured so any
   // email we send them — the confirmation now, or a later status change made
   // from the photographer's dashboard (a different session, a different locale)
   // — goes out in *their* language, not whoever triggered it. Defaults to the
   // platform default locale for rows that predate this column.
-  locale        String   @default("zh")
+  locale        String        @default("zh")
   // "confirmed" | "cancelled" (SQLite has no enums)
-  status        String   @default("confirmed")
+  status        String        @default("confirmed")
   // Private token for the visitor's self-cancel link
-  cancelToken   String   @unique
-  createdAt     DateTime @default(now())
+  cancelToken   String        @unique
+  createdAt     DateTime      @default(now())
   lotteryEntry  LotteryEntry?
 }
 
@@ -610,22 +633,27 @@ model LotteryDraw {
 // out to Booking. Once an entry wins a prize, wonPrizeId/wonAt are set and
 // it drops out of the pool for later spins.
 model LotteryEntry {
-  id            String        @id @default(cuid())
-  drawId        String
-  draw          LotteryDraw   @relation(fields: [drawId], references: [id], onDelete: Cascade)
-  bookingId     String?       @unique
-  booking       Booking?      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  name          String
-  subject       String        @default("")
-  contactMethod String        @default("")
-  contactValue  String        @default("")
-  token         String
-  wonPrizeId    String?
-  wonPrize      LotteryPrize? @relation(fields: [wonPrizeId], references: [id], onDelete: SetNull)
-  wonAt         DateTime?
-  createdAt     DateTime      @default(now())
+  id              String        @id @default(cuid())
+  drawId          String
+  draw            LotteryDraw   @relation(fields: [drawId], references: [id], onDelete: Cascade)
+  bookingId       String?       @unique
+  booking         Booking?      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  name            String
+  subject         String        @default("")
+  // Stable identity of the selected owner contact option. Kept as a scalar
+  // rather than a foreign key so deleting an option never destroys or orphans
+  // an entrant; contactMethod remains the display-label snapshot.
+  contactMethodId String?
+  contactMethod   String        @default("")
+  contactValue    String        @default("")
+  token           String
+  wonPrizeId      String?
+  wonPrize        LotteryPrize? @relation(fields: [wonPrizeId], references: [id], onDelete: SetNull)
+  wonAt           DateTime?
+  createdAt       DateTime      @default(now())
 
   @@unique([drawId, token])
+  @@index([drawId, contactMethodId])
 }
 
 // A prize option on the wheel. Remaining stock is derived as quantity minus

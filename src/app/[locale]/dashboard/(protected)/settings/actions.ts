@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { discardSiteImage } from "@/lib/siteImages";
+import { isValidTimeZone } from "@/lib/timeZone";
 
 export type SiteSettingsSection =
   | "appearance"
@@ -15,7 +16,10 @@ export type SiteSettingsSection =
   | "contact"
   | "features";
 
-export type SiteSettingsState = { error?: "validation"; ok?: boolean };
+export type SiteSettingsState = {
+  error?: "validation" | "priceNoticeRequired";
+  ok?: boolean;
+};
 
 /** See the note in the events actions: signed in is not the same as owns it. */
 async function guard(): Promise<User> {
@@ -72,6 +76,8 @@ const featuresSchema = z.object({
   homeCreditsLabelEn: z.string().trim().max(60),
   homeCreditsLabelZh: z.string().trim().max(60),
   bookingEnabled: z.boolean(),
+  bookingPriceEnabled: z.boolean(),
+  timeZone: z.string().trim().max(100).refine(isValidTimeZone),
   lotteryEnabled: z.boolean(),
   creditProfilesEnabled: z.boolean()
 });
@@ -133,6 +139,8 @@ export async function updateSiteSettings(
       homeCreditsLabelEn: formData.get("homeCreditsLabelEn") ?? "",
       homeCreditsLabelZh: formData.get("homeCreditsLabelZh") ?? "",
       bookingEnabled: formData.get("bookingEnabled") === "on",
+      bookingPriceEnabled: formData.get("bookingPriceEnabled") === "on",
+      timeZone: formData.get("timeZone") ?? "UTC",
       lotteryEnabled: formData.get("lotteryEnabled") === "on",
       creditProfilesEnabled: formData.get("creditProfilesEnabled") === "on"
     });
@@ -141,13 +149,65 @@ export async function updateSiteSettings(
       ...parsed.data,
       // Lottery is a booking-event tool, so it cannot be public while the
       // parent booking feature is off.
-      lotteryEnabled: parsed.data.bookingEnabled && parsed.data.lotteryEnabled
+      lotteryEnabled: parsed.data.bookingEnabled && parsed.data.lotteryEnabled,
+      bookingPriceEnabled:
+        parsed.data.bookingEnabled && parsed.data.bookingPriceEnabled
     };
-    await prisma.siteSettings.upsert({
-      where: { ownerId: user.id },
-      create: { ownerId: user.id, ...data },
-      update: data
+    const acceptedVersion = Number(
+      formData.get("bookingPriceNoticeAcceptedVersion")
+    );
+    const locale = await getLocale();
+    const result = await prisma.$transaction(async (tx) => {
+      // The admin notice editor uses the same row lock. That makes checking the
+      // version and enabling the feature one atomic decision: the notice cannot
+      // change between acknowledgement and the settings write.
+      const notices = await tx.$queryRaw<
+        {
+          bookingPriceNoticeTitleEn: string;
+          bookingPriceNoticeTitleZh: string;
+          bookingPriceNoticeBodyEn: string;
+          bookingPriceNoticeBodyZh: string;
+          bookingPriceNoticeVersion: number;
+        }[]
+      >`SELECT * FROM "PlatformSettings" WHERE id = 'platform' FOR UPDATE`;
+      const notice = notices[0];
+      const existing = await tx.siteSettings.findUnique({
+        where: { ownerId: user.id },
+        select: { bookingPriceEnabled: true }
+      });
+      const newlyEnabling =
+        data.bookingPriceEnabled && !existing?.bookingPriceEnabled;
+
+      if (
+        newlyEnabling &&
+        (!notice ||
+          (!notice.bookingPriceNoticeTitleEn.trim() &&
+            !notice.bookingPriceNoticeTitleZh.trim()) ||
+          (!notice.bookingPriceNoticeBodyEn.trim() &&
+            !notice.bookingPriceNoticeBodyZh.trim()) ||
+          acceptedVersion !== notice.bookingPriceNoticeVersion)
+      ) {
+        return "priceNoticeRequired" as const;
+      }
+
+      const acceptance = newlyEnabling
+        ? {
+            bookingPriceNoticeAcceptedVersion:
+              notice.bookingPriceNoticeVersion,
+            bookingPriceNoticeAcceptedLocale: locale,
+            bookingPriceNoticeAcceptedAt: new Date()
+          }
+        : {};
+      await tx.siteSettings.upsert({
+        where: { ownerId: user.id },
+        create: { ownerId: user.id, ...data, ...acceptance },
+        update: { ...data, ...acceptance }
+      });
+      return "ok" as const;
     });
+    if (result === "priceNoticeRequired") {
+      return { error: "priceNoticeRequired" };
+    }
   }
 
   revalidatePath("/", "layout");

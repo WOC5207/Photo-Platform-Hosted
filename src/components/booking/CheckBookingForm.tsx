@@ -54,7 +54,7 @@ export default function CheckBookingForm({
         </label>
 
         {errorMessage && (
-          <p className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
+          <p role="alert" className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
             {errorMessage}
           </p>
         )}
@@ -77,6 +77,11 @@ export default function CheckBookingForm({
             >
               <p className="font-semibold">{r.eventTitle}</p>
               <p className="font-mono text-sm text-fg-subtle">{r.slotLabel}</p>
+              {r.pricePerPerson && (
+                <p className="mt-1 text-sm font-medium text-fg-muted">
+                  {t("pricePerPersonDisplay", { price: r.pricePerPerson })}
+                </p>
+              )}
               <p className="mt-1 text-sm text-fg-muted">
                 {displayName(r.name, r.subject)}
               </p>
