@@ -69,7 +69,8 @@ function booking(i: number) {
     contactValue: `racer-${i}@example.com`,
     email: "",
     notes: "",
-    cancelToken: randomUUID().replace(/-/g, "")
+    cancelToken: randomUUID().replace(/-/g, ""),
+    locale: "zh"
   };
 }
 

@@ -566,6 +566,12 @@ model Booking {
   // no email for this booking.
   email         String   @default("")
   notes         String   @default("")
+  // Which site language the visitor booked in ("zh" | "en"). Captured so any
+  // email we send them — the confirmation now, or a later status change made
+  // from the photographer's dashboard (a different session, a different locale)
+  // — goes out in *their* language, not whoever triggered it. Defaults to the
+  // platform default locale for rows that predate this column.
+  locale        String   @default("zh")
   // "confirmed" | "cancelled" (SQLite has no enums)
   status        String   @default("confirmed")
   // Private token for the visitor's self-cancel link

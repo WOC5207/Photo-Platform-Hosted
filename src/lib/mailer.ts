@@ -19,7 +19,12 @@ import { config } from "./config";
 export interface MailMessage {
   to: string;
   subject: string;
+  // Plain-text body. Always set — it is the fallback for clients that don't
+  // render HTML, and the only body when `html` is absent.
   text: string;
+  // Optional HTML body. When present it is delivered alongside `text` as a
+  // multipart/alternative message, and rich clients show this instead.
+  html?: string;
 }
 
 /**
@@ -33,6 +38,7 @@ export interface MailTransport {
     to: string;
     subject: string;
     text: string;
+    html?: string;
   }): Promise<unknown>;
 }
 
@@ -81,7 +87,10 @@ export async function sendMail(
       from: config.smtp().from,
       to: message.to,
       subject: message.subject,
-      text: message.text
+      text: message.text,
+      // Only set html when there is one, so text-only messages stay a plain
+      // single-part email rather than an empty-HTML multipart.
+      ...(message.html ? { html: message.html } : {})
     });
     return { sent: true };
   } catch (error) {

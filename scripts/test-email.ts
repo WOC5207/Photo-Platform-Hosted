@@ -21,6 +21,7 @@ import {
   resolveBookingRecipients,
   notifyAnnouncement,
   notifyBookingCreated,
+  notifyBookingStatusChanged,
   type BookingNotification
 } from "../src/lib/notify";
 
@@ -36,6 +37,7 @@ interface SentMessage {
   to: string;
   subject: string;
   text: string;
+  html?: string;
 }
 
 /** A transport that records what it was asked to send instead of sending it. */
@@ -99,6 +101,7 @@ function bookingInfo(over: Partial<BookingNotification>): BookingNotification {
     slotStart: new Date("2026-08-01T14:00:00Z"),
     slotEnd: new Date("2026-08-01T15:00:00Z"),
     manageUrl: "https://example.com/zh/my-booking/tok",
+    locale: "zh",
     visitorEmail: "",
     ownerEmail: "",
     ...over
@@ -244,6 +247,16 @@ async function testNotifyBookingCreated() {
     new Set(subjects).size === 2,
     `subjects=${JSON.stringify(subjects)} (want two distinct)`
   );
+  // The owner alert deliberately stays bilingual — the photographer sees
+  // visitors from both sites and has no single booking locale.
+  const ownerMsg = both.sent.find((m) => m.to === "o@test");
+  report(
+    "booking created: the owner alert stays bilingual",
+    !!ownerMsg &&
+      ownerMsg.text.includes("A new booking has been made") &&
+      ownerMsg.text.includes("收到一条新预约"),
+    `owner text=${JSON.stringify(ownerMsg?.text.slice(0, 48))} (want EN + 中文)`
+  );
 
   const visitorOnly = fakeTransport();
   await notifyBookingCreated(
@@ -265,6 +278,101 @@ async function testNotifyBookingCreated() {
     "booking created: nobody is emailed when there is no address at all",
     noneFake.sent.length === 0,
     `sent ${noneFake.sent.length} (want 0)`
+  );
+
+  reset();
+}
+
+/**
+ * The visitor's email is written in the *one* language they booked in (carried
+ * on `locale`), not both — a zh booking never leaks English and vice versa.
+ * This is the verify-can-fail canary for the localisation: revert visitorMessage
+ * to the old bilingual body and both halves of each assertion go red.
+ */
+async function testVisitorEmailLanguage() {
+  const reset = withSmtpConfigured();
+
+  const zh = fakeTransport();
+  await notifyBookingStatusChanged(
+    bookingInfo({ visitorEmail: "v@test", locale: "zh" }),
+    "confirmed",
+    zh.transport
+  );
+  const zhMsg = zh.sent[0];
+  report(
+    "visitor email: a zh booking is written in Chinese only",
+    !!zhMsg &&
+      zhMsg.subject === "预约已确认" &&
+      zhMsg.text.includes("您的预约已确认") &&
+      !zhMsg.text.toLowerCase().includes("your booking is confirmed"),
+    `subject=${zhMsg?.subject}, text=${JSON.stringify(zhMsg?.text.slice(0, 40))}`
+  );
+
+  const en = fakeTransport();
+  await notifyBookingStatusChanged(
+    bookingInfo({ visitorEmail: "v@test", locale: "en" }),
+    "confirmed",
+    en.transport
+  );
+  const enMsg = en.sent[0];
+  report(
+    "visitor email: an en booking is written in English only",
+    !!enMsg &&
+      enMsg.subject === "Booking confirmed" &&
+      enMsg.text.includes("your booking is confirmed") &&
+      !enMsg.text.includes("您的预约"),
+    `subject=${enMsg?.subject}, text=${JSON.stringify(enMsg?.text.slice(0, 40))}`
+  );
+
+  reset();
+}
+
+/**
+ * The visitor's email carries a styled HTML body that mirrors the booking card:
+ * the event title, the details, and a link back to the manage page. Owner alerts
+ * remain plain text — HTML is only for the visitor-facing confirmation.
+ */
+async function testVisitorEmailHtml() {
+  const reset = withSmtpConfigured();
+  const fake = fakeTransport();
+  await notifyBookingStatusChanged(
+    bookingInfo({
+      visitorEmail: "v@test",
+      locale: "en",
+      eventTitle: "Spring shoot",
+      manageUrl: "https://example.com/en/my-booking/tok"
+    }),
+    "confirmed",
+    fake.transport
+  );
+  const msg = fake.sent[0];
+  report(
+    "visitor email: carries an HTML body mirroring the booking card",
+    !!msg &&
+      typeof msg.html === "string" &&
+      msg.html.includes("Spring shoot") &&
+      msg.html.includes("https://example.com/en/my-booking/tok"),
+    `html present=${typeof msg?.html === "string"}, len=${msg?.html?.length ?? 0}`
+  );
+  // A crafted event title must not be able to break out of the HTML body.
+  const injected = fakeTransport();
+  await notifyBookingStatusChanged(
+    bookingInfo({
+      visitorEmail: "v@test",
+      locale: "en",
+      eventTitle: "<script>alert(1)</script>"
+    }),
+    "confirmed",
+    injected.transport
+  );
+  const injMsg = injected.sent[0];
+  report(
+    "visitor email: HTML escapes user-supplied text",
+    !!injMsg &&
+      typeof injMsg.html === "string" &&
+      !injMsg.html.includes("<script>alert(1)</script>") &&
+      injMsg.html.includes("&lt;script&gt;"),
+    `html contains escaped title=${injMsg?.html?.includes("&lt;script&gt;")}`
   );
 
   reset();
@@ -307,6 +415,8 @@ async function main() {
   await testEmptyRecipientSkipped();
   testResolveBookingRecipients();
   await testNotifyBookingCreated();
+  await testVisitorEmailLanguage();
+  await testVisitorEmailHtml();
   await testNotifyAnnouncement();
   console.log(
     `\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`
