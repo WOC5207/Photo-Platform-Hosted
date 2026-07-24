@@ -669,9 +669,25 @@ test.describe.serial("management workflows", () => {
     });
 
     try {
-      await page.getByRole("checkbox", { name: "Open for public booking" }).check();
+      // Reload so the just-added slots render from settled server state — the
+      // open toggle is an uncontrolled checkbox, and racing it against the
+      // slot-add revalidation can submit a stale (unchecked) value.
+      await page.reload();
+      const openCheckbox = page.getByRole("checkbox", {
+        name: "Open for public booking"
+      });
+      await openCheckbox.check();
+      await expect(openCheckbox).toBeChecked();
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
+      // Confirm the open state actually persisted before hitting the public page.
+      await expect
+        .poll(() =>
+          prisma.bookingEvent
+            .findUnique({ where: { id: event.id }, select: { open: true } })
+            .then((e) => e?.open)
+        )
+        .toBe(true);
 
       // Public page: two day tabs; switch to the second day and book its slot.
       await page.goto(`/en/book/${event.token}`);
