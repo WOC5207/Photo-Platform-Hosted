@@ -131,7 +131,11 @@ export default function CompressionStep({
         <p className="text-xs text-fg-subtle">{t("storageOriginalDisabled")}</p>
       )}
 
-      <div className="flex flex-col gap-3 rounded-lg border border-border-strong/60 bg-surface/50 p-3 sm:flex-row sm:items-end sm:justify-between">
+      <div
+        id="wizard-compression-actions"
+        tabIndex={-1}
+        className="flex scroll-mt-24 flex-col gap-3 rounded-lg border border-border-strong/60 bg-surface/50 p-3 outline-none transition data-[guidance-active=true]:ring-2 data-[guidance-active=true]:ring-fg/70 data-[guidance-active=true]:ring-offset-4 data-[guidance-active=true]:ring-offset-page sm:flex-row sm:items-end sm:justify-between"
+      >
         <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-fg-muted sm:max-w-72 sm:flex-1">
           {tw("compressSizeLabel")}
           <select
