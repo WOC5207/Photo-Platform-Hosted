@@ -379,7 +379,13 @@ test.describe.serial("management workflows", () => {
     await expect(page.getByLabel("Storage quality for the next selection")).toHaveCount(0);
     await expect(page.getByText("Maximum size per photo: 100 MB.")).toBeVisible();
     let forwardButton = page.getByRole("button", { name: "Choose photo size" });
-    await expect(forwardButton).toBeDisabled();
+    await expect(forwardButton).toBeEnabled();
+    await forwardButton.click();
+    await expect(page.locator("#wizard-upload-action")).toBeFocused();
+    await expect(page.locator("#wizard-upload-action")).toHaveAttribute(
+      "data-guidance-active",
+      "true"
+    );
 
     // The native picker can select any size, so the app must reject an
     // oversized file before it is added to the queue or sent to the server.
@@ -483,11 +489,18 @@ test.describe.serial("management workflows", () => {
     const grid = page.getByTestId("wizard-photo-grid");
     await expect(grid.getByRole("button")).toHaveCount(3);
 
-    // On entry every photo awaits a size, so the forward action is blocked and only an
-    // estimated total is shown — the exact total appears after compression.
+    // On entry every photo awaits a size. Clicking the forward action from the
+    // bottom of a long batch must guide the user back to the required controls.
     await expect(grid.getByText("Awaiting size")).toHaveCount(3);
     await expect(page.getByText(/^Estimated total after publishing:/)).toBeVisible();
-    await expect(forwardButton).toBeDisabled();
+    await expect(forwardButton).toBeEnabled();
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await forwardButton.click();
+    await expect(page.locator("#wizard-compression-actions")).toBeFocused();
+    await expect(page.locator("#wizard-compression-actions")).toHaveAttribute(
+      "data-guidance-active",
+      "true"
+    );
 
     // Advancing from the previous step selects every photo by default; compress
     // them all at Balanced (4096px) first, which starts the deferred encode.
@@ -534,7 +547,14 @@ test.describe.serial("management workflows", () => {
     await expect(
       page.getByText("2 photos have no credit and will be published without attribution.")
     ).toBeVisible();
-    await expect(forwardButton).toBeDisabled();
+    await expect(forwardButton).toBeEnabled();
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await forwardButton.click();
+    await expect(page.locator("#wizard-uncredited-action")).toBeFocused();
+    await expect(page.locator("#wizard-uncredited-action")).toHaveAttribute(
+      "data-guidance-active",
+      "true"
+    );
     await page
       .getByRole("checkbox", { name: "Publish these photos without a credit" })
       .check();

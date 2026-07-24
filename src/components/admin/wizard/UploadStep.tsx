@@ -52,7 +52,11 @@ export default function UploadStep({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid gap-3 rounded-xl border border-dashed border-border-strong p-4 sm:justify-items-start">
+      <div
+        id="wizard-upload-action"
+        tabIndex={-1}
+        className="grid scroll-mt-24 gap-3 rounded-xl border border-dashed border-border-strong p-4 outline-none transition data-[guidance-active=true]:ring-2 data-[guidance-active=true]:ring-fg/70 data-[guidance-active=true]:ring-offset-4 data-[guidance-active=true]:ring-offset-page sm:justify-items-start"
+      >
         <label className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-85 focus-within:ring-2 focus-within:ring-fg/40 sm:w-fit">
           <input
             type="file"
@@ -93,8 +97,10 @@ export default function UploadStep({
 
       {queue.files.length > 0 && (
         <section
+          id="wizard-upload-status"
+          tabIndex={-1}
           aria-labelledby="pending-upload-heading"
-          className="rounded-lg border border-border-strong/60 bg-surface/50 p-3"
+          className="scroll-mt-24 rounded-lg border border-border-strong/60 bg-surface/50 p-3 outline-none transition data-[guidance-active=true]:ring-2 data-[guidance-active=true]:ring-fg/70 data-[guidance-active=true]:ring-offset-4 data-[guidance-active=true]:ring-offset-page"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">

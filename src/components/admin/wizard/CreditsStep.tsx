@@ -142,8 +142,10 @@ export default function CreditsStep({
 
       {uncreditedCount > 0 && (
         <div
+          id="wizard-uncredited-action"
+          tabIndex={-1}
           role="alert"
-          className="flex flex-col gap-2 rounded-lg border border-danger-border bg-danger-surface/40 p-3 text-sm"
+          className="flex scroll-mt-24 flex-col gap-2 rounded-lg border border-danger-border bg-danger-surface/40 p-3 text-sm outline-none transition data-[guidance-active=true]:ring-2 data-[guidance-active=true]:ring-danger data-[guidance-active=true]:ring-offset-4 data-[guidance-active=true]:ring-offset-page"
         >
           <p className="font-medium text-danger-strong">
             {tw("uncreditedWarning", { count: uncreditedCount })}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import {
@@ -61,6 +61,7 @@ export default function PhotoWizard({
   const [ackUncredited, setAckUncredited] = useState(false);
   const [publishPhase, setPublishPhase] = useState<PublishPhase>("idle");
   const [publishedCount, setPublishedCount] = useState(0);
+  const guidanceTimer = useRef<number | null>(null);
   const hasDraft =
     publishPhase !== "success" &&
     (queue.files.length > 0 ||
@@ -134,6 +135,81 @@ export default function PhotoWizard({
           : publishing
             ? tw("publishing")
             : tw("publish", { count: queue.browsableFiles.length });
+  const hasGuidanceTarget =
+    failedCount > 0 ||
+    (stepIndex === 0 &&
+      queue.files.length === 0 &&
+      !queue.clearing) ||
+    (stepIndex === 1 && queue.awaitingCount > 0) ||
+    (stepIndex === 2 &&
+      uncreditedCount > 0 &&
+      !ackUncredited);
+  const forwardDisabled =
+    publishing ||
+    (stepIndex < steps.length - 1
+      ? !canContinue && !hasGuidanceTarget
+      : !canPublish);
+
+  function guideToElement(id: string) {
+    const target = document.getElementById(id);
+    if (!target) return;
+
+    document
+      .querySelectorAll<HTMLElement>("[data-guidance-active='true']")
+      .forEach((element) => delete element.dataset.guidanceActive);
+    if (guidanceTimer.current !== null) {
+      window.clearTimeout(guidanceTimer.current);
+    }
+    target.dataset.guidanceActive = "true";
+    target.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+      block: "center"
+    });
+    target.focus({ preventScroll: true });
+    guidanceTimer.current = window.setTimeout(() => {
+      delete target.dataset.guidanceActive;
+      guidanceTimer.current = null;
+    }, 1800);
+  }
+
+  function guideToRequiredAction() {
+    if (failedCount > 0) {
+      if (stepIndex !== 0) {
+        setStepIndex(0);
+        window.setTimeout(() => guideToElement("wizard-upload-status"), 0);
+      } else {
+        guideToElement("wizard-upload-status");
+      }
+      return;
+    }
+    if (stepIndex === 0 && queue.files.length === 0) {
+      guideToElement("wizard-upload-action");
+      return;
+    }
+    if (stepIndex === 1 && queue.awaitingCount > 0) {
+      guideToElement("wizard-compression-actions");
+      return;
+    }
+    if (stepIndex === 2 && uncreditedCount > 0 && !ackUncredited) {
+      guideToElement("wizard-uncredited-action");
+    }
+  }
+
+  function handleForward() {
+    if (stepIndex < steps.length - 1 && !canContinue) {
+      guideToRequiredAction();
+      return;
+    }
+    if (stepIndex < steps.length - 1) {
+      setStepIndex((current) =>
+        Math.min(steps.length - 1, current + 1)
+      );
+      return;
+    }
+    void publish();
+  }
 
   function assignCredits(photoIds: string[], credits: AssignedCredit[]) {
     setCreditsByPhoto((current) => {
@@ -259,6 +335,7 @@ export default function PhotoWizard({
         <div className="flex items-center justify-end gap-3 max-sm:flex-col max-sm:items-stretch">
           {continueHint && (
             <span
+              id="wizard-forward-hint"
               role="status"
               className="max-w-md rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-fg-muted"
             >
@@ -267,18 +344,9 @@ export default function PhotoWizard({
           )}
           <button
             type="button"
-            disabled={
-              stepIndex < steps.length - 1 ? !canContinue : !canPublish
-            }
-            onClick={() => {
-              if (stepIndex < steps.length - 1) {
-                setStepIndex((current) =>
-                  Math.min(steps.length - 1, current + 1)
-                );
-              } else {
-                void publish();
-              }
-            }}
+            disabled={forwardDisabled}
+            aria-describedby={continueHint ? "wizard-forward-hint" : undefined}
+            onClick={handleForward}
             className={`${primaryBtnCls} min-h-12 px-6 shadow-md max-sm:w-full`}
           >
             {forwardLabel}
