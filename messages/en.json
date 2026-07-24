@@ -366,6 +366,7 @@
     "contactMethodLabelZh": "Label (中文)",
     "addContactMethod": "Add",
     "noContactMethods": "No contact methods yet — add at least one so visitors can book.",
+    "manageContactMethods": "Go to contact-method settings.",
     "contactMethodValidationError": "Please fill in at least one label.",
     "confirmDeleteContactMethod": "Delete this contact method?",
     "personalLinksSection": "Personal links",
