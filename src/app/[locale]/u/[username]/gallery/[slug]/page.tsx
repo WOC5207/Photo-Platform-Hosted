@@ -8,6 +8,7 @@ import { formatDateRange } from "@/lib/datetime";
 import { formatPhotoExif } from "@/lib/exif";
 import { Link } from "@/i18n/navigation";
 import AlbumViewer, { type AlbumPhoto } from "@/components/gallery/AlbumViewer";
+import { publicPhotoWhere } from "@/lib/photoVisibility";
 
 export const dynamic = "force-dynamic";
 const ALBUM_PAGE_SIZE = 48;
@@ -38,7 +39,7 @@ export default async function AlbumPage({
   // Unpublished events are fully hidden from the public.
   if (!event || !event.published) notFound();
 
-  const photoWhere = { eventId: event.id, pendingBatchId: null };
+  const photoWhere = { eventId: event.id, ...publicPhotoWhere };
   const totalPhotos = await prisma.photo.count({ where: photoWhere });
   const totalPages = Math.max(1, Math.ceil(totalPhotos / ALBUM_PAGE_SIZE));
   let page = Math.min(

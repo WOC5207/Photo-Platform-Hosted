@@ -5,6 +5,7 @@ import { pickText } from "@/lib/content";
 import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
+import { publicPhotoWhere } from "@/lib/photoVisibility";
 
 export const dynamic = "force-dynamic";
 
@@ -23,14 +24,14 @@ export default async function GalleryPage({
     where: { ownerId: owner.id, published: true },
     orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
     include: {
-      coverPhoto: { where: { pendingBatchId: null } },
+      coverPhoto: { where: publicPhotoWhere },
       photos: {
-        where: { pendingBatchId: null },
+        where: publicPhotoWhere,
         orderBy: { sortOrder: "asc" },
         take: 1
       },
       _count: {
-        select: { photos: { where: { pendingBatchId: null } } }
+        select: { photos: { where: publicPhotoWhere } }
       }
     }
   });

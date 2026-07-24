@@ -17,6 +17,9 @@ const DEFAULT_PENDING_MAX_MB = 10 * 1024;
 // How long a background-compression claim is trusted before the startup sweep
 // treats it as abandoned (worker crashed mid-compress) and reclaims the row.
 const DEFAULT_COMPRESSION_CLAIM_STALE_MS = 10 * 60 * 1000;
+const DEFAULT_MODERATION_CLAIM_STALE_MS = 5 * 60 * 1000;
+const DEFAULT_MODERATION_CONCURRENCY = 2;
+const DEFAULT_MODERATION_MAX_ATTEMPTS = 4;
 
 function positiveMb(name: string, fallback: number): number {
   const configured = Number(process.env[name] ?? fallback);
@@ -68,6 +71,14 @@ export const config = {
     Math.floor(positiveMb("PENDING_MAX_MB", DEFAULT_PENDING_MAX_MB) * 1024 * 1024),
   compressionClaimStaleMs: () =>
     positiveInt("COMPRESSION_CLAIM_STALE_MS", DEFAULT_COMPRESSION_CLAIM_STALE_MS),
+  moderationClaimStaleMs: () =>
+    positiveInt("MODERATION_CLAIM_STALE_MS", DEFAULT_MODERATION_CLAIM_STALE_MS),
+  moderationConcurrency: () =>
+    positiveInt("MODERATION_CONCURRENCY", DEFAULT_MODERATION_CONCURRENCY),
+  moderationMaxAttempts: () =>
+    positiveInt("MODERATION_MAX_ATTEMPTS", DEFAULT_MODERATION_MAX_ATTEMPTS),
+  openAiApiKey: () => process.env.OPENAI_API_KEY?.trim() ?? "",
+  isOpenAIConfigured: () => Boolean(process.env.OPENAI_API_KEY?.trim()),
   imageMaxPixels: () => positiveInt("IMAGE_MAX_PIXELS", DEFAULT_IMAGE_MAX_PIXELS),
   imageProcessingConcurrency: () =>
     positiveInt("IMAGE_PROCESSING_CONCURRENCY", DEFAULT_IMAGE_PROCESSING_CONCURRENCY),

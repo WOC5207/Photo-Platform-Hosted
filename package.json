@@ -18,6 +18,8 @@
     "test:security:db": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-security-db.ts",
     "test:bookingorg": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-booking-orgs.ts",
     "test:email": "tsx --conditions=react-server scripts/test-email.ts",
+    "test:moderation": "tsx --conditions=react-server scripts/test-moderation.ts",
+    "test:moderation:db": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-moderation-db.ts",
     "test:http": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-http-isolation.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
@@ -31,6 +33,7 @@
     "next": "^15.5.0",
     "next-intl": "^4.3.0",
     "nodemailer": "^9.0.3",
+    "openai": "^6.49.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "sharp": "^0.35.3",

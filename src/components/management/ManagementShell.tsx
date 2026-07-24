@@ -25,6 +25,7 @@ export type ManagementIcon =
   | "invites"
   | "tiers"
   | "health"
+  | "moderation"
   | "notifications";
 
 export interface ManagementNavItem {
@@ -140,6 +141,12 @@ function NavigationIcon({ name }: { name: ManagementIcon }) {
       <>
         <path d="M3 12h4l2-7 4 14 2-7h6" />
         <path d="M21 6v15H3V3h12" />
+      </>
+    ),
+    moderation: (
+      <>
+        <path d="M12 3 4 6v5c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6l-8-3Z" />
+        <path d="m9 12 2 2 4-4" />
       </>
     ),
     notifications: (

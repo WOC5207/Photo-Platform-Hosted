@@ -115,6 +115,10 @@ Tested target: DS920+ (x86-64). Everything below happens in DSM. The same
 | `UPLOAD_MAX_MB` | Max size per uploaded photo (default 100) |
 | `IMAGE_MAX_PIXELS` | Maximum decoded pixels per image; leave at `100000000` for a NAS-safe 100 MP ceiling |
 | `IMAGE_PROCESSING_CONCURRENCY` | Simultaneous Sharp jobs; leave at `1` on Synology |
+| `OPENAI_API_KEY` | Optional server-only key for post-publish photo moderation. Leave unset when moderation is disabled |
+| `MODERATION_CONCURRENCY` | Simultaneous moderation requests (default `2`) |
+| `MODERATION_CLAIM_STALE_MS` | Time before an abandoned processing claim is recovered (default `300000`) |
+| `MODERATION_MAX_ATTEMPTS` | Attempts before screening fails closed and remains private (default `4`) |
 | `TRUSTED_PROXY_HOPS` | Trusted proxies in the forwarded-IP chain: `1` for DSM alone, `2` for Cloudflare plus DSM |
 
 Uploads are streamed to a bounded temporary file and rejected as soon as they
@@ -126,6 +130,12 @@ would be unsafe even though the original file is below 100 MB.
 While a photo is pending, its exact source, one comparison candidate and the
 three gallery renditions all count toward quota until **Create** removes the
 unselected master.
+
+Photo moderation is off by default. When enabled by a platform administrator,
+the first moderation request is made only after **Publish** commits. New photos
+stay private while the metadata-free 1280px WebP rendition is screened; safe
+photos become public automatically and flagged photos wait for manual review.
+Existing photos are not scanned retroactively.
 
 `DATABASE_URL` is **not** in `.env` — `docker-compose.yml` sets it for you, to
 point at the database container.

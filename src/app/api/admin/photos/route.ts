@@ -15,6 +15,9 @@ import {
   type StoragePreset
 } from "@/lib/images";
 import { enqueueCompression } from "@/lib/compressionWorker";
+import { enqueueModeration } from "@/lib/moderationWorker";
+import { getPlatformSettings } from "@/lib/platformSettings";
+import { thresholdsFromSettings } from "@/lib/moderationPolicy";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
 import {
   MultipartUploadError,
@@ -242,7 +245,6 @@ export async function GET(req: NextRequest) {
   if (!(await findOwnedEvent(eventId, user))) {
     return NextResponse.json({ error: "eventNotFound" }, { status: 404 });
   }
-
   const photos = await prisma.photo.findMany({
     where: {
       eventId,
@@ -640,6 +642,12 @@ export async function PATCH(req: NextRequest) {
   if (!(await findOwnedEvent(eventId, user))) {
     return NextResponse.json({ error: "eventNotFound" }, { status: 404 });
   }
+  // Moderation is deliberately sampled only here, after the photographer has
+  // clicked Publish. Upload, compression, and credit assignment make no
+  // provider calls and retain their existing behavior.
+  const platformSettings = await getPlatformSettings();
+  const moderationEnabled = platformSettings.moderationEnabled;
+  const moderationThresholds = thresholdsFromSettings(platformSettings);
 
   let alreadyFinalized = false;
   try {
@@ -837,6 +845,18 @@ export async function PATCH(req: NextRequest) {
                 sourceFilename: null,
                 pendingBatchId: null,
                 uploadState: "ready",
+                moderationStatus: moderationEnabled
+                  ? "queued"
+                  : "not_required",
+                moderationPolicyVersion: moderationEnabled
+                  ? platformSettings.moderationPolicyVersion
+                  : undefined,
+                moderationThresholds: moderationEnabled
+                  ? moderationThresholds
+                  : undefined,
+                moderationAttempts: moderationEnabled ? 0 : undefined,
+                moderationClaimedAt: null,
+                moderationNextRetryAt: null,
                 sortOrder: firstOrder + photoIndex,
                 comment: commentFor(id),
                 credits: {
@@ -872,8 +892,24 @@ export async function PATCH(req: NextRequest) {
     console.error("Failed to sync credit profiles:", err)
   );
 
+  const moderationStates = await prisma.photo.findMany({
+    where: { id: { in: photoIds }, eventId },
+    select: { id: true, moderationStatus: true }
+  });
+  for (const photo of moderationStates) {
+    // Also covers an idempotent retry whose response was lost after the commit
+    // but before the original request could enqueue its background job.
+    if (photo.moderationStatus === "queued") enqueueModeration(photo.id);
+  }
+
   revalidatePath("/", "layout");
-  return NextResponse.json({ ids: photoIds });
+  return NextResponse.json({
+    ids: photoIds,
+    moderation: moderationStates.map((photo) => ({
+      id: photo.id,
+      status: photo.moderationStatus
+    }))
+  });
 }
 
 /**

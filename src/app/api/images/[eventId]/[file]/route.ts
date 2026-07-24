@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { eventDir } from "@/lib/images";
+import { moderationAllowsPublicPhoto } from "@/lib/photoVisibility";
 
 const FILE_PATTERN = /^([a-z0-9]+)-(thumb|med|full|orig)\.(webp|jpg|jpeg|png|tif|tiff)$/;
 
@@ -60,10 +61,15 @@ export async function GET(
   }
 
   const isPending = photo.pendingBatchId !== null;
-  if (isPending) {
+  const isModerationHeld = !moderationAllowsPublicPhoto(
+    photo.moderationStatus
+  );
+  if (isPending || isModerationHeld) {
     // A pending thumbnail is available only as a private queue preview. Other
     // renditions and the temporary source remain unreachable until Create.
-    if (variant !== "thumb") {
+    // A finalized moderation-held photo, by contrast, is fully browsable by
+    // its photographer and platform admins while remaining private to visitors.
+    if (isPending && variant !== "thumb") {
       return new NextResponse("Not found", { status: 404 });
     }
     const user = await getCurrentUser();
@@ -80,7 +86,11 @@ export async function GET(
   //
   // Still 404 rather than 403: it is the existing convention here and it does
   // not confirm that the photo exists.
-  if (!isPending && (variant === "orig" || !photo.event.published)) {
+  if (
+    !isPending &&
+    !isModerationHeld &&
+    (variant === "orig" || !photo.event.published)
+  ) {
     const user = await getCurrentUser();
     const allowed =
       user && (user.id === photo.event.ownerId || user.role === "admin");
@@ -97,7 +107,11 @@ export async function GET(
     return new NextResponse("Not found", { status: 404 });
   }
 
-  const publicRendition = !isPending && variant !== "orig" && photo.event.published;
+  const publicRendition =
+    !isPending &&
+    !isModerationHeld &&
+    variant !== "orig" &&
+    photo.event.published;
   const publicEtag = publicRendition
     ? `"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`
     : null;

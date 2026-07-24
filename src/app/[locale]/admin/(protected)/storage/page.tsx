@@ -2,6 +2,8 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { requireAdmin } from "@/lib/auth";
 import { getPlatformStorage, formatBytes } from "@/lib/storage";
 import { Link } from "@/i18n/navigation";
+import { prisma } from "@/lib/db";
+import { retryModerationErrors } from "../moderation/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +19,13 @@ export default async function PlatformStoragePage() {
   const locale = await getLocale();
   await requireAdmin(locale);
   const t = await getTranslations("adminStorage");
+  const tm = await getTranslations("adminModeration");
 
-  const { accounts, totalUsedBytes, databaseBytes } = await getPlatformStorage();
+  const [{ accounts, totalUsedBytes, databaseBytes }, moderationErrors] =
+    await Promise.all([
+      getPlatformStorage(),
+      prisma.photo.count({ where: { moderationStatus: "error" } })
+    ]);
 
   // The one account-shaped question that is really about the platform: who is
   // closest to their limit. Not a management view — a pointer at whoever is
@@ -82,6 +89,25 @@ export default async function PlatformStoragePage() {
           </Link>
         </p>
       </div>
+
+      {moderationErrors > 0 && (
+        <div className="rounded-xl border border-danger-border bg-danger-surface/40 p-4">
+          <h2 className="text-lg font-semibold text-danger-strong">
+            {tm("healthErrorTitle")}
+          </h2>
+          <p className="mt-1 text-sm text-fg-subtle">
+            {tm("healthErrorDescription", { count: moderationErrors })}
+          </p>
+          <form action={retryModerationErrors} className="mt-3">
+            <button
+              type="submit"
+              className="min-h-10 rounded-lg border border-danger-border px-3 py-2 text-sm font-semibold text-danger"
+            >
+              {tm("retryErrors")}
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

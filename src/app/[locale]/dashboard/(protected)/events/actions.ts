@@ -13,6 +13,7 @@ import {
   findOwnedPhoto,
   findOwnedPhotoForDeletion
 } from "@/lib/ownership";
+import { moderationAllowsPublicPhoto } from "@/lib/photoVisibility";
 import { deleteEventFiles, deletePhotoFiles } from "@/lib/images";
 import { deleteOwnedPhotoRowsAndRelease } from "@/lib/quota";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
@@ -398,7 +399,7 @@ export async function setCoverPhoto(formData: FormData): Promise<void> {
   if (typeof photoId !== "string") return;
 
   const photo = await findOwnedPhoto(photoId, user);
-  if (!photo) return;
+  if (!photo || !moderationAllowsPublicPhoto(photo.moderationStatus)) return;
 
   await prisma.event.update({
     where: { id: photo.eventId },
@@ -413,7 +414,7 @@ export async function toggleHomeHighlight(formData: FormData): Promise<void> {
   if (typeof photoId !== "string") return;
 
   const photo = await findOwnedPhoto(photoId, user);
-  if (!photo) return;
+  if (!photo || !moderationAllowsPublicPhoto(photo.moderationStatus)) return;
 
   await prisma.photo.update({
     where: { id: photo.id },
