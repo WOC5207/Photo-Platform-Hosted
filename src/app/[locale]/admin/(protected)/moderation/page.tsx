@@ -5,12 +5,16 @@ import { config } from "@/lib/config";
 import { getPlatformSettings } from "@/lib/platformSettings";
 import { photoUrls } from "@/lib/images";
 import { ownerName } from "@/lib/owner";
+import { Link } from "@/i18n/navigation";
 import {
   IMAGE_MODERATION_CATEGORIES,
   type ImageModerationCategory
 } from "@/lib/moderationPolicy";
 import ModerationSettingsForm from "@/components/admin/ModerationSettingsForm";
 import ModerationReviewImage from "@/components/admin/ModerationReviewImage";
+import ModerationPhotoAudit, {
+  type ModerationAuditPhoto
+} from "@/components/admin/ModerationPhotoAudit";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import {
   approveModeration,
@@ -19,6 +23,7 @@ import {
 } from "./actions";
 
 export const dynamic = "force-dynamic";
+const PHOTO_AUDIT_PAGE_SIZE = 24;
 
 interface ReasonRow {
   type: string;
@@ -49,7 +54,19 @@ function reasonRows(value: unknown): ReasonRow[] {
   });
 }
 
-export default async function ModerationPage() {
+export default async function ModerationPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const query = await searchParams;
+  const showPhotoDetails = query.details === "1";
+  const requestedPage = Number.parseInt(
+    typeof query.photoPage === "string" ? query.photoPage : "1",
+    10
+  );
+  const photoPage =
+    Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const locale = await getLocale();
   await requireAdmin(locale);
   const t = await getTranslations("adminModeration");
@@ -85,6 +102,70 @@ export default async function ModerationPage() {
       }
     })
   ]);
+  let auditPhotos: ModerationAuditPhoto[] = [];
+  let auditPhotoCount = 0;
+  let auditPhotoPage = photoPage;
+  if (showPhotoDetails) {
+    const where = {
+      pendingBatchId: null,
+      uploadState: "ready"
+    };
+    auditPhotoCount = await prisma.photo.count({ where });
+    auditPhotoPage = Math.min(
+      photoPage,
+      Math.max(1, Math.ceil(auditPhotoCount / PHOTO_AUDIT_PAGE_SIZE))
+    );
+    auditPhotos = await prisma.photo.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: (auditPhotoPage - 1) * PHOTO_AUDIT_PAGE_SIZE,
+      take: PHOTO_AUDIT_PAGE_SIZE,
+      select: {
+        id: true,
+        eventId: true,
+        filename: true,
+        originalName: true,
+        width: true,
+        height: true,
+        bytes: true,
+        storagePreset: true,
+        createdAt: true,
+        exifTakenAt: true,
+        exifCameraModel: true,
+        exifLensModel: true,
+        moderationStatus: true,
+        moderationAttempts: true,
+        event: {
+          select: {
+            titleEn: true,
+            titleZh: true,
+            owner: {
+              select: {
+                username: true,
+                displayName: true
+              }
+            }
+          }
+        },
+        moderationScans: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            requestId: true,
+            returnedModel: true,
+            policyVersion: true,
+            attempt: true,
+            providerFlagged: true,
+            categories: true,
+            categoryScores: true,
+            appliedInputTypes: true,
+            thresholds: true,
+            completedAt: true
+          }
+        }
+      }
+    });
+  }
 
   const categoryLabels: Record<ImageModerationCategory, string> = {
     "self-harm": t("categorySelfHarm"),
@@ -121,6 +202,53 @@ export default async function ModerationPage() {
         settings={settings}
         configured={config.isOpenAIConfigured()}
       />
+
+      <section className="rounded-xl border border-border bg-surface p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">{t("photoDetailsToggleTitle")}</h2>
+            <p className="mt-1 text-sm text-fg-subtle">
+              {t("photoDetailsToggleDescription")}
+            </p>
+          </div>
+          <Link
+            href={
+              showPhotoDetails
+                ? "/admin/moderation"
+                : "/admin/moderation?details=1"
+            }
+            role="switch"
+            aria-checked={showPhotoDetails}
+            className="inline-flex min-h-11 shrink-0 items-center gap-3 rounded-lg border border-border-strong bg-page px-3 py-2 text-sm font-semibold text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/30"
+          >
+            <span
+              aria-hidden="true"
+              className={`relative h-6 w-11 rounded-full transition ${
+                showPhotoDetails ? "bg-fg" : "bg-border-strong"
+              }`}
+            >
+              <span
+                className={`absolute top-1 h-4 w-4 rounded-full bg-page shadow-sm transition ${
+                  showPhotoDetails ? "left-6" : "left-1"
+                }`}
+              />
+            </span>
+            {showPhotoDetails
+              ? t("photoDetailsHide")
+              : t("photoDetailsShow")}
+          </Link>
+        </div>
+      </section>
+
+      {showPhotoDetails && (
+        <ModerationPhotoAudit
+          photos={auditPhotos}
+          total={auditPhotoCount}
+          page={auditPhotoPage}
+          pageSize={PHOTO_AUDIT_PAGE_SIZE}
+          locale={locale}
+        />
+      )}
 
       <section className="flex flex-col gap-4">
         <div className="flex items-end justify-between gap-4">

@@ -378,8 +378,8 @@ test.describe.serial("management workflows", () => {
     // choice lives solely on the compression step now.
     await expect(page.getByLabel("Storage quality for the next selection")).toHaveCount(0);
     await expect(page.getByText("Maximum size per photo: 100 MB.")).toBeVisible();
-    const continueButton = page.getByRole("button", { name: "Continue" });
-    await expect(continueButton).toBeDisabled();
+    let forwardButton = page.getByRole("button", { name: "Choose photo size" });
+    await expect(forwardButton).toBeDisabled();
 
     // The native picker can select any size, so the app must reject an
     // oversized file before it is added to the queue or sent to the server.
@@ -411,9 +411,9 @@ test.describe.serial("management workflows", () => {
     await expect(page.getByText("1 photo queued")).toBeVisible();
     // The upload settles fast (source + thumbnail) and compression is deferred
     // to the next step, so the file reads "Uploaded" as soon as the transfer
-    // finishes — no waiting on Sharp — and Continue unlocks immediately.
+    // finishes — no waiting on Sharp — and the forward action unlocks immediately.
     await expect(page.getByText("Uploaded", { exact: true })).toHaveCount(1, { timeout: 15_000 });
-    await expect(continueButton).toBeEnabled();
+    await expect(forwardButton).toBeEnabled();
     await expect(page.getByRole("progressbar", { name: "Total upload progress" })).toHaveAttribute(
       "aria-valuenow",
       "100"
@@ -477,22 +477,23 @@ test.describe.serial("management workflows", () => {
     await expect(page.getByText("Uploaded", { exact: true })).toHaveCount(3, { timeout: 15_000 });
 
     // Step 2 — compression: nothing is compressed until the user starts it.
-    await expect(continueButton).toBeEnabled();
-    await continueButton.click();
+    await expect(forwardButton).toBeEnabled();
+    await forwardButton.click();
+    forwardButton = page.getByRole("button", { name: "Continue to Credit" });
     const grid = page.getByTestId("wizard-photo-grid");
     await expect(grid.getByRole("button")).toHaveCount(3);
 
-    // On entry every photo awaits a size, so Continue is blocked and only an
+    // On entry every photo awaits a size, so the forward action is blocked and only an
     // estimated total is shown — the exact total appears after compression.
     await expect(grid.getByText("Awaiting size")).toHaveCount(3);
     await expect(page.getByText(/^Estimated total after publishing:/)).toBeVisible();
-    await expect(continueButton).toBeDisabled();
+    await expect(forwardButton).toBeDisabled();
 
     // Advancing from the previous step selects every photo by default; compress
     // them all at Balanced (4096px) first, which starts the deferred encode.
     await expect(page.getByText("3 selected")).toBeVisible();
     await page.getByLabel("Compression size", { exact: true }).selectOption("balanced");
-    await page.getByRole("button", { name: "Compress all" }).click();
+    await page.getByRole("button", { name: "Apply size to all (3)" }).click();
     await expect(grid.getByText(/^Balanced/)).toHaveCount(3, { timeout: 20_000 });
     await expect(page.getByText(/^Total size after publishing:/)).toBeVisible();
 
@@ -508,7 +509,8 @@ test.describe.serial("management workflows", () => {
 
     // Step 3 — credits: only the first photo gets one; the rest stay
     // uncredited on purpose. All photos start selected on entry.
-    await continueButton.click();
+    await forwardButton.click();
+    forwardButton = page.getByRole("button", { name: "Review and publish" });
     await expect(page.getByText("3 selected")).toBeVisible();
     await page.getByRole("button", { name: "Clear selection" }).click();
     await page.getByRole("button", { name: "Select first.png" }).click();
@@ -520,6 +522,7 @@ test.describe.serial("management workflows", () => {
     // Attach a searchable comment to the still-selected credited photo. The
     // note text deliberately shares no substring with the credit, so a search
     // that finds it proves the comment itself is indexed.
+    await page.getByText("Optional comments", { exact: true }).click();
     await page.getByLabel("Comment (optional)").fill("E2E note about the shoot");
     await page
       .getByRole("button", { name: "Apply comment to selected (1)" })
@@ -531,15 +534,15 @@ test.describe.serial("management workflows", () => {
     await expect(
       page.getByText("2 photos have no credit and will be published without attribution.")
     ).toBeVisible();
-    await expect(continueButton).toBeDisabled();
+    await expect(forwardButton).toBeDisabled();
     await page
       .getByRole("checkbox", { name: "Publish these photos without a credit" })
       .check();
-    await expect(continueButton).toBeEnabled();
+    await expect(forwardButton).toBeEnabled();
 
     // Step 4 — confirm: album preview, totals and publish. The acknowledgement
     // was already given on the credits step, so publishing is ready.
-    await continueButton.click();
+    await forwardButton.click();
     await expect(page.getByText("Photos to publish")).toBeVisible();
     await expect(page.getByText("Total size after publishing")).toBeVisible();
     await expect(page.getByText("E2E credit — 1 photo")).toBeVisible();

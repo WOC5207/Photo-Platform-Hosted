@@ -107,6 +107,11 @@ export default function PhotoWizard({
           ? failedCount === 0 &&
             (uncreditedCount === 0 || ackUncredited)
           : true;
+  const canPublish =
+    queue.browsableFiles.length > 0 &&
+    failedCount === 0 &&
+    !publishing &&
+    !queue.queueWorking;
   const continueHint =
     failedCount > 0
       ? tw("resolveFailedFiles", { count: failedCount })
@@ -116,7 +121,19 @@ export default function PhotoWizard({
         ? tw("chooseSizeToContinue", { count: queue.awaitingCount })
         : stepIndex === 2 && uncreditedCount > 0 && !ackUncredited
           ? tw("ackCreditsToContinue")
+          : stepIndex === 3 && queue.queueWorking
+            ? tw("finishingCompression")
           : null;
+  const forwardLabel =
+    stepIndex === 0
+      ? tw("continueToCompression")
+      : stepIndex === 1
+        ? tw("continueToCredits", { term: creditTerm })
+        : stepIndex === 2
+          ? tw("continueToReview")
+          : publishing
+            ? tw("publishing")
+            : tw("publish", { count: queue.browsableFiles.length });
 
   function assignCredits(photoIds: string[], credits: AssignedCredit[]) {
     setCreditsByPhoto((current) => {
@@ -227,37 +244,46 @@ export default function PhotoWizard({
           failedCount={failedCount}
           publishPhase={publishPhase}
           publishedCount={publishedCount}
-          onPublish={() => void publish()}
         />
       )}
 
-      <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+      <div className="sticky bottom-3 z-20 flex items-center justify-between gap-3 rounded-xl border border-border-strong bg-page/95 p-3 shadow-[0_12px_36px_rgba(0,0,0,0.18)] backdrop-blur max-sm:flex-col max-sm:items-stretch">
         <button
           type="button"
           disabled={stepIndex === 0 || publishing}
           onClick={() => setStepIndex((current) => Math.max(0, current - 1))}
-          className={btnCls}
+          className={`${btnCls} max-sm:self-start`}
         >
           ← {tw("back")}
         </button>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-end gap-3 max-sm:flex-col max-sm:items-stretch">
           {continueHint && (
-            <span role="status" className="text-xs text-fg-subtle">
+            <span
+              role="status"
+              className="max-w-md rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-fg-muted"
+            >
               {continueHint}
             </span>
           )}
-          {stepIndex < steps.length - 1 && (
-            <button
-              type="button"
-              disabled={!canContinue}
-              onClick={() =>
-                setStepIndex((current) => Math.min(steps.length - 1, current + 1))
+          <button
+            type="button"
+            disabled={
+              stepIndex < steps.length - 1 ? !canContinue : !canPublish
+            }
+            onClick={() => {
+              if (stepIndex < steps.length - 1) {
+                setStepIndex((current) =>
+                  Math.min(steps.length - 1, current + 1)
+                );
+              } else {
+                void publish();
               }
-              className={primaryBtnCls}
-            >
-              {tw("continue")} →
-            </button>
-          )}
+            }}
+            className={`${primaryBtnCls} min-h-12 px-6 shadow-md max-sm:w-full`}
+          >
+            {forwardLabel}
+            {!publishing && stepIndex < steps.length - 1 ? " →" : ""}
+          </button>
         </div>
       </div>
     </div>

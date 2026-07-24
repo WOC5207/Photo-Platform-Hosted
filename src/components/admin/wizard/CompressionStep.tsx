@@ -8,7 +8,7 @@ import type {
   StoragePreset
 } from "./usePendingUploadQueue";
 import SelectableGrid from "./SelectableGrid";
-import { btnCls, formatBytes, inputCls } from "./ui";
+import { btnCls, formatBytes, inputCls, primaryBtnCls } from "./ui";
 
 function presetShortLabel(
   t: (key: string) => string,
@@ -161,9 +161,9 @@ export default function CompressionStep({
             type="button"
             disabled={busy || adjustable.length === 0}
             onClick={() => void applyPreset(adjustable)}
-            className={btnCls}
+            className={primaryBtnCls}
           >
-            {tw("compressAll")}
+            {tw("compressAllPrimary", { count: adjustable.length })}
           </button>
         </div>
       </div>
