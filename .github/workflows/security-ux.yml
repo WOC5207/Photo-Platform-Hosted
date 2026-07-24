@@ -61,11 +61,13 @@ jobs:
       - run: npx prisma validate
       - run: npx prisma migrate deploy
       - run: npm run test:security
+      - run: npm run test:moderation
       - run: npm run test:images
       - run: npm run test:concurrency
       - run: npm run test:isolation
       - run: npm run test:quota
       - run: npm run test:security:db
+      - run: npm run test:moderation:db
       - run: npm run test:bookingorg
       - run: npm run build
       - run: npx playwright install --with-deps chromium
