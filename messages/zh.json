@@ -366,6 +366,7 @@
     "contactMethodLabelZh": "标签（中文）",
     "addContactMethod": "添加",
     "noContactMethods": "还没有联系方式选项——请至少添加一个，访客才能预约。",
+    "manageContactMethods": "前往联系方式设置。",
     "contactMethodValidationError": "请至少填写一个标签。",
     "confirmDeleteContactMethod": "删除这个联系方式选项？",
     "personalLinksSection": "个人链接",

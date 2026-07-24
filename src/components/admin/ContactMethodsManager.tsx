@@ -34,7 +34,10 @@ export default function ContactMethodsManager({
   >(addContactMethod, {});
 
   return (
-    <section className="flex flex-col gap-3 border-t border-border pt-6">
+    <section
+      id="contact-methods"
+      className="scroll-mt-6 flex flex-col gap-3 border-t border-border pt-6 sm:scroll-mt-24"
+    >
       <h2 className="text-lg font-semibold">{t("contactMethodsSection")}</h2>
       <p className="-mt-1 text-xs text-fg-subtle">{t("contactMethodsHint")}</p>
 
