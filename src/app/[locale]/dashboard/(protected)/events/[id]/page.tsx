@@ -72,6 +72,7 @@ export default async function EditEventPage({
       comment: p.comment,
       isCover: event.coverPhotoId === p.id,
       homeHighlight: p.homeHighlight,
+      homeWeight: p.homeWeight,
       exif: {
         focalLengthMm: p.exifFocalLengthMm?.toString() ?? "",
         aperture: p.exifAperture?.toString() ?? "",

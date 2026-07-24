@@ -305,6 +305,10 @@ model Photo {
   // listing thumbnails) — any number of a published event's photos can be
   // marked here, and that's what populates its homepage carousel slides.
   homeHighlight        Boolean       @default(false)
+  // Relative visual importance in the homepage's recent-work mosaic. The
+  // database chooses 1-5 for every new photo; photographers can later tune it.
+  // It does not affect gallery ordering or the separate highlight carousel.
+  homeWeight           Int           @default(dbgenerated("(floor(random() * 5) + 1)::integer"))
 
   @@index([eventId, pendingBatchId])
 }
