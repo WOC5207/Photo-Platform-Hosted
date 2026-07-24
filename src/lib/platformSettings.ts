@@ -16,6 +16,14 @@ export interface PlatformSettings {
   bookingPriceNoticeBodyEn: string;
   bookingPriceNoticeBodyZh: string;
   bookingPriceNoticeVersion: number;
+  moderationEnabled: boolean;
+  moderationPolicyVersion: number;
+  moderationThresholdSelfHarm: number | null;
+  moderationThresholdSelfHarmIntent: number | null;
+  moderationThresholdSelfHarmInstructions: number | null;
+  moderationThresholdSexual: number | null;
+  moderationThresholdViolence: number | null;
+  moderationThresholdViolenceGraphic: number | null;
 }
 
 const DEFAULTS: PlatformSettings = {
@@ -31,7 +39,15 @@ const DEFAULTS: PlatformSettings = {
   bookingPriceNoticeTitleZh: "",
   bookingPriceNoticeBodyEn: "",
   bookingPriceNoticeBodyZh: "",
-  bookingPriceNoticeVersion: 1
+  bookingPriceNoticeVersion: 1,
+  moderationEnabled: false,
+  moderationPolicyVersion: 1,
+  moderationThresholdSelfHarm: null,
+  moderationThresholdSelfHarmIntent: null,
+  moderationThresholdSelfHarmInstructions: null,
+  moderationThresholdSexual: null,
+  moderationThresholdViolence: null,
+  moderationThresholdViolenceGraphic: null
 };
 
 /** Platform-wide settings with usable defaults before the singleton is saved. */

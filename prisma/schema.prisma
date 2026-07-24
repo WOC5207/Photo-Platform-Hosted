@@ -104,6 +104,7 @@ model User {
 
   notificationTargets    PlatformNotificationTarget[]
   notificationDismissals PlatformNotificationDismissal[]
+  moderationDecisions    ModerationDecision[]            @relation("ModerationReviewer")
 }
 
 // One uploaded site-level image (logo, background, contact QR, announcement
@@ -185,26 +186,36 @@ model Invite {
 // One platform-wide row controlled by administrators. The registration notice
 // appears before the account form for every usable invite link.
 model PlatformSettings {
-  id                             String   @id @default("platform")
-  registrationNoticeEnabled      Boolean  @default(false)
-  registrationNoticeDelaySeconds Int      @default(5)
-  registrationNoticeTitleEn      String   @default("")
-  registrationNoticeTitleZh      String   @default("")
-  registrationNoticeBodyEn       String   @default("")
-  registrationNoticeBodyZh       String   @default("")
+  id                                      String   @id @default("platform")
+  registrationNoticeEnabled               Boolean  @default(false)
+  registrationNoticeDelaySeconds          Int      @default(5)
+  registrationNoticeTitleEn               String   @default("")
+  registrationNoticeTitleZh               String   @default("")
+  registrationNoticeBodyEn                String   @default("")
+  registrationNoticeBodyZh                String   @default("")
   // information | consent. Version increments whenever notice content or mode
   // changes so a registration form cannot accept stale legal text.
-  registrationNoticeMode         String   @default("information")
-  registrationNoticeVersion      Int      @default(1)
+  registrationNoticeMode                  String   @default("information")
+  registrationNoticeVersion               Int      @default(1)
   // Responsibility notice shown when a photographer opts into displaying
   // prices. Version increments with its content so stale acknowledgements
   // cannot enable the feature.
-  bookingPriceNoticeTitleEn      String   @default("")
-  bookingPriceNoticeTitleZh      String   @default("")
-  bookingPriceNoticeBodyEn       String   @default("")
-  bookingPriceNoticeBodyZh       String   @default("")
-  bookingPriceNoticeVersion      Int      @default(1)
-  updatedAt                      DateTime @updatedAt
+  bookingPriceNoticeTitleEn               String   @default("")
+  bookingPriceNoticeTitleZh               String   @default("")
+  bookingPriceNoticeBodyEn                String   @default("")
+  bookingPriceNoticeBodyZh                String   @default("")
+  bookingPriceNoticeVersion               Int      @default(1)
+  // Post-publish image screening. Thresholds are nullable: null means the
+  // provider's own binary category decision is the only trigger.
+  moderationEnabled                       Boolean  @default(false)
+  moderationPolicyVersion                 Int      @default(1)
+  moderationThresholdSelfHarm             Float?
+  moderationThresholdSelfHarmIntent       Float?
+  moderationThresholdSelfHarmInstructions Float?
+  moderationThresholdSexual               Float?
+  moderationThresholdViolence             Float?
+  moderationThresholdViolenceGraphic      Float?
+  updatedAt                               DateTime @updatedAt
 }
 
 // A gallery event = one photo album (a con, a shoot, etc.)
@@ -234,52 +245,52 @@ model Event {
 }
 
 model Photo {
-  id                   String        @id @default(cuid())
-  eventId              String
-  event                Event         @relation("EventPhotos", fields: [eventId], references: [id], onDelete: Cascade)
+  id                      String            @id @default(cuid())
+  eventId                 String
+  event                   Event             @relation("EventPhotos", fields: [eventId], references: [id], onDelete: Cascade)
   // Final master filename, or the active versioned candidate while pending.
   // Public renditions use the photo id and never expose pending filenames.
-  filename             String
-  originalName         String
-  width                Int
-  height               Int
+  filename                String
+  originalName            String
+  width                   Int
+  height                  Int
   // Total on-disk size of this photo: the original plus all three renditions.
   // Recorded at upload because nothing else knows it — sizing the files later
   // means an fs.stat per photo, which is what the storage page used to do.
   // Int (2GB) is ample for one photo; only the per-user totals need BigInt.
-  bytes                Int           @default(0)
+  bytes                   Int               @default(0)
   // Storage choice for new pending uploads: original | archive | balanced.
   // Existing photos default to original and require no filesystem migration.
-  storagePreset        String        @default("original")
+  storagePreset           String            @default("original")
   // While pending, the exact source and one compressed comparison candidate
   // coexist. These persisted sizes make the queue recoverable after reloads.
-  candidatePreset      String?
-  sourceFilename       String?
-  sourceBytes          Int?
-  candidateBytes       Int?
-  renditionBytes       Int?
+  candidatePreset         String?
+  sourceFilename          String?
+  sourceBytes             Int?
+  candidateBytes          Int?
+  renditionBytes          Int?
   // One or more (credited person, subject) credits — most photos have one,
   // group shots have several.
-  credits              PhotoCredit[]
+  credits                 PhotoCredit[]
   // EXIF read from the uploaded original at upload time (before it's
   // stripped for the displayed renditions). Null when the file had none.
-  exifFocalLengthMm    Float?
-  exifAperture         Float?
-  exifExposureTime     Float?
-  exifIso              Int?
-  exifTakenAt          DateTime?
-  exifCameraModel      String?
-  exifLensModel        String?
-  sortOrder            Int           @default(0)
+  exifFocalLengthMm       Float?
+  exifAperture            Float?
+  exifExposureTime        Float?
+  exifIso                 Int?
+  exifTakenAt             DateTime?
+  exifCameraModel         String?
+  exifLensModel           String?
+  sortOrder               Int               @default(0)
   // A free-text note the photographer can attach to a photo, shown under the
   // credit/subject line on the enlarged photo and included in the homepage
   // search. Independent of PhotoCredit (which is per credited person); a photo
   // has at most one comment. Empty string = none.
-  comment              String        @default("")
+  comment                 String            @default("")
   // Non-null while the owner is still building an upload batch. Pending
   // photos are fully processed and count toward storage, but stay private and
   // out of normal photo queries until the batch is finalized with credits.
-  pendingBatchId       String?
+  pendingBatchId          String?
   // ready | processing | pending | finalizing | deleting. Existing/directly-created photos
   // default to ready; the database check constraint keeps this in sync with
   // pendingBatchId so forgotten query paths fail closed.
@@ -288,28 +299,94 @@ model Photo {
   // the source and thumbnail (so a preview exists immediately) and leaves the
   // row processing while a background worker generates the remaining renditions
   // and the compressed master, then flips it to "pending".
-  uploadState          String        @default("ready")
+  uploadState             String            @default("ready")
   // Set while a background worker owns this row's compression. Lets exactly one
   // worker (even across app instances) claim a processing row via
   // FOR UPDATE SKIP LOCKED, and lets the startup sweep reclaim a row whose
   // worker died mid-compress (claim older than config.compressionClaimStaleMs).
-  compressionClaimedAt DateTime?
+  compressionClaimedAt    DateTime?
   // True when background compression failed and the source was kept for retry.
   // Distinguishes a stuck/failed processing row from one still being worked.
-  compressionFailed    Boolean       @default(false)
-  createdAt            DateTime      @default(now())
-  coverOf              Event?        @relation("EventCover")
+  compressionFailed       Boolean           @default(false)
+  createdAt               DateTime          @default(now())
+  coverOf                 Event?            @relation("EventCover")
   // Admin-picked for the homepage's per-event carousel. Independent of
   // coverPhotoId (which is exactly one photo per event, used for gallery
   // listing thumbnails) — any number of a published event's photos can be
   // marked here, and that's what populates its homepage carousel slides.
-  homeHighlight        Boolean       @default(false)
+  homeHighlight           Boolean           @default(false)
   // Relative visual importance in the homepage's recent-work mosaic. The
   // database chooses 1-5 for every new photo; photographers can later tune it.
   // It does not affect gallery ordering or the separate highlight carousel.
-  homeWeight           Int           @default(dbgenerated("(floor(random() * 5) + 1)::integer"))
+  homeWeight              Int               @default(dbgenerated("(floor(random() * 5) + 1)::integer"))
+  // Independent from uploadState: files can be fully finalized while their
+  // public visibility is held for a post-publish moderation decision.
+  // not_required | queued | processing | approved | review_required |
+  // rejected | error
+  moderationStatus        String            @default("not_required")
+  moderationPolicyVersion Int?
+  moderationThresholds    Json?
+  moderationClaimedAt     DateTime?
+  moderationNextRetryAt   DateTime?
+  moderationAttempts      Int               @default(0)
+  moderationScans         ModerationScan[]
+  moderationReview        ModerationReview?
 
   @@index([eventId, pendingBatchId])
+  @@index([moderationStatus, moderationNextRetryAt])
+}
+
+// Immutable record of one successful provider response. Failed attempts live
+// on Photo's durable job state until a later successful scan or terminal error.
+model ModerationScan {
+  id                String   @id @default(cuid())
+  photoId           String
+  photo             Photo    @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  requestId         String
+  requestedModel    String
+  returnedModel     String
+  policyVersion     Int
+  attempt           Int
+  providerFlagged   Boolean
+  categories        Json
+  categoryScores    Json
+  appliedInputTypes Json
+  thresholds        Json
+  triggerReasons    Json
+  startedAt         DateTime
+  completedAt       DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  @@index([photoId, createdAt])
+}
+
+// Exists only after a scan requires human review. Safe scans never create a
+// queue record, which keeps the platform review surface focused on exceptions.
+model ModerationReview {
+  id              String               @id @default(cuid())
+  photoId         String               @unique
+  photo           Photo                @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  status          String               @default("open")
+  providerFlagged Boolean
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  decisions       ModerationDecision[]
+
+  @@index([status, createdAt])
+}
+
+model ModerationDecision {
+  id         String           @id @default(cuid())
+  reviewId   String
+  review     ModerationReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reviewerId String
+  reviewer   User             @relation("ModerationReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  action     String
+  note       String           @default("")
+  createdAt  DateTime         @default(now())
+
+  @@index([reviewId, createdAt])
+  @@index([reviewerId])
 }
 
 // A single credited-person+subject credit on a photo. Shown identically on

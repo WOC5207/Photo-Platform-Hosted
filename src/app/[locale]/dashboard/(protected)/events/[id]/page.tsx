@@ -16,6 +16,10 @@ import EventForm from "@/components/admin/EventForm";
 import PhotoManager, { type AdminPhoto } from "@/components/admin/PhotoManager";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import { deleteEvent, updateEvent } from "../actions";
+import {
+  warningCategoriesFromReasons,
+  type PhotoModerationStatus
+} from "@/lib/moderationPolicy";
 
 export default async function EditEventPage({
   params
@@ -40,6 +44,11 @@ export default async function EditEventPage({
           credits: {
             orderBy: { sortOrder: "asc" },
             include: { socialLinks: { orderBy: { sortOrder: "asc" } } }
+          },
+          moderationScans: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { triggerReasons: true }
           }
         }
       }
@@ -73,6 +82,10 @@ export default async function EditEventPage({
       isCover: event.coverPhotoId === p.id,
       homeHighlight: p.homeHighlight,
       homeWeight: p.homeWeight,
+      moderationStatus: p.moderationStatus as PhotoModerationStatus,
+      moderationCategories: warningCategoriesFromReasons(
+        p.moderationScans[0]?.triggerReasons
+      ),
       exif: {
         focalLengthMm: p.exifFocalLengthMm?.toString() ?? "",
         aperture: p.exifAperture?.toString() ?? "",

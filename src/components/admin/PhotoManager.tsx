@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "@/i18n/navigation";
 import {
   bulkDeletePhotos,
   bulkSetPhotoCredit,
@@ -18,6 +19,11 @@ import SocialLinksEditor, {
   type SocialLinkValue
 } from "./SocialLinksEditor";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import type {
+  ImageModerationCategory,
+  PhotoModerationStatus
+} from "@/lib/moderationPolicy";
+import { moderationAllowsPublicPhoto } from "@/lib/photoVisibility";
 
 export interface AdminPhotoCredit {
   creditName: string;
@@ -48,6 +54,8 @@ export interface AdminPhoto {
   isCover: boolean;
   homeHighlight: boolean;
   homeWeight: number;
+  moderationStatus: PhotoModerationStatus;
+  moderationCategories: ImageModerationCategory[];
   exif: AdminPhotoExif;
 }
 
@@ -452,9 +460,41 @@ export default function PhotoManager({
 }) {
   const t = useTranslations("adminEvents");
   const tc = useTranslations("common");
+  const router = useRouter();
 
   const [filterName, setFilterName] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pollExpired, setPollExpired] = useState(false);
+  const moderationWorking = photos.some(
+    (photo) =>
+      photo.moderationStatus === "queued" ||
+      photo.moderationStatus === "processing"
+  );
+  const moderationLabels: Record<ImageModerationCategory, string> = {
+    "self-harm": t("moderationCategorySelfHarm"),
+    "self-harm/intent": t("moderationCategorySelfHarmIntent"),
+    "self-harm/instructions": t("moderationCategorySelfHarmInstructions"),
+    sexual: t("moderationCategorySexual"),
+    violence: t("moderationCategoryViolence"),
+    "violence/graphic": t("moderationCategoryViolenceGraphic")
+  };
+
+  useEffect(() => {
+    if (!moderationWorking) {
+      setPollExpired(false);
+      return;
+    }
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      if (Date.now() - startedAt >= 120_000) {
+        window.clearInterval(interval);
+        setPollExpired(true);
+        return;
+      }
+      router.refresh();
+    }, 3_000);
+    return () => window.clearInterval(interval);
+  }, [moderationWorking, router]);
 
   const creditNames = useMemo(() => {
     const names = new Set<string>();
@@ -507,6 +547,26 @@ export default function PhotoManager({
 
   return (
     <div className="flex flex-col gap-4">
+      {moderationWorking && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3 text-sm text-fg-muted"
+        >
+          <span>{t("moderationScreeningBatch")}</span>
+          {pollExpired && (
+            <button
+              type="button"
+              onClick={() => {
+                setPollExpired(false);
+                router.refresh();
+              }}
+              className={btnCls}
+            >
+              {t("moderationRefresh")}
+            </button>
+          )}
+        </div>
+      )}
       <datalist id="known-credits">
         {creditProfiles.map((profile) => (
           <option key={profile.creditName} value={profile.creditName} />
@@ -559,7 +619,47 @@ export default function PhotoManager({
                   {t("homeHighlight")}
                 </span>
               )}
+              {(photo.moderationStatus === "queued" ||
+                photo.moderationStatus === "processing") && (
+                <span className="absolute bottom-2 left-2 rounded-md bg-neutral-900/85 px-2 py-1 text-xs font-semibold text-white">
+                  {t("moderationScreening")}
+                </span>
+              )}
             </div>
+
+            {photo.moderationStatus === "review_required" && (
+              <div
+                role="alert"
+                className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-fg"
+              >
+                <p className="font-semibold">{t("moderationReviewWarning")}</p>
+                <p className="mt-1 text-xs">
+                  {photo.moderationCategories.length > 0
+                    ? t("moderationReviewCategories", {
+                        categories: photo.moderationCategories
+                          .map((category) => moderationLabels[category])
+                          .join(", ")
+                      })
+                    : t("moderationReviewReasonUnavailable")}
+                </p>
+              </div>
+            )}
+            {photo.moderationStatus === "error" && (
+              <p
+                role="alert"
+                className="rounded-lg border border-danger-border bg-danger-surface p-3 text-sm text-danger"
+              >
+                {t("moderationErrorWarning")}
+              </p>
+            )}
+            {photo.moderationStatus === "rejected" && (
+              <p
+                role="alert"
+                className="rounded-lg border border-danger-border bg-danger-surface p-3 text-sm text-danger"
+              >
+                {t("moderationRejectedWarning")}
+              </p>
+            )}
 
             <CreditsForm
               photoId={photo.id}
@@ -621,14 +721,16 @@ export default function PhotoManager({
                   {t("moveDown")} →
                 </button>
               </form>
-              {!photo.isCover && (
+              {moderationAllowsPublicPhoto(photo.moderationStatus) &&
+                !photo.isCover && (
                 <form action={setCoverPhoto}>
                   <input type="hidden" name="photoId" value={photo.id} />
                   <button type="submit" className={btnCls}>
                     {t("setCover")}
                   </button>
                 </form>
-              )}
+                )}
+              {moderationAllowsPublicPhoto(photo.moderationStatus) && (
               <form action={toggleHomeHighlight}>
                 <input type="hidden" name="photoId" value={photo.id} />
                 <button
@@ -644,6 +746,7 @@ export default function PhotoManager({
                     : t("addHomeHighlight")}
                 </button>
               </form>
+              )}
               <form
                 action={deletePhoto}
                 onSubmit={(e) => {

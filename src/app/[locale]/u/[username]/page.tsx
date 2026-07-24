@@ -31,6 +31,7 @@ import PersonalLinksList, {
   type PersonalLinkItem
 } from "@/components/PersonalLinksList";
 import { wallClockNow } from "@/lib/timeZone";
+import { publicPhotoWhere } from "@/lib/photoVisibility";
 
 // Reads site settings + published events from the DB at request time (the
 // DB isn't available during the Docker build), like the other public pages.
@@ -75,13 +76,13 @@ export default async function HomePage({
       where: {
         ownerId: owner.id,
         published: true,
-        photos: { some: { pendingBatchId: null } }
+        photos: { some: publicPhotoWhere }
       },
       orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
       take: 6,
       include: {
         photos: {
-          where: { pendingBatchId: null },
+          where: publicPhotoWhere,
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
           take: 24,
           include: { credits: { orderBy: { sortOrder: "asc" } } }
@@ -92,13 +93,13 @@ export default async function HomePage({
       where: {
         ownerId: owner.id,
         published: true,
-        photos: { some: { pendingBatchId: null, homeHighlight: true } }
+        photos: { some: { ...publicPhotoWhere, homeHighlight: true } }
       },
       orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
       take: 6,
       include: {
         photos: {
-          where: { pendingBatchId: null, homeHighlight: true },
+          where: { ...publicPhotoWhere, homeHighlight: true },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
           take: 8,
           include: { credits: { orderBy: { sortOrder: "asc" } } }
@@ -138,7 +139,7 @@ export default async function HomePage({
     getAnnouncements(owner.id),
     prisma.photo.count({
       where: {
-        pendingBatchId: null,
+        ...publicPhotoWhere,
         event: { ownerId: owner.id, published: true }
       }
     }),
@@ -149,7 +150,7 @@ export default async function HomePage({
       where: {
         creditName: { not: "" },
         photo: {
-          pendingBatchId: null,
+          ...publicPhotoWhere,
           event: { ownerId: owner.id, published: true }
         }
       },

@@ -7,6 +7,7 @@ import { Link } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
 import DirectorySearch from "@/components/DirectorySearch";
+import { publicPhotoWhere } from "@/lib/photoVisibility";
 
 // Lists live accounts — never prerender.
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export default async function DirectoryPage() {
       events: {
         some: {
           published: true,
-          photos: { some: { pendingBatchId: null } }
+          photos: { some: publicPhotoWhere }
         }
       }
     },
@@ -46,14 +47,14 @@ export default async function DirectoryPage() {
         select: {
           id: true,
           coverPhoto: {
-            where: { pendingBatchId: null },
+            where: publicPhotoWhere,
             select: { id: true }
           },
           _count: {
-            select: { photos: { where: { pendingBatchId: null } } }
+            select: { photos: { where: publicPhotoWhere } }
           },
           photos: {
-            where: { pendingBatchId: null },
+            where: publicPhotoWhere,
             orderBy: { sortOrder: "asc" },
             take: 1,
             select: { id: true }

@@ -5,6 +5,7 @@ import { photoUrls } from "@/lib/images";
 import { formatCredits } from "@/lib/content";
 import { clientIp } from "@/lib/clientIp";
 import { rateLimit } from "@/lib/rate-limit";
+import { publicPhotoWhere } from "@/lib/photoVisibility";
 
 const MAX_RESULTS = 8;
 
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
   // dropping this silently degrades the search rather than breaking it.)
   const photos = await prisma.photo.findMany({
     where: {
-      pendingBatchId: null,
+      ...publicPhotoWhere,
       event: { ownerId: owner.id, published: true },
       OR: [
         { comment: { contains: q, mode: "insensitive" } },
