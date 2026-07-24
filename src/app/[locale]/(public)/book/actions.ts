@@ -32,7 +32,6 @@ const bookingSchema = z.object({
   slotId: z.string().min(1).max(100),
   name: z.string().trim().min(1).max(200),
   subject: z.string().trim().max(200),
-  contactMethod: z.string().trim().min(1).max(60),
   contactValue: z.string().trim().min(1).max(200),
   // Optional: a real email so we can send a confirmation and status updates.
   // Empty is allowed (the visitor may only want to give a WeChat, etc.); a
@@ -49,7 +48,6 @@ export async function createBooking(
     slotId: formData.get("slotId") ?? "",
     name: formData.get("name") ?? "",
     subject: formData.get("subject") ?? "",
-    contactMethod: formData.get("contactMethod") ?? "",
     contactValue: formData.get("contactValue") ?? "",
     email: formData.get("email") ?? "",
     notes: formData.get("notes") ?? ""
@@ -101,22 +99,14 @@ export async function createBooking(
   // later status-change email (sent from the photographer's dashboard, in their
   // locale) still reaches this visitor in their own language.
   const locale = await getLocale();
-  const contactMethod = await prisma.contactMethod.findFirst({
-    where: { id: d.contactMethod, ownerId: slot.bookingEvent.ownerId },
-    select: { labelEn: true, labelZh: true }
-  });
-  if (!contactMethod) return { error: "validation" };
-  const contactMethodLabel = pickText(
-    locale,
-    contactMethod.labelEn,
-    contactMethod.labelZh
-  );
 
   // Atomic capacity check + insert; see reserveSlot for why it's locked.
   const result = await reserveSlot(d.slotId, {
     name: d.name,
     subject: d.subject,
-    contactMethod: contactMethodLabel,
+    // The method dropdown was removed — the visitor's free-text contact goes in
+    // contactValue and the label snapshot is left empty for new bookings.
+    contactMethod: "",
     contactValue: d.contactValue,
     email: d.email,
     notes: d.notes,
@@ -138,7 +128,7 @@ export async function createBooking(
     bookingId: cancelToken,
     name: d.name,
     subject: d.subject,
-    contactMethod: contactMethodLabel,
+    contactMethod: "",
     contactValue: d.contactValue,
     eventTitle: pickText(
       locale,

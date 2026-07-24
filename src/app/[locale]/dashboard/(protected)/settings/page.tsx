@@ -4,7 +4,6 @@ import { siteImageUrl } from "@/lib/images";
 import {
   getSiteSettings,
   getAnnouncements,
-  getContactMethods,
   getPersonalLinks,
   resolveCreditTerm
 } from "@/lib/settings";
@@ -12,7 +11,6 @@ import SiteSettingsForm from "@/components/admin/SiteSettingsForm";
 import SiteImageUploader from "@/components/admin/SiteImageUploader";
 import PersonalLinksManager from "@/components/admin/PersonalLinksManager";
 import AnnouncementsManager from "@/components/admin/AnnouncementsManager";
-import ContactMethodsManager from "@/components/admin/ContactMethodsManager";
 import ProfileForm from "@/components/dashboard/ProfileForm";
 import ChangePasswordForm from "@/components/dashboard/ChangePasswordForm";
 import type { SiteSettingsSection } from "./actions";
@@ -54,14 +52,12 @@ export default async function SiteSettingsPage({
     settings,
     platformSettings,
     personalLinks,
-    announcements,
-    contactMethods
+    announcements
   ] = await Promise.all([
     getSiteSettings(user.id),
     getPlatformSettings(),
     getPersonalLinks(user.id),
-    getAnnouncements(user.id),
-    getContactMethods(user.id)
+    getAnnouncements(user.id)
   ]);
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
   const bookingPriceNotice = {
@@ -163,15 +159,6 @@ export default async function SiteSettingsPage({
           <SiteImageUploader
             kind="contactQrZh"
             currentUrl={siteImageUrl(settings.contactQrImageZh)}
-          />
-        }
-        contactMethodsSlot={
-          <ContactMethodsManager
-            methods={contactMethods.map((m) => ({
-              id: m.id,
-              labelEn: m.labelEn,
-              labelZh: m.labelZh
-            }))}
           />
         }
         profileSlot={

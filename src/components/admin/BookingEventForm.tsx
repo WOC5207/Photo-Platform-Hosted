@@ -41,7 +41,6 @@ export default function BookingEventForm({
   timeZone: string;
 }) {
   const t = useTranslations("adminBookings");
-  const ts = useTranslations("adminSite");
   const tc = useTranslations("common");
   const [state, formAction, pending] = useActionState<
     BookingEventFormState,
@@ -158,21 +157,9 @@ export default function BookingEventForm({
             ? t("validationError")
             : state.error === "noSlots"
               ? t("noSlots")
-              : state.error === "noContactMethods"
-                ? (
-                    <>
-                      {ts("noContactMethods")}{" "}
-                      <Link
-                        href="/dashboard/settings?section=features#contact-methods"
-                        className="font-semibold underline decoration-current/50 underline-offset-2 transition hover:decoration-current focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
-                      >
-                        {ts("manageContactMethods")}
-                      </Link>
-                    </>
-                  )
-                : state.error === "dayHasBookings"
-                  ? t("dayHasBookings")
-                  : tc("error")}
+              : state.error === "dayHasBookings"
+                ? t("dayHasBookings")
+                : tc("error")}
         </p>
       )}
       {state.ok && (

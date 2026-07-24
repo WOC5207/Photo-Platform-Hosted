@@ -27,11 +27,6 @@ export interface PublicDay {
   slots: PublicSlot[];
 }
 
-export interface PublicContactMethod {
-  id: string;
-  label: string; // already resolved to the current locale
-}
-
 const inputCls =
   "rounded-lg border border-border-strong bg-surface px-3 py-2 text-fg outline-none focus:border-fg-subtle";
 
@@ -46,11 +41,9 @@ function dayLabel(date: string, locale: string): string {
 
 export default function BookingForm({
   days,
-  contactMethods,
   subjectTerm
 }: {
   days: PublicDay[];
-  contactMethods: PublicContactMethod[];
   subjectTerm: string;
 }) {
   const t = useTranslations("booking");
@@ -223,36 +216,16 @@ export default function BookingForm({
           <span className="text-fg-muted">{t("subject", { term: subjectTerm })}</span>
           <input name="subject" maxLength={200} className={inputCls} />
         </label>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-fg-muted">{t("contactMethod")} *</span>
-            <select
-              name="contactMethod"
-              required
-              defaultValue=""
-              className={inputCls}
-            >
-              <option value="" disabled>
-                {t("contactMethodPlaceholder")}
-              </option>
-              {contactMethods.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-fg-muted">{t("contactValue")} *</span>
-            <input
-              name="contactValue"
-              required
-              maxLength={200}
-              className={inputCls}
-            />
-          </label>
-        </div>
-        <p className="-mt-2 text-xs text-fg-subtle">{t("contactHint")}</p>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-fg-muted">{t("contactValue")} *</span>
+          <input
+            name="contactValue"
+            required
+            maxLength={200}
+            className={inputCls}
+          />
+          <span className="text-xs text-fg-subtle">{t("contactHint")}</span>
+        </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-fg-muted">{t("email")}</span>
           <input
@@ -284,7 +257,7 @@ export default function BookingForm({
 
       <button
         type="submit"
-        disabled={pending || !hasAvailableSlot || contactMethods.length === 0}
+        disabled={pending || !hasAvailableSlot}
         className="rounded-full bg-fg px-6 py-3 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
       >
         {t("submit")}

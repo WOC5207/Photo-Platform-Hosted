@@ -663,22 +663,31 @@ test.describe.serial("management workflows", () => {
     await page.getByRole("button", { name: "Add slots" }).click();
     await expect(page.getByText(/14:00/).first()).toBeVisible();
 
-    // Booking also needs a contact method configured; seed one, then open.
-    const admin = await prisma.user.findUniqueOrThrow({
-      where: { username: adminUsername! }
-    });
-    const contact = await prisma.contactMethod.create({
-      data: { ownerId: admin.id, labelEn: "Email", labelZh: "邮箱" }
-    });
     const event = await prisma.bookingEvent.findFirstOrThrow({
       where: { titleEn: title },
       orderBy: { createdAt: "desc" }
     });
 
     try {
-      await page.getByRole("checkbox", { name: "Open for public booking" }).check();
+      // Reload so the just-added slots render from settled server state — the
+      // open toggle is an uncontrolled checkbox, and racing it against the
+      // slot-add revalidation can submit a stale (unchecked) value.
+      await page.reload();
+      const openCheckbox = page.getByRole("checkbox", {
+        name: "Open for public booking"
+      });
+      await openCheckbox.check();
+      await expect(openCheckbox).toBeChecked();
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
+      // Confirm the open state actually persisted before hitting the public page.
+      await expect
+        .poll(() =>
+          prisma.bookingEvent
+            .findUnique({ where: { id: event.id }, select: { open: true } })
+            .then((e) => e?.open)
+        )
+        .toBe(true);
 
       // Public page: two day tabs; switch to the second day and book its slot.
       await page.goto(`/en/book/${event.token}`);
@@ -690,7 +699,6 @@ test.describe.serial("management workflows", () => {
 
       await page.getByRole("radio").first().check();
       await page.getByLabel("CN").fill("E2E Visitor");
-      await page.getByLabel("Contact method").selectOption({ label: "Email" });
       await page.getByLabel("Contact info").fill("visitor@example.com");
       await page.getByRole("button", { name: "Book this slot" }).click();
       await expect(page).toHaveURL(/\/en\/my-booking\/[a-z0-9]+/);
@@ -704,7 +712,6 @@ test.describe.serial("management workflows", () => {
       expect(booking.timeSlot.bookingDay.date.toISOString().slice(0, 10)).toBe(day2);
     } finally {
       await prisma.bookingEvent.delete({ where: { id: event.id } }).catch(() => {});
-      await prisma.contactMethod.delete({ where: { id: contact.id } }).catch(() => {});
     }
   });
 
@@ -718,7 +725,6 @@ test.describe.serial("management workflows", () => {
       });
       const originalLotteryEnabled = admin.settings?.lotteryEnabled ?? false;
       let lotterySettingChanged = false;
-      let contactId: string | null = null;
       let eventId: string | null = null;
       let drawId: string | null = null;
       let drawToken: string | null = null;
@@ -729,15 +735,6 @@ test.describe.serial("management workflows", () => {
           data: { lotteryEnabled: true }
         });
         lotterySettingChanged = true;
-
-        const contact = await prisma.contactMethod.create({
-          data: {
-            ownerId: admin.id,
-            labelEn: `E2E Email ${Date.now()}`,
-            labelZh: `E2E 邮箱 ${Date.now()}`
-          }
-        });
-        contactId = contact.id;
 
         const event = await prisma.bookingEvent.create({
           data: {
@@ -768,9 +765,6 @@ test.describe.serial("management workflows", () => {
         const entryForm = page.locator("form").first();
         await entryForm.locator('input[name="name"]').fill("Locale Visitor");
         await entryForm
-          .locator('select[name="contactMethodId"]')
-          .selectOption(contactId);
-        await entryForm
           .locator('input[name="contactValue"]')
           .fill("visitor@example.com");
         await entryForm.getByRole("button", { name: "Enter the draw" }).click();
@@ -782,18 +776,15 @@ test.describe.serial("management workflows", () => {
         const storedEntry = await prisma.lotteryEntry.findFirstOrThrow({
           where: { drawId, token }
         });
-        expect(storedEntry.contactMethodId).toBe(contactId);
+        expect(storedEntry.contactValue).toBe("visitor@example.com");
 
         // Simulate returning without the authorization cookie, then switch
-        // locale. The localized label changes, but the stable method ID must
-        // still block a duplicate and recover the original entry.
+        // locale. Identity is now name + contact value alone; it must still
+        // block a duplicate and recover the original entry across the switch.
         await context.clearCookies({ name: "visitor-session" });
         await page.goto(`/zh/draw/${drawToken}`);
         const duplicateForm = page.locator("form").first();
         await duplicateForm.locator('input[name="name"]').fill("Locale Visitor");
-        await duplicateForm
-          .locator('select[name="contactMethodId"]')
-          .selectOption(contactId);
         await duplicateForm
           .locator('input[name="contactValue"]')
           .fill("visitor@example.com");
@@ -808,9 +799,6 @@ test.describe.serial("management workflows", () => {
         await recoveryForm.locator('input[name="entryToken"]').fill(token);
         await recoveryForm.locator('input[name="name"]').fill("Locale Visitor");
         await recoveryForm
-          .locator('select[name="contactMethodId"]')
-          .selectOption(contactId);
-        await recoveryForm
           .locator('input[name="contactValue"]')
           .fill("visitor@example.com");
         await recoveryForm.locator('button[type="submit"]').click();
@@ -821,9 +809,6 @@ test.describe.serial("management workflows", () => {
         }
         if (eventId) {
           await prisma.bookingEvent.deleteMany({ where: { id: eventId } }).catch(() => {});
-        }
-        if (contactId) {
-          await prisma.contactMethod.deleteMany({ where: { id: contactId } }).catch(() => {});
         }
         if (lotterySettingChanged) {
           await prisma.siteSettings

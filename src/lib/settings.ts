@@ -190,14 +190,6 @@ export function resolveContactQrToken(settings: SiteSettings, locale: string): s
   return locale === "zh" ? settings.contactQrImageZh : settings.contactQrImageEn;
 }
 
-/** One owner's options for the booking form's contact-method dropdown. */
-export const getContactMethods = cache(async (ownerId: string) => {
-  return prisma.contactMethod.findMany({
-    where: { ownerId },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
-  });
-});
-
 /** One owner's links to their other sites/profiles. */
 export const getPersonalLinks = cache(async (ownerId: string) => {
   return prisma.personalLink.findMany({

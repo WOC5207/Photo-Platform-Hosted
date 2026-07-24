@@ -1,10 +1,8 @@
 "use server";
 
 import { headers } from "next/headers";
-import { getLocale } from "next-intl/server";
 import { z } from "zod";
 import { clientIp } from "@/lib/clientIp";
-import { pickText } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { spinForEntry, uniqueEntryToken } from "@/lib/lottery";
 import {
@@ -32,7 +30,6 @@ export type LotteryEntryFormState = {
 const entrySchema = z.object({
   drawToken: z.string().trim().min(1).max(100),
   name: z.string().trim().min(1).max(200),
-  contactMethodId: z.string().trim().min(1).max(100),
   contactValue: z.string().trim().min(1).max(200)
 });
 
@@ -51,7 +48,6 @@ export async function submitLotteryEntry(
   const parsed = entrySchema.safeParse({
     drawToken: formData.get("drawToken") ?? "",
     name: formData.get("name") ?? "",
-    contactMethodId: formData.get("contactMethodId") ?? "",
     contactValue: formData.get("contactValue") ?? ""
   });
   if (!parsed.success) return { error: "validation" };
@@ -65,41 +61,17 @@ export async function submitLotteryEntry(
   ) {
     return { error: "rateLimited" };
   }
-  const locale = await getLocale();
 
   const result = await prisma.$transaction(async (tx) => {
     const draw = await lockAvailablePublicDrawByToken(tx, d.drawToken, true);
     if (!draw) return { error: "closed" } as const;
 
-    const contactMethod = await tx.contactMethod.findFirst({
-      where: {
-        id: d.contactMethodId,
-        ownerId: draw.bookingEvent.ownerId
-      },
-      select: { id: true, labelEn: true, labelZh: true }
-    });
-    if (!contactMethod) return { error: "validation" } as const;
-    const contactMethodLabel = pickText(
-      locale,
-      contactMethod.labelEn,
-      contactMethod.labelZh
-    );
-    const legacyLabels = [contactMethod.labelEn, contactMethod.labelZh].filter(
-      Boolean
-    );
+    // One self-entry per contact value: with the method dropdown gone,
+    // identity is the contact value alone. Compare normalized so casing /
+    // width variants of the same handle still collide.
     const normalizedValue = normalizeIdentity(d.contactValue);
     const possibleDuplicates = await tx.lotteryEntry.findMany({
-      where: {
-        drawId: draw.id,
-        bookingId: null,
-        OR: [
-          { contactMethodId: contactMethod.id },
-          {
-            contactMethodId: null,
-            contactMethod: { in: legacyLabels }
-          }
-        ]
-      },
+      where: { drawId: draw.id, bookingId: null },
       select: { contactValue: true }
     });
     if (
@@ -115,8 +87,6 @@ export async function submitLotteryEntry(
       data: {
         drawId: draw.id,
         name: d.name,
-        contactMethodId: contactMethod.id,
-        contactMethod: contactMethodLabel,
         contactValue: d.contactValue,
         token
       },
@@ -138,7 +108,6 @@ export async function recoverLotteryEntry(
     drawToken: formData.get("drawToken") ?? "",
     entryToken: formData.get("entryToken") ?? "",
     name: formData.get("name") ?? "",
-    contactMethodId: formData.get("contactMethodId") ?? "",
     contactValue: formData.get("contactValue") ?? ""
   });
   if (!parsed.success) return { error: "validation" };
@@ -155,14 +124,6 @@ export async function recoverLotteryEntry(
 
   const draw = await findAvailablePublicDraw(d.drawToken);
   if (!draw) return { error: "notFound" };
-  const contactMethod = await prisma.contactMethod.findFirst({
-    where: {
-      id: d.contactMethodId,
-      ownerId: draw.bookingEvent.ownerId
-    },
-    select: { id: true, labelEn: true, labelZh: true }
-  });
-  if (!contactMethod) return { error: "notFound" };
   const entry = await prisma.lotteryEntry.findUnique({
     where: {
       drawId_token: { drawId: draw.id, token: d.entryToken.toUpperCase() }
@@ -171,21 +132,13 @@ export async function recoverLotteryEntry(
       id: true,
       token: true,
       name: true,
-      contactMethodId: true,
-      contactMethod: true,
       contactValue: true,
       wonPrizeId: true
     }
   });
-  const contactMethodMatches = entry?.contactMethodId
-    ? entry.contactMethodId === contactMethod.id
-    : [contactMethod.labelEn, contactMethod.labelZh].includes(
-        entry?.contactMethod ?? ""
-      );
   if (
     !entry ||
     normalizeIdentity(entry.name) !== normalizeIdentity(d.name) ||
-    !contactMethodMatches ||
     normalizeIdentity(entry.contactValue) !== normalizeIdentity(d.contactValue)
   ) {
     return { error: "notFound" };

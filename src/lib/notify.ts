@@ -283,6 +283,17 @@ function visitorCancelledMessage(info: BookingNotification): MailMessage {
   return visitorMessage(info, "cancelled");
 }
 
+/**
+ * Contact display: "Method: value" for older bookings that captured a method
+ * label, or just the value for current bookings (the method dropdown was
+ * removed, so contactMethod is empty and a bare value avoids a leading ": ").
+ */
+function formatContact(info: BookingNotification): string {
+  return info.contactMethod
+    ? `${info.contactMethod}: ${info.contactValue}`
+    : info.contactValue;
+}
+
 function ownerBookingLine(info: BookingNotification): { en: string; zh: string } {
   const slot = bookingSlotLabel(info);
   const subjectEn = info.subject ? `\nSubject: ${info.subject}` : "";
@@ -293,7 +304,7 @@ function ownerBookingLine(info: BookingNotification): { en: string; zh: string }
     ? `\n每人价格：${info.pricePerPerson}`
     : "";
   const subjectZh = info.subject ? `\n主题：${info.subject}` : "";
-  const contact = `${info.contactMethod}: ${info.contactValue}`;
+  const contact = formatContact(info);
   return {
     en:
       `Event: ${info.eventTitle}\nTime: ${slot}${priceEn}\n` +
@@ -332,7 +343,7 @@ function ownerRows(info: BookingNotification, statusText: string, statusColor: s
   if (info.subject) rows.push({ label: OWNER_LABELS.subject, value: info.subject });
   rows.push({
     label: OWNER_LABELS.contact,
-    value: `${info.contactMethod}: ${info.contactValue}`
+    value: formatContact(info)
   });
   rows.push({ label: OWNER_LABELS.status, value: statusText, color: statusColor });
   return rows;
