@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import {
@@ -63,6 +63,39 @@ const btnCls =
   "inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-3 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40 max-sm:min-h-11";
 const smallInputCls =
   "min-h-10 min-w-0 w-full rounded-lg border border-border-strong bg-page px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
+
+function PhotoCardSection({
+  title,
+  summary,
+  defaultOpen = false,
+  children
+}: {
+  title: string;
+  summary: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      className="group rounded-lg border border-border bg-page/60"
+    >
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fg/30">
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-fg">{title}</span>
+          <span className="block truncate text-xs text-fg-subtle">{summary}</span>
+        </span>
+        <span
+          aria-hidden="true"
+          className="shrink-0 text-lg leading-none text-fg-subtle transition-transform group-open:rotate-45"
+        >
+          +
+        </span>
+      </summary>
+      <div className="border-t border-border p-3">{children}</div>
+    </details>
+  );
+}
 
 let rowKeySeq = 0;
 interface CreditRow {
@@ -244,32 +277,8 @@ function ExifForm({
 }) {
   const t = useTranslations("adminEvents");
   const tc = useTranslations("common");
-  // Most photos already have EXIF read automatically; keep this tucked away
-  // so it doesn't clutter every card, and only default open when something
-  // is actually missing.
-  const [open, setOpen] = useState(
-    () =>
-      !initial.focalLengthMm &&
-      !initial.aperture &&
-      !initial.exposureTime &&
-      !initial.iso &&
-      !initial.cameraModel &&
-      !initial.lensModel
-  );
   const [dirty, setDirty] = useState(false);
   useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={`${btnCls} self-start`}
-      >
-        {t("editExif")}
-      </button>
-    );
-  }
 
   return (
     <form
@@ -309,23 +318,9 @@ function ExifForm({
           />
         </label>
       </div>
-      <div className="flex gap-2">
-        <button type="submit" className={`${btnCls} self-start`}>
-          {tc("save")}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (!dirty || window.confirm(tc("unsavedNavigationConfirm"))) {
-              setDirty(false);
-              setOpen(false);
-            }
-          }}
-          className={`${btnCls} self-start`}
-        >
-          {tc("cancel")}
-        </button>
-      </div>
+      <button type="submit" disabled={!dirty} className={`${btnCls} mt-2 self-start`}>
+        {tc("save")}
+      </button>
     </form>
   );
 }
@@ -661,92 +656,128 @@ export default function PhotoManager({
               </p>
             )}
 
-            <CreditsForm
-              photoId={photo.id}
-              initial={photo.credits}
-              initialComment={photo.comment}
-              creditProfiles={creditProfiles}
-              creditTerm={creditTerm}
-              subjectTerm={subjectTerm}
-            />
-            <ExifForm photoId={photo.id} initial={photo.exif} />
-
-            <form
-              action={updateHomeWeight}
-              className="flex flex-col gap-2 rounded-lg border border-border bg-page/60 p-3"
+            <PhotoCardSection
+              title={t("photoSectionAttribution", { term: creditTerm })}
+              summary={[
+                photo.credits.length > 0
+                  ? t("photoCreditCount", { count: photo.credits.length })
+                  : t("photoNoCredits"),
+                photo.comment ? t("photoCommentAdded") : null
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             >
-              <input type="hidden" name="photoId" value={photo.id} />
-              <label className="flex flex-col gap-1 text-xs text-fg-muted">
-                <span className="font-semibold text-fg">
-                  {t("homeWeightLabel")}
-                </span>
-                <select
-                  name="homeWeight"
-                  defaultValue={photo.homeWeight}
-                  className={smallInputCls}
-                >
-                  {[1, 2, 3, 4, 5].map((weight) => (
-                    <option key={weight} value={weight}>
-                      {weight === 1
-                        ? t("homeWeightSmallest", { weight })
-                        : weight === 5
-                          ? t("homeWeightLargest", { weight })
-                          : t("homeWeightOption", { weight })}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-fg-subtle">{t("homeWeightHint")}</span>
-              </label>
-              <button type="submit" className={`${btnCls} self-start`}>
-                {t("saveHomeWeight")}
-              </button>
-            </form>
+              <CreditsForm
+                photoId={photo.id}
+                initial={photo.credits}
+                initialComment={photo.comment}
+                creditProfiles={creditProfiles}
+                creditTerm={creditTerm}
+                subjectTerm={subjectTerm}
+              />
+            </PhotoCardSection>
 
-            <div className="flex flex-wrap gap-2">
-              <form action={movePhoto}>
+            <PhotoCardSection
+              title={t("photoSectionDisplay")}
+              summary={[
+                t("homeWeightOption", { weight: photo.homeWeight }),
+                photo.isCover ? t("cover") : null,
+                photo.homeHighlight ? t("homeHighlight") : null
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            >
+              <form
+                action={updateHomeWeight}
+                className="flex flex-col gap-2"
+              >
                 <input type="hidden" name="photoId" value={photo.id} />
-                <input type="hidden" name="direction" value="up" />
-                <button type="submit" disabled={i === 0} className={btnCls}>
-                  ← {t("moveUp")}
+                <label className="flex flex-col gap-1 text-xs text-fg-muted">
+                  <span className="font-semibold text-fg">
+                    {t("homeWeightLabel")}
+                  </span>
+                  <select
+                    name="homeWeight"
+                    defaultValue={photo.homeWeight}
+                    className={smallInputCls}
+                  >
+                    {[1, 2, 3, 4, 5].map((weight) => (
+                      <option key={weight} value={weight}>
+                        {weight === 1
+                          ? t("homeWeightSmallest", { weight })
+                          : weight === 5
+                            ? t("homeWeightLargest", { weight })
+                            : t("homeWeightOption", { weight })}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-fg-subtle">{t("homeWeightHint")}</span>
+                </label>
+                <button type="submit" className={`${btnCls} self-start`}>
+                  {t("saveHomeWeight")}
                 </button>
               </form>
-              <form action={movePhoto}>
-                <input type="hidden" name="photoId" value={photo.id} />
-                <input type="hidden" name="direction" value="down" />
-                <button
-                  type="submit"
-                  disabled={i === photos.length - 1}
-                  className={btnCls}
-                >
-                  {t("moveDown")} →
-                </button>
-              </form>
-              {moderationAllowsPublicPhoto(photo.moderationStatus) &&
-                !photo.isCover && (
-                <form action={setCoverPhoto}>
+
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+                <form action={movePhoto}>
                   <input type="hidden" name="photoId" value={photo.id} />
-                  <button type="submit" className={btnCls}>
-                    {t("setCover")}
+                  <input type="hidden" name="direction" value="up" />
+                  <button type="submit" disabled={i === 0} className={btnCls}>
+                    ← {t("moveUp")}
                   </button>
                 </form>
+                <form action={movePhoto}>
+                  <input type="hidden" name="photoId" value={photo.id} />
+                  <input type="hidden" name="direction" value="down" />
+                  <button
+                    type="submit"
+                    disabled={i === photos.length - 1}
+                    className={btnCls}
+                  >
+                    {t("moveDown")} →
+                  </button>
+                </form>
+                {moderationAllowsPublicPhoto(photo.moderationStatus) &&
+                  !photo.isCover && (
+                    <form action={setCoverPhoto}>
+                      <input type="hidden" name="photoId" value={photo.id} />
+                      <button type="submit" className={btnCls}>
+                        {t("setCover")}
+                      </button>
+                    </form>
+                  )}
+                {moderationAllowsPublicPhoto(photo.moderationStatus) && (
+                  <form action={toggleHomeHighlight}>
+                    <input type="hidden" name="photoId" value={photo.id} />
+                    <button
+                      type="submit"
+                      className={
+                        photo.homeHighlight
+                          ? `${btnCls} border-fg-faint bg-fg/10 text-fg`
+                          : btnCls
+                      }
+                    >
+                      {photo.homeHighlight
+                        ? t("removeHomeHighlight")
+                        : t("addHomeHighlight")}
+                    </button>
+                  </form>
                 )}
-              {moderationAllowsPublicPhoto(photo.moderationStatus) && (
-              <form action={toggleHomeHighlight}>
-                <input type="hidden" name="photoId" value={photo.id} />
-                <button
-                  type="submit"
-                  className={
-                    photo.homeHighlight
-                      ? `${btnCls} border-fg-faint bg-fg/10 text-fg`
-                      : btnCls
-                  }
-                >
-                  {photo.homeHighlight
-                    ? t("removeHomeHighlight")
-                    : t("addHomeHighlight")}
-                </button>
-              </form>
-              )}
+              </div>
+            </PhotoCardSection>
+
+            <PhotoCardSection
+              title={t("photoSectionTechnical")}
+              summary={
+                photo.exif.cameraModel ||
+                photo.exif.lensModel ||
+                t("photoSectionTechnicalEmpty")
+              }
+            >
+              <ExifForm photoId={photo.id} initial={photo.exif} />
+            </PhotoCardSection>
+
+            <div className="flex justify-end border-t border-border pt-2">
               <form
                 action={deletePhoto}
                 onSubmit={(e) => {

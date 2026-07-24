@@ -8,7 +8,7 @@ import type {
   PendingUploadQueue,
   QueuedFile
 } from "./usePendingUploadQueue";
-import { formatBytes, primaryBtnCls } from "./ui";
+import { formatBytes } from "./ui";
 
 export interface CreditGroup {
   signature: string;
@@ -46,15 +46,13 @@ export default function ConfirmStep({
   creditsByPhoto,
   failedCount,
   publishPhase,
-  publishedCount,
-  onPublish
+  publishedCount
 }: {
   queue: PendingUploadQueue;
   creditsByPhoto: Record<string, AssignedCredit[]>;
   failedCount: number;
   publishPhase: PublishPhase;
   publishedCount: number;
-  onPublish: () => void;
 }) {
   const tw = useTranslations("photoWizard");
   // Show every browsable photo (including any still compressing) so the preview
@@ -66,13 +64,7 @@ export default function ConfirmStep({
     .map((item) => item.finalBytes)
     .filter((bytes): bytes is number => bytes != null);
   const totalFinalBytes = knownFinalBytes.reduce((sum, bytes) => sum + bytes, 0);
-  const publishing = publishPhase === "publishing";
   const finishingCompression = queue.queueWorking;
-  const canPublish =
-    photos.length > 0 &&
-    failedCount === 0 &&
-    !publishing &&
-    !finishingCompression;
 
   return (
     <div className="flex flex-col gap-4">
@@ -154,22 +146,11 @@ export default function ConfirmStep({
         </p>
       )}
 
-      {finishingCompression && !publishing && (
+      {finishingCompression && publishPhase !== "publishing" && (
         <p role="status" className="text-sm text-fg-subtle">
           {tw("finishingCompression")}
         </p>
       )}
-
-      <button
-        type="button"
-        disabled={!canPublish}
-        onClick={onPublish}
-        className={`${primaryBtnCls} self-start`}
-      >
-        {publishing
-          ? tw("publishing")
-          : tw("publish", { count: photos.length })}
-      </button>
     </div>
   );
 }

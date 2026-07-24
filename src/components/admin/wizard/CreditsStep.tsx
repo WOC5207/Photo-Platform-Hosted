@@ -13,7 +13,7 @@ import type {
   PendingUploadQueue
 } from "./usePendingUploadQueue";
 import SelectableGrid from "./SelectableGrid";
-import { btnCls, inputCls } from "./ui";
+import { btnCls, inputCls, primaryBtnCls } from "./ui";
 
 let rowKeySeq = 0;
 
@@ -161,7 +161,18 @@ export default function CreditsStep({
         </div>
       )}
 
-      <div className="flex flex-col gap-2 rounded-lg border border-border-strong/60 bg-surface/50 p-3">
+      <section
+        aria-labelledby="credit-details-heading"
+        className="flex flex-col gap-2 rounded-lg border border-border-strong/60 bg-surface/50 p-3"
+      >
+        <div>
+          <h3 id="credit-details-heading" className="text-sm font-semibold text-fg">
+            {tw("creditsDetailsTitle", { term: creditTerm })}
+          </h3>
+          <p className="mt-1 text-xs text-fg-subtle">
+            {tw("creditsDetailsHint")}
+          </p>
+        </div>
         {rows.map((row) => (
           <div
             key={row.key}
@@ -226,7 +237,7 @@ export default function CreditsStep({
             type="button"
             disabled={busy || credits.length === 0 || selectedIds.length === 0}
             onClick={() => onAssign(selectedIds, credits)}
-            className={btnCls}
+            className={primaryBtnCls}
           >
             {tw("applyToSelected", { count: selectedIds.length })}
           </button>
@@ -239,39 +250,51 @@ export default function CreditsStep({
             {tw("clearCreditsSelected", { count: selectedIds.length })}
           </button>
         </div>
-      </div>
+      </section>
 
-      <div className="flex flex-col gap-2 rounded-lg border border-border-strong/60 bg-surface/50 p-3">
-        <label className="flex flex-col gap-1 text-xs text-fg-subtle">
-          {tw("commentLabel")}
-          <textarea
-            value={comment}
-            onChange={(event) => setComment(event.target.value)}
-            maxLength={2000}
-            rows={2}
-            placeholder={tw("commentPlaceholder")}
-            className={`${inputCls} min-h-16 resize-y`}
-          />
-        </label>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={busy || comment.trim().length === 0 || selectedIds.length === 0}
-            onClick={() => onAssignComment(selectedIds, comment)}
-            className={btnCls}
-          >
-            {tw("applyCommentSelected", { count: selectedIds.length })}
-          </button>
-          <button
-            type="button"
-            disabled={busy || selectedIds.length === 0}
-            onClick={() => onAssignComment(selectedIds, "")}
-            className={btnCls}
-          >
-            {tw("clearCommentSelected", { count: selectedIds.length })}
-          </button>
+      <details className="group rounded-lg border border-border-strong/60 bg-surface/50">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fg/30">
+          <span>{tw("optionalCommentTitle")}</span>
+          <span aria-hidden="true" className="text-fg-subtle">
+            +
+          </span>
+        </summary>
+        <div className="flex flex-col gap-2 border-t border-border p-3">
+          <label className="flex flex-col gap-1 text-xs text-fg-subtle">
+            {tw("commentLabel")}
+            <textarea
+              value={comment}
+              onChange={(event) => setComment(event.target.value)}
+              maxLength={2000}
+              rows={2}
+              placeholder={tw("commentPlaceholder")}
+              className={`${inputCls} min-h-16 resize-y`}
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={
+                busy ||
+                comment.trim().length === 0 ||
+                selectedIds.length === 0
+              }
+              onClick={() => onAssignComment(selectedIds, comment)}
+              className={btnCls}
+            >
+              {tw("applyCommentSelected", { count: selectedIds.length })}
+            </button>
+            <button
+              type="button"
+              disabled={busy || selectedIds.length === 0}
+              onClick={() => onAssignComment(selectedIds, "")}
+              className={btnCls}
+            >
+              {tw("clearCommentSelected", { count: selectedIds.length })}
+            </button>
+          </div>
         </div>
-      </div>
+      </details>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-fg-subtle">
         <button
