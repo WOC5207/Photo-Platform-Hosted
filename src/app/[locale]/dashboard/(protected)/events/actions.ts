@@ -422,6 +422,24 @@ export async function toggleHomeHighlight(formData: FormData): Promise<void> {
   revalidatePath("/", "layout");
 }
 
+const homeWeightSchema = z.coerce.number().int().min(1).max(5);
+
+export async function updateHomeWeight(formData: FormData): Promise<void> {
+  const { user } = await guard();
+  const photoId = formData.get("photoId");
+  const parsedWeight = homeWeightSchema.safeParse(formData.get("homeWeight"));
+  if (typeof photoId !== "string" || !parsedWeight.success) return;
+
+  const photo = await findOwnedPhoto(photoId, user);
+  if (!photo) return;
+
+  await prisma.photo.update({
+    where: { id: photo.id },
+    data: { homeWeight: parsedWeight.data }
+  });
+  revalidatePath("/", "layout");
+}
+
 export async function movePhoto(formData: FormData): Promise<void> {
   const { user } = await guard();
   const photoId = formData.get("photoId");

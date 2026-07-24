@@ -9,6 +9,7 @@ import {
   movePhoto,
   setCoverPhoto,
   toggleHomeHighlight,
+  updateHomeWeight,
   updatePhotoCredits,
   updatePhotoExif
 } from "@/app/[locale]/dashboard/(protected)/events/actions";
@@ -46,6 +47,7 @@ export interface AdminPhoto {
   comment: string;
   isCover: boolean;
   homeHighlight: boolean;
+  homeWeight: number;
   exif: AdminPhotoExif;
 }
 
@@ -568,6 +570,37 @@ export default function PhotoManager({
               subjectTerm={subjectTerm}
             />
             <ExifForm photoId={photo.id} initial={photo.exif} />
+
+            <form
+              action={updateHomeWeight}
+              className="flex flex-col gap-2 rounded-lg border border-border bg-page/60 p-3"
+            >
+              <input type="hidden" name="photoId" value={photo.id} />
+              <label className="flex flex-col gap-1 text-xs text-fg-muted">
+                <span className="font-semibold text-fg">
+                  {t("homeWeightLabel")}
+                </span>
+                <select
+                  name="homeWeight"
+                  defaultValue={photo.homeWeight}
+                  className={smallInputCls}
+                >
+                  {[1, 2, 3, 4, 5].map((weight) => (
+                    <option key={weight} value={weight}>
+                      {weight === 1
+                        ? t("homeWeightSmallest", { weight })
+                        : weight === 5
+                          ? t("homeWeightLargest", { weight })
+                          : t("homeWeightOption", { weight })}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-fg-subtle">{t("homeWeightHint")}</span>
+              </label>
+              <button type="submit" className={`${btnCls} self-start`}>
+                {t("saveHomeWeight")}
+              </button>
+            </form>
 
             <div className="flex flex-wrap gap-2">
               <form action={movePhoto}>

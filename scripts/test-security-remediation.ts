@@ -13,6 +13,11 @@ import {
   MultipartUploadError,
   parseSingleImageMultipart
 } from "../src/lib/multipartUpload";
+import {
+  HOME_PHOTO_WEIGHT_FALLBACK,
+  homePhotoWeightScale,
+  normalizeHomePhotoWeight
+} from "../src/lib/homePhotoWeight";
 
 function multipartRequest(files: Array<[string, Uint8Array]>, fields = true) {
   const form = new FormData();
@@ -41,6 +46,13 @@ async function expectUploadError(
 }
 
 async function main() {
+  assert.equal(normalizeHomePhotoWeight(Number.NaN), HOME_PHOTO_WEIGHT_FALLBACK);
+  assert.equal(normalizeHomePhotoWeight(-10), 1);
+  assert.equal(normalizeHomePhotoWeight(99), 5);
+  assert.ok(homePhotoWeightScale(1) < homePhotoWeightScale(3));
+  assert.ok(homePhotoWeightScale(3) < homePhotoWeightScale(5));
+  console.log("PASS  homepage photo weights normalize and scale from 1-5");
+
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "photo-security-"));
   process.env.PHOTOS_DIR = root;
   process.env.UPLOAD_MAX_MB = "0.001";

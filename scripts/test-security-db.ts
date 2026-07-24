@@ -193,9 +193,62 @@ async function testLotteryAvailability() {
   }
 }
 
+async function testHomePhotoWeightDefault() {
+  const suffix = randomUUID().slice(0, 8);
+  const owner = await prisma.user.create({
+    data: {
+      username: `home-weight-owner-${suffix}`,
+      passwordHash: "test-only-password-hash"
+    }
+  });
+  try {
+    const event = await prisma.event.create({
+      data: {
+        ownerId: owner.id,
+        slug: `home-weight-${suffix}`,
+        titleEn: "Weight test",
+        titleZh: "Weight test"
+      }
+    });
+    await prisma.photo.createMany({
+      data: Array.from({ length: 30 }, (_, index) => ({
+        eventId: event.id,
+        filename: `weight-${index}.jpg`,
+        originalName: `weight-${index}.jpg`,
+        width: 1200,
+        height: 800
+      }))
+    });
+    const photos = await prisma.photo.findMany({
+      where: { eventId: event.id },
+      select: { id: true, homeWeight: true }
+    });
+    assert.equal(photos.length, 30);
+    assert.ok(
+      photos.every(({ homeWeight }) => homeWeight >= 1 && homeWeight <= 5),
+      "database-generated homepage weights must stay within 1-5"
+    );
+    assert.ok(
+      new Set(photos.map(({ homeWeight }) => homeWeight)).size > 1,
+      "database-generated homepage weights should vary across new photos"
+    );
+    await assert.rejects(
+      prisma.photo.update({
+        where: { id: photos[0].id },
+        data: { homeWeight: 6 }
+      }),
+      "the database must reject homepage weights outside 1-5"
+    );
+    console.log("PASS  homepage photo weights are random and constrained to 1-5");
+  } finally {
+    await prisma.user.delete({ where: { id: owner.id } }).catch(() => undefined);
+  }
+}
+
 async function main() {
   await testRegistrationConsent();
   await testLotteryAvailability();
+  await testHomePhotoWeightDefault();
   await prisma.$disconnect();
 }
 

@@ -198,7 +198,8 @@ export default async function HomePage({
         url: photoUrls(e.id, p.id).med,
         alt: formatCredits(p.credits),
         width: p.width,
-        height: p.height
+        height: p.height,
+        homeWeight: p.homeWeight
       }))
     }));
 

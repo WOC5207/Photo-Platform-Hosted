@@ -1,5 +1,6 @@
 import { Link } from "@/i18n/navigation";
 import PhotoCreditOverlay from "@/components/PhotoCreditOverlay";
+import { homePhotoWeightScale } from "@/lib/homePhotoWeight";
 
 export interface StreamPhoto {
   id: string;
@@ -7,6 +8,7 @@ export interface StreamPhoto {
   alt: string;
   width: number;
   height: number;
+  homeWeight: number;
 }
 
 export interface StreamEvent {
@@ -53,16 +55,15 @@ export default function EventPhotoStream({
           </Link>
           {/*
             Justified "poster" mosaic. Each item's flex-basis and flex-grow are
-            proportional to the photo's aspect ratio, so every row grows to fill
-            the full width edge-to-edge and all photos in a row share one height
-            — a height that varies from row to row, giving the varied, packed
-            poster look. The item box ends up at the photo's own aspect ratio,
-            so object-cover has (essentially) nothing to crop. --row-h sets the
-            rough per-row height (responsive).
+            proportional to its aspect ratio and the photographer's 1-5 homepage
+            weight. Every row still grows edge-to-edge, while higher-weight
+            photos receive more area and naturally drive a varied packed layout.
+            --row-h sets the rough per-row height (responsive).
           */}
           <ul className="flex flex-wrap gap-1 [--row-h:140px] sm:[--row-h:190px] lg:[--row-h:230px]">
             {event.photos.map((photo, index) => {
               const ar = photo.height ? photo.width / photo.height : 1;
+              const weightScale = homePhotoWeightScale(photo.homeWeight);
               const fallbackLabel = `${event.title} — ${openPhotoLabel} ${index + 1}`;
               const linkLabel = photo.alt
                 ? `${openPhotoLabel}: ${photo.alt}`
@@ -70,10 +71,11 @@ export default function EventPhotoStream({
               return (
                 <li
                   key={photo.id}
+                  data-home-weight={photo.homeWeight}
                   className="overflow-hidden rounded-md"
                   style={{
-                    flexGrow: ar,
-                    flexBasis: `calc(${ar} * var(--row-h))`
+                    flexGrow: ar * weightScale,
+                    flexBasis: `calc(${ar * weightScale} * var(--row-h))`
                   }}
                 >
                   <Link
