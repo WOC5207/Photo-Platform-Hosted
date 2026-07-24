@@ -170,6 +170,31 @@ test.describe("post-publish moderation", () => {
       await expect(page.getByText("flagged-ui.jpg", { exact: true })).toBeVisible();
       await expect(page.getByText("queued-ui.jpg", { exact: true })).toHaveCount(0);
       await expect(page.getByText("error-ui.jpg", { exact: true })).toHaveCount(0);
+
+      await page.getByRole("switch", { name: "Show details" }).click();
+      const audit = page.getByRole("region", {
+        name: "Uploaded photo details"
+      });
+      await expect(audit).toBeVisible();
+      await expect(
+        audit.getByText("queued-ui.jpg", { exact: true })
+      ).toBeVisible();
+      await expect(
+        audit.getByText("error-ui.jpg", { exact: true })
+      ).toBeVisible();
+      const auditFlagged = audit
+        .locator("li")
+        .filter({ hasText: "flagged-ui.jpg" });
+      await expect(auditFlagged.getByText("0.9100", { exact: true })).toBeVisible();
+      await expect(
+        auditFlagged.getByText("1,280 × 720", { exact: true })
+      ).toBeVisible();
+      await expect(
+        auditFlagged.getByText(`e2e-${suffix}`, { exact: true })
+      ).toBeVisible();
+      await page.getByRole("switch", { name: "Hide details" }).click();
+      await expect(audit).toHaveCount(0);
+
       const reviewCard = page.locator("li").filter({ hasText: "flagged-ui.jpg" });
       await expect(
         reviewCard.getByRole("button", { name: "Reveal photo" })
