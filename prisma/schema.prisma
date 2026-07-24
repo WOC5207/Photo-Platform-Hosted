@@ -96,7 +96,6 @@ model User {
   bookingEvents  BookingEvent[]
   announcements  Announcement[]
   personalLinks  PersonalLink[]
-  contactMethods ContactMethod[]
   creditProfiles CreditProfile[]
   siteImages     SiteImage[]
 
@@ -536,25 +535,9 @@ model PersonalLink {
   @@index([ownerId])
 }
 
-// Admin-configured options for the booking form's contact-method dropdown
-// (e.g. WeChat, QQ, Email, Instagram...). Bookings store the chosen label as
-// plain text (see Booking.contactMethod), so editing/deleting an option here
-// never changes past bookings.
-model ContactMethod {
-  id        String   @id @default(cuid())
-  ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  labelEn   String
-  labelZh   String
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
-
-  @@index([ownerId])
-}
-
 // Short admin-authored notices shown in the homepage panel's Announcements
 // tab (e.g. "Booking for March is now open"). No draft state — like
-// PersonalLink/ContactMethod, an announcement is live as soon as it's saved.
+// PersonalLink, an announcement is live as soon as it's saved.
 model Announcement {
   id        String   @id @default(cuid())
   ownerId   String
@@ -581,10 +564,10 @@ model Booking {
   name          String
   // Subject of the shoot (character, role, theme...), optional.
   subject       String        @default("")
-  // Chosen contact-method label (e.g. "WeChat") and the value for it (e.g.
-  // the visitor's WeChat ID). Both stored as plain text, not a foreign key,
-  // so the booking stays intact even if the admin later edits or removes
-  // that ContactMethod option.
+  // The visitor's contact info (e.g. their WeChat ID). contactValue is the
+  // single free-text field the form now collects. contactMethod is a legacy
+  // label snapshot ("WeChat") kept only for bookings made when the form had a
+  // separate contact-method dropdown; it is empty for new bookings.
   contactMethod String        @default("")
   contactValue  String        @default("")
   // Optional email the visitor gives so they get a confirmation and status
@@ -631,11 +614,10 @@ model LotteryDraw {
 
 // One entrant in a draw: either wrapping a confirmed booking the admin
 // selected, or a standalone self-entry a visitor submitted through the
-// public link (bookingId null). name/subject/contactMethod/
-// contactValue are always populated on the entry itself (copied from the
-// booking at add-time, or typed in directly), so display never has to join
-// out to Booking. Once an entry wins a prize, wonPrizeId/wonAt are set and
-// it drops out of the pool for later spins.
+// public link (bookingId null). name/contactValue are always populated on the
+// entry itself (copied from the booking at add-time, or typed in directly), so
+// display never has to join out to Booking. Once an entry wins a prize,
+// wonPrizeId/wonAt are set and it drops out of the pool for later spins.
 model LotteryEntry {
   id              String        @id @default(cuid())
   drawId          String
@@ -644,9 +626,10 @@ model LotteryEntry {
   booking         Booking?      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   name            String
   subject         String        @default("")
-  // Stable identity of the selected owner contact option. Kept as a scalar
-  // rather than a foreign key so deleting an option never destroys or orphans
-  // an entrant; contactMethod remains the display-label snapshot.
+  // Legacy contact-method snapshot from when entries chose a method from a
+  // dropdown. Never a foreign key. Both are empty for new entries (which
+  // collect only the free-text contactValue); retained so historical entries
+  // keep the method they were saved with.
   contactMethodId String?
   contactMethod   String        @default("")
   contactValue    String        @default("")

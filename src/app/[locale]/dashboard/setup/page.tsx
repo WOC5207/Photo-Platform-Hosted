@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import {
   getSiteSettings,
-  getContactMethods,
   getPersonalLinks,
   resolveCreditTerm
 } from "@/lib/settings";
@@ -40,10 +39,7 @@ export default async function SetupPage() {
 
   const t = await getTranslations("setup");
   const tc = await getTranslations("common");
-  const [contactMethods, personalLinks] = await Promise.all([
-    getContactMethods(user.id),
-    getPersonalLinks(user.id)
-  ]);
+  const personalLinks = await getPersonalLinks(user.id);
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
 
   return (
@@ -81,11 +77,6 @@ export default async function SetupPage() {
           creditProfilesEnabled: settings.creditProfilesEnabled
         }}
         creditTerm={creditTerm}
-        contactMethods={contactMethods.map((m) => ({
-          id: m.id,
-          labelEn: m.labelEn,
-          labelZh: m.labelZh
-        }))}
         personalLinks={personalLinks.map((l) => ({
           id: l.id,
           labelEn: l.labelEn,

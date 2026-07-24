@@ -18,22 +18,18 @@ import SiteImageUploader from "@/components/admin/SiteImageUploader";
 import PersonalLinksManager, {
   type AdminPersonalLink
 } from "@/components/admin/PersonalLinksManager";
-import ContactMethodsManager, {
-  type AdminContactMethod
-} from "@/components/admin/ContactMethodsManager";
 
 type StepId =
   | "credentials"
   | "brand"
   | "hometext"
   | "features"
-  | "contact"
   | "logo"
   | "background"
   | "links"
   | "finish";
 
-function computeSteps(bookingEnabled: boolean, needsCredentials: boolean): StepId[] {
+function computeSteps(needsCredentials: boolean): StepId[] {
   // The credentials step only exists to get the seeded admin off the
   // ADMIN_USERNAME/ADMIN_PASSWORD placeholders from the server's env file.
   // Invited users chose their own username and password when they redeemed
@@ -41,7 +37,6 @@ function computeSteps(bookingEnabled: boolean, needsCredentials: boolean): StepI
   // actively wrong about how they signed in.
   const steps: StepId[] = needsCredentials ? ["credentials"] : [];
   steps.push("brand", "hometext", "features");
-  if (bookingEnabled) steps.push("contact");
   steps.push("logo", "background", "links", "finish");
   return steps;
 }
@@ -70,7 +65,6 @@ export default function SetupWizard({
   initialUsername,
   settings,
   creditTerm,
-  contactMethods,
   personalLinks,
   logoUrl,
   backgroundUrl
@@ -82,17 +76,12 @@ export default function SetupWizard({
   // Resolved display term (e.g. "Cosplayer"), used to phrase the credit
   // profiles feature toggle in the site's own configured vocabulary.
   creditTerm: string;
-  contactMethods: AdminContactMethod[];
   personalLinks: AdminPersonalLink[];
   logoUrl: string;
   backgroundUrl: string;
 }) {
   const t = useTranslations("setup");
-  // Derived straight from the live settings prop (Next refreshes it
-  // automatically after each step's server action revalidates), not from a
-  // separately-tracked copy — that would need manual resyncing and could
-  // drift from what's actually saved.
-  const steps = computeSteps(settings.bookingEnabled, needsCredentials);
+  const steps = computeSteps(needsCredentials);
   const [stepIndex, setStepIndex] = useState(0);
   const step = steps[Math.min(stepIndex, steps.length - 1)];
 
@@ -125,13 +114,6 @@ export default function SetupWizard({
           initial={settings}
           creditTerm={creditTerm}
           onDone={goNext}
-          onBack={goBack}
-        />
-      )}
-      {step === "contact" && (
-        <ContactStep
-          contactMethods={contactMethods}
-          onNext={goNext}
           onBack={goBack}
         />
       )}
@@ -550,37 +532,6 @@ function FeaturesStep({
 
       <StepNav onBack={onBack} pending={pending} nextLabel={tc("next")} />
     </form>
-  );
-}
-
-function ContactStep({
-  contactMethods,
-  onNext,
-  onBack
-}: {
-  contactMethods: AdminContactMethod[];
-  onNext: () => void;
-  onBack: () => void;
-}) {
-  const t = useTranslations("setup");
-  const tc = useTranslations("common");
-  return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-xl font-bold">{t("contactTitle")}</h2>
-        <p className="mt-1 text-sm text-fg-subtle">{t("contactHint")}</p>
-      </div>
-      <ContactMethodsManager methods={contactMethods} />
-      {contactMethods.length === 0 && (
-        <p className="text-xs text-danger">{t("contactRequiredError")}</p>
-      )}
-      <StepNav
-        onBack={onBack}
-        onNext={onNext}
-        nextLabel={tc("next")}
-        nextDisabled={contactMethods.length === 0}
-      />
-    </div>
   );
 }
 

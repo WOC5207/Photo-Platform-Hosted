@@ -55,8 +55,8 @@ there is no privileged site.
   count, capacity). Each gets an unguessable shareable link — no visitor account
   needed. Double-booking is prevented with row-locked capacity checks. Visitors
   get a private link to view/cancel. New events start as closed drafts and need
-  at least one time slot plus one visitor contact method before they can open
-  publicly. Optional per-event prize draw. Turning Booking or Lottery off
+  at least one time slot before they can open publicly. Optional per-event prize
+  draw. Turning Booking or Lottery off
   publicly does not hide existing management data from its owner.
 - **Bilingual everywhere**: locale-prefixed URLs (`/zh/...`, `/en/...`),
   language switcher, per-language content fields with fallback.

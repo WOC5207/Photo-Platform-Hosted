@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { pickText } from "@/lib/content";
 import { formatDate } from "@/lib/datetime";
 import { findAvailablePublicDraw } from "@/lib/publicLottery";
-import { getContactMethods } from "@/lib/settings";
 import { getAuthorizedLotteryEntryIds } from "@/lib/visitorSession";
 import LotteryEntryForm from "@/components/booking/LotteryEntryForm";
 
@@ -27,10 +26,6 @@ export default async function LotteryEntryPage({
   const event = draw.bookingEvent;
 
   const description = pickText(locale, event.descriptionEn, event.descriptionZh);
-  const contactMethods = (await getContactMethods(event.ownerId)).map((m) => ({
-    id: m.id,
-    label: pickText(locale, m.labelEn, m.labelZh)
-  }));
 
   const authorizedIds = await getAuthorizedLotteryEntryIds();
   const [ownEntry, storedPrizes] = await Promise.all([
@@ -74,7 +69,6 @@ export default async function LotteryEntryPage({
 
       <LotteryEntryForm
         drawToken={token}
-        contactMethods={contactMethods}
         initialEntry={ownEntry}
         prizes={prizes}
       />

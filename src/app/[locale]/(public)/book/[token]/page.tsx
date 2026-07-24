@@ -3,7 +3,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { pickText } from "@/lib/content";
 import { formatDate, formatDateRange } from "@/lib/datetime";
-import { getContactMethods, getSiteSettings, resolveSubjectTerm } from "@/lib/settings";
+import { getSiteSettings, resolveSubjectTerm } from "@/lib/settings";
 import { Link } from "@/i18n/navigation";
 import BookingForm, { type PublicDay } from "@/components/booking/BookingForm";
 import { isNaiveDateTimePast } from "@/lib/timeZone";
@@ -88,10 +88,6 @@ export default async function BookPage({
       : formatDate(event.date);
 
   const description = pickText(locale, event.descriptionEn, event.descriptionZh);
-  const contactMethods = (await getContactMethods(event.ownerId)).map((m) => ({
-    id: m.id,
-    label: pickText(locale, m.labelEn, m.labelZh)
-  }));
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
@@ -131,12 +127,8 @@ export default async function BookPage({
         <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
           {t("noSlotsNotice")}
         </p>
-      ) : contactMethods.length === 0 ? (
-        <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
-          {t("temporarilyUnavailable")}
-        </p>
       ) : (
-        <BookingForm days={days} contactMethods={contactMethods} subjectTerm={subjectTerm} />
+        <BookingForm days={days} subjectTerm={subjectTerm} />
       )}
     </div>
   );

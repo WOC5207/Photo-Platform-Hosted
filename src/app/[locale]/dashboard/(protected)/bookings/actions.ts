@@ -24,12 +24,7 @@ import {
 import { getSiteSettings } from "@/lib/settings";
 
 export type BookingEventFormState = {
-  error?:
-    | "validation"
-    | "noSlots"
-    | "noContactMethods"
-    | "dayHasBookings"
-    | "unknown";
+  error?: "validation" | "noSlots" | "dayHasBookings" | "unknown";
   ok?: boolean;
 };
 export type SlotFormState = { error?: "validation"; ok?: boolean };
@@ -152,16 +147,10 @@ export async function updateBookingEvent(
   if (!existing) return { error: "unknown" };
 
   if (d.open && !existing.open) {
-    const [slotCount, contactMethodCount] = await prisma.$transaction([
-      prisma.timeSlot.count({
-        where: { bookingEventId: existing.id }
-      }),
-      prisma.contactMethod.count({
-        where: { ownerId: user.id }
-      })
-    ]);
+    const slotCount = await prisma.timeSlot.count({
+      where: { bookingEventId: existing.id }
+    });
     if (slotCount === 0) return { error: "noSlots" };
-    if (contactMethodCount === 0) return { error: "noContactMethods" };
   }
 
   // Reconcile the event's days with the calendar selection: keep the days that

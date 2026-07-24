@@ -80,7 +80,6 @@ export default function SiteSettingsForm({
   announcementsSlot,
   contactQrEnSlot,
   contactQrZhSlot,
-  contactMethodsSlot,
   profileSlot
 }: {
   activeSection: SiteSettingsSection | "profile";
@@ -123,7 +122,6 @@ export default function SiteSettingsForm({
   announcementsSlot: ReactNode;
   contactQrEnSlot: ReactNode;
   contactQrZhSlot: ReactNode;
-  contactMethodsSlot: ReactNode;
   profileSlot: ReactNode;
 }) {
   const t = useTranslations("adminSite");
@@ -615,8 +613,6 @@ export default function SiteSettingsForm({
                 </p>
               )}
             </div>
-
-            {contactMethodsSlot}
           </Group>
 
           <Group title={t("groupCreditsTitle")} hint={t("groupCreditsHint")}>

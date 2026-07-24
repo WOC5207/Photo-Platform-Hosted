@@ -10,11 +10,6 @@ import {
 } from "@/app/[locale]/(public)/draw/actions";
 import PublicLotteryDraw, { type PublicLotteryPrize } from "./PublicLotteryDraw";
 
-export interface PublicContactMethod {
-  id: string;
-  label: string;
-}
-
 const inputCls =
   "rounded-lg border border-border-strong bg-surface px-3 py-2 text-fg outline-none focus:border-fg-subtle";
 
@@ -35,7 +30,7 @@ function ErrorMessage({ state }: { state: LotteryEntryFormState }) {
   );
 }
 
-function ContactFields({ contactMethods }: { contactMethods: PublicContactMethod[] }) {
+function ContactFields() {
   const t = useTranslations("lotteryEntry");
   return (
     <>
@@ -43,33 +38,21 @@ function ContactFields({ contactMethods }: { contactMethods: PublicContactMethod
         <span className="text-fg-muted">{t("name")} *</span>
         <input name="name" required maxLength={200} className={inputCls} />
       </label>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("contactMethod")} *</span>
-          <select name="contactMethodId" required defaultValue="" className={inputCls}>
-            <option value="" disabled>{t("contactMethodPlaceholder")}</option>
-            {contactMethods.map((method) => (
-              <option key={method.id} value={method.id}>{method.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("contactValue")} *</span>
-          <input name="contactValue" required maxLength={200} className={inputCls} />
-        </label>
-      </div>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-fg-muted">{t("contactValue")} *</span>
+        <input name="contactValue" required maxLength={200} className={inputCls} />
+        <span className="text-xs text-fg-subtle">{t("contactHint")}</span>
+      </label>
     </>
   );
 }
 
 export default function LotteryEntryForm({
   drawToken,
-  contactMethods,
   initialEntry,
   prizes
 }: {
   drawToken: string;
-  contactMethods: PublicContactMethod[];
   initialEntry: VisitorLotteryEntry | null;
   prizes: PublicLotteryPrize[];
 }) {
@@ -138,7 +121,7 @@ export default function LotteryEntryForm({
     <div className="flex flex-col gap-5">
       <form action={entryAction} className="flex flex-col gap-4">
         <input type="hidden" name="drawToken" value={drawToken} />
-        <ContactFields contactMethods={contactMethods} />
+        <ContactFields />
         <ErrorMessage state={entryState} />
         <button
           type="submit"
@@ -158,7 +141,7 @@ export default function LotteryEntryForm({
             <span className="text-fg-muted">{t("yourToken")} *</span>
             <input name="entryToken" required minLength={5} maxLength={12} className={inputCls} />
           </label>
-          <ContactFields contactMethods={contactMethods} />
+          <ContactFields />
           <ErrorMessage state={recoveryState} />
           <button
             type="submit"
