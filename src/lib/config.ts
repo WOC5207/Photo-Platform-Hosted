@@ -20,6 +20,7 @@ const DEFAULT_COMPRESSION_CLAIM_STALE_MS = 10 * 60 * 1000;
 const DEFAULT_MODERATION_CLAIM_STALE_MS = 5 * 60 * 1000;
 const DEFAULT_MODERATION_CONCURRENCY = 2;
 const DEFAULT_MODERATION_MAX_ATTEMPTS = 4;
+const DEFAULT_MINIAPP_SESSION_TTL_DAYS = 7;
 
 function positiveMb(name: string, fallback: number): number {
   const configured = Number(process.env[name] ?? fallback);
@@ -62,6 +63,19 @@ export const config = {
   photosDir: () => path.resolve(required("PHOTOS_DIR")),
   sessionSecret: () => required("SESSION_SECRET"),
   appBaseUrl: () => required("APP_BASE_URL").replace(/\/+$/, ""),
+  assetBaseUrl: () =>
+    (process.env.ASSET_BASE_URL?.trim() || required("APP_BASE_URL")).replace(
+      /\/+$/,
+      ""
+    ),
+  miniappApiEnabled: () => process.env.MINIAPP_API_ENABLED === "true",
+  wechatMiniappAppId: () => required("WECHAT_MINIAPP_APP_ID"),
+  wechatMiniappAppSecret: () => required("WECHAT_MINIAPP_APP_SECRET"),
+  miniappSessionTtlDays: () =>
+    Math.min(
+      positiveInt("MINIAPP_SESSION_TTL_DAYS", DEFAULT_MINIAPP_SESSION_TTL_DAYS),
+      DEFAULT_MINIAPP_SESSION_TTL_DAYS
+    ),
   adminUsername: () => process.env.ADMIN_USERNAME ?? "",
   adminPassword: () => process.env.ADMIN_PASSWORD ?? "",
   stripOriginalExif: () => process.env.STRIP_ORIGINAL_EXIF === "true",

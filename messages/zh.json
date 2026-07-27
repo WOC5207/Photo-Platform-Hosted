@@ -803,7 +803,15 @@
     "backToAccounts": "账号列表",
     "storageTitle": "存储",
     "tierTitle": "等级",
-    "dangerTitle": "账号操作"
+    "dangerTitle": "账号操作",
+    "miniappTitle": "微信小程序",
+    "miniappDescription": "控制该摄影师是否可出现在访客小程序中；平台级 API 总开关也必须同时开启。",
+    "miniappEnabled": "已启用",
+    "miniappDisabled": "未启用",
+    "miniappEnable": "为小程序启用",
+    "miniappDisable": "从小程序停用",
+    "miniappReviewConfirmation": "我已复核该摄影师的全部公开内容，并确认其适合在小程序中展示。",
+    "miniappSuspendedHint": "账号处于停用状态时不能启用小程序。"
   },
   "register": {
     "title": "创建账号",
@@ -926,6 +934,31 @@
     "previousPage": "上一页",
     "nextPage": "下一页",
     "photoDetailsPage": "第 {page} 页，共 {total} 页"
+  },
+  "adminReports": {
+    "navTitle": "访客举报",
+    "title": "访客照片举报",
+    "description": "处理从小程序提交的照片举报。举报身份仅用于防滥用控制，不会在此页面显示。",
+    "empty": "目前没有等待处理的访客举报。",
+    "statusOpen": "待处理",
+    "statusReviewing": "处理中",
+    "reason": "举报原因",
+    "details": "访客说明",
+    "claim": "标记为处理中",
+    "resolutionNote": "处理备注（必填）",
+    "resolve": "确认处理",
+    "dismiss": "驳回举报",
+    "reasons": {
+      "sexual": "色情或露骨内容",
+      "violence": "暴力或血腥内容",
+      "self_harm": "自残相关内容",
+      "hate": "仇恨内容",
+      "harassment": "骚扰",
+      "privacy": "隐私问题",
+      "copyright": "版权问题",
+      "spam": "垃圾或误导内容",
+      "other": "其他"
+    }
   },
   "adminNotifications": {
     "navTitle": "通知",

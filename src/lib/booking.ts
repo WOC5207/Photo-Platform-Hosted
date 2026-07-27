@@ -1,6 +1,11 @@
 import "server-only";
 import { randomUUID } from "crypto";
-import { Prisma, type BookingEvent, type TimeSlot } from "@prisma/client";
+import {
+  Prisma,
+  type Booking,
+  type BookingEvent,
+  type TimeSlot
+} from "@prisma/client";
 import { prisma } from "./db";
 import { DEFAULT_TIME_ZONE, isNaiveDateTimePast } from "./timeZone";
 import { formatDate, parseNaiveDateTime } from "./datetime";
@@ -16,10 +21,14 @@ export interface BookingDetails {
   // Site language the visitor booked in, stored on the booking so later emails
   // reach them in their own language (see Booking.locale in schema.prisma).
   locale: string;
+  wechatIdentityId?: string;
+  // Recheck and lock the tenant's mini-program visibility at the insert
+  // boundary. Web callers omit this and retain their existing behavior.
+  requireMiniappAvailability?: boolean;
 }
 
 export type ReserveSlotResult =
-  | { ok: true; slot: TimeSlot & { bookingEvent: BookingEvent } }
+  | { ok: true; slot: TimeSlot & { bookingEvent: BookingEvent }; booking: Booking }
   | { ok: false; error: "slotUnavailable" | "closed" | "slotFull" };
 
 export interface SlotBatchInput {
@@ -144,10 +153,43 @@ export async function reserveSlot(
     });
     if (!slot) return { ok: false, error: "slotUnavailable" } as const;
     if (!slot.bookingEvent.open) return { ok: false, error: "closed" } as const;
+
+    if (details.requireMiniappAvailability) {
+      // Keep owner suspension / tenant opt-out from racing the final insert.
+      // FOR SHARE permits concurrent bookings while making either admin update
+      // wait until this transaction has committed.
+      await tx.$queryRaw`
+        SELECT id FROM "User"
+        WHERE id = ${slot.bookingEvent.ownerId}
+        FOR SHARE
+      `;
+      await tx.$queryRaw`
+        SELECT id FROM "SiteSettings"
+        WHERE "ownerId" = ${slot.bookingEvent.ownerId}
+        FOR SHARE
+      `;
+    }
     const settings = await tx.siteSettings.findUnique({
       where: { ownerId: slot.bookingEvent.ownerId },
-      select: { timeZone: true }
+      select: {
+        timeZone: true,
+        miniappEnabled: true,
+        bookingEnabled: true
+      }
     });
+    if (details.requireMiniappAvailability) {
+      const owner = await tx.user.findUnique({
+        where: { id: slot.bookingEvent.ownerId },
+        select: { status: true }
+      });
+      if (
+        owner?.status !== "active" ||
+        !settings?.miniappEnabled ||
+        !settings.bookingEnabled
+      ) {
+        return { ok: false, error: "closed" } as const;
+      }
+    }
     if (
       isNaiveDateTimePast(
         slot.startTime,
@@ -162,7 +204,7 @@ export async function reserveSlot(
     });
     if (confirmed >= slot.capacity) return { ok: false, error: "slotFull" } as const;
 
-    await tx.booking.create({
+    const booking = await tx.booking.create({
       data: {
         timeSlotId: slot.id,
         name: details.name,
@@ -172,10 +214,11 @@ export async function reserveSlot(
         email: details.email,
         notes: details.notes,
         cancelToken: details.cancelToken,
-        locale: details.locale
+        locale: details.locale,
+        wechatIdentityId: details.wechatIdentityId
       }
     });
-    return { ok: true, slot } as const;
+    return { ok: true, slot, booking } as const;
   });
 }
 

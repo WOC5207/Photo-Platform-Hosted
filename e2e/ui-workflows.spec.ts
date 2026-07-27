@@ -203,6 +203,9 @@ test.describe.serial("management workflows", () => {
     }
     await booking.uncheck();
     await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: /^Saved$/ })
+    ).toBeVisible();
     await page.goto("/en/dashboard/bookings");
     await expect(page.getByRole("status")).toContainText("Off hides the Booking nav link");
     await expect(page.getByRole("link", { name: "Bookings", exact: true })).toBeVisible();
@@ -211,6 +214,9 @@ test.describe.serial("management workflows", () => {
       await page.goto("/en/dashboard/settings?section=features");
       await page.getByRole("checkbox", { name: "Event booking" }).check();
       await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(
+        page.getByRole("status").filter({ hasText: /^Saved$/ })
+      ).toBeVisible();
     }
   });
 

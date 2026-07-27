@@ -803,7 +803,15 @@
     "backToAccounts": "Accounts",
     "storageTitle": "Storage",
     "tierTitle": "Tier",
-    "dangerTitle": "Account actions"
+    "dangerTitle": "Account actions",
+    "miniappTitle": "WeChat Mini Program",
+    "miniappDescription": "Controls whether this photographer can appear in the visitor Mini Program. The platform-wide API switch must also be on.",
+    "miniappEnabled": "Enabled",
+    "miniappDisabled": "Disabled",
+    "miniappEnable": "Enable for Mini Program",
+    "miniappDisable": "Disable for Mini Program",
+    "miniappReviewConfirmation": "I have reviewed all public content for this photographer and confirm that it is ready for the Mini Program.",
+    "miniappSuspendedHint": "A suspended account cannot be enabled for the Mini Program."
   },
   "register": {
     "title": "Create your account",
@@ -926,6 +934,31 @@
     "previousPage": "Previous",
     "nextPage": "Next",
     "photoDetailsPage": "Page {page} of {total}"
+  },
+  "adminReports": {
+    "navTitle": "Visitor reports",
+    "title": "Visitor photo reports",
+    "description": "Review reports submitted from the Mini Program. Reporter identities are retained only for abuse controls and are never displayed here.",
+    "empty": "No visitor reports are waiting for review.",
+    "statusOpen": "Open",
+    "statusReviewing": "Reviewing",
+    "reason": "Reason",
+    "details": "Visitor details",
+    "claim": "Mark as reviewing",
+    "resolutionNote": "Required resolution note",
+    "resolve": "Resolve",
+    "dismiss": "Dismiss",
+    "reasons": {
+      "sexual": "Sexual or explicit content",
+      "violence": "Violence or graphic content",
+      "self_harm": "Self-harm content",
+      "hate": "Hateful content",
+      "harassment": "Harassment",
+      "privacy": "Privacy concern",
+      "copyright": "Copyright concern",
+      "spam": "Spam or misleading content",
+      "other": "Other"
+    }
   },
   "adminNotifications": {
     "navTitle": "Notifications",

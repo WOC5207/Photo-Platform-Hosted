@@ -13,6 +13,10 @@ invites the rest — they get a site without ever touching Docker.
 > covers the basics; **[docs/DEPLOY_SYNOLOGY.md](docs/DEPLOY_SYNOLOGY.md)**
 > goes further, including connecting a custom domain with HTTPS end to end.
 
+> **WeChat Mini Program backend:** the versioned visitor API is documented in
+> `openapi/miniapp-v1.yaml`; deployment gates, server-only configuration and
+> rollback are in **[docs/WECHAT_MINIAPP.md](docs/WECHAT_MINIAPP.md)**.
+
 ## How it is organised
 
 | URL | What it is |
@@ -22,6 +26,7 @@ invites the rest — they get a site without ever touching Docker.
 | `/dashboard` | "My site" — every account manages their own content here |
 | `/admin` | Platform administration: accounts, invites, storage plans and platform health. Admin only. |
 | `/book/<token>` | A shareable booking link. The token identifies the event *and* its owner, so these carry no username and keep working forever. |
+| `/api/v1/miniapp` | Versioned JSON API for the separately distributed visitor Mini Program. Disabled by default. |
 
 The admin's own photography lives at `/u/<their-username>` like everyone else's;
 there is no privileged site.

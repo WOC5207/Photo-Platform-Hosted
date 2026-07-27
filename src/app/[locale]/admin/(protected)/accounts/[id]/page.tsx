@@ -11,7 +11,11 @@ import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import ResetPasswordControl from "@/components/admin/ResetPasswordControl";
 import QuotaControls from "@/components/admin/QuotaControls";
 import TierAssignment from "@/components/admin/TierAssignment";
-import { deleteUser, setUserStatus } from "../../actions";
+import {
+  deleteUser,
+  setMiniappEnabled,
+  setUserStatus
+} from "../../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +53,9 @@ export default async function AccountDetailPage({
         status: true,
         createdAt: true,
         tierId: true,
+        settings: {
+          select: { miniappEnabled: true }
+        },
         _count: { select: { events: true } }
       }
     }),
@@ -183,6 +190,55 @@ export default async function AccountDetailPage({
             </div>
           </section>
         </div>
+      </div>
+
+      <div className={section}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">{t("miniappTitle")}</h2>
+            <p className="mt-1 max-w-2xl text-sm text-fg-subtle">
+              {t("miniappDescription")}
+            </p>
+          </div>
+          <span className="rounded-full bg-fg/10 px-3 py-1 text-xs font-semibold text-fg-muted">
+            {user.settings?.miniappEnabled
+              ? t("miniappEnabled")
+              : t("miniappDisabled")}
+          </span>
+        </div>
+        {user.status !== "active" && !user.settings?.miniappEnabled ? (
+          <p className="mt-4 text-sm text-danger">
+            {t("miniappSuspendedHint")}
+          </p>
+        ) : (
+          <form action={setMiniappEnabled} className="mt-4 flex flex-col gap-3">
+            <input type="hidden" name="id" value={user.id} />
+            <input
+              type="hidden"
+              name="enabled"
+              value={user.settings?.miniappEnabled ? "false" : "true"}
+            />
+            {!user.settings?.miniappEnabled && (
+              <label className="flex max-w-2xl items-start gap-2 text-sm text-fg-muted">
+                <input
+                  type="checkbox"
+                  name="reviewConfirmed"
+                  required
+                  className="mt-0.5 h-4 w-4"
+                />
+                <span>{t("miniappReviewConfirmation")}</span>
+              </label>
+            )}
+            <button
+              type="submit"
+              className="w-fit rounded-lg border border-border-strong px-3 py-1.5 text-sm font-semibold text-fg-muted hover:border-fg-faint hover:text-fg"
+            >
+              {user.settings?.miniappEnabled
+                ? t("miniappDisable")
+                : t("miniappEnable")}
+            </button>
+          </form>
+        )}
       </div>
 
       {/* Suspend, delete and reset are grouped and last: everything above

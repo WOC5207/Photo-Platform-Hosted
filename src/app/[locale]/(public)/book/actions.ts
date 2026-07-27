@@ -1,23 +1,22 @@
 "use server";
 
-import { randomUUID } from "crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
-import { routing } from "@/i18n/routing";
 import { prisma } from "@/lib/db";
 import { clientIp } from "@/lib/clientIp";
-import { config } from "@/lib/config";
 import { rateLimit } from "@/lib/rate-limit";
 import { pickText } from "@/lib/content";
 import { formatSlotRange } from "@/lib/datetime";
-import { notifyBookingCreated, notifyBookingCancelled } from "@/lib/notify";
 import { getSiteSettings } from "@/lib/settings";
-import { reserveSlot } from "@/lib/booking";
-import { spinForEntry, uniqueEntryToken } from "@/lib/lottery";
 import { findAvailablePublicDraw } from "@/lib/publicLottery";
+import {
+  cancelPublicBookingByToken,
+  createPublicBooking
+} from "@/lib/publicBookingService";
+import { spinBookingLottery } from "@/lib/publicLotteryEntryService";
 
 export type BookingFormState = {
   error?:
@@ -94,115 +93,29 @@ export async function createBooking(
     return { error: "closed" };
   }
 
-  const cancelToken = randomUUID().replace(/-/g, "");
-  // The site language this visitor is booking in — stored on the booking so a
-  // later status-change email (sent from the photographer's dashboard, in their
-  // locale) still reaches this visitor in their own language.
   const locale = await getLocale();
-
-  // Atomic capacity check + insert; see reserveSlot for why it's locked.
-  const result = await reserveSlot(d.slotId, {
+  const result = await createPublicBooking({
+    slotId: d.slotId,
     name: d.name,
     subject: d.subject,
-    // The method dropdown was removed — the visitor's free-text contact goes in
-    // contactValue and the label snapshot is left empty for new bookings.
-    contactMethod: "",
     contactValue: d.contactValue,
     email: d.email,
     notes: d.notes,
-    cancelToken,
     locale
   });
-
   if (!result.ok) return { error: result.error };
-
-  const manageUrl = `${config.appBaseUrl()}/${locale}/my-booking/${cancelToken}`;
-  // The photographer's own contact address, if they set one — separate lookup
-  // because reserveSlot returns the event but not its owner.
-  const owner = await prisma.user.findUnique({
-    where: { id: result.slot.bookingEvent.ownerId },
-    select: { email: true }
-  });
-  // Fire-and-forget notification (no-op until SMTP is configured)
-  notifyBookingCreated({
-    bookingId: cancelToken,
-    name: d.name,
-    subject: d.subject,
-    contactMethod: "",
-    contactValue: d.contactValue,
-    eventTitle: pickText(
-      locale,
-      result.slot.bookingEvent.titleEn,
-      result.slot.bookingEvent.titleZh
-    ),
-    slotStart: result.slot.startTime,
-    slotEnd: result.slot.endTime,
-    timeZone: settings.timeZone,
-    pricePerPerson: settings.bookingPriceEnabled
-      ? result.slot.pricePerPerson
-      : "",
-    manageUrl,
-    // The owner's own locale isn't known, so the dashboard deep-link uses the
-    // platform default; the dashboard UI is bilingual either way.
-    dashboardUrl: `${config.appBaseUrl()}/${routing.defaultLocale}/dashboard/bookings/${result.slot.bookingEvent.id}`,
-    locale,
-    visitorEmail: d.email,
-    ownerEmail: owner?.email ?? ""
-  }).catch(() => {});
-
-  redirect(`/${locale}/my-booking/${cancelToken}?new=1`);
+  redirect(`/${locale}/my-booking/${result.data.cancelToken}?new=1`);
 }
 
 export async function cancelMyBooking(formData: FormData): Promise<void> {
   const cancelToken = formData.get("cancelToken");
   if (typeof cancelToken !== "string" || cancelToken.length > 100) return;
 
-  // Read before writing so the notification has the event/slot to describe, and
-  // so we can tell a real cancellation from a repeat click (below).
-  const booking = await prisma.booking.findUnique({
-    where: { cancelToken },
-    include: { timeSlot: { include: { bookingEvent: true } } }
-  });
-  if (!booking) return;
-
-  // The conditional write is the idempotency gate: concurrent requests may
-  // both read the booking, but exactly one can transition and send notices.
-  const transition = await prisma.booking.updateMany({
-    where: { id: booking.id, status: "confirmed" },
-    data: { status: "cancelled" }
-  });
-  if (transition.count !== 1) return;
-  revalidatePath("/", "layout");
-
-  // The visitor's own language, captured when they booked — not getLocale(),
-  // which here is only the locale of the page the cancel was clicked from.
-  const locale = booking.locale;
-  const event = booking.timeSlot.bookingEvent;
-  const settings = await getSiteSettings(event.ownerId);
-  const owner = await prisma.user.findUnique({
-    where: { id: event.ownerId },
-    select: { email: true }
-  });
-  const manageUrl = `${config.appBaseUrl()}/${locale}/my-booking/${cancelToken}`;
-  notifyBookingCancelled({
-    bookingId: cancelToken,
-    name: booking.name,
-    subject: booking.subject,
-    contactMethod: booking.contactMethod,
-    contactValue: booking.contactValue,
-    eventTitle: pickText(locale, event.titleEn, event.titleZh),
-    slotStart: booking.timeSlot.startTime,
-    slotEnd: booking.timeSlot.endTime,
-    timeZone: settings.timeZone,
-    pricePerPerson: settings.bookingPriceEnabled
-      ? booking.timeSlot.pricePerPerson
-      : "",
-    manageUrl,
-    dashboardUrl: `${config.appBaseUrl()}/${routing.defaultLocale}/dashboard/bookings/${event.id}`,
-    locale,
-    visitorEmail: booking.email,
-    ownerEmail: owner?.email ?? ""
-  }).catch(() => {});
+  const sharedResult = await cancelPublicBookingByToken(cancelToken);
+  if (sharedResult.ok && sharedResult.data.changed) {
+    revalidatePath("/", "layout");
+  }
+  return;
 }
 
 // ── "Check your booking" lookup ──────────────────────────────────────────
@@ -324,12 +237,6 @@ export type BookingSpinResult =
         | "noPrizesLeft";
     };
 
-const SPIN_ERROR_MAP = {
-  not_found: "notFound",
-  already_spun: "alreadySpun",
-  no_prizes_left: "noPrizesLeft"
-} as const;
-
 /**
  * Self-serve spin for a booker, identified by their private cancelToken. The
  * booking is lazily turned into a LotteryEntry on the first spin (so bookings
@@ -350,60 +257,23 @@ export async function spinMyBooking(
     return { ok: false, error: "notFound" };
   }
 
-  const booking = await prisma.booking.findUnique({
-    where: { cancelToken },
-    include: {
-      lotteryEntry: true,
-      timeSlot: {
-        include: { bookingEvent: { include: { lotteryDraw: true } } }
-      }
-    }
-  });
-  if (!booking || booking.status !== "confirmed") {
-    return { ok: false, error: "notFound" };
+  const sharedResult = await spinBookingLottery(cancelToken);
+  if (
+    !sharedResult.ok &&
+    (sharedResult.error === "notReady" ||
+      sharedResult.error === "notFound")
+  ) {
+    return { ok: false, error: sharedResult.error };
   }
-
-  const event = booking.timeSlot.bookingEvent;
-  const draw = event.lotteryDraw;
-  if (!draw || !(await findAvailablePublicDraw(draw.token))) {
-    return { ok: false, error: "notReady" };
-  }
-
-  // Lazily materialize the entry for this booking (bookingId is unique, so a
-  // second concurrent spin can't create a duplicate).
-  let entryId = booking.lotteryEntry?.id;
-  if (!entryId) {
-    const token = await uniqueEntryToken(draw.id);
-    const created = await prisma.lotteryEntry
-      .create({
-        data: {
-          drawId: draw.id,
-          bookingId: booking.id,
-          name: booking.name,
-          subject: booking.subject,
-          token
-        }
-      })
-      .catch(async () => {
-        // Lost a race — reuse whatever entry now exists for this booking.
-        return prisma.lotteryEntry.findUnique({
-          where: { bookingId: booking.id }
-        });
-      });
-    entryId = created?.id;
-  }
-  if (!entryId) return { ok: false, error: "notFound" };
-
-  const result = await spinForEntry(entryId, draw.id, true);
   revalidatePath("/", "layout");
-  if (result.ok) {
+  if (sharedResult.ok) {
     return {
       ok: true,
       winner: {
-        prizeId: result.winner.prizeId,
-        prizeName: result.winner.prizeName
+        prizeId: sharedResult.data.prizeId,
+        prizeName: sharedResult.data.prizeName
       }
     };
   }
-  return { ok: false, error: SPIN_ERROR_MAP[result.error] };
+  return { ok: false, error: sharedResult.error };
 }

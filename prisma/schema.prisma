@@ -105,6 +105,8 @@ model User {
   notificationTargets    PlatformNotificationTarget[]
   notificationDismissals PlatformNotificationDismissal[]
   moderationDecisions    ModerationDecision[]            @relation("ModerationReviewer")
+  weChatIdentities       WeChatIdentity[]
+  contentReportsReviewed ContentReport[]                 @relation("ContentReportReviewer")
 }
 
 // One uploaded site-level image (logo, background, contact QR, announcement
@@ -331,6 +333,7 @@ model Photo {
   moderationAttempts      Int               @default(0)
   moderationScans         ModerationScan[]
   moderationReview        ModerationReview?
+  contentReports          ContentReport[]
 
   @@index([eventId, pendingBatchId])
   @@index([moderationStatus, moderationNextRetryAt])
@@ -576,6 +579,10 @@ model SiteSettings {
   lotteryEnabled                    Boolean   @default(true)
   creditProfilesEnabled             Boolean   @default(true)
   announcementsEnabled              Boolean   @default(true)
+  // Explicit, fail-closed opt-in for listing this tenant in the WeChat mini
+  // program. Existing and newly-created tenants stay unavailable until an
+  // administrator has reviewed their public content and enables this flag.
+  miniappEnabled                    Boolean   @default(false)
   // "Contact us" card shown behind a header/footer button on the public
   // site. Off hides the button entirely, site-wide. titleEn/Zh label the
   // card (empty = built-in default copy). The link and QR code are set
@@ -595,6 +602,67 @@ model SiteSettings {
   // Platform admins bypass onboarding and configure their site in the dashboard.
   setupCompleted                    Boolean   @default(false)
   updatedAt                         DateTime  @updatedAt
+}
+
+// The stable server-side identity behind one mini-program visitor. OpenID is
+// scoped by AppID, so the compound key is the only safe login lookup. A future
+// explicit account-linking flow may set userId; profile text never links users.
+model WeChatIdentity {
+  id        String   @id @default(cuid())
+  appId     String
+  openId    String
+  unionId   String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions       MiniProgramSession[]
+  bookings       Booking[]
+  lotteryEntries LotteryEntry[]
+  contentReports ContentReport[]
+
+  @@unique([appId, openId])
+  @@index([unionId])
+  @@index([userId])
+}
+
+// Only a SHA-256 digest of the opaque 256-bit Bearer token is persisted.
+model MiniProgramSession {
+  id         String         @id @default(cuid())
+  identityId String
+  identity   WeChatIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  tokenHash  String         @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime       @default(now())
+
+  @@index([identityId, createdAt])
+  @@index([expiresAt])
+}
+
+// Visitor reports survive identity deletion for moderation/audit purposes;
+// deleting the reporter mapping therefore SET NULLs wechatIdentityId.
+model ContentReport {
+  id               String          @id @default(cuid())
+  photoId          String
+  photo            Photo           @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  wechatIdentityId String?
+  wechatIdentity   WeChatIdentity? @relation(fields: [wechatIdentityId], references: [id], onDelete: SetNull)
+  reason           String
+  details          String          @default("")
+  // pending | reviewing | resolved | dismissed
+  status           String          @default("pending")
+  reviewedById     String?
+  reviewedBy       User?           @relation("ContentReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  resolutionNote   String          @default("")
+  resolvedAt       DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([photoId, createdAt])
+  @@index([wechatIdentityId])
+  @@index([status, createdAt])
 }
 
 // Admin-managed links to the photographer's other sites/profiles, shown in
@@ -634,37 +702,41 @@ model Announcement {
 }
 
 model Booking {
-  id            String        @id @default(cuid())
-  timeSlotId    String
-  timeSlot      TimeSlot      @relation(fields: [timeSlotId], references: [id], onDelete: Cascade)
+  id               String          @id @default(cuid())
+  timeSlotId       String
+  timeSlot         TimeSlot        @relation(fields: [timeSlotId], references: [id], onDelete: Cascade)
+  wechatIdentityId String?
+  wechatIdentity   WeChatIdentity? @relation(fields: [wechatIdentityId], references: [id], onDelete: SetNull)
   // Visitor's name/handle (shown to the photographer)
-  name          String
+  name             String
   // Subject of the shoot (character, role, theme...), optional.
-  subject       String        @default("")
+  subject          String          @default("")
   // The visitor's contact info (e.g. their WeChat ID). contactValue is the
   // single free-text field the form now collects. contactMethod is a legacy
   // label snapshot ("WeChat") kept only for bookings made when the form had a
   // separate contact-method dropdown; it is empty for new bookings.
-  contactMethod String        @default("")
-  contactValue  String        @default("")
+  contactMethod    String          @default("")
+  contactValue     String          @default("")
   // Optional email the visitor gives so they get a confirmation and status
   // updates by mail. Separate from contactValue (which is free-form — WeChat,
   // phone, etc.) precisely so we always have a real address to send to. Empty =
   // no email for this booking.
-  email         String        @default("")
-  notes         String        @default("")
+  email            String          @default("")
+  notes            String          @default("")
   // Which site language the visitor booked in ("zh" | "en"). Captured so any
   // email we send them — the confirmation now, or a later status change made
   // from the photographer's dashboard (a different session, a different locale)
   // — goes out in *their* language, not whoever triggered it. Defaults to the
   // platform default locale for rows that predate this column.
-  locale        String        @default("zh")
+  locale           String          @default("zh")
   // "confirmed" | "cancelled" (SQLite has no enums)
-  status        String        @default("confirmed")
+  status           String          @default("confirmed")
   // Private token for the visitor's self-cancel link
-  cancelToken   String        @unique
-  createdAt     DateTime      @default(now())
-  lotteryEntry  LotteryEntry?
+  cancelToken      String          @unique
+  createdAt        DateTime        @default(now())
+  lotteryEntry     LotteryEntry?
+
+  @@index([wechatIdentityId])
 }
 
 // A prize draw ("抽奖") tied to one booking event. Entrants either come from
@@ -696,28 +768,33 @@ model LotteryDraw {
 // display never has to join out to Booking. Once an entry wins a prize,
 // wonPrizeId/wonAt are set and it drops out of the pool for later spins.
 model LotteryEntry {
-  id              String        @id @default(cuid())
-  drawId          String
-  draw            LotteryDraw   @relation(fields: [drawId], references: [id], onDelete: Cascade)
-  bookingId       String?       @unique
-  booking         Booking?      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  name            String
-  subject         String        @default("")
+  id               String          @id @default(cuid())
+  drawId           String
+  draw             LotteryDraw     @relation(fields: [drawId], references: [id], onDelete: Cascade)
+  bookingId        String?         @unique
+  booking          Booking?        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  wechatIdentityId String?
+  wechatIdentity   WeChatIdentity? @relation(fields: [wechatIdentityId], references: [id], onDelete: SetNull)
+  name             String
+  subject          String          @default("")
   // Legacy contact-method snapshot from when entries chose a method from a
   // dropdown. Never a foreign key. Both are empty for new entries (which
   // collect only the free-text contactValue); retained so historical entries
   // keep the method they were saved with.
-  contactMethodId String?
-  contactMethod   String        @default("")
-  contactValue    String        @default("")
-  token           String
-  wonPrizeId      String?
-  wonPrize        LotteryPrize? @relation(fields: [wonPrizeId], references: [id], onDelete: SetNull)
-  wonAt           DateTime?
-  createdAt       DateTime      @default(now())
+  contactMethodId  String?
+  contactMethod    String          @default("")
+  contactValue     String          @default("")
+  token            String
+  wonPrizeId       String?
+  wonPrize         LotteryPrize?   @relation(fields: [wonPrizeId], references: [id], onDelete: SetNull)
+  wonAt            DateTime?
+  createdAt        DateTime        @default(now())
+  // One non-null WeChat identity per draw is enforced by the hand-written
+  // partial unique index LotteryEntry_drawId_wechatIdentityId_key.
 
   @@unique([drawId, token])
   @@index([drawId, contactMethodId])
+  @@index([wechatIdentityId])
 }
 
 // A prize option on the wheel. Remaining stock is derived as quantity minus

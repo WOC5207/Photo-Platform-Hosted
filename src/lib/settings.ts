@@ -30,6 +30,7 @@ export interface SiteSettings {
   lotteryEnabled: boolean;
   creditProfilesEnabled: boolean;
   announcementsEnabled: boolean;
+  miniappEnabled: boolean;
   contactEnabled: boolean;
   contactTitleEn: string;
   contactTitleZh: string;
@@ -65,6 +66,7 @@ const DEFAULTS: Omit<SiteSettings, "id" | "ownerId"> = {
   lotteryEnabled: true,
   creditProfilesEnabled: true,
   announcementsEnabled: true,
+  miniappEnabled: false,
   contactEnabled: false,
   contactTitleEn: "",
   contactTitleZh: "",

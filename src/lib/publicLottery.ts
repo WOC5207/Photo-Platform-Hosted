@@ -21,7 +21,18 @@ function available<T extends {
 }
 
 const bookingEventInclude = {
-  owner: { select: { status: true, settings: { select: { lotteryEnabled: true } } } }
+  owner: {
+    select: {
+      status: true,
+      settings: {
+        select: {
+          lotteryEnabled: true,
+          miniappEnabled: true,
+          timeZone: true
+        }
+      }
+    }
+  }
 } satisfies Prisma.BookingEventInclude;
 
 export async function findAvailablePublicDraw(token: string, requireOpen = false) {

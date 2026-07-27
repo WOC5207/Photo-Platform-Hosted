@@ -1,0 +1,1584 @@
+openapi: 3.1.0
+info:
+  title: Photo Platform WeChat Mini Program API
+  version: 1.0.0
+  description: |
+    Stable visitor-facing contract for the Photo Platform WeChat mini program.
+    All timestamps used for audit/session data are RFC 3339 instants. Booking
+    times are deliberately returned as separate `date`, `startTime`, `endTime`
+    and `timeZone` fields and MUST NOT be converted using the phone timezone.
+
+    The API is disabled unless `MINIAPP_API_ENABLED=true`. Tenant content is
+    additionally fail-closed behind `SiteSettings.miniappEnabled`.
+  license:
+    name: GPL-3.0-only
+    url: https://www.gnu.org/licenses/gpl-3.0.html
+  x-backend-repository: https://github.com/WOC5207/Photo-Platform-Hosted
+  x-backend-baseline: c4d5c995370f1944bd0c540fefef4ad7a58aa1af
+servers:
+  - url: /api/v1/miniapp
+    description: Same-origin production API
+tags:
+  - name: Bootstrap
+    description: API version, capabilities, and pagination limits.
+  - name: Authentication
+    description: WeChat code exchange and first-party session revocation.
+  - name: Photographers
+    description: Mini-program-enabled public photographer profiles.
+  - name: Albums
+    description: Published, moderation-cleared albums and photos.
+  - name: Booking
+    description: Future sessions and identity-owned reservations.
+  - name: Lottery
+    description: Public prize draws and identity-owned entries.
+  - name: Reports
+    description: Visitor reports for currently public photos.
+  - name: Account
+    description: Mini-program identity privacy lifecycle.
+security: []
+paths:
+  /bootstrap:
+    get:
+      operationId: getBootstrap
+      tags: [Bootstrap]
+      summary: Read API capabilities and limits
+      responses:
+        "200":
+          description: Bootstrap configuration
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Bootstrap"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /auth/wechat:
+    post:
+      operationId: authenticateWithWechat
+      tags: [Authentication]
+      summary: Exchange a one-time wx.login code for a platform bearer token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WechatAuthInput"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/AuthSession"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "502":
+          description: WeChat code2Session is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /auth/session:
+    delete:
+      operationId: revokeSession
+      tags: [Authentication]
+      summary: Revoke the current bearer token
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [revoked]
+                        properties:
+                          revoked:
+                            const: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /photographers:
+    get:
+      operationId: listPhotographers
+      tags: [Photographers]
+      summary: List mini-program-enabled photographers
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Photographer page
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/PhotographerSummary"
+        "400":
+          $ref: "#/components/responses/InvalidCursor"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /photographers/{username}:
+    get:
+      operationId: getPhotographer
+      tags: [Photographers]
+      summary: Read a photographer profile
+      parameters:
+        - $ref: "#/components/parameters/Username"
+      responses:
+        "200":
+          description: Photographer profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PhotographerProfile"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /photographers/{username}/albums:
+    get:
+      operationId: listAlbums
+      tags: [Albums]
+      summary: List a photographer's public albums
+      parameters:
+        - $ref: "#/components/parameters/Username"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Album page
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/AlbumSummary"
+        "400":
+          $ref: "#/components/responses/InvalidCursor"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /photographers/{username}/albums/{slug}/photos:
+    get:
+      operationId: listAlbumPhotos
+      tags: [Albums]
+      summary: List public, moderation-cleared photos in an album
+      parameters:
+        - $ref: "#/components/parameters/Username"
+        - $ref: "#/components/parameters/AlbumSlug"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Photo page and album metadata
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [album, items]
+                        properties:
+                          album:
+                            $ref: "#/components/schemas/AlbumDetail"
+                          items:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/Photo"
+        "400":
+          $ref: "#/components/responses/InvalidCursor"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /photographers/{username}/search:
+    get:
+      operationId: searchPhotos
+      tags: [Albums]
+      summary: Search public photos by credit, subject, or comment
+      parameters:
+        - $ref: "#/components/parameters/Username"
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Search result page
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/SearchResult"
+        "400":
+          $ref: "#/components/responses/InvalidCursor"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /photographers/{username}/booking-events:
+    get:
+      operationId: listBookingEvents
+      tags: [Booking]
+      summary: List future open booking events
+      parameters:
+        - $ref: "#/components/parameters/Username"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Booking event page
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/BookingEventSummary"
+        "400":
+          $ref: "#/components/responses/InvalidCursor"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /booking-events/{token}:
+    get:
+      operationId: getBookingEvent
+      tags: [Booking]
+      summary: Read a booking event and its future slots
+      parameters:
+        - $ref: "#/components/parameters/PublicToken"
+      responses:
+        "200":
+          description: Booking event
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/BookingEvent"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /booking-events/{token}/bookings:
+    post:
+      operationId: createBooking
+      tags: [Booking]
+      summary: Reserve one place in a slot
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PublicToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingCreateInput"
+      responses:
+        "201":
+          description: Booking created; private web cancel token is never returned
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Booking"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /me/bookings:
+    get:
+      operationId: listMyBookings
+      tags: [Booking]
+      summary: List bookings linked to the current WeChat identity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Current identity's bookings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/Booking"
+        "400":
+          $ref: "#/components/responses/InvalidCursor"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /me/bookings/{id}/cancel:
+    post:
+      operationId: cancelMyBooking
+      tags: [Booking]
+      summary: Cancel a booking linked to the current identity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: Booking after cancellation
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Booking"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /me/bookings/import:
+    post:
+      operationId: importBooking
+      tags: [Booking]
+      summary: Link a legacy web booking using its private cancel token
+      description: The cancel token is accepted only in the request body and is never returned or logged.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingImportInput"
+      responses:
+        "200":
+          description: Imported booking
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Booking"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /lottery-draws/{token}:
+    get:
+      operationId: getLotteryDraw
+      tags: [Lottery]
+      summary: Read a public draw and optionally the current identity's entry
+      description: Bearer authentication is optional. An invalid supplied token returns 401.
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PublicToken"
+      responses:
+        "200":
+          description: Lottery draw
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/LotteryDraw"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /lottery-draws/{token}/entries:
+    post:
+      operationId: createLotteryEntry
+      tags: [Lottery]
+      summary: Enter the current identity in a public draw
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PublicToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LotteryEntryInput"
+      responses:
+        "201":
+          description: Entry created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/LotteryEntry"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /lottery-entries/{id}/spin:
+    post:
+      operationId: spinLotteryEntry
+      tags: [Lottery]
+      summary: Spin an entry owned by the current identity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: Prize awarded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SpinResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /me/lottery-entries/import:
+    post:
+      operationId: importLotteryEntry
+      tags: [Lottery]
+      summary: Link a legacy public entry to the current identity
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LotteryImportInput"
+      responses:
+        "200":
+          description: Imported entry
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/LotteryEntry"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /photos/{id}/reports:
+    post:
+      operationId: reportPhoto
+      tags: [Reports]
+      summary: Report a currently public photo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContentReportInput"
+      responses:
+        "201":
+          description: Report accepted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ContentReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /me:
+    delete:
+      operationId: deleteMyIdentity
+      tags: [Account]
+      summary: Delete the current mini-program identity and anonymize its data
+      description: |
+        Cancels future bookings, anonymizes linked booking/lottery personal
+        fields, revokes every session and deletes the OpenID mapping.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirmation]
+              properties:
+                confirmation:
+                  const: DELETE
+      responses:
+        "200":
+          description: Identity deleted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [deleted]
+                        properties:
+                          deleted:
+                            const: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/ApiDisabled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Random 256-bit platform session token; valid for seven days by default.
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor returned in the previous response.
+      schema:
+        type: string
+        maxLength: 2048
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    Username:
+      name: username
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+    AlbumSlug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    PublicToken:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9]+$"
+        maxLength: 100
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+  responses:
+    ApiDisabled:
+      description: Mini-program API is globally disabled
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            disabled:
+              value:
+                error:
+                  code: API_DISABLED
+                requestId: 9b0c2c4f-e78f-493f-90a9-3db7d72391bb
+    InvalidRequest:
+      description: Invalid JSON or request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ValidationError:
+      description: Request fields failed validation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InvalidCursor:
+      description: Cursor is malformed, tampered with, or belongs to another list
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Unauthorized:
+      description: Missing, expired, revoked, or forged bearer token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: Resource is absent or hidden by a fail-closed visibility gate
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: Business rule conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            slotFull:
+              value:
+                error:
+                  code: SLOT_FULL
+                requestId: 9b0c2c4f-e78f-493f-90a9-3db7d72391bb
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Optional delay in seconds.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [data, requestId]
+      properties:
+        data: {}
+        requestId:
+          type: string
+          minLength: 1
+      additionalProperties: false
+    PaginatedEnvelope:
+      type: object
+      required: [data, meta, requestId]
+      properties:
+        data: {}
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+        requestId:
+          type: string
+          minLength: 1
+      additionalProperties: false
+    ErrorEnvelope:
+      type: object
+      required: [error, requestId]
+      properties:
+        error:
+          type: object
+          required: [code]
+          properties:
+            code:
+              type: string
+              enum:
+                - API_DISABLED
+                - INVALID_JSON
+                - VALIDATION_ERROR
+                - INVALID_CURSOR
+                - AUTH_REQUIRED
+                - NOT_FOUND
+                - FORBIDDEN
+                - CLOSED
+                - SLOT_FULL
+                - SLOT_UNAVAILABLE
+                - DUPLICATE
+                - ALREADY_SPUN
+                - NO_PRIZES_LEFT
+                - NOT_READY
+                - RATE_LIMITED
+                - CONFLICT
+                - WECHAT_LOGIN_FAILED
+                - WECHAT_PROVIDER_UNAVAILABLE
+                - INTERNAL_ERROR
+            fields:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+          additionalProperties: false
+        requestId:
+          type: string
+          minLength: 1
+      additionalProperties: false
+    PageMeta:
+      type: object
+      required: [nextCursor]
+      properties:
+        nextCursor:
+          type: [string, "null"]
+      additionalProperties: false
+    LocalizedText:
+      type: object
+      required: [en, zh]
+      properties:
+        en:
+          type: string
+        zh:
+          type: string
+      additionalProperties: false
+    FeatureFlags:
+      type: object
+      required: [booking, lottery, announcements]
+      properties:
+        booking:
+          type: boolean
+        lottery:
+          type: boolean
+        announcements:
+          type: boolean
+      additionalProperties: false
+    Bootstrap:
+      type: object
+      required:
+        [apiVersion, locales, defaultLocale, authentication, pagination, capabilities]
+      properties:
+        apiVersion:
+          const: v1
+        locales:
+          type: array
+          prefixItems:
+            - const: zh
+            - const: en
+          minItems: 2
+          maxItems: 2
+        defaultLocale:
+          const: zh
+        authentication:
+          type: object
+          required: [provider, sessionTtlDays]
+          properties:
+            provider:
+              const: wechat
+            sessionTtlDays:
+              type: integer
+              minimum: 1
+          additionalProperties: false
+        pagination:
+          type: object
+          required: [maxPageSize]
+          properties:
+            maxPageSize:
+              const: 50
+          additionalProperties: false
+        capabilities:
+          type: object
+          required:
+            [booking, lottery, contentReports, accountDeletion, uploads, payments]
+          properties:
+            booking:
+              type: boolean
+            lottery:
+              type: boolean
+            contentReports:
+              type: boolean
+            accountDeletion:
+              type: boolean
+            uploads:
+              const: false
+            payments:
+              const: false
+          additionalProperties: false
+      additionalProperties: false
+    WechatAuthInput:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 256
+    AuthSession:
+      type: object
+      additionalProperties: false
+      required: [token, expiresAt]
+      properties:
+        token:
+          type: string
+          description: Opaque bearer token. It is returned once and never stored in plaintext.
+        expiresAt:
+          type: string
+          format: date-time
+    PhotographerSummary:
+      type: object
+      additionalProperties: false
+      required:
+        [username, displayName, logoUrl, coverUrl, albumCount, photoCount, features]
+      properties:
+        username:
+          type: string
+        displayName:
+          type: string
+        logoUrl:
+          type: string
+        coverUrl:
+          type: string
+        albumCount:
+          type: integer
+          minimum: 0
+        photoCount:
+          type: integer
+          minimum: 0
+        features:
+          $ref: "#/components/schemas/FeatureFlags"
+    PhotographerProfile:
+      type: object
+      additionalProperties: false
+      required:
+        [username, displayName, branding, vocabulary, features, stats, personalLinks, announcements]
+      properties:
+        username:
+          type: string
+        displayName:
+          type: string
+        branding:
+          type: object
+          required:
+            [siteTitle, homeTitle, homeSubtitle, logoUrl, backgroundImageUrl, backgroundColor]
+          properties:
+            siteTitle:
+              $ref: "#/components/schemas/LocalizedText"
+            homeTitle:
+              $ref: "#/components/schemas/LocalizedText"
+            homeSubtitle:
+              $ref: "#/components/schemas/LocalizedText"
+            logoUrl:
+              type: string
+            backgroundImageUrl:
+              type: string
+            backgroundColor:
+              type: string
+          additionalProperties: false
+        vocabulary:
+          type: object
+          required: [credit, subject]
+          properties:
+            credit:
+              $ref: "#/components/schemas/LocalizedText"
+            subject:
+              $ref: "#/components/schemas/LocalizedText"
+          additionalProperties: false
+        features:
+          $ref: "#/components/schemas/FeatureFlags"
+        stats:
+          type: object
+          required: [albums, photos, credits]
+          properties:
+            albums:
+              type: integer
+              minimum: 0
+            photos:
+              type: integer
+              minimum: 0
+            credits:
+              type: integer
+              minimum: 0
+          additionalProperties: false
+        personalLinks:
+          type: array
+          description: Display/copy only; the client does not navigate directly.
+          items:
+            type: object
+            required: [id, label, url]
+            properties:
+              id:
+                type: string
+              label:
+                $ref: "#/components/schemas/LocalizedText"
+              url:
+                type: string
+            additionalProperties: false
+        announcements:
+          type: array
+          items:
+            type: object
+            required: [id, title, body, imageUrl, createdAt]
+            properties:
+              id:
+                type: string
+              title:
+                $ref: "#/components/schemas/LocalizedText"
+              body:
+                $ref: "#/components/schemas/LocalizedText"
+              imageUrl:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+            additionalProperties: false
+    AlbumDetail:
+      type: object
+      required: [slug, title, description, location, dateStart, dateEnd]
+      properties:
+        slug:
+          type: string
+        title:
+          $ref: "#/components/schemas/LocalizedText"
+        description:
+          $ref: "#/components/schemas/LocalizedText"
+        location:
+          type: string
+        dateStart:
+          type: [string, "null"]
+          format: date
+        dateEnd:
+          type: [string, "null"]
+          format: date
+    AlbumSummary:
+      allOf:
+        - $ref: "#/components/schemas/AlbumDetail"
+        - type: object
+          required: [photoCount, cover]
+          properties:
+            photoCount:
+              type: integer
+              minimum: 0
+            cover:
+              oneOf:
+                - $ref: "#/components/schemas/Photo"
+                - type: "null"
+    Photo:
+      type: object
+      additionalProperties: false
+      required: [id, width, height, public, caption, comment, urls, credits]
+      properties:
+        id:
+          type: string
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+        public:
+          const: true
+        caption:
+          type: string
+        comment:
+          type: string
+        urls:
+          type: object
+          additionalProperties: false
+          required: [thumb, med, full]
+          properties:
+            thumb:
+              type: string
+              format: uri
+            med:
+              type: string
+              format: uri
+            full:
+              type: string
+              format: uri
+        credits:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, subject, socialLinks]
+            properties:
+              name:
+                type: string
+              subject:
+                type: string
+              socialLinks:
+                type: array
+                description: Display/copy only in the mini program.
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [platform, url]
+                  properties:
+                    platform:
+                      type: string
+                    url:
+                      type: string
+    SearchResult:
+      type: object
+      additionalProperties: false
+      required: [album, photo]
+      properties:
+        album:
+          type: object
+          additionalProperties: false
+          required: [slug, title]
+          properties:
+            slug:
+              type: string
+            title:
+              $ref: "#/components/schemas/LocalizedText"
+        photo:
+          $ref: "#/components/schemas/Photo"
+    BookingEventSummary:
+      type: object
+      additionalProperties: false
+      required:
+        [token, title, description, location, firstDate, timeZone, remaining, lotteryEnabled]
+      properties:
+        token:
+          type: string
+        title:
+          $ref: "#/components/schemas/LocalizedText"
+        description:
+          $ref: "#/components/schemas/LocalizedText"
+        location:
+          type: string
+        firstDate:
+          type: string
+          format: date
+        timeZone:
+          type: string
+        remaining:
+          type: integer
+          minimum: 0
+        lotteryEnabled:
+          type: boolean
+    SlotTime:
+      type: object
+      required: [date, startTime, endTime, timeZone]
+      properties:
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        endTime:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        timeZone:
+          type: string
+          description: IANA timezone describing the entered wall-clock time.
+    BookingSlot:
+      allOf:
+        - $ref: "#/components/schemas/SlotTime"
+        - type: object
+          required: [id, remaining, pricePerPerson, description]
+          properties:
+            id:
+              type: string
+            remaining:
+              type: integer
+              minimum: 0
+            pricePerPerson:
+              type: string
+            description:
+              $ref: "#/components/schemas/LocalizedText"
+    BookingEvent:
+      type: object
+      additionalProperties: false
+      required:
+        [token, photographerUsername, title, description, location, open, lotteryEnabled, timeZone, days]
+      properties:
+        token:
+          type: string
+        photographerUsername:
+          type: string
+        title:
+          $ref: "#/components/schemas/LocalizedText"
+        description:
+          $ref: "#/components/schemas/LocalizedText"
+        location:
+          type: string
+        open:
+          type: boolean
+        lotteryEnabled:
+          type: boolean
+        timeZone:
+          type: string
+        days:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, date, slots]
+            properties:
+              id:
+                type: string
+              date:
+                type: string
+                format: date
+              slots:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BookingSlot"
+    BookingCreateInput:
+      type: object
+      additionalProperties: false
+      required: [slotId, name, contactValue]
+      properties:
+        slotId:
+          type: string
+          minLength: 1
+          maxLength: 100
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        subject:
+          type: string
+          maxLength: 200
+          default: ""
+        contactValue:
+          type: string
+          minLength: 1
+          maxLength: 200
+        email:
+          type: string
+          maxLength: 200
+          default: ""
+        notes:
+          type: string
+          maxLength: 2000
+          default: ""
+        locale:
+          type: string
+          enum: [zh, en]
+          default: zh
+    BookingImportInput:
+      type: object
+      additionalProperties: false
+      required: [cancelToken]
+      properties:
+        cancelToken:
+          type: string
+          writeOnly: true
+          minLength: 16
+          maxLength: 100
+          pattern: "^[a-z0-9]+$"
+    Booking:
+      type: object
+      additionalProperties: false
+      description: Safe mini-program booking projection. Never contains cancelToken.
+      required: [id, status, name, subject, notes, event, slot, lottery, createdAt]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [confirmed, cancelled]
+        name:
+          type: string
+        subject:
+          type: string
+        notes:
+          type: string
+        event:
+          type: object
+          additionalProperties: false
+          required: [token, title, location]
+          properties:
+            token:
+              type: string
+            title:
+              $ref: "#/components/schemas/LocalizedText"
+            location:
+              type: string
+        slot:
+          allOf:
+            - $ref: "#/components/schemas/SlotTime"
+            - type: object
+              required: [id, pricePerPerson, description]
+              properties:
+                id:
+                  type: string
+                pricePerPerson:
+                  type: string
+                description:
+                  $ref: "#/components/schemas/LocalizedText"
+        lottery:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [entryId, entryToken, prizeName]
+              properties:
+                entryId:
+                  type: string
+                entryToken:
+                  type: string
+                prizeName:
+                  type: [string, "null"]
+            - type: "null"
+        createdAt:
+          type: string
+          format: date-time
+    LotteryEntryInput:
+      type: object
+      additionalProperties: false
+      required: [name, contactValue]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        subject:
+          type: string
+          maxLength: 200
+          default: ""
+        contactValue:
+          type: string
+          minLength: 1
+          maxLength: 200
+    LotteryImportInput:
+      type: object
+      additionalProperties: false
+      required: [drawToken, entryToken, name, contactValue]
+      properties:
+        drawToken:
+          type: string
+          maxLength: 100
+        entryToken:
+          type: string
+          minLength: 5
+          maxLength: 12
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        contactValue:
+          type: string
+          minLength: 1
+          maxLength: 200
+    LotteryPrize:
+      type: object
+      additionalProperties: false
+      required: [id, name, quantity, remaining, weight]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        quantity:
+          type: integer
+          minimum: 0
+        remaining:
+          type: integer
+          minimum: 0
+        weight:
+          type: integer
+          minimum: 1
+    LotteryEntry:
+      type: object
+      additionalProperties: false
+      required: [id, token, wonPrize]
+      properties:
+        id:
+          type: string
+        token:
+          type: string
+        wonPrize:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [id, name]
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+            - type: "null"
+    LotteryDraw:
+      type: object
+      additionalProperties: false
+      required: [token, event, open, prizes, entry]
+      properties:
+        token:
+          type: string
+        event:
+          type: object
+          additionalProperties: false
+          required: [title, description, location, date, timeZone]
+          properties:
+            title:
+              $ref: "#/components/schemas/LocalizedText"
+            description:
+              $ref: "#/components/schemas/LocalizedText"
+            location:
+              type: string
+            date:
+              type: string
+              format: date
+            timeZone:
+              type: string
+        open:
+          type: boolean
+        prizes:
+          type: array
+          items:
+            $ref: "#/components/schemas/LotteryPrize"
+        entry:
+          oneOf:
+            - $ref: "#/components/schemas/LotteryEntry"
+            - type: "null"
+    SpinResult:
+      type: object
+      additionalProperties: false
+      required: [entryId, prize]
+      properties:
+        entryId:
+          type: string
+        prize:
+          type: object
+          additionalProperties: false
+          required: [id, name]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+    ContentReportInput:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum:
+            [sexual, violence, self_harm, harassment, privacy, copyright, other]
+        details:
+          type: string
+          maxLength: 1000
+          default: ""
+    ContentReport:
+      type: object
+      additionalProperties: false
+      required: [id, status, createdAt]
+      properties:
+        id:
+          type: string
+        status:
+          const: pending
+        createdAt:
+          type: string
+          format: date-time

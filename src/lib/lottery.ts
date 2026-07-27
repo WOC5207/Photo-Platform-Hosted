@@ -116,7 +116,8 @@ export type SpinResult =
 export async function spinForEntry(
   entryId: string,
   expectedDrawId?: string,
-  requirePublicAvailable = false
+  requirePublicAvailable = false,
+  requireMiniappAvailable = false
 ): Promise<SpinResult> {
   return prisma.$transaction(async (tx) => {
     // Unlocked peek, purely to learn which draw to lock.
@@ -140,9 +141,16 @@ export async function spinForEntry(
     // depends on must therefore happen *after* this line.
     await tx.$queryRaw`SELECT id FROM "LotteryDraw" WHERE id = ${target.drawId} FOR UPDATE`;
 
+    const publicDraw =
+      requirePublicAvailable || requireMiniappAvailable
+        ? await lockAvailablePublicDraw(tx, target.drawId, false)
+        : null;
+    if (requirePublicAvailable && !publicDraw) {
+      return { ok: false, error: "not_found" } as const;
+    }
     if (
-      requirePublicAvailable &&
-      !(await lockAvailablePublicDraw(tx, target.drawId, false))
+      requireMiniappAvailable &&
+      !publicDraw?.bookingEvent.owner.settings?.miniappEnabled
     ) {
       return { ok: false, error: "not_found" } as const;
     }
