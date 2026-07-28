@@ -635,14 +635,14 @@ test.describe.serial("management workflows", () => {
       refreshedDisplaySection.getByLabel("Homepage photo size")
     ).toHaveValue(updatedWeight);
 
-    // Mark the uploaded set as featured so the public homepage can exercise
-    // the uncropped, continuously moving photo stream.
+    // Mark two photos as featured so the public homepage can verify that a
+    // short row leaves unused space rather than repeating either photo.
     const managedPhotoCards = page
       .locator("#photos li")
       .filter({
         has: page.getByRole("checkbox", { name: "Select", exact: true })
       });
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 2; index += 1) {
       const display = managedPhotoCards
         .nth(index)
         .locator("details")
@@ -678,17 +678,17 @@ test.describe.serial("management workflows", () => {
     // only the comment and not the credit.
     await page.goto(`/en/u/${ownerUsername}`);
 
-    // The featured set is an uncropped, continuously moving stream. It can be
-    // paused, does not overflow the page, and respects reduced-motion users.
+    // The featured set is a static, uncropped horizontal row. Each selected
+    // photo appears exactly once and the page itself never overflows.
     await page
       .getByRole("tab", { name: "E2E pending photo queue", exact: true })
       .click();
     const featuredStream = page.getByTestId("featured-photo-stream");
-    const featuredTrack = page.getByTestId("featured-photo-track");
-    await expect(featuredStream.getByTestId("featured-photo")).toHaveCount(3);
+    await expect(featuredStream.getByTestId("featured-photo")).toHaveCount(2);
     await expect(featuredStream.getByTestId("featured-photo-image")).toHaveCount(
-      3
+      2
     );
+    await expect(featuredStream.locator("img")).toHaveCount(2);
     expect(
       await featuredStream.getByTestId("featured-photo-image").evaluateAll(
         (images) =>
@@ -697,21 +697,16 @@ test.describe.serial("management workflows", () => {
           )
       )
     ).toBe(true);
-    await expect
-      .poll(() =>
-        featuredTrack.evaluate(
-          (track) => getComputedStyle(track).animationName
-        )
+    expect(
+      await featuredStream.evaluate(
+        (stream) => getComputedStyle(stream).overflowX
       )
-      .toBe("featured-photo-scroll");
-    const firstTransform = await featuredTrack.evaluate(
-      (track) => getComputedStyle(track).transform
-    );
-    await page.waitForTimeout(350);
-    const nextTransform = await featuredTrack.evaluate(
-      (track) => getComputedStyle(track).transform
-    );
-    expect(nextTransform).not.toBe(firstTransform);
+    ).toBe("auto");
+    expect(
+      await featuredStream.evaluate(
+        (stream) => stream.scrollWidth === stream.clientWidth
+      )
+    ).toBe(true);
     expect(
       await page.evaluate(
         () =>
@@ -735,45 +730,6 @@ test.describe.serial("management workflows", () => {
       await expect(featuredStream).toBeVisible();
     }
     await page.setViewportSize({ width: 1280, height: 800 });
-
-    const pauseStream = page.getByRole("button", {
-      name: "Pause photo stream",
-      exact: true
-    });
-    await pauseStream.click();
-    await expect(
-      page.getByRole("button", {
-        name: "Resume photo stream",
-        exact: true
-      })
-    ).toHaveAttribute("aria-pressed", "true");
-    await expect
-      .poll(() =>
-        featuredTrack.evaluate(
-          (track) => getComputedStyle(track).animationPlayState
-        )
-      )
-      .toBe("paused");
-
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.reload();
-    await page
-      .getByRole("tab", { name: "E2E pending photo queue", exact: true })
-      .click();
-    await expect
-      .poll(() =>
-        page
-          .getByTestId("featured-photo-track")
-          .evaluate((track) => getComputedStyle(track).animationName)
-      )
-      .toBe("none");
-    await expect(
-      page.getByRole("button", {
-        name: "Pause photo stream",
-        exact: true
-      })
-    ).toBeHidden();
-    await page.emulateMedia({ reducedMotion: "no-preference" });
 
     await page.getByRole("combobox").fill("E2E note about the shoot");
     await expect(

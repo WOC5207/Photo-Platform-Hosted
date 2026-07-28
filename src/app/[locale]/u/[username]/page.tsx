@@ -283,9 +283,7 @@ export default async function HomePage({
         labels={{
           announcementsTab: t("announcementsTab"),
           noAnnouncements: t("noAnnouncements"),
-          viewGallery: t("viewGallery"),
-          featuredPause: t("featuredPause"),
-          featuredResume: t("featuredResume")
+          viewGallery: t("viewGallery")
         }}
       />
 

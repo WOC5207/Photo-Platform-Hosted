@@ -56,8 +56,6 @@
     "announcementsTab": "Announcement",
     "noAnnouncements": "No announcements right now.",
     "viewGallery": "View gallery",
-    "featuredPause": "Pause photo stream",
-    "featuredResume": "Resume photo stream",
     "searchPlaceholder": "Search {creditTerm} or {subjectTerm}…",
     "searching": "Searching…",
     "noSearchResults": "No matches found."
