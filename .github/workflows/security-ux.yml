@@ -59,10 +59,13 @@ jobs:
       - run: npm audit
       - run: npx prisma generate
       - run: npx prisma validate
+      - run: npm run test:miniapp
       - run: npx prisma migrate deploy
+      - run: npm run test:miniapp:db
       - run: npm run test:security
       - run: npm run test:moderation
       - run: npm run test:images
+      - run: npm run test:email
       - run: npm run test:concurrency
       - run: npm run test:isolation
       - run: npm run test:quota
@@ -90,7 +93,7 @@ jobs:
           done
           curl --fail --silent "$APP_BASE_URL/en/login" > /dev/null
           npm run test:http
-          npm run test:e2e
+          npm run test:e2e -- --workers=1
         env:
           NODE_ENV: production
           PORT: "3001"

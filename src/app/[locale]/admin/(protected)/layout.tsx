@@ -60,6 +60,11 @@ export default async function PlatformAdminLayout({
       icon: "moderation"
     },
     {
+      href: "/admin/reports",
+      label: t("adminReports.navTitle"),
+      icon: "moderation"
+    },
+    {
       href: "/admin/storage",
       label: t("admin.platformHealth"),
       icon: "health"

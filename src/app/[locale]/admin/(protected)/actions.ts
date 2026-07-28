@@ -48,6 +48,39 @@ export async function setUserStatus(formData: FormData): Promise<void> {
 }
 
 /**
+ * The Mini Program is a platform publication channel, so only a platform
+ * administrator may opt a tenant in. Enabling requires an explicit review
+ * confirmation on every transition from off to on; the API still applies its
+ * own status, publication and moderation filters on every request.
+ */
+export async function setMiniappEnabled(formData: FormData): Promise<void> {
+  await guard();
+  const id = formData.get("id");
+  const enabledValue = formData.get("enabled");
+  if (
+    typeof id !== "string" ||
+    (enabledValue !== "true" && enabledValue !== "false")
+  ) {
+    return;
+  }
+  const enabled = enabledValue === "true";
+  if (enabled && formData.get("reviewConfirmed") !== "on") return;
+
+  const target = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, status: true }
+  });
+  if (!target || (enabled && target.status !== "active")) return;
+
+  await prisma.siteSettings.upsert({
+    where: { ownerId: target.id },
+    create: { ownerId: target.id, miniappEnabled: enabled },
+    update: { miniappEnabled: enabled }
+  });
+  revalidatePath("/", "layout");
+}
+
+/**
  * Deletes an account, its files, and by cascade everything it owns.
  *
  * Files first, deliberately. The row is what tells us where the files are, so

@@ -21,6 +21,8 @@
     "test:moderation": "tsx --conditions=react-server scripts/test-moderation.ts",
     "test:moderation:db": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-moderation-db.ts",
     "test:http": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-http-isolation.ts",
+    "test:miniapp": "tsx --conditions=react-server scripts/test-miniapp-all.ts",
+    "test:miniapp:db": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-miniapp-core.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },
