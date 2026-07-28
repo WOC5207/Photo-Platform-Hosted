@@ -220,7 +220,9 @@ export default async function HomePage({
           photos: e.photos.map((p) => ({
             id: p.id,
             url: photoUrls(e.id, p.id).med,
-            caption: formatCredits(p.credits)
+            caption: formatCredits(p.credits),
+            width: p.width,
+            height: p.height
           }))
         }
       ];
@@ -282,8 +284,8 @@ export default async function HomePage({
           announcementsTab: t("announcementsTab"),
           noAnnouncements: t("noAnnouncements"),
           viewGallery: t("viewGallery"),
-          carouselPrevious: t("carouselPrevious"),
-          carouselNext: t("carouselNext")
+          featuredPause: t("featuredPause"),
+          featuredResume: t("featuredResume")
         }}
       />
 

@@ -100,6 +100,57 @@ body {
   font-family: var(--font-sans);
 }
 
+@keyframes featured-photo-scroll {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.featured-photo-viewport {
+  overflow: hidden;
+}
+
+.featured-photo-track {
+  animation: featured-photo-scroll var(--featured-stream-duration, 40s)
+    linear infinite;
+  will-change: transform;
+}
+
+.featured-photo-track[data-paused="true"],
+.featured-photo-viewport:hover .featured-photo-track,
+.featured-photo-viewport:focus-within .featured-photo-track {
+  animation-play-state: paused;
+}
+
+.featured-photo-viewport[data-paused="true"] {
+  overflow-x: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .featured-photo-viewport {
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  .featured-photo-track {
+    animation: none;
+    transform: none;
+    will-change: auto;
+  }
+
+  .featured-photo-copy,
+  .featured-photo-motion-control {
+    display: none;
+  }
+
+  .featured-photo-track li {
+    scroll-snap-align: start;
+  }
+}
+
 /* Native <input type="date"> controls (calendar picker icon, etc.) render
    dark by default, which reads as near-invisible against our dark theme's
    dark input backgrounds. color-scheme hints the browser to use its dark

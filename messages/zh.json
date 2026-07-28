@@ -56,8 +56,8 @@
     "announcementsTab": "公告",
     "noAnnouncements": "暂无公告。",
     "viewGallery": "查看相册",
-    "carouselPrevious": "上一张",
-    "carouselNext": "下一张",
+    "featuredPause": "暂停照片流",
+    "featuredResume": "继续照片流",
     "searchPlaceholder": "搜索{creditTerm}或{subjectTerm}…",
     "searching": "搜索中…",
     "noSearchResults": "没有找到匹配结果。"

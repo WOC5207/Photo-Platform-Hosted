@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   usePendingUploadQueue,
@@ -60,12 +60,31 @@ export default function PhotoWizard({
   const [publishPhase, setPublishPhase] = useState<PublishPhase>("idle");
   const [publishedCount, setPublishedCount] = useState(0);
   const guidanceTimer = useRef<number | null>(null);
+  const navigationStarted = useRef(false);
   const hasDraft =
     publishPhase !== "success" &&
     (queue.files.length > 0 ||
       Object.keys(creditsByPhoto).length > 0 ||
       Object.keys(commentByPhoto).length > 0);
   useUnsavedChanges(hasDraft, tc("unsavedNavigationConfirm"));
+
+  useEffect(() => {
+    if (publishPhase !== "success" || navigationStarted.current) return;
+    navigationStarted.current = true;
+
+    // Wait until the successful render has cleared the unsaved-change guard
+    // before leaving the wizard. Navigating in publish() itself races React's
+    // effect cleanup and causes browsers to show a misleading leave-site
+    // warning after every successful publish.
+    const eventManagerUrl = new URL(window.location.href);
+    eventManagerUrl.pathname = eventManagerUrl.pathname.replace(
+      /\/photos\/?$/,
+      ""
+    );
+    eventManagerUrl.search = "";
+    eventManagerUrl.hash = "photos";
+    window.location.replace(eventManagerUrl);
+  }, [publishPhase]);
 
   const steps = [
     { key: "upload", label: tw("stepUpload") },
@@ -272,15 +291,8 @@ export default function PhotoWizard({
     // exist in Next's client router cache. A document-level replace guarantees
     // that the newly finalized photos are read from the server, while keeping
     // the current locale/base path and preventing Back from reopening an empty
-    // completed wizard.
-    const eventManagerUrl = new URL(window.location.href);
-    eventManagerUrl.pathname = eventManagerUrl.pathname.replace(
-      /\/photos\/?$/,
-      ""
-    );
-    eventManagerUrl.search = "";
-    eventManagerUrl.hash = "photos";
-    window.location.replace(eventManagerUrl);
+    // completed wizard. The success effect performs that navigation after the
+    // unsaved-change guard has been removed.
   }
 
   return (
