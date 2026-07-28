@@ -425,20 +425,31 @@ export async function toggleHomeHighlight(formData: FormData): Promise<void> {
 
 const homeWeightSchema = z.coerce.number().int().min(1).max(5);
 
-export async function updateHomeWeight(formData: FormData): Promise<void> {
+export type HomeWeightFormState =
+  | { status: "idle" }
+  | { status: "saved"; weight: number }
+  | { status: "error" };
+
+export async function updateHomeWeight(
+  _previousState: HomeWeightFormState,
+  formData: FormData
+): Promise<HomeWeightFormState> {
   const { user } = await guard();
   const photoId = formData.get("photoId");
   const parsedWeight = homeWeightSchema.safeParse(formData.get("homeWeight"));
-  if (typeof photoId !== "string" || !parsedWeight.success) return;
+  if (typeof photoId !== "string" || !parsedWeight.success) {
+    return { status: "error" };
+  }
 
   const photo = await findOwnedPhoto(photoId, user);
-  if (!photo) return;
+  if (!photo) return { status: "error" };
 
   await prisma.photo.update({
     where: { id: photo.id },
     data: { homeWeight: parsedWeight.data }
   });
   revalidatePath("/", "layout");
+  return { status: "saved", weight: parsedWeight.data };
 }
 
 export async function movePhoto(formData: FormData): Promise<void> {

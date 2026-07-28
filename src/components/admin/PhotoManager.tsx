@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useActionState,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode
+} from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import {
@@ -11,6 +17,7 @@ import {
   setCoverPhoto,
   toggleHomeHighlight,
   updateHomeWeight,
+  type HomeWeightFormState,
   updatePhotoCredits,
   updatePhotoExif
 } from "@/app/[locale]/dashboard/(protected)/events/actions";
@@ -18,6 +25,7 @@ import SocialLinksEditor, {
   emptySocialLink,
   type SocialLinkValue
 } from "./SocialLinksEditor";
+import { buttonClasses } from "@/components/ui/Button";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import type {
   ImageModerationCategory,
@@ -321,6 +329,86 @@ function ExifForm({
       <button type="submit" disabled={!dirty} className={`${btnCls} mt-2 self-start`}>
         {tc("save")}
       </button>
+    </form>
+  );
+}
+
+function HomeWeightForm({
+  photoId,
+  initialWeight
+}: {
+  photoId: string;
+  initialWeight: number;
+}) {
+  const t = useTranslations("adminEvents");
+  const tc = useTranslations("common");
+  const [state, action, pending] = useActionState<
+    HomeWeightFormState,
+    FormData
+  >(updateHomeWeight, { status: "idle" });
+  const [weight, setWeight] = useState(initialWeight);
+  const [savedWeight, setSavedWeight] = useState(initialWeight);
+  const dirty = weight !== savedWeight;
+  useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
+
+  useEffect(() => {
+    setWeight(initialWeight);
+    setSavedWeight(initialWeight);
+  }, [initialWeight]);
+
+  useEffect(() => {
+    if (state.status !== "saved") return;
+    setWeight(state.weight);
+    setSavedWeight(state.weight);
+  }, [state]);
+
+  return (
+    <form action={action} className="flex flex-col gap-2">
+      <input type="hidden" name="photoId" value={photoId} />
+      <label className="flex flex-col gap-1 text-xs text-fg-muted">
+        <span className="font-semibold text-fg">{t("homeWeightLabel")}</span>
+        <select
+          name="homeWeight"
+          value={weight}
+          disabled={pending}
+          onChange={(event) => setWeight(Number(event.target.value))}
+          className={smallInputCls}
+        >
+          {[1, 2, 3, 4, 5].map((optionWeight) => (
+            <option key={optionWeight} value={optionWeight}>
+              {optionWeight === 1
+                ? t("homeWeightSmallest", { weight: optionWeight })
+                : optionWeight === 5
+                  ? t("homeWeightLargest", { weight: optionWeight })
+                  : t("homeWeightOption", { weight: optionWeight })}
+            </option>
+          ))}
+        </select>
+        <span className="text-fg-subtle">{t("homeWeightHint")}</span>
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="submit"
+          disabled={pending || !dirty}
+          data-dirty={dirty ? "true" : "false"}
+          className={buttonClasses({
+            variant: dirty ? "primary" : "secondary",
+            size: "compact"
+          })}
+        >
+          {t("saveHomeWeight")}
+        </button>
+        {state.status === "saved" && !dirty && (
+          <span role="status" className="text-xs text-success">
+            {tc("saved")}
+          </span>
+        )}
+        {state.status === "error" && (
+          <span role="alert" className="text-xs text-danger">
+            {tc("error")}
+          </span>
+        )}
+      </div>
     </form>
   );
 }
@@ -687,36 +775,10 @@ export default function PhotoManager({
                 .filter(Boolean)
                 .join(" · ")}
             >
-              <form
-                action={updateHomeWeight}
-                className="flex flex-col gap-2"
-              >
-                <input type="hidden" name="photoId" value={photo.id} />
-                <label className="flex flex-col gap-1 text-xs text-fg-muted">
-                  <span className="font-semibold text-fg">
-                    {t("homeWeightLabel")}
-                  </span>
-                  <select
-                    name="homeWeight"
-                    defaultValue={photo.homeWeight}
-                    className={smallInputCls}
-                  >
-                    {[1, 2, 3, 4, 5].map((weight) => (
-                      <option key={weight} value={weight}>
-                        {weight === 1
-                          ? t("homeWeightSmallest", { weight })
-                          : weight === 5
-                            ? t("homeWeightLargest", { weight })
-                            : t("homeWeightOption", { weight })}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-fg-subtle">{t("homeWeightHint")}</span>
-                </label>
-                <button type="submit" className={`${btnCls} self-start`}>
-                  {t("saveHomeWeight")}
-                </button>
-              </form>
+              <HomeWeightForm
+                photoId={photo.id}
+                initialWeight={photo.homeWeight}
+              />
 
               <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
                 <form action={movePhoto}>
