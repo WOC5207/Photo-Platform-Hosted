@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Dialog, type Page } from "@playwright/test";
 import { randomUUID } from "crypto";
 import { sealData } from "iron-session";
 import sharp from "sharp";
@@ -575,11 +575,22 @@ test.describe.serial("management workflows", () => {
     await expect(page.getByText("2 photos without credit")).toBeVisible();
     const publishButton = page.getByRole("button", { name: "Publish 3 photos" });
     await expect(publishButton).toBeEnabled();
-    await publishButton.click();
+    const publishDialogTypes: string[] = [];
+    const handlePublishDialog = async (dialog: Dialog) => {
+      publishDialogTypes.push(dialog.type());
+      await dialog.accept();
+    };
+    page.on("dialog", handlePublishDialog);
+    try {
+      await publishButton.click();
 
-    // Publishing finalizes one PATCH per credit group (credited + uncredited)
-    // and returns to the event's photo section.
-    await page.waitForURL(/\/dashboard\/events\/[^/]+#photos$/);
+      // Publishing finalizes one PATCH per credit group (credited + uncredited)
+      // and returns to the event's photo section.
+      await page.waitForURL(/\/dashboard\/events\/[^/]+#photos$/);
+    } finally {
+      page.off("dialog", handlePublishDialog);
+    }
+    expect(publishDialogTypes).toEqual([]);
     await expect(
       page.getByRole("checkbox", { name: "Select", exact: true })
     ).toHaveCount(3);
@@ -624,6 +635,32 @@ test.describe.serial("management workflows", () => {
       refreshedDisplaySection.getByLabel("Homepage photo size")
     ).toHaveValue(updatedWeight);
 
+    // Mark the uploaded set as featured so the public homepage can exercise
+    // the uncropped, continuously moving photo stream.
+    const managedPhotoCards = page
+      .locator("#photos li")
+      .filter({
+        has: page.getByRole("checkbox", { name: "Select", exact: true })
+      });
+    for (let index = 0; index < 3; index += 1) {
+      const display = managedPhotoCards
+        .nth(index)
+        .locator("details")
+        .filter({ has: page.getByText("Homepage & order", { exact: true }) });
+      if ((await display.getAttribute("open")) === null) {
+        await display.locator("summary").click();
+      }
+      await display
+        .getByRole("button", { name: "Show on homepage", exact: true })
+        .click();
+      await expect(
+        display.getByRole("button", {
+          name: "Remove from homepage",
+          exact: true
+        })
+      ).toBeVisible();
+    }
+
     // All three photos — including the two uncredited ones — reach the
     // public album.
     await page.getByRole("link", { name: "View public page" }).click();
@@ -640,6 +677,104 @@ test.describe.serial("management workflows", () => {
     // … and it is searchable from the homepage, even though the query matches
     // only the comment and not the credit.
     await page.goto(`/en/u/${ownerUsername}`);
+
+    // The featured set is an uncropped, continuously moving stream. It can be
+    // paused, does not overflow the page, and respects reduced-motion users.
+    await page
+      .getByRole("tab", { name: "E2E pending photo queue", exact: true })
+      .click();
+    const featuredStream = page.getByTestId("featured-photo-stream");
+    const featuredTrack = page.getByTestId("featured-photo-track");
+    await expect(featuredStream.getByTestId("featured-photo")).toHaveCount(3);
+    await expect(featuredStream.getByTestId("featured-photo-image")).toHaveCount(
+      3
+    );
+    expect(
+      await featuredStream.getByTestId("featured-photo-image").evaluateAll(
+        (images) =>
+          images.every(
+            (image) => getComputedStyle(image).objectFit === "contain"
+          )
+      )
+    ).toBe(true);
+    await expect
+      .poll(() =>
+        featuredTrack.evaluate(
+          (track) => getComputedStyle(track).animationName
+        )
+      )
+      .toBe("featured-photo-scroll");
+    const firstTransform = await featuredTrack.evaluate(
+      (track) => getComputedStyle(track).transform
+    );
+    await page.waitForTimeout(350);
+    const nextTransform = await featuredTrack.evaluate(
+      (track) => getComputedStyle(track).transform
+    );
+    expect(nextTransform).not.toBe(firstTransform);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth
+      )
+    ).toBe(true);
+    for (const viewport of [
+      { width: 768, height: 900 },
+      { width: 375, height: 812 },
+      { width: 320, height: 700 }
+    ]) {
+      await page.setViewportSize(viewport);
+      expect(
+        await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth <=
+            document.documentElement.clientWidth
+        )
+      ).toBe(true);
+      await expect(featuredStream).toBeVisible();
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    const pauseStream = page.getByRole("button", {
+      name: "Pause photo stream",
+      exact: true
+    });
+    await pauseStream.click();
+    await expect(
+      page.getByRole("button", {
+        name: "Resume photo stream",
+        exact: true
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect
+      .poll(() =>
+        featuredTrack.evaluate(
+          (track) => getComputedStyle(track).animationPlayState
+        )
+      )
+      .toBe("paused");
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.reload();
+    await page
+      .getByRole("tab", { name: "E2E pending photo queue", exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        page
+          .getByTestId("featured-photo-track")
+          .evaluate((track) => getComputedStyle(track).animationName)
+      )
+      .toBe("none");
+    await expect(
+      page.getByRole("button", {
+        name: "Pause photo stream",
+        exact: true
+      })
+    ).toBeHidden();
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+
     await page.getByRole("combobox").fill("E2E note about the shoot");
     await expect(
       page.getByRole("option").filter({ hasText: "E2E credit" })
