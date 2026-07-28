@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
 import {
   usePendingUploadQueue,
   type AssignedCredit,
@@ -37,7 +36,6 @@ export default function PhotoWizard({
   const t = useTranslations("adminEvents");
   const tw = useTranslations("photoWizard");
   const tc = useTranslations("common");
-  const router = useRouter();
 
   const queue = usePendingUploadQueue({
     eventId,
@@ -265,13 +263,24 @@ export default function PhotoWizard({
       queue.setLocked(false);
     }
     setPublishedCount(published);
-    router.refresh();
     if (failed) {
       setPublishPhase("error");
       return;
     }
     setPublishPhase("success");
-    router.push(`/dashboard/events/${eventId}#photos`);
+    // The edit route was visited immediately before this wizard and may still
+    // exist in Next's client router cache. A document-level replace guarantees
+    // that the newly finalized photos are read from the server, while keeping
+    // the current locale/base path and preventing Back from reopening an empty
+    // completed wizard.
+    const eventManagerUrl = new URL(window.location.href);
+    eventManagerUrl.pathname = eventManagerUrl.pathname.replace(
+      /\/photos\/?$/,
+      ""
+    );
+    eventManagerUrl.search = "";
+    eventManagerUrl.hash = "photos";
+    window.location.replace(eventManagerUrl);
   }
 
   return (

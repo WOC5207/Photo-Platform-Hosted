@@ -580,6 +580,49 @@ test.describe.serial("management workflows", () => {
     // Publishing finalizes one PATCH per credit group (credited + uncredited)
     // and returns to the event's photo section.
     await page.waitForURL(/\/dashboard\/events\/[^/]+#photos$/);
+    await expect(
+      page.getByRole("checkbox", { name: "Select", exact: true })
+    ).toHaveCount(3);
+
+    const firstPhotoCard = page
+      .locator("#photos li")
+      .filter({
+        has: page.getByRole("checkbox", { name: "Select", exact: true })
+      })
+      .first();
+    const displaySection = firstPhotoCard.locator("details").filter({
+      has: page.getByText("Homepage & order", { exact: true })
+    });
+    await displaySection.locator("summary").click();
+    const weightSelect = displaySection.getByLabel("Homepage photo size");
+    const saveWeight = displaySection.getByRole("button", {
+      name: "Save homepage size"
+    });
+    const initialWeight = await weightSelect.inputValue();
+    const updatedWeight = initialWeight === "5" ? "4" : "5";
+    await expect(saveWeight).toBeDisabled();
+    await weightSelect.selectOption(updatedWeight);
+    await expect(saveWeight).toBeEnabled();
+    await expect(saveWeight).toHaveAttribute("data-dirty", "true");
+    await expect(saveWeight).toHaveClass(/\bbg-fg\b/);
+    await saveWeight.click();
+    await expect(weightSelect).toHaveValue(updatedWeight);
+    await expect(saveWeight).toBeDisabled();
+    await expect(displaySection.getByRole("status")).toHaveText("Saved");
+
+    await page.reload();
+    const refreshedDisplaySection = page
+      .locator("#photos li")
+      .filter({
+        has: page.getByRole("checkbox", { name: "Select", exact: true })
+      })
+      .first()
+      .locator("details")
+      .filter({ has: page.getByText("Homepage & order", { exact: true }) });
+    await refreshedDisplaySection.locator("summary").click();
+    await expect(
+      refreshedDisplaySection.getByLabel("Homepage photo size")
+    ).toHaveValue(updatedWeight);
 
     // All three photos — including the two uncredited ones — reach the
     // public album.
