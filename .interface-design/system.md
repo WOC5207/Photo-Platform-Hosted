@@ -54,6 +54,12 @@ Accent is scarce and functional. Use it for the primary action, active
 navigation rail, current step, focus ring, progress, and indexed markers. Status
 colors remain semantic and must not compete with the primary accent.
 
+Each photographer may replace the safelight accent for their own public site.
+Derive the strong, surface, and contrast-foreground variants through
+`themeColorStyle`; do not place a saved hex directly into individual
+components. The platform directory and management workspace keep the platform
+safelight identity.
+
 ## Depth and Surfaces
 
 The primary depth strategy is **surface shifts plus low-opacity borders**.

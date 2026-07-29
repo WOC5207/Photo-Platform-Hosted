@@ -19,13 +19,18 @@ import {
   type SiteSettingsState
 } from "@/app/[locale]/dashboard/(protected)/settings/actions";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import {
+  DEFAULT_THEME_COLOR,
+  normalizeThemeColor,
+  themeColorStyle
+} from "@/lib/themeColor";
 
 const inputCls =
   "h-10 rounded-lg border border-border-strong bg-surface px-3 text-sm text-fg outline-none transition focus:border-fg-subtle focus:ring-2 focus:ring-fg-faint/20";
 const checkboxCls =
   "h-5 w-5 rounded border-border-strong accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:cursor-not-allowed disabled:opacity-50";
 
-const THEME_DEFAULT_COLOR = "#0a0a0a";
+const BACKGROUND_DEFAULT_COLOR = "#0a0a0a";
 
 // Independently-saving widgets contain their own forms, so the section form
 // stays detached and fields opt into it with the `form` attribute.
@@ -91,6 +96,7 @@ export default function SiteSettingsForm({
     homeSubtitleEn: string;
     homeSubtitleZh: string;
     backgroundColor: string;
+    themeColor: string;
     creditTermEn: string;
     creditTermZh: string;
     subjectTermEn: string;
@@ -134,6 +140,7 @@ export default function SiteSettingsForm({
   const changeVersion = useRef(0);
   const submittedVersion = useRef(0);
   const [color, setColor] = useState(initial.backgroundColor);
+  const [themeColor, setThemeColor] = useState(initial.themeColor);
   const [bookingEnabled, setBookingEnabled] = useState(initial.bookingEnabled);
   const [bookingPriceEnabled, setBookingPriceEnabled] = useState(
     initial.bookingPriceEnabled
@@ -245,44 +252,114 @@ export default function SiteSettingsForm({
             title={t("groupBackgroundTitle")}
             hint={t("groupBackgroundHint")}
           >
-            <div className="flex flex-col gap-1">
-              <span className="text-sm text-fg-muted">
-                {t("backgroundColorSection")}
-              </span>
-              <p className="text-xs text-fg-subtle">
-                {t("backgroundColorHint")}
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-3">
-                <input
-                  type="color"
-                  aria-label={t("backgroundColorSection")}
-                  value={color || THEME_DEFAULT_COLOR}
-                  onChange={(event) => {
-                    setColor(event.target.value);
-                    markDirty();
-                  }}
-                  className="h-10 w-14 cursor-pointer rounded-md border border-border-strong bg-surface"
-                />
-                <span className="font-mono text-sm text-fg-muted">
-                  {color || t("colorDefault")}
+            <div className="grid gap-5 lg:grid-cols-2">
+              <div className="flex flex-col gap-1 rounded-xl border border-border bg-raised p-4">
+                <span className="text-sm font-semibold text-fg">
+                  {t("themeColorSection")}
                 </span>
-                {color && (
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setColor("");
+                <p className="text-xs leading-relaxed text-fg-subtle">
+                  {t("themeColorHint")}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <input
+                    type="color"
+                    aria-label={t("themeColorSection")}
+                    value={normalizeThemeColor(themeColor) || DEFAULT_THEME_COLOR}
+                    onChange={(event) => {
+                      setThemeColor(event.target.value);
                       markDirty();
                     }}
-                  >
-                    {t("resetColor")}
-                  </Button>
-                )}
-                <input
-                  form={FORM_ID}
-                  type="hidden"
-                  name="backgroundColor"
-                  value={color}
-                />
+                    className="h-10 w-14 cursor-pointer rounded-md border border-border-strong bg-control"
+                  />
+                  <input
+                    type="text"
+                    aria-label={t("themeColorHexLabel")}
+                    value={themeColor}
+                    placeholder={DEFAULT_THEME_COLOR}
+                    maxLength={7}
+                    spellCheck={false}
+                    onChange={(event) => {
+                      setThemeColor(event.target.value);
+                      markDirty();
+                    }}
+                    className="font-meta h-10 w-28 rounded-lg border border-border-strong bg-control px-3 text-xs text-fg outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+                  />
+                  {!themeColor && (
+                    <span className="text-xs text-fg-subtle">
+                      {t("themeColorDefault")}
+                    </span>
+                  )}
+                  {themeColor && (
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setThemeColor("");
+                        markDirty();
+                      }}
+                    >
+                      {t("resetThemeColor")}
+                    </Button>
+                  )}
+                  <input
+                    form={FORM_ID}
+                    type="hidden"
+                    name="themeColor"
+                    value={themeColor}
+                  />
+                </div>
+                <div
+                  className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-page p-3"
+                  style={themeColorStyle(themeColor)}
+                  aria-label={t("themeColorPreview")}
+                >
+                  <span className="font-meta text-[0.6875rem] tracking-[0.16em] text-accent">
+                    01 / {t("themeColorPreviewLabel")}
+                  </span>
+                  <span className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-accent-fg">
+                    {t("themeColorPreviewAction")}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1 rounded-xl border border-border bg-raised p-4">
+                <span className="text-sm font-semibold text-fg">
+                  {t("backgroundColorSection")}
+                </span>
+                <p className="text-xs leading-relaxed text-fg-subtle">
+                  {t("backgroundColorHint")}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <input
+                    type="color"
+                    aria-label={t("backgroundColorSection")}
+                    value={color || BACKGROUND_DEFAULT_COLOR}
+                    onChange={(event) => {
+                      setColor(event.target.value);
+                      markDirty();
+                    }}
+                    className="h-10 w-14 cursor-pointer rounded-md border border-border-strong bg-control"
+                  />
+                  <span className="font-meta text-xs text-fg-muted">
+                    {color || t("colorDefault")}
+                  </span>
+                  {color && (
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setColor("");
+                        markDirty();
+                      }}
+                    >
+                      {t("resetColor")}
+                    </Button>
+                  )}
+                  <input
+                    form={FORM_ID}
+                    type="hidden"
+                    name="backgroundColor"
+                    value={color}
+                  />
+                </div>
               </div>
             </div>
             <IndependentWidget label={t("imageChangesSaveAutomatically")}>

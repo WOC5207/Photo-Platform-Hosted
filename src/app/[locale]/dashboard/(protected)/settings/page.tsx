@@ -98,6 +98,7 @@ export default async function SiteSettingsPage({
           homeSubtitleEn: settings.homeSubtitleEn,
           homeSubtitleZh: settings.homeSubtitleZh,
           backgroundColor: settings.backgroundColor,
+          themeColor: settings.themeColor,
           creditTermEn: settings.creditTermEn,
           creditTermZh: settings.creditTermZh,
           subjectTermEn: settings.subjectTermEn,

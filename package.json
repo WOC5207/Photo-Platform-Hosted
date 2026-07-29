@@ -18,6 +18,7 @@
     "test:security:db": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-security-db.ts",
     "test:bookingorg": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-booking-orgs.ts",
     "test:email": "tsx --conditions=react-server scripts/test-email.ts",
+    "test:theme": "tsx --conditions=react-server scripts/test-theme-color.ts",
     "test:moderation": "tsx --conditions=react-server scripts/test-moderation.ts",
     "test:moderation:db": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-moderation-db.ts",
     "test:http": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-http-isolation.ts",

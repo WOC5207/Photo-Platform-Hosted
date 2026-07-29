@@ -1,0 +1,2 @@
+ALTER TABLE "SiteSettings"
+ADD COLUMN "themeColor" TEXT NOT NULL DEFAULT '';

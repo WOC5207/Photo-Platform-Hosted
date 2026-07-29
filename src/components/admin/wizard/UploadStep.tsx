@@ -57,7 +57,7 @@ export default function UploadStep({
         tabIndex={-1}
         className="grid scroll-mt-24 gap-3 rounded-xl border border-dashed border-accent/40 bg-accent-surface/40 p-5 outline-none transition data-[guidance-active=true]:ring-2 data-[guidance-active=true]:ring-accent/70 data-[guidance-active=true]:ring-offset-4 data-[guidance-active=true]:ring-offset-page sm:justify-items-start"
       >
-        <label className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white transition hover:bg-accent-strong focus-within:ring-2 focus-within:ring-accent/45 focus-within:ring-offset-2 focus-within:ring-offset-page dark:text-page sm:w-fit">
+        <label className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-accent-fg transition hover:bg-accent-strong focus-within:ring-2 focus-within:ring-accent/45 focus-within:ring-offset-2 focus-within:ring-offset-page sm:w-fit">
           <input
             type="file"
             multiple

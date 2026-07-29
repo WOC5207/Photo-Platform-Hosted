@@ -5,7 +5,7 @@ export type ButtonSize = "compact" | "default";
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "border-transparent bg-accent text-white hover:bg-accent-strong dark:text-page",
+    "border-transparent bg-accent text-accent-fg hover:bg-accent-strong",
   secondary:
     "border-border-strong bg-raised text-fg-muted hover:border-accent/40 hover:text-fg",
   ghost:

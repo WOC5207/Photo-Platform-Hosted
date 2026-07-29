@@ -24,6 +24,7 @@
   --color-accent: var(--color-accent);
   --color-accent-strong: var(--color-accent-strong);
   --color-accent-surface: var(--color-accent-surface);
+  --color-accent-fg: var(--color-accent-fg);
   --color-success: var(--color-success);
   --color-success-strong: var(--color-success-strong);
   --color-success-surface: var(--color-success-surface);
@@ -73,6 +74,7 @@
   --color-accent: var(--safelight);
   --color-accent-strong: var(--safelight-deep);
   --color-accent-surface: rgb(164 79 37 / 11%);
+  --color-accent-fg: #fffefb;
   --color-success: #287254;
   --color-success-strong: #19563d;
   --color-success-surface: rgb(40 114 84 / 11%);
@@ -113,6 +115,7 @@
     --color-accent: var(--darkroom-safelight);
     --color-accent-strong: #ffc097;
     --color-accent-surface: rgb(226 154 104 / 12%);
+    --color-accent-fg: #211d18;
     --color-success: #7ac5a2;
     --color-success-strong: #a1ddc0;
     --color-success-surface: rgb(48 108 80 / 32%);
@@ -153,6 +156,7 @@
   --color-accent: var(--darkroom-safelight);
   --color-accent-strong: #ffc097;
   --color-accent-surface: rgb(226 154 104 / 12%);
+  --color-accent-fg: #211d18;
   --color-success: #7ac5a2;
   --color-success-strong: #a1ddc0;
   --color-success-surface: rgb(48 108 80 / 32%);

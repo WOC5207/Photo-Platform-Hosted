@@ -254,7 +254,7 @@ export default async function HomePage({
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link
               href={`${base}/gallery`}
-              className="inline-flex min-h-11 items-center rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-[background-color,transform] hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-page dark:text-page"
+              className="inline-flex min-h-11 items-center rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg transition-[background-color,transform] hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-page"
             >
               {t("browseGallery")}
             </Link>
