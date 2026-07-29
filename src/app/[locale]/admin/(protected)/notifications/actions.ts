@@ -28,7 +28,8 @@ const notificationSchema = z
     titleZh: z.string().trim().max(300),
     bodyEn: z.string().trim().max(5000),
     bodyZh: z.string().trim().max(5000),
-    audience: z.enum(["all", "selected"])
+    audience: z.enum(["all", "selected"]),
+    sendEmail: z.boolean()
   })
   .refine((value) => value.titleEn.length > 0 || value.titleZh.length > 0);
 
@@ -42,7 +43,8 @@ export async function sendNotification(
     titleZh: formData.get("titleZh") ?? "",
     bodyEn: formData.get("bodyEn") ?? "",
     bodyZh: formData.get("bodyZh") ?? "",
-    audience: formData.get("audience") ?? ""
+    audience: formData.get("audience") ?? "",
+    sendEmail: formData.get("sendEmail") === "on"
   });
   if (!parsed.success) return { error: "validation" };
 
@@ -72,31 +74,34 @@ export async function sendNotification(
       bodyEn: parsed.data.bodyEn,
       bodyZh: parsed.data.bodyZh,
       audience: parsed.data.audience,
+      emailRequested: parsed.data.sendEmail,
       targets: {
         create: targetIds.map((userId) => ({ userId }))
       }
     }
   });
 
-  // Also email the announcement to reachable accounts that set an address. The
+  // When requested, also email reachable accounts that set an address. The
   // in-app banner above is the source of truth (it reaches accounts created
   // later too); email is a best-effort extra. Same audience rule: everyone, or
   // exactly the selected targets. Fire-and-forget — a dead SMTP server must not
-  // fail the send that already persisted.
-  const recipients = await prisma.user.findMany({
-    where: {
-      email: { not: "" },
-      ...(parsed.data.audience === "selected" ? { id: { in: targetIds } } : {})
-    },
-    select: { email: true }
-  });
-  notifyAnnouncement({
-    titleEn: parsed.data.titleEn,
-    titleZh: parsed.data.titleZh,
-    bodyEn: parsed.data.bodyEn,
-    bodyZh: parsed.data.bodyZh,
-    recipients: recipients.map((r) => r.email)
-  }).catch(() => {});
+  // fail the notification that already persisted.
+  if (parsed.data.sendEmail) {
+    const recipients = await prisma.user.findMany({
+      where: {
+        email: { not: "" },
+        ...(parsed.data.audience === "selected" ? { id: { in: targetIds } } : {})
+      },
+      select: { email: true }
+    });
+    notifyAnnouncement({
+      titleEn: parsed.data.titleEn,
+      titleZh: parsed.data.titleZh,
+      bodyEn: parsed.data.bodyEn,
+      bodyZh: parsed.data.bodyZh,
+      recipients: recipients.map((r) => r.email)
+    }).catch(() => {});
+  }
 
   revalidatePath("/", "layout");
   return { ok: true };

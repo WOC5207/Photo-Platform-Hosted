@@ -69,16 +69,6 @@ export default async function BookPage({
       description: pickText(locale, s.descriptionEn, s.descriptionZh)
     }))
   }));
-  const totalSlots = days.reduce((n, day) => n + day.slots.length, 0);
-  const totalAvailable = days.reduce(
-    (sum, day) =>
-      sum +
-      day.slots.reduce(
-        (daySum, slot) => daySum + Math.max(0, slot.remaining),
-        0
-      ),
-    0
-  );
   const dateLabel =
     visibleEventDays.length > 0
       ? formatDateRange(
@@ -123,12 +113,17 @@ export default async function BookPage({
         <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
           {t("closedNotice")}
         </p>
-      ) : totalSlots === 0 || totalAvailable === 0 ? (
-        <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
-          {t("noSlotsNotice")}
-        </p>
       ) : (
-        <BookingForm days={days} subjectTerm={subjectTerm} />
+        // The "nothing available" notice lives inside the form on purpose. A
+        // multi-slot cart can book out the last openings, and this page
+        // re-renders as part of the booking action's revalidation — moving the
+        // check out here would unmount the form mid-success and throw away the
+        // confirmation (and the visitor's only copy of their manage links).
+        <BookingForm
+          days={days}
+          subjectTerm={subjectTerm}
+          eventToken={token}
+        />
       )}
     </div>
   );

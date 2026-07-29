@@ -749,11 +749,18 @@ test.describe.serial("management workflows", () => {
     await page.goto("/en/admin/notifications");
     await page.getByLabel("Title (English)").fill(title);
     await page.getByLabel("Message (English)").fill("E2E notification body");
+    const emailChoice = page.getByRole("checkbox", {
+      name: "Also send by email"
+    });
+    await expect(emailChoice).toBeChecked();
+    await emailChoice.uncheck();
     await page.getByRole("button", { name: "Send notification" }).click();
     await expect(
       page.getByRole("status").filter({ hasText: "Notification sent." })
     ).toBeVisible();
     const sentItem = page.locator("li").filter({ hasText: title });
+    await expect(sentItem.getByText("In-app only", { exact: true })).toBeVisible();
+    await expect(emailChoice).toBeChecked();
     await expect(sentItem.getByTestId("dismissed-count")).toHaveText(
       /Dismissed by 0 of \d+/
     );
@@ -852,27 +859,41 @@ test.describe.serial("management workflows", () => {
         )
         .toBe(true);
 
-      // Public page: two day tabs; switch to the second day and book its slot.
+      // Public page: add a slot from each day without losing the first
+      // selection, then enter shared details once on the review step.
       await page.goto(`/en/book/${event.token}`);
       const publicDayTabs = page
         .getByRole("tablist", { name: "Choose a day" })
         .getByRole("tab");
       await expect(publicDayTabs).toHaveCount(2);
+      await page.getByRole("button", { name: "Add to cart" }).click();
       await publicDayTabs.nth(1).click();
-
-      await page.getByRole("radio").first().check();
+      await page.getByRole("button", { name: "Add to cart" }).click();
+      await expect(page.getByText("2 time slots selected")).toBeVisible();
+      await page.getByRole("button", { name: "Review 2 slots" }).click();
+      await expect(page.getByRole("heading", { name: "Booking summary" })).toBeVisible();
       await page.getByLabel("CN").fill("E2E Visitor");
       await page.getByLabel("Contact info").fill("visitor@example.com");
-      await page.getByRole("button", { name: "Book this slot" }).click();
-      await expect(page).toHaveURL(/\/en\/my-booking\/[a-z0-9]+/);
+      await page.getByRole("button", { name: "Confirm 2 bookings" }).click();
+      await expect(
+        page.getByRole("heading", { name: "Your bookings are confirmed" })
+      ).toBeVisible();
+      await expect(page.getByRole("link", { name: "View or manage" })).toHaveCount(2);
 
-      // The booking landed on the *second* day's slot, proving the tab routed
-      // the reservation to the right day.
-      const booking = await prisma.booking.findFirstOrThrow({
+      // Both bookings landed on their respective days and share the details
+      // entered once at checkout.
+      const bookings = await prisma.booking.findMany({
         where: { name: "E2E Visitor", timeSlot: { bookingEventId: event.id } },
-        include: { timeSlot: { include: { bookingDay: true } } }
+        include: { timeSlot: { include: { bookingDay: true } } },
+        orderBy: { timeSlot: { startTime: "asc" } }
       });
-      expect(booking.timeSlot.bookingDay.date.toISOString().slice(0, 10)).toBe(day2);
+      expect(bookings).toHaveLength(2);
+      expect(
+        bookings.map((booking) =>
+          booking.timeSlot.bookingDay.date.toISOString().slice(0, 10)
+        )
+      ).toEqual([day1, day2]);
+      expect(bookings.every((booking) => booking.contactValue === "visitor@example.com")).toBe(true);
     } finally {
       await prisma.bookingEvent.delete({ where: { id: event.id } }).catch(() => {});
     }

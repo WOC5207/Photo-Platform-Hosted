@@ -93,6 +93,21 @@ export default function NotificationComposer({
         </label>
       </fieldset>
 
+      <label className="flex items-start gap-3 rounded-lg border border-border-strong/60 bg-surface p-3 text-sm">
+        <input
+          type="checkbox"
+          name="sendEmail"
+          defaultChecked
+          className="mt-0.5 h-4 w-4 shrink-0 rounded accent-fg"
+        />
+        <span>
+          <span className="block font-semibold">{t("sendEmail")}</span>
+          <span className="mt-0.5 block text-xs text-fg-subtle">
+            {t("sendEmailHint")}
+          </span>
+        </span>
+      </label>
+
       {audience === "selected" && (
         <div className="max-h-64 overflow-y-auto rounded-lg border border-border-strong/60 p-3">
           <ul className="flex flex-col gap-1">

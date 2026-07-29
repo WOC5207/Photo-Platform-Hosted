@@ -59,6 +59,11 @@ export default async function PlatformNotificationsPage() {
                             .join(", ")
                         })}
                   </p>
+                  <p className="mt-1 text-xs font-medium text-fg-muted">
+                    {notification.emailRequested
+                      ? t("emailRequested")
+                      : t("inAppOnly")}
+                  </p>
                 </div>
                 <form action={deleteNotification}>
                   <input type="hidden" name="id" value={notification.id} />

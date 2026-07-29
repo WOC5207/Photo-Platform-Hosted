@@ -29,7 +29,25 @@ export interface BookingDetails {
 
 export type ReserveSlotResult =
   | { ok: true; slot: TimeSlot & { bookingEvent: BookingEvent }; booking: Booking }
-  | { ok: false; error: "slotUnavailable" | "closed" | "slotFull" };
+  | {
+      ok: false;
+      error: "slotUnavailable" | "closed" | "slotFull";
+      slotId?: string;
+    };
+
+export type ReserveSlotsResult =
+  | {
+      ok: true;
+      reservations: {
+        slot: TimeSlot & { bookingEvent: BookingEvent };
+        booking: Booking;
+      }[];
+    }
+  | {
+      ok: false;
+      error: "slotUnavailable" | "closed" | "slotFull";
+      slotId?: string;
+    };
 
 export interface SlotBatchInput {
   bookingDayId: string;
@@ -219,6 +237,158 @@ export async function reserveSlot(
       }
     });
     return { ok: true, slot, booking } as const;
+  });
+}
+
+/**
+ * Atomically reserves several slots from the same booking event.
+ *
+ * Locks are acquired in a stable order so overlapping carts cannot deadlock.
+ * Every capacity check and insert happens inside one transaction: when any
+ * selected slot is unavailable, the visitor gets an error and no partial
+ * booking is left behind.
+ */
+export async function reserveSlots(
+  slotIds: string[],
+  details: Omit<BookingDetails, "cancelToken"> & { cancelTokens: string[] }
+): Promise<ReserveSlotsResult> {
+  const uniqueSlotIds = Array.from(new Set(slotIds));
+  if (
+    uniqueSlotIds.length === 0 ||
+    uniqueSlotIds.length !== slotIds.length ||
+    details.cancelTokens.length !== slotIds.length
+  ) {
+    return { ok: false, error: "slotUnavailable" };
+  }
+
+  const tokenBySlot = new Map(
+    slotIds.map((slotId, index) => [slotId, details.cancelTokens[index]])
+  );
+  const orderedIds = [...uniqueSlotIds].sort();
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw(
+      Prisma.sql`
+        SELECT id
+        FROM "TimeSlot"
+        WHERE id IN (${Prisma.join(orderedIds)})
+        ORDER BY id
+        FOR UPDATE
+      `
+    );
+
+    const slots = await tx.timeSlot.findMany({
+      where: { id: { in: orderedIds } },
+      include: { bookingEvent: true }
+    });
+    if (slots.length !== orderedIds.length) {
+      return { ok: false, error: "slotUnavailable" } as const;
+    }
+
+    const eventId = slots[0]?.bookingEventId;
+    if (
+      !eventId ||
+      slots.some((slot) => slot.bookingEventId !== eventId)
+    ) {
+      return { ok: false, error: "slotUnavailable" } as const;
+    }
+    if (!slots[0].bookingEvent.open) {
+      return { ok: false, error: "closed" } as const;
+    }
+
+    await tx.$queryRaw`
+      SELECT id
+      FROM "BookingEvent"
+      WHERE id = ${eventId}
+      FOR SHARE
+    `;
+    await tx.$queryRaw`
+      SELECT id
+      FROM "User"
+      WHERE id = ${slots[0].bookingEvent.ownerId}
+      FOR SHARE
+    `;
+    await tx.$queryRaw`
+      SELECT id
+      FROM "SiteSettings"
+      WHERE "ownerId" = ${slots[0].bookingEvent.ownerId}
+      FOR SHARE
+    `;
+    const [freshEvent, settings] = await Promise.all([
+      tx.bookingEvent.findUnique({
+        where: { id: eventId },
+        select: { open: true }
+      }),
+      tx.siteSettings.findUnique({
+        where: { ownerId: slots[0].bookingEvent.ownerId },
+        select: {
+          timeZone: true,
+          miniappEnabled: true,
+          bookingEnabled: true
+        }
+      })
+    ]);
+    const owner = await tx.user.findUnique({
+      where: { id: slots[0].bookingEvent.ownerId },
+      select: { status: true }
+    });
+    if (
+      !freshEvent?.open ||
+      !settings?.bookingEnabled ||
+      owner?.status !== "active"
+    ) {
+      return { ok: false, error: "closed" } as const;
+    }
+    if (details.requireMiniappAvailability) {
+      if (!settings.miniappEnabled) {
+        return { ok: false, error: "closed" } as const;
+      }
+    }
+
+    for (const slot of slots) {
+      if (isNaiveDateTimePast(slot.startTime, settings.timeZone)) {
+        return {
+          ok: false,
+          error: "slotUnavailable",
+          slotId: slot.id
+        } as const;
+      }
+      const confirmed = await tx.booking.count({
+        where: { timeSlotId: slot.id, status: "confirmed" }
+      });
+      if (confirmed >= slot.capacity) {
+        return { ok: false, error: "slotFull", slotId: slot.id } as const;
+      }
+    }
+
+    const reservations: {
+      slot: TimeSlot & { bookingEvent: BookingEvent };
+      booking: Booking;
+    }[] = [];
+    for (const slotId of slotIds) {
+      const slot = slots.find((candidate) => candidate.id === slotId);
+      const cancelToken = tokenBySlot.get(slotId);
+      if (!slot || !cancelToken) {
+        return { ok: false, error: "slotUnavailable" } as const;
+      }
+      const booking = await tx.booking.create({
+        data: {
+          timeSlotId: slot.id,
+          name: details.name,
+          subject: details.subject,
+          contactMethod: details.contactMethod,
+          contactValue: details.contactValue,
+          email: details.email,
+          notes: details.notes,
+          cancelToken,
+          locale: details.locale,
+          wechatIdentityId: details.wechatIdentityId
+        }
+      });
+      reservations.push({ slot, booking });
+    }
+
+    return { ok: true, reservations } as const;
   });
 }
 

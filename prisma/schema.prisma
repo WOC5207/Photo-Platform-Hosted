@@ -822,13 +822,16 @@ model LotteryPrize {
 // "selected" reaches exactly the PlatformNotificationTarget rows. Deleting the
 // notification retracts it everywhere — there is no editing after send.
 model PlatformNotification {
-  id       String @id @default(cuid())
-  titleEn  String @default("")
-  titleZh  String @default("")
-  bodyEn   String @default("")
-  bodyZh   String @default("")
+  id             String  @id @default(cuid())
+  titleEn        String  @default("")
+  titleZh        String  @default("")
+  bodyEn         String  @default("")
+  bodyZh         String  @default("")
+  // Records the administrator's delivery choice, not successful delivery:
+  // email remains best-effort and depends on each recipient having an address.
+  emailRequested Boolean @default(true)
   // "all" | "selected". Plain string to match the other pseudo-enums here.
-  audience String @default("all")
+  audience       String  @default("all")
 
   createdAt DateTime @default(now())
 
