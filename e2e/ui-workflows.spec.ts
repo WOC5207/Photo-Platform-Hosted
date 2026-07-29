@@ -615,7 +615,7 @@ test.describe.serial("management workflows", () => {
     await weightSelect.selectOption(updatedWeight);
     await expect(saveWeight).toBeEnabled();
     await expect(saveWeight).toHaveAttribute("data-dirty", "true");
-    await expect(saveWeight).toHaveClass(/\bbg-fg\b/);
+    await expect(saveWeight).toHaveClass(/\bbg-accent\b/);
     await saveWeight.click();
     await expect(weightSelect).toHaveValue(updatedWeight);
     await expect(saveWeight).toBeDisabled();
