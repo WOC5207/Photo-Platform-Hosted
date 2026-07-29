@@ -93,7 +93,7 @@ export default async function LotteryPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.025em]">
           {t("title")}
           <span className="ml-3 text-base font-normal text-fg-subtle">
             {pickText(locale, event.titleEn, event.titleZh)}

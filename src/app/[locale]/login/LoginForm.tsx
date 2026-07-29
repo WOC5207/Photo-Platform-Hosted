@@ -21,9 +21,11 @@ export default function LoginForm() {
           : null;
 
   return (
-    <form action={formAction} className="flex w-full max-w-sm flex-col gap-4">
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-fg-muted">{t("username")}</span>
+    <form action={formAction} className="flex w-full flex-col gap-5">
+      <label className="flex flex-col gap-2 text-sm">
+        <span className="text-[0.8125rem] font-semibold text-fg-muted">
+          {t("username")}
+        </span>
         <input
           name="username"
           autoComplete="username"
@@ -31,17 +33,19 @@ export default function LoginForm() {
           autoCorrect="off"
           spellCheck={false}
           required
-          className="min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11"
+          className="min-h-11 rounded-lg border border-border-strong bg-control px-3.5 py-2.5 text-sm text-fg outline-none transition-[border-color,background-color,box-shadow] hover:border-fg-faint focus-visible:border-accent/60 focus-visible:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20"
         />
       </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-fg-muted">{t("password")}</span>
+      <label className="flex flex-col gap-2 text-sm">
+        <span className="text-[0.8125rem] font-semibold text-fg-muted">
+          {t("password")}
+        </span>
         <input
           name="password"
           type="password"
           autoComplete="current-password"
           required
-          className="min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11"
+          className="min-h-11 rounded-lg border border-border-strong bg-control px-3.5 py-2.5 text-sm text-fg outline-none transition-[border-color,background-color,box-shadow] hover:border-fg-faint focus-visible:border-accent/60 focus-visible:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20"
         />
       </label>
       {errorMessage && (
@@ -52,7 +56,7 @@ export default function LoginForm() {
       <button
         type="submit"
         disabled={pending}
-        className="min-h-10 rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-50 max-sm:min-h-11"
+        className="min-h-11 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:opacity-50 dark:text-page"
       >
         {t("signIn")}
       </button>

@@ -25,7 +25,7 @@ export default async function CreditProfilesPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-2xl font-bold">{t("title", { term: creditTerm })}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("title", { term: creditTerm })}</h1>
         <p className="mt-1 text-fg-subtle">{t("intro")}</p>
       </div>
       <CreditProfilesManager creditProfiles={creditProfiles} creditTerm={creditTerm} />

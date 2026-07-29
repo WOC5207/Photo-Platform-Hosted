@@ -31,7 +31,7 @@ export default async function ResourceMonitorPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-2xl font-bold">{t("myStorageTitle")}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("myStorageTitle")}</h1>
         <p className="mt-1 text-fg-subtle">{t("myStorageIntro")}</p>
       </div>
 

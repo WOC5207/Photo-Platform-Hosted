@@ -74,7 +74,7 @@ export default async function EditBookingEventPage({
         >
           {tc("back")} · {t("listTitle")}
         </Link>
-        <h1 className="text-2xl font-bold">{t("editEvent")}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("editEvent")}</h1>
       </div>
 
       {!settings.bookingEnabled && (

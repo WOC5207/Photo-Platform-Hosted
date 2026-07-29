@@ -37,8 +37,10 @@ export interface HomeHighlightsLabels {
 }
 
 const tabCls = (active: boolean) =>
-  `min-h-11 shrink-0 truncate whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 ${
-    active ? "bg-fg text-page" : "text-fg-muted hover:bg-fg/5 hover:text-fg"
+  `relative min-h-11 shrink-0 truncate whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+    active
+      ? "bg-accent-surface text-accent-strong lg:before:absolute lg:before:inset-y-2 lg:before:left-0 lg:before:w-0.5 lg:before:rounded-full lg:before:bg-accent"
+      : "text-fg-muted hover:bg-surface-2 hover:text-fg"
   }`;
 
 /** One event's original, uncropped photos in a static horizontal row. */
@@ -56,13 +58,13 @@ function FeaturedPhotoStream({
     <div className="flex flex-col gap-3">
       <div
         data-testid="featured-photo-stream"
-        className="snap-x snap-proximity overflow-x-auto rounded-xl bg-surface py-2 [scrollbar-width:thin]"
+        className="snap-x snap-proximity overflow-x-auto rounded-lg bg-control p-2 [scrollbar-width:thin]"
       >
         <ul className="flex w-max gap-3 pr-3">
           {event.photos.map((photo, index) => (
             <li
               key={photo.id}
-              className="relative h-52 min-w-36 shrink-0 snap-start overflow-hidden rounded-lg bg-page sm:h-72 lg:h-80"
+              className="ui-image-frame relative h-52 min-w-36 shrink-0 snap-start overflow-hidden rounded-md bg-page sm:h-72 lg:h-80"
               style={{
                 aspectRatio: `${Math.max(1, photo.width)} / ${Math.max(
                   1,
@@ -104,10 +106,12 @@ function FeaturedPhotoStream({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="text-xs text-fg-subtle">{event.dateLabel}</span>
+        <span className="font-meta text-[0.6875rem] text-fg-subtle">
+          {event.dateLabel}
+        </span>
         <Link
           href={`${basePath}/gallery/${event.slug}`}
-          className="inline-flex min-h-11 items-center rounded-full border border-border-strong px-4 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:min-h-8"
+          className="inline-flex min-h-11 items-center rounded-lg border border-border-strong bg-raised px-4 py-2 text-xs font-semibold text-fg-muted transition hover:border-accent/30 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-9"
         >
           {labels.viewGallery}
         </Link>
@@ -181,8 +185,8 @@ export default function HomeHighlightsPanel({
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-fg/10 bg-page/85">
-      <div className="flex flex-col gap-6 p-6 sm:p-8 lg:flex-row lg:gap-8">
+    <section className="overflow-hidden rounded-xl border border-border bg-surface/92">
+      <div className="flex flex-col gap-6 p-5 sm:p-7 lg:flex-row lg:gap-8">
         <div
           role="tablist"
           aria-orientation="horizontal"
@@ -241,7 +245,7 @@ export default function HomeHighlightsPanel({
                 {announcements.map((announcement) => (
                   <li
                     key={announcement.id}
-                    className={`relative overflow-hidden rounded-xl border border-fg/10 bg-surface p-4 ${
+                    className={`relative overflow-hidden rounded-lg border border-border bg-raised p-4 ${
                       announcement.imageUrl ? "min-h-[7rem]" : ""
                     }`}
                   >

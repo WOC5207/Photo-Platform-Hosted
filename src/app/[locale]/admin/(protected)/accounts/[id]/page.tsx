@@ -87,7 +87,7 @@ export default async function AccountDetailPage({
           ← {t("backToAccounts")}
         </Link>
         <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-2xl font-bold">{ownerName(user)}</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{ownerName(user)}</h1>
           <Link
             href={ownerBasePath(user.username)}
             className="text-sm text-fg-subtle underline decoration-fg/30 underline-offset-2 hover:text-fg"

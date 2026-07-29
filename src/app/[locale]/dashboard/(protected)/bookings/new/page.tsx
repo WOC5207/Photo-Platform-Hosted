@@ -21,7 +21,7 @@ export default async function NewBookingEventPage() {
         >
           {tc("back")} · {t("listTitle")}
         </Link>
-        <h1 className="text-2xl font-bold">{t("newEvent")}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("newEvent")}</h1>
       </div>
       <BookingEventForm
         action={createBookingEvent}

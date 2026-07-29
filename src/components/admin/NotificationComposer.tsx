@@ -15,7 +15,7 @@ export interface NotificationAccount {
 }
 
 const inputCls =
-  "min-h-10 min-w-0 w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
+  "min-h-11 min-w-0 w-full rounded-lg border border-border-strong bg-control px-3.5 py-2.5 text-sm text-fg outline-none transition-[border-color,background-color,box-shadow] placeholder:text-fg-faint hover:border-fg-faint focus-visible:border-accent/60 focus-visible:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20";
 
 /** Compose form: bilingual message + audience (everyone / selected accounts). */
 export default function NotificationComposer({
@@ -43,9 +43,14 @@ export default function NotificationComposer({
     <form
       ref={formRef}
       action={formAction}
-      className="flex flex-col gap-4 rounded-xl border border-border-strong p-4"
+      className="flex flex-col gap-5 rounded-xl border border-border bg-surface p-5 sm:p-6"
     >
-      <h2 className="text-lg font-semibold">{t("composeTitle")}</h2>
+      <div className="flex items-center gap-3">
+        <span aria-hidden="true" className="h-5 w-0.5 rounded-full bg-accent" />
+        <h2 className="font-display text-xl font-semibold tracking-[-0.02em]">
+          {t("composeTitle")}
+        </h2>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
@@ -93,7 +98,7 @@ export default function NotificationComposer({
         </label>
       </fieldset>
 
-      <label className="flex items-start gap-3 rounded-lg border border-border-strong/60 bg-surface p-3 text-sm">
+      <label className="flex items-start gap-3 rounded-lg border border-accent/20 bg-accent-surface p-4 text-sm">
         <input
           type="checkbox"
           name="sendEmail"
@@ -109,7 +114,7 @@ export default function NotificationComposer({
       </label>
 
       {audience === "selected" && (
-        <div className="max-h-64 overflow-y-auto rounded-lg border border-border-strong/60 p-3">
+        <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-control p-3">
           <ul className="flex flex-col gap-1">
             {accounts.map((account) => (
               <li key={account.id}>

@@ -46,7 +46,7 @@ export default async function SetupPage() {
     <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col justify-center gap-6 px-4 py-10">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{t("welcomeTitle")}</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("welcomeTitle")}</h1>
           <p className="mt-1 text-sm text-fg-subtle">{t("welcomeHint")}</p>
         </div>
         <div className="flex items-center gap-3">

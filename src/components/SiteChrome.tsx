@@ -76,11 +76,11 @@ export default async function SiteChrome({
   return (
     <div className="flex min-h-screen flex-col">
       <ScrollBlurBackground style={style} />
-      <header className="sticky top-0 z-40 border-b border-fg/10 bg-page/70 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3">
+      <header className="sticky top-0 z-40 border-b border-border bg-page/82 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
           <Link
             href={base}
-            className="flex items-center gap-2 text-lg font-semibold tracking-wide"
+            className="font-display flex min-h-11 items-center gap-3 text-xl font-semibold tracking-[-0.025em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
           >
             {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -88,12 +88,18 @@ export default async function SiteChrome({
             )}
             {siteTitle}
           </Link>
-          <nav className="hidden items-center gap-4 text-sm sm:flex sm:gap-5">
-            <Link href={`${base}/gallery`} className="text-fg-muted hover:text-fg">
+          <nav className="hidden items-center gap-1 text-sm sm:flex">
+            <Link
+              href={`${base}/gallery`}
+              className="inline-flex min-h-10 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
+            >
               {t("nav.gallery")}
             </Link>
             {settings.bookingEnabled && (
-              <Link href={`${base}/booking`} className="text-fg-muted hover:text-fg">
+              <Link
+                href={`${base}/booking`}
+                className="inline-flex min-h-10 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
+              >
                 {t("nav.booking")}
               </Link>
             )}
@@ -105,12 +111,12 @@ export default async function SiteChrome({
                 url={contactUrl}
                 qrUrl={contactQrUrl}
                 labels={contactLabels}
-                className="rounded-lg border border-border-strong px-3 py-1.5 text-fg-muted transition hover:border-fg-faint hover:text-fg"
+                className="inline-flex min-h-10 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
               />
             )}
             <Link
               href={accountHref}
-              className="rounded-lg border border-border-strong px-3 py-1.5 text-fg-muted transition hover:border-fg-faint hover:text-fg"
+              className="inline-flex min-h-10 items-center rounded-lg border border-border-strong bg-raised px-3 font-semibold text-fg-muted transition hover:border-accent/30 hover:text-fg"
             >
               {accountLabel}
             </Link>
@@ -141,10 +147,10 @@ export default async function SiteChrome({
           />
         </div>
       </header>
-      <main className="mx-auto my-4 w-full max-w-[1600px] flex-1 px-4 sm:my-8 sm:px-6">
+      <main className="mx-auto my-6 w-full max-w-[1600px] flex-1 px-4 sm:my-10 sm:px-6 lg:my-14">
         {children}
       </main>
-      <footer className="flex flex-col items-center justify-center gap-2 border-t border-fg/10 bg-page/70 py-6 text-center text-xs text-fg-subtle backdrop-blur-xl sm:flex-row sm:gap-4">
+      <footer className="font-meta flex flex-col items-center justify-center gap-2 border-t border-border bg-page/82 py-7 text-center text-[0.6875rem] tracking-[0.08em] text-fg-subtle backdrop-blur-xl sm:flex-row sm:gap-4">
         <span>
           © {new Date().getFullYear()} {siteTitle}
         </span>

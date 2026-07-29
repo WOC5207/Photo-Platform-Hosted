@@ -120,7 +120,7 @@ export default function HomeSearchBox({
     <div ref={searchRef} className={`relative ${className ?? ""}`}>
       <label
         htmlFor={inputId}
-        className="mb-1.5 block text-xs font-medium text-fg-subtle"
+        className="mb-2 block text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-fg-subtle"
       >
         {labels.placeholder}
       </label>
@@ -167,7 +167,7 @@ export default function HomeSearchBox({
           }
         }}
         placeholder={labels.placeholder}
-        className="min-h-11 w-full rounded-full border border-border-strong bg-surface py-3 pl-11 pr-4 text-sm text-fg outline-none transition focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20"
+        className="min-h-12 w-full rounded-lg border border-border-strong bg-control py-3 pl-11 pr-4 text-sm text-fg outline-none transition-[border-color,background-color,box-shadow] placeholder:text-fg-faint hover:border-fg-faint focus-visible:border-accent/60 focus-visible:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20"
       />
       <span id={statusId} role="status" aria-live="polite" className="sr-only">
         {searching
@@ -180,7 +180,7 @@ export default function HomeSearchBox({
       </span>
       {showDropdown && (
         <div
-          className="absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-y-auto rounded-xl border border-fg/10 bg-page shadow-2xl"
+          className="absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-y-auto rounded-xl border border-border-strong bg-raised shadow-[0_18px_48px_rgb(0_0_0/0.16)]"
         >
           {searching ? (
             <p className="p-3 text-sm text-fg-subtle">{labels.searching}</p>
@@ -209,15 +209,17 @@ export default function HomeSearchBox({
                       href={resultHref(r)}
                       onClick={() => setQuery("")}
                       onMouseEnter={() => setActiveIndex(index)}
-                      className={`flex items-center gap-3 p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fg/40 ${
-                        index === activeIndex ? "bg-fg/5" : "hover:bg-fg/5"
+                      className={`flex items-center gap-3 p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40 ${
+                        index === activeIndex
+                          ? "bg-accent-surface"
+                          : "hover:bg-accent-surface"
                       }`}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={r.thumbUrl}
                         alt=""
-                        className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                        className="ui-image-frame h-12 w-12 shrink-0 rounded-md object-cover"
                       />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-fg">

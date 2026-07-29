@@ -13,7 +13,7 @@ export default function WizardStepper({
   stepAriaLabel: (index: number, label: string) => string;
 }) {
   return (
-    <ol className="flex flex-wrap items-center gap-2">
+    <ol className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
       {steps.map((step, index) => {
         const isCurrent = index === currentIndex;
         const isPast = index < currentIndex;
@@ -30,18 +30,18 @@ export default function WizardStepper({
               aria-label={stepAriaLabel(index, step.label)}
               disabled={!isPast}
               onClick={() => onStepClick(index)}
-              className={`inline-flex min-h-9 items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 ${
+              className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-3 py-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
                 isCurrent
-                  ? "bg-fg text-page"
+                  ? "bg-accent-surface text-accent-strong"
                   : isPast
-                    ? "border border-border-strong text-fg-muted hover:border-fg-subtle hover:text-fg"
+                    ? "border border-border-strong bg-raised text-fg-muted hover:border-accent/30 hover:text-fg"
                     : "border border-border text-fg-subtle"
               } disabled:cursor-default`}
             >
               <span
                 aria-hidden="true"
                 className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
-                  isCurrent ? "bg-page/20" : "bg-border/60"
+                  isCurrent ? "bg-accent text-white dark:text-page" : "bg-control"
                 }`}
               >
                 {index + 1}

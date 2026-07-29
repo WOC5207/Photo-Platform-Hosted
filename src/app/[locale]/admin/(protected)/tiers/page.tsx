@@ -28,7 +28,7 @@ export default async function TiersPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">{t("title")}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("title")}</h1>
         <p className="mt-1 text-sm text-fg-subtle">{t("intro")}</p>
       </div>
 

@@ -87,13 +87,20 @@ export default async function DirectoryPage() {
   );
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col gap-8 px-4 py-8 sm:px-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+    <div className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col gap-10 px-4 py-7 sm:px-7 sm:py-10 lg:py-14">
+      <header className="flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex max-w-3xl gap-4">
+          <span aria-hidden="true" className="font-meta mt-2 text-[0.6875rem] font-semibold tracking-[0.18em] text-accent">
+            01
+          </span>
+          <div>
+          <h1 className="font-display ui-balance text-4xl font-semibold leading-tight tracking-[-0.04em] sm:text-5xl">
             {t("title")}
           </h1>
-          <p className="text-sm text-fg-subtle">{t("subtitle")}</p>
+          <p className="ui-pretty mt-2 text-sm leading-6 text-fg-subtle">
+            {t("subtitle")}
+          </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
           <LanguageSwitcher />
@@ -105,7 +112,7 @@ export default async function DirectoryPage() {
               the button lands somewhere sensible either way. */}
           <Link
             href="/login"
-            className="rounded-lg border border-border-strong px-3 py-1.5 text-sm text-fg-muted transition hover:border-fg-faint hover:text-fg"
+            className="inline-flex min-h-10 items-center rounded-lg border border-border-strong bg-raised px-3 text-sm font-semibold text-fg-muted transition hover:border-accent/30 hover:text-fg"
           >
             {t("login")}
           </Link>
@@ -113,7 +120,7 @@ export default async function DirectoryPage() {
       </header>
 
       {cards.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-2xl border border-fg/10 bg-page/85 py-20 text-center">
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-surface py-20 text-center">
           <p className="text-fg-subtle">{t("empty")}</p>
           <p className="text-xs text-fg-subtle">{t("emptyHint")}</p>
         </div>

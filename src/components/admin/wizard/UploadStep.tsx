@@ -55,9 +55,9 @@ export default function UploadStep({
       <div
         id="wizard-upload-action"
         tabIndex={-1}
-        className="grid scroll-mt-24 gap-3 rounded-xl border border-dashed border-border-strong p-4 outline-none transition data-[guidance-active=true]:ring-2 data-[guidance-active=true]:ring-fg/70 data-[guidance-active=true]:ring-offset-4 data-[guidance-active=true]:ring-offset-page sm:justify-items-start"
+        className="grid scroll-mt-24 gap-3 rounded-xl border border-dashed border-accent/40 bg-accent-surface/40 p-5 outline-none transition data-[guidance-active=true]:ring-2 data-[guidance-active=true]:ring-accent/70 data-[guidance-active=true]:ring-offset-4 data-[guidance-active=true]:ring-offset-page sm:justify-items-start"
       >
-        <label className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-85 focus-within:ring-2 focus-within:ring-fg/40 sm:w-fit">
+        <label className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white transition hover:bg-accent-strong focus-within:ring-2 focus-within:ring-accent/45 focus-within:ring-offset-2 focus-within:ring-offset-page dark:text-page sm:w-fit">
           <input
             type="file"
             multiple
@@ -100,7 +100,7 @@ export default function UploadStep({
           id="wizard-upload-status"
           tabIndex={-1}
           aria-labelledby="pending-upload-heading"
-          className="scroll-mt-24 rounded-lg border border-border-strong/60 bg-surface/50 p-3 outline-none transition data-[guidance-active=true]:ring-2 data-[guidance-active=true]:ring-fg/70 data-[guidance-active=true]:ring-offset-4 data-[guidance-active=true]:ring-offset-page"
+          className="scroll-mt-24 rounded-xl border border-border bg-raised p-4 outline-none transition data-[guidance-active=true]:ring-2 data-[guidance-active=true]:ring-accent/70 data-[guidance-active=true]:ring-offset-4 data-[guidance-active=true]:ring-offset-page"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
@@ -140,7 +140,7 @@ export default function UploadStep({
               className="h-2 overflow-hidden rounded-full bg-border"
             >
               <div
-                className="h-full rounded-full bg-fg transition-[width] duration-200"
+                className="h-full rounded-full bg-accent transition-[width] duration-200"
                 style={{ width: `${queue.uploadPercent}%` }}
               />
             </div>
@@ -150,7 +150,7 @@ export default function UploadStep({
             {queue.files.map((item) => (
               <li
                 key={item.key}
-                className="grid gap-3 rounded-lg border border-border-strong/50 bg-page/60 p-3 text-sm text-fg-muted sm:grid-cols-[6rem_minmax(0,1fr)]"
+                className="grid gap-3 rounded-lg border border-border bg-surface p-3 text-sm text-fg-muted sm:grid-cols-[6rem_minmax(0,1fr)]"
               >
                 <div className="aspect-[4/3] w-24 overflow-hidden rounded-lg border border-border bg-surface sm:w-full">
                   {item.previewUrl ? (

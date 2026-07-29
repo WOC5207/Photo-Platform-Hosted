@@ -58,7 +58,7 @@ export default function RegistrationGate({
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-subtle">
           {labels.noticeLabel}
         </p>
-        <h1 id="registration-notice-title" className="text-2xl font-bold text-fg">
+        <h1 id="registration-notice-title" className="font-display text-3xl font-semibold tracking-[-0.03em] text-fg">
           {noticeTitle}
         </h1>
       </div>

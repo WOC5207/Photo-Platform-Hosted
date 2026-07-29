@@ -123,7 +123,7 @@ export default async function AlbumPage({
         >
           ← {t("backToGallery")}
         </Link>
-        <h1 className="mt-2 text-3xl font-bold">
+        <h1 className="font-display mt-2 text-4xl font-semibold tracking-[-0.04em]">
           {pickText(locale, event.titleEn, event.titleZh)}
         </h1>
         <p className="mt-1 text-sm text-fg-subtle">

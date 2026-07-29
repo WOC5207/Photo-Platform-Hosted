@@ -344,7 +344,7 @@ export default function PhotoWizard({
         />
       )}
 
-      <div className="sticky bottom-3 z-20 flex items-center justify-between gap-3 rounded-xl border border-border-strong bg-page/95 p-3 shadow-[0_12px_36px_rgba(0,0,0,0.18)] backdrop-blur max-sm:flex-col max-sm:items-stretch">
+      <div className="sticky bottom-3 z-20 flex items-center justify-between gap-3 rounded-xl border border-accent/30 bg-raised/95 p-3 shadow-[0_16px_48px_rgb(0_0_0/0.2)] backdrop-blur-xl max-sm:flex-col max-sm:items-stretch">
         <button
           type="button"
           disabled={stepIndex === 0 || publishing}
@@ -358,7 +358,7 @@ export default function PhotoWizard({
             <span
               id="wizard-forward-hint"
               role="status"
-              className="max-w-md rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-fg-muted"
+              className="max-w-md rounded-lg border border-accent/20 bg-accent-surface px-3 py-2 text-xs font-medium text-fg-muted"
             >
               {continueHint}
             </span>

@@ -183,15 +183,15 @@ function WorkspaceSwitch({
   onNavigate?: () => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-1 rounded-lg bg-surface-2 p-1 text-sm">
+    <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-control p-1 text-xs">
       <Link
         href="/dashboard"
         onClick={onNavigate}
         aria-current={workspace === "site" ? "page" : undefined}
-        className={`flex min-h-11 items-center justify-center rounded-md px-2 font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 lg:min-h-9 ${
+        className={`flex min-h-11 items-center justify-center rounded-md px-2 font-semibold transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 lg:min-h-9 ${
           workspace === "site"
-            ? "bg-page text-fg shadow-sm"
-            : "text-fg-subtle hover:text-fg"
+            ? "bg-raised text-fg"
+            : "text-fg-subtle hover:bg-raised/60 hover:text-fg"
         }`}
       >
         {labels.workspaceSite}
@@ -200,10 +200,10 @@ function WorkspaceSwitch({
         href="/admin"
         onClick={onNavigate}
         aria-current={workspace === "platform" ? "page" : undefined}
-        className={`flex min-h-11 items-center justify-center rounded-md px-2 font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 lg:min-h-9 ${
+        className={`flex min-h-11 items-center justify-center rounded-md px-2 font-semibold transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 lg:min-h-9 ${
           workspace === "platform"
-            ? "bg-page text-fg shadow-sm"
-            : "text-fg-subtle hover:text-fg"
+            ? "bg-raised text-fg"
+            : "text-fg-subtle hover:bg-raised/60 hover:text-fg"
         }`}
       >
         {labels.workspacePlatform}
@@ -231,9 +231,9 @@ function ManagementNavigation({
             href={item.href}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
-            className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 lg:min-h-10 ${
+            className={`relative flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 lg:min-h-10 ${
               active
-                ? "bg-fg text-page"
+                ? "bg-accent-surface text-accent-strong before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent"
                 : "text-fg-muted hover:bg-surface-2 hover:text-fg"
             }`}
           >
@@ -312,13 +312,13 @@ function ProfileMenu({
         aria-haspopup="dialog"
         aria-label={compact ? labels.account : undefined}
         onClick={() => setOpen((current) => !current)}
-        className={`flex items-center rounded-lg border border-border bg-page text-left transition hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 ${
+        className={`flex items-center rounded-lg border border-border bg-raised text-left transition-[border-color,background-color] hover:border-accent/30 hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
           compact
             ? "h-11 w-11 justify-center"
             : "min-h-12 w-full gap-3 px-3 py-2"
         }`}
       >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fg text-sm font-semibold text-page">
+        <span className="font-meta flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent-surface text-xs font-semibold text-accent-strong">
           {initial}
         </span>
         {!compact && (
@@ -351,7 +351,7 @@ function ProfileMenu({
           id={menuId}
           role="dialog"
           aria-label={labels.account}
-          className={`z-50 w-72 rounded-xl border border-border bg-page p-2 shadow-2xl ${
+          className={`z-50 w-72 rounded-xl border border-border-strong bg-raised p-2 shadow-[0_18px_48px_rgb(0_0_0/0.16)] ${
             compact
               ? "fixed right-4 top-16"
               : "absolute bottom-[calc(100%+0.5rem)] left-0"
@@ -366,7 +366,7 @@ function ProfileMenu({
             href="/dashboard/settings?section=profile"
             onClick={() => setOpen(false)}
             aria-current={profileIsActive ? "page" : undefined}
-            className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+            className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
           >
             {labels.account}
             <span aria-hidden="true">›</span>
@@ -374,7 +374,7 @@ function ProfileMenu({
           <Link
             href={publicSiteHref}
             onClick={() => setOpen(false)}
-            className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+            className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
           >
             {labels.viewSite}
             <span aria-hidden="true">↗</span>
@@ -385,7 +385,7 @@ function ProfileMenu({
           <Link
             href="/"
             onClick={() => setOpen(false)}
-            className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+            className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
           >
             {labels.directory}
             <span aria-hidden="true">↗</span>
@@ -427,7 +427,7 @@ function Brand({
     <Link
       href={href}
       aria-label={siteTitle}
-      className={`flex min-h-11 min-w-0 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 ${
+      className={`flex min-h-11 min-w-0 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
         compact ? "justify-center" : ""
       }`}
     >
@@ -435,11 +435,11 @@ function Brand({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={logoUrl} alt="" className="h-8 max-w-28 shrink-0 object-contain" />
       ) : (
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-fg text-sm font-bold text-page">
+        <span className="font-display flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent text-base font-semibold text-white dark:text-page">
           {siteTitle.trim().charAt(0).toUpperCase() || "P"}
         </span>
       )}
-      <span className={`truncate font-semibold tracking-tight ${compact ? "text-sm" : "text-base"}`}>
+      <span className={`font-display truncate font-semibold tracking-[-0.02em] ${compact ? "text-base" : "text-lg"}`}>
         {siteTitle}
       </span>
     </Link>
@@ -521,8 +521,8 @@ export default function ManagementShell({
   const closeDrawer = () => setDrawerOpen(false);
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-surface p-4 lg:flex">
+    <div className="min-h-screen lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]">
+      <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-page p-4 lg:flex">
         <div className="px-2 py-2">
           <Brand logoUrl={logoUrl} siteTitle={siteTitle} href={workspaceHome} />
         </div>
@@ -546,7 +546,7 @@ export default function ManagementShell({
       </aside>
 
       <div className="min-w-0">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-page/95 px-4 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-border bg-page/92 px-4 backdrop-blur-xl lg:hidden">
           <button
             ref={menuButtonRef}
             type="button"
@@ -554,7 +554,7 @@ export default function ManagementShell({
             aria-expanded={drawerOpen}
             aria-controls={drawerId}
             onClick={() => setDrawerOpen(true)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-fg-muted transition hover:border-border-strong hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-raised text-fg-muted transition hover:border-accent/30 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
           >
             <svg
               aria-hidden="true"
@@ -600,7 +600,7 @@ export default function ManagementShell({
               role="dialog"
               aria-modal="true"
               aria-label={labels.menu}
-              className="absolute inset-y-0 left-0 flex w-[min(20rem,calc(100vw-3rem))] flex-col border-r border-border bg-page p-4 shadow-2xl"
+              className="absolute inset-y-0 left-0 flex w-[min(20rem,calc(100vw-3rem))] flex-col border-r border-border bg-page p-4 shadow-[0_24px_80px_rgb(0_0_0/0.28)]"
             >
               <div className="flex items-center justify-between gap-3 px-2 py-1">
                 <Brand
@@ -652,7 +652,7 @@ export default function ManagementShell({
           </div>
         )}
 
-        <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <main className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-7 sm:py-9 lg:px-10 lg:py-10">
           {children}
         </main>
       </div>

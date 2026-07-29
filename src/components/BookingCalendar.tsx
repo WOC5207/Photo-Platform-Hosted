@@ -86,26 +86,28 @@ export default function BookingCalendar({
   const todayStr = todayInTimeZone(timeZone);
 
   return (
-    <div className="rounded-2xl border border-fg/10 bg-page/85 p-4">
+    <div className="rounded-xl border border-border bg-surface/92 p-5">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-sm font-semibold">{t("calendarTitle")}</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-subtle">
+          {t("calendarTitle")}
+        </h3>
         <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-1 sm:flex">
           <button
             type="button"
             aria-label={t("calendarPrevMonth")}
             onClick={() => shiftMonth(-1)}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-fg/10 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:h-8 sm:w-8"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-8 sm:w-8"
           >
             ‹
           </button>
-          <span className="min-w-0 text-center text-xs text-fg-subtle sm:w-28">
+          <span className="font-meta min-w-0 text-center text-[0.6875rem] text-fg-subtle sm:w-28">
             {monthLabel}
           </span>
           <button
             type="button"
             aria-label={t("calendarNextMonth")}
             onClick={() => shiftMonth(1)}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-fg/10 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:h-8 sm:w-8"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-8 sm:w-8"
           >
             ›
           </button>
@@ -129,7 +131,7 @@ export default function BookingCalendar({
             <div
               className={[
                 "flex aspect-square flex-col items-center justify-center gap-0.5 rounded-lg text-xs",
-                isToday ? "border border-fg/30" : "",
+                isToday ? "border border-accent/50 text-accent-strong" : "",
                 daySessions.length > 0 ? "text-fg" : "text-fg-subtle"
               ].join(" ")}
             >
@@ -154,7 +156,7 @@ export default function BookingCalendar({
                   ? `${primary.title} +${daySessions.length - 1}`
                   : primary.title
               }
-              className="rounded-lg transition hover:bg-fg/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+              className="rounded-lg transition hover:bg-accent-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
             >
               {inner}
             </Link>

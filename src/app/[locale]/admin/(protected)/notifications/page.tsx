@@ -6,6 +6,8 @@ import { formatDate } from "@/lib/datetime";
 import { ownerName } from "@/lib/owner";
 import NotificationComposer from "@/components/admin/NotificationComposer";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
+import PageHeader from "@/components/ui/PageHeader";
+import SectionHeading from "@/components/ui/SectionHeading";
 import { deleteNotification } from "./actions";
 
 // Auth depends on the request cookie — never prerender. The layout's
@@ -25,31 +27,30 @@ export default async function PlatformNotificationsPage() {
   ]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold">{t("pageTitle")}</h1>
-        <p className="mt-1 text-sm text-fg-subtle">{t("intro")}</p>
-      </div>
+    <div className="flex flex-col gap-8">
+      <PageHeader title={t("pageTitle")} description={t("intro")} />
 
       <NotificationComposer accounts={accounts} />
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">{t("sentTitle")}</h2>
+      <section className="flex flex-col gap-4">
+        <SectionHeading title={t("sentTitle")} />
         {notifications.length === 0 && (
-          <p className="text-sm text-fg-subtle">{t("noneSent")}</p>
+          <p className="ui-panel flex min-h-32 items-center justify-center p-6 text-sm text-fg-subtle">
+            {t("noneSent")}
+          </p>
         )}
         <ul className="flex flex-col gap-3">
           {notifications.map((notification) => (
             <li
               key={notification.id}
-              className="flex flex-col gap-2 rounded-xl border border-border-strong p-4"
+              className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-5"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="font-semibold">
+                  <h3 className="font-display text-lg font-semibold tracking-[-0.015em]">
                     {pickText(locale, notification.titleEn, notification.titleZh)}
                   </h3>
-                  <p className="text-xs text-fg-subtle">
+                  <p className="font-meta mt-1 text-[0.6875rem] text-fg-subtle">
                     {formatDate(notification.createdAt)} ·{" "}
                     {notification.audience === "all"
                       ? t("audienceAll")
@@ -59,7 +60,7 @@ export default async function PlatformNotificationsPage() {
                             .join(", ")
                         })}
                   </p>
-                  <p className="mt-1 text-xs font-medium text-fg-muted">
+                  <p className="mt-2 inline-flex rounded-md bg-control px-2 py-1 text-[0.6875rem] font-semibold text-fg-muted">
                     {notification.emailRequested
                       ? t("emailRequested")
                       : t("inAppOnly")}

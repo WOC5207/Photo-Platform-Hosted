@@ -236,26 +236,32 @@ export default async function HomePage({
   }));
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-6 px-2 lg:flex-row lg:items-center lg:justify-between lg:gap-10">
-        <div className="flex flex-col items-start gap-4">
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
+    <div className="flex flex-col gap-10 lg:gap-14">
+      <div className="flex flex-col gap-8 border-b border-border px-1 pb-10 lg:flex-row lg:items-end lg:justify-between lg:gap-14">
+        <div className="flex max-w-4xl flex-col items-start">
+          <span
+            aria-hidden="true"
+            className="font-meta mb-5 text-[0.6875rem] font-semibold tracking-[0.2em] text-accent"
+          >
+            01 / PORTFOLIO
+          </span>
+          <h1 className="font-display ui-balance text-5xl font-semibold leading-[0.98] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
             {heroTitle}
           </h1>
-          <p className="max-w-2xl text-base text-fg-subtle sm:text-lg">
+          <p className="ui-pretty mt-5 max-w-2xl text-base leading-7 text-fg-subtle sm:text-lg">
             {heroSubtitle}
           </p>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link
               href={`${base}/gallery`}
-              className="inline-flex min-h-11 items-center rounded-full bg-fg px-5 py-2.5 text-sm font-semibold text-page transition hover:opacity-90"
+              className="inline-flex min-h-11 items-center rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-[background-color,transform] hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-page dark:text-page"
             >
               {t("browseGallery")}
             </Link>
             {settings.bookingEnabled && (
               <Link
                 href={`${base}/booking`}
-                className="inline-flex min-h-11 items-center rounded-full border border-border-strong px-5 py-2.5 text-sm font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg"
+                className="inline-flex min-h-11 items-center rounded-lg border border-border-strong bg-raised px-5 py-2.5 text-sm font-semibold text-fg-muted transition hover:border-accent/30 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
               >
                 {t("bookingButton")}
               </Link>
@@ -266,7 +272,7 @@ export default async function HomePage({
         <HomeSearchBox
           owner={owner.username}
           locale={locale}
-          className="w-full lg:w-[26rem] lg:shrink-0"
+          className="w-full lg:w-[27rem] lg:shrink-0 lg:pb-1"
           labels={{
             placeholder: t("searchPlaceholder", { creditTerm, subjectTerm }),
             searching: t("searching"),
@@ -287,10 +293,17 @@ export default async function HomePage({
         }}
       />
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
         {streamEvents.length > 0 && (
-          <section className="flex flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
-            <h2 className="text-2xl font-bold">{t("recentWork")}</h2>
+          <section className="flex flex-col gap-7 rounded-xl border border-border bg-surface/92 p-5 sm:p-7">
+            <div className="flex items-center gap-3">
+              <span aria-hidden="true" className="font-meta text-[0.6875rem] font-semibold tracking-[0.16em] text-accent">
+                02
+              </span>
+              <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">
+                {t("recentWork")}
+              </h2>
+            </div>
             <EventPhotoStream
               basePath={base}
               events={streamEvents}
