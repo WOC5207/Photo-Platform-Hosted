@@ -542,6 +542,9 @@ model SiteSettings {
   homeSubtitleZh                    String    @default("")
   // Empty = use the default dark theme color. Otherwise a CSS hex like "#0a0a0a".
   backgroundColor                   String    @default("")
+  // Public-site accent used for primary actions, active states and focus.
+  // Empty = use the platform's safelight accent.
+  themeColor                        String    @default("")
   // Empty = no background image. Otherwise a token; file lives at
   // <PHOTOS_DIR>/_site/<token>.webp, served via /api/site/<token>.webp.
   backgroundImage                   String    @default("")

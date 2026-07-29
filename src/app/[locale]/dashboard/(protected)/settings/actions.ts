@@ -9,6 +9,7 @@ import { getCurrentUser, requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { discardSiteImage } from "@/lib/siteImages";
 import { isValidTimeZone } from "@/lib/timeZone";
+import { THEME_COLOR_PATTERN } from "@/lib/themeColor";
 
 export type SiteSettingsSection =
   | "appearance"
@@ -49,7 +50,9 @@ const appearanceSchema = z.object({
   backgroundColor: z
     .string()
     .trim()
-    .regex(/^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}))?$/)
+    .regex(THEME_COLOR_PATTERN),
+  // Empty (platform default) or a #rgb / #rrggbb site accent.
+  themeColor: z.string().trim().regex(THEME_COLOR_PATTERN)
 });
 
 const homepageSchema = z.object({
@@ -94,7 +97,8 @@ export async function updateSiteSettings(
     const parsed = appearanceSchema.safeParse({
       siteTitleEn: formData.get("siteTitleEn") ?? "",
       siteTitleZh: formData.get("siteTitleZh") ?? "",
-      backgroundColor: formData.get("backgroundColor") ?? ""
+      backgroundColor: formData.get("backgroundColor") ?? "",
+      themeColor: formData.get("themeColor") ?? ""
     });
     if (!parsed.success) return { error: "validation" };
     await prisma.siteSettings.upsert({

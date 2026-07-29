@@ -13,6 +13,7 @@ export interface SiteSettings {
   homeSubtitleEn: string;
   homeSubtitleZh: string;
   backgroundColor: string;
+  themeColor: string;
   backgroundImage: string;
   logo: string;
   creditTermEn: string;
@@ -49,6 +50,7 @@ const DEFAULTS: Omit<SiteSettings, "id" | "ownerId"> = {
   homeSubtitleEn: "",
   homeSubtitleZh: "",
   backgroundColor: "",
+  themeColor: "",
   backgroundImage: "",
   logo: "",
   creditTermEn: "",

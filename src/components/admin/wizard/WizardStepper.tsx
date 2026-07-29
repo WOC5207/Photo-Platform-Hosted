@@ -41,7 +41,7 @@ export default function WizardStepper({
               <span
                 aria-hidden="true"
                 className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
-                  isCurrent ? "bg-accent text-white dark:text-page" : "bg-control"
+                  isCurrent ? "bg-accent text-accent-fg" : "bg-control"
                 }`}
               >
                 {index + 1}

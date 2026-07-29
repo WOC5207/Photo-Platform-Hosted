@@ -275,7 +275,7 @@ export default function BookingForm({
                       className={[
                         "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11",
                         selected
-                          ? "border-accent bg-accent text-white dark:text-page"
+                          ? "border-accent bg-accent text-accent-fg"
                           : "border-border-strong bg-raised text-fg-muted hover:border-accent/30 hover:text-fg"
                       ].join(" ")}
                     >
@@ -355,7 +355,7 @@ export default function BookingForm({
                         className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:cursor-not-allowed disabled:opacity-50 ${
                           selected
                             ? "border border-accent/30 bg-raised text-accent-strong"
-                            : "bg-accent text-white hover:bg-accent-strong dark:text-page"
+                            : "bg-accent text-accent-fg hover:bg-accent-strong"
                         }`}
                       >
                         {selected ? t("removeFromCart") : t("addToCart")}
@@ -383,7 +383,7 @@ export default function BookingForm({
                   document.getElementById("booking-review")?.focus()
                 );
               }}
-              className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent-strong disabled:opacity-50 dark:text-page"
+              className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-accent-fg transition hover:bg-accent-strong disabled:opacity-50"
             >
               {t("reviewCart", { count: selectedSlotIds.length })}
             </button>
@@ -564,7 +564,7 @@ export default function BookingForm({
             <button
               type="submit"
               disabled={pending || selectedSlotIds.length === 0}
-              className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent-strong disabled:opacity-50 dark:text-page"
+              className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-accent-fg transition hover:bg-accent-strong disabled:opacity-50"
             >
               {pending
                 ? t("bookingInProgress")

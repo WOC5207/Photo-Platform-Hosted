@@ -435,7 +435,7 @@ function Brand({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={logoUrl} alt="" className="h-8 max-w-28 shrink-0 object-contain" />
       ) : (
-        <span className="font-display flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent text-base font-semibold text-white dark:text-page">
+        <span className="font-display flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent text-base font-semibold text-accent-fg">
           {siteTitle.trim().charAt(0).toUpperCase() || "P"}
         </span>
       )}
