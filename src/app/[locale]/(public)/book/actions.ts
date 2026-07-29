@@ -14,7 +14,7 @@ import { getSiteSettings } from "@/lib/settings";
 import { findAvailablePublicDraw } from "@/lib/publicLottery";
 import {
   cancelPublicBookingByToken,
-  createPublicBooking
+  createPublicBookings
 } from "@/lib/publicBookingService";
 import { spinBookingLottery } from "@/lib/publicLotteryEntryService";
 
@@ -25,10 +25,16 @@ export type BookingFormState = {
     | "slotUnavailable"
     | "rateLimited"
     | "closed";
+  failedSlotId?: string;
+  bookings?: {
+    cancelToken: string;
+    slotId: string;
+  }[];
 };
 
 const bookingSchema = z.object({
-  slotId: z.string().min(1).max(100),
+  eventToken: z.string().min(1).max(100),
+  slotIds: z.array(z.string().min(1).max(100)).min(1).max(20),
   name: z.string().trim().min(1).max(200),
   subject: z.string().trim().max(200),
   contactValue: z.string().trim().min(1).max(200),
@@ -44,7 +50,8 @@ export async function createBooking(
   formData: FormData
 ): Promise<BookingFormState> {
   const parsed = bookingSchema.safeParse({
-    slotId: formData.get("slotId") ?? "",
+    eventToken: formData.get("eventToken") ?? "",
+    slotIds: formData.getAll("slotIds"),
     name: formData.get("name") ?? "",
     subject: formData.get("subject") ?? "",
     contactValue: formData.get("contactValue") ?? "",
@@ -69,18 +76,33 @@ export async function createBooking(
 
   // "Booking enabled" is the slot owner's setting, so the slot has to be
   // resolved before it can be read — it is no longer one switch for the whole
-  // deployment. reserveSlot re-reads the slot inside its lock; this lookup only
-  // answers whose it is.
-  const slot = await prisma.timeSlot.findUnique({
-    where: { id: d.slotId },
-    select: { bookingEvent: { select: { id: true, ownerId: true } } }
+  // deployment. reserveSlots re-reads every slot inside its lock; this lookup
+  // identifies the event and rejects cart items forged for another link.
+  const uniqueSlotIds = Array.from(new Set(d.slotIds));
+  if (uniqueSlotIds.length !== d.slotIds.length) {
+    return { error: "validation" };
+  }
+  const slots = await prisma.timeSlot.findMany({
+    where: { id: { in: uniqueSlotIds } },
+    select: {
+      id: true,
+      bookingEvent: { select: { id: true, ownerId: true, token: true } }
+    }
   });
-  if (!slot) return { error: "slotUnavailable" };
+  const event = slots[0]?.bookingEvent;
+  if (
+    slots.length !== uniqueSlotIds.length ||
+    !event ||
+    slots.some((slot) => slot.bookingEvent.id !== event.id) ||
+    event.token !== d.eventToken
+  ) {
+    return { error: "slotUnavailable" };
+  }
 
   // Consume an attempt only after basic validation, and scope the limit to the
   // event so visitors on shared Wi-Fi do not block unrelated photographers.
   if (
-    !rateLimit(`book:${slot.bookingEvent.id}:${ip}`, {
+    !rateLimit(`book:${event.id}:${ip}`, {
       limit: 30,
       windowMs: 60 * 60 * 1000
     })
@@ -88,14 +110,14 @@ export async function createBooking(
     return { error: "rateLimited" };
   }
 
-  const settings = await getSiteSettings(slot.bookingEvent.ownerId);
+  const settings = await getSiteSettings(event.ownerId);
   if (!settings.bookingEnabled) {
     return { error: "closed" };
   }
 
   const locale = await getLocale();
-  const result = await createPublicBooking({
-    slotId: d.slotId,
+  const result = await createPublicBookings({
+    slotIds: d.slotIds,
     name: d.name,
     subject: d.subject,
     contactValue: d.contactValue,
@@ -103,8 +125,19 @@ export async function createBooking(
     notes: d.notes,
     locale
   });
-  if (!result.ok) return { error: result.error };
-  redirect(`/${locale}/my-booking/${result.data.cancelToken}?new=1`);
+  if (!result.ok) {
+    return { error: result.error, failedSlotId: result.slotId };
+  }
+  revalidatePath("/", "layout");
+  if (result.data.length === 1) {
+    redirect(`/${locale}/my-booking/${result.data[0].cancelToken}?new=1`);
+  }
+  return {
+    bookings: result.data.map(({ cancelToken, slotId }) => ({
+      cancelToken,
+      slotId
+    }))
+  };
 }
 
 export async function cancelMyBooking(formData: FormData): Promise<void> {

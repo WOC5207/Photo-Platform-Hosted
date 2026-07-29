@@ -58,6 +58,7 @@ export interface PlatformNotificationSummary {
   bodyEn: string;
   bodyZh: string;
   audience: string;
+  emailRequested: boolean;
   createdAt: Date;
   /** Selected recipients; empty when audience is "all". */
   targets: { id: string; username: string; displayName: string }[];
@@ -91,6 +92,7 @@ export async function getNotificationSummaries(): Promise<
     bodyEn: notification.bodyEn,
     bodyZh: notification.bodyZh,
     audience: notification.audience,
+    emailRequested: notification.emailRequested,
     createdAt: notification.createdAt,
     targets: notification.targets.map((target) => target.user),
     targetedCount:

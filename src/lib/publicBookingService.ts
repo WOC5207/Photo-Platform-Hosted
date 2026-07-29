@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { routing } from "@/i18n/routing";
-import { reserveSlot } from "@/lib/booking";
+import { reserveSlot, reserveSlots } from "@/lib/booking";
 import { config } from "@/lib/config";
 import { pickText } from "@/lib/content";
 import { prisma } from "@/lib/db";
@@ -37,6 +37,106 @@ export type CreatePublicBookingResult =
       ok: false;
       error: "slotUnavailable" | "closed" | "slotFull";
     };
+
+export type CreatePublicBookingsResult =
+  | {
+      ok: true;
+      data: {
+        bookingId: string;
+        cancelToken: string;
+        slotId: string;
+        eventId: string;
+      }[];
+    }
+  | {
+      ok: false;
+      error: "slotUnavailable" | "closed" | "slotFull";
+      slotId?: string;
+    };
+
+export async function createPublicBookings(
+  input: Omit<PublicBookingInput, "slotId"> & { slotIds: string[] }
+): Promise<CreatePublicBookingsResult> {
+  const slotIds = Array.from(new Set(input.slotIds));
+  if (slotIds.length === 0 || slotIds.length !== input.slotIds.length) {
+    return { ok: false, error: "slotUnavailable" };
+  }
+
+  const targets = await prisma.timeSlot.findMany({
+    where: { id: { in: slotIds } },
+    select: {
+      id: true,
+      bookingEvent: { select: { id: true, ownerId: true } }
+    }
+  });
+  if (
+    targets.length !== slotIds.length ||
+    targets.some(
+      (target) => target.bookingEvent.id !== targets[0]?.bookingEvent.id
+    )
+  ) {
+    return { ok: false, error: "slotUnavailable" };
+  }
+
+  const settings = await getSiteSettings(targets[0].bookingEvent.ownerId);
+  if (!settings.bookingEnabled) return { ok: false, error: "closed" };
+
+  const cancelTokens = slotIds.map(() => randomUUID().replace(/-/g, ""));
+  const result = await reserveSlots(slotIds, {
+    name: input.name,
+    subject: input.subject,
+    contactMethod: "",
+    contactValue: input.contactValue,
+    email: input.email,
+    notes: input.notes,
+    locale: input.locale,
+    wechatIdentityId: input.wechatIdentityId,
+    requireMiniappAvailability: input.requireMiniappAvailability,
+    cancelTokens
+  });
+  if (!result.ok) return result;
+
+  const owner = await prisma.user.findUnique({
+    where: { id: result.reservations[0].slot.bookingEvent.ownerId },
+    select: { email: true }
+  });
+  for (const reservation of result.reservations) {
+    const cancelToken = reservation.booking.cancelToken;
+    notifyBookingCreated({
+      bookingId: cancelToken,
+      name: input.name,
+      subject: input.subject,
+      contactMethod: "",
+      contactValue: input.contactValue,
+      eventTitle: pickText(
+        input.locale,
+        reservation.slot.bookingEvent.titleEn,
+        reservation.slot.bookingEvent.titleZh
+      ),
+      slotStart: reservation.slot.startTime,
+      slotEnd: reservation.slot.endTime,
+      timeZone: settings.timeZone,
+      pricePerPerson: settings.bookingPriceEnabled
+        ? reservation.slot.pricePerPerson
+        : "",
+      manageUrl: `${config.appBaseUrl()}/${input.locale}/my-booking/${cancelToken}`,
+      dashboardUrl: `${config.appBaseUrl()}/${routing.defaultLocale}/dashboard/bookings/${reservation.slot.bookingEvent.id}`,
+      locale: input.locale,
+      visitorEmail: input.email,
+      ownerEmail: owner?.email ?? ""
+    }).catch(() => {});
+  }
+
+  return {
+    ok: true,
+    data: result.reservations.map(({ slot, booking }) => ({
+      bookingId: booking.id,
+      cancelToken: booking.cancelToken,
+      slotId: slot.id,
+      eventId: slot.bookingEvent.id
+    }))
+  };
+}
 
 /**
  * Shared Web/API booking core. The capacity decision remains in reserveSlot,

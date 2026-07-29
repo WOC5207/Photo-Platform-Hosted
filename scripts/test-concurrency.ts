@@ -25,7 +25,8 @@ import { randomUUID } from "crypto";
 import { PrismaClient } from "@prisma/client";
 import {
   addSlotBatchForOwner,
-  reserveSlot
+  reserveSlot,
+  reserveSlots
 } from "../src/lib/booking";
 import {
   deleteLotteryPrizeForOwner,
@@ -51,7 +52,8 @@ async function createOwner() {
     data: {
       username: `concurrency-test-${randomUUID().slice(0, 8)}`,
       passwordHash: "not-a-real-hash-this-account-cannot-log-in",
-      role: "user"
+      role: "user",
+      settings: { create: { bookingEnabled: true } }
     }
   });
   ownerId = user.id;
@@ -244,6 +246,62 @@ async function testLotteryLockIsHonoured() {
     blockedWhileLocked
       ? "blocked as expected"
       : "returned while the draw was locked — the FOR UPDATE is missing, so stock can be over-awarded"
+  );
+
+  await prisma.bookingEvent.delete({ where: { id: eventId } });
+}
+
+async function testBatchBookingIsAtomic() {
+  const { eventId, slotId: firstSlotId } = await makeSlot(1);
+  const firstSlot = await prisma.timeSlot.findUniqueOrThrow({
+    where: { id: firstSlotId }
+  });
+  const secondSlot = await prisma.timeSlot.create({
+    data: {
+      bookingEventId: eventId,
+      bookingDayId: firstSlot.bookingDayId,
+      startTime: new Date(firstSlot.startTime.getTime() + 3_600_000),
+      endTime: new Date(firstSlot.endTime.getTime() + 3_600_000),
+      capacity: 1
+    }
+  });
+  await reserveSlot(secondSlot.id, booking(90));
+
+  const result = await reserveSlots([firstSlotId, secondSlot.id], {
+    ...booking(91),
+    cancelTokens: [
+      randomUUID().replace(/-/g, ""),
+      randomUUID().replace(/-/g, "")
+    ]
+  });
+  const [firstCount, secondCount] = await Promise.all([
+    prisma.booking.count({ where: { timeSlotId: firstSlotId } }),
+    prisma.booking.count({ where: { timeSlotId: secondSlot.id } })
+  ]);
+
+  report(
+    "booking cart: one full slot rolls the entire batch back",
+    !result.ok &&
+      result.error === "slotFull" &&
+      result.slotId === secondSlot.id &&
+      firstCount === 0 &&
+      secondCount === 1,
+    `result=${result.ok ? "ok" : `${result.error}:${result.slotId ?? "unknown"}`} counts=${firstCount}/${secondCount}`
+  );
+
+  const duplicate = await reserveSlots([firstSlotId, firstSlotId], {
+    ...booking(92),
+    cancelTokens: [
+      randomUUID().replace(/-/g, ""),
+      randomUUID().replace(/-/g, "")
+    ]
+  });
+  report(
+    "booking cart: duplicate slot ids are rejected before inserting",
+    !duplicate.ok &&
+      duplicate.error === "slotUnavailable" &&
+      (await prisma.booking.count({ where: { timeSlotId: firstSlotId } })) === 0,
+    duplicate.ok ? "duplicate batch was accepted" : `returned ${duplicate.error}`
   );
 
   await prisma.bookingEvent.delete({ where: { id: eventId } });
@@ -505,6 +563,7 @@ async function main() {
   await createOwner();
   await testBookingLockIsHonoured();
   await testBookingStampede();
+  await testBatchBookingIsAtomic();
   await testExpiredSlotIsRejectedInOwnerTimeZone();
   await testNewEventSlotBatchSync();
   await testLotteryLockIsHonoured();

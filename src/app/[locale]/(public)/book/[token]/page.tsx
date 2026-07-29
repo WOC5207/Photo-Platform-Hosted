@@ -128,7 +128,11 @@ export default async function BookPage({
           {t("noSlotsNotice")}
         </p>
       ) : (
-        <BookingForm days={days} subjectTerm={subjectTerm} />
+        <BookingForm
+          days={days}
+          subjectTerm={subjectTerm}
+          eventToken={token}
+        />
       )}
     </div>
   );
