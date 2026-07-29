@@ -195,6 +195,16 @@ export default function BookingForm({
     );
   }
 
+  // Checked after the confirmation above: the cart that just succeeded may have
+  // taken the event's last openings.
+  if (!hasAvailableSlot) {
+    return (
+      <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
+        {t("noSlotsNotice")}
+      </p>
+    );
+  }
+
   return (
     <form action={formAction} className="flex flex-col gap-6">
       <input type="hidden" name="eventToken" value={eventToken} />
@@ -366,7 +376,7 @@ export default function BookingForm({
             </div>
             <button
               type="button"
-              disabled={!hasAvailableSlot || selectedSlotIds.length === 0}
+              disabled={selectedSlotIds.length === 0}
               onClick={() => {
                 setStep("review");
                 requestAnimationFrame(() =>
