@@ -6,6 +6,7 @@ import { pickText } from "@/lib/content";
 import { formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { buttonClasses } from "@/components/ui/Button";
+import PageHeader from "@/components/ui/PageHeader";
 import BookingMergePanel, {
   type MergeEventItem
 } from "@/components/admin/BookingMergePanel";
@@ -66,28 +67,32 @@ export default async function AdminBookingsPage() {
   });
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">{t("listTitle")}</h1>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        title={t("listTitle")}
+        action={
         <Link
           href="/dashboard/bookings/new"
           className={buttonClasses({ variant: "primary" })}
         >
           + {t("newEvent")}
         </Link>
-      </div>
+        }
+      />
 
       {!settings.bookingEnabled && (
         <p
           role="status"
-          className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-fg-subtle"
+          className="rounded-xl border border-accent/20 bg-accent-surface px-4 py-3 text-sm text-fg-muted"
         >
           {ts("groupBookingHint")}
         </p>
       )}
 
       {events.length === 0 ? (
-        <p className="text-fg-subtle">{t("noEvents")}</p>
+        <p className="ui-panel flex min-h-40 items-center justify-center p-8 text-center text-sm text-fg-subtle">
+          {t("noEvents")}
+        </p>
       ) : (
         <BookingMergePanel events={mergeItems} lotteryLabel={t("lotteryTool")} />
       )}

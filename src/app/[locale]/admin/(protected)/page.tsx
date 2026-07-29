@@ -5,6 +5,7 @@ import { ownerName } from "@/lib/owner";
 import { formatDate } from "@/lib/datetime";
 import { formatBytes, getPlatformStorage } from "@/lib/storage";
 import { Link } from "@/i18n/navigation";
+import PageHeader from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -46,11 +47,8 @@ export default async function PlatformUsersPage() {
   const storageById = new Map(accounts.map((a) => [a.id, a]));
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold">{t("usersTitle")}</h1>
-        <p className="mt-1 text-sm text-fg-subtle">{t("usersSubtitle")}</p>
-      </div>
+    <div className="flex flex-col gap-8">
+      <PageHeader title={t("usersTitle")} description={t("usersSubtitle")} />
 
       <ul className="grid gap-3 xl:hidden">
         {users.map((u) => {
@@ -61,12 +59,12 @@ export default async function PlatformUsersPage() {
               : 0;
 
           return (
-            <li key={u.id} className="rounded-xl border border-border bg-surface p-4">
+            <li key={u.id} className="rounded-xl border border-border bg-surface p-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <Link
                     href={`/admin/accounts/${u.id}`}
-                    className="font-semibold underline decoration-fg/30 underline-offset-2 hover:decoration-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+                    className="font-semibold underline decoration-accent/40 underline-offset-4 hover:text-accent-strong hover:decoration-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                   >
                     {ownerName(u)}
                   </Link>
@@ -75,7 +73,7 @@ export default async function PlatformUsersPage() {
                 <span
                   className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                     u.status === "active"
-                      ? "bg-fg/5 text-fg-muted"
+                      ? "bg-success-surface text-success"
                       : "bg-danger-surface text-danger"
                   }`}
                 >
@@ -83,7 +81,7 @@ export default async function PlatformUsersPage() {
                 </span>
               </div>
 
-              <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <dl className="mt-5 grid grid-cols-2 gap-4 border-t border-border pt-4 text-sm sm:grid-cols-4">
                 <div>
                   <dt className="text-xs text-fg-subtle">{t("colRole")}</dt>
                   <dd className="mt-0.5 text-fg-muted">
@@ -110,7 +108,7 @@ export default async function PlatformUsersPage() {
                     <span>{ts("colUsed")}</span>
                     <span>{formatBytes(s.usedBytes)} / {formatBytes(s.quotaBytes)}</span>
                   </div>
-                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-fg/10">
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-control">
                     <div
                       className={`h-full rounded-full ${pct >= 100 ? "bg-danger" : "bg-fg/60"}`}
                       style={{ width: `${pct}%` }}
@@ -128,9 +126,9 @@ export default async function PlatformUsersPage() {
         })}
       </ul>
 
-      <div className="hidden overflow-x-auto rounded-xl border border-border xl:block">
+      <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface xl:block">
         <table className="w-full min-w-[820px] text-sm">
-          <thead className="border-b border-border bg-surface text-left text-fg-subtle">
+          <thead className="border-b border-border bg-control text-left text-fg-subtle">
             <tr>
               <th className="px-4 py-3 font-medium">{t("colUser")}</th>
               <th className="px-4 py-3 font-medium">{t("colRole")}</th>
@@ -151,7 +149,7 @@ export default async function PlatformUsersPage() {
               return (
                 <tr
                   key={u.id}
-                  className="border-b border-border last:border-0"
+                  className="border-b border-border transition-colors hover:bg-raised last:border-0"
                 >
                   <td className="px-4 py-3">
                     <div className="flex flex-col">
@@ -159,7 +157,7 @@ export default async function PlatformUsersPage() {
                           account lives on its own page. */}
                       <Link
                         href={`/admin/accounts/${u.id}`}
-                        className="font-medium underline decoration-fg/30 underline-offset-2 hover:decoration-fg"
+                        className="font-semibold underline decoration-accent/40 underline-offset-4 hover:text-accent-strong hover:decoration-accent"
                       >
                         {ownerName(u)}
                       </Link>
@@ -192,7 +190,7 @@ export default async function PlatformUsersPage() {
                         <span className="text-fg-muted">
                           {formatBytes(s.usedBytes)} / {formatBytes(s.quotaBytes)}
                         </span>
-                        <div className="h-1.5 w-28 overflow-hidden rounded-full bg-fg/10">
+                        <div className="h-1.5 w-28 overflow-hidden rounded-full bg-control">
                           <div
                             className={`h-full rounded-full ${pct >= 100 ? "bg-danger" : "bg-fg/60"}`}
                             style={{ width: `${pct}%` }}

@@ -77,7 +77,7 @@ export default async function MyBookingPage({
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
-      <h1 className="text-2xl font-bold">{t("yourBooking")}</h1>
+      <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("yourBooking")}</h1>
 
       {isNew && !cancelled && (
         <p className="rounded-xl border border-success-border bg-success-surface p-4 text-sm text-success">

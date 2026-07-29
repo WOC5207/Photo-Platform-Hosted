@@ -6,6 +6,7 @@ import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { buttonClasses } from "@/components/ui/Button";
+import PageHeader from "@/components/ui/PageHeader";
 
 export default async function AdminEventsPage() {
   const locale = await getLocale();
@@ -29,28 +30,32 @@ export default async function AdminEventsPage() {
   });
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">{t("listTitle")}</h1>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        title={t("listTitle")}
+        action={
         <Link
           href="/dashboard/events/new"
           className={buttonClasses({ variant: "primary" })}
         >
           + {t("newEvent")}
         </Link>
-      </div>
+        }
+      />
 
       {events.length === 0 ? (
-        <p className="text-fg-subtle">{t("noEvents")}</p>
+        <p className="ui-panel flex min-h-40 items-center justify-center p-8 text-center text-sm text-fg-subtle">
+          {t("noEvents")}
+        </p>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {events.map((event) => {
+          {events.map((event, index) => {
             const cover = event.coverPhoto ?? event.photos[0] ?? null;
             return (
               <li key={event.id}>
                 <Link
                   href={`/dashboard/events/${event.id}`}
-                  className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 transition hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+                  className="group flex h-full flex-col gap-3 rounded-xl border border-border bg-surface p-3 transition-[border-color,background-color,transform] hover:-translate-y-0.5 hover:border-accent/30 hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                 >
                   {cover ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -58,15 +63,19 @@ export default async function AdminEventsPage() {
                       src={photoUrls(event.id, cover.id).thumb}
                       alt=""
                       loading="lazy"
-                      className="aspect-[4/3] w-full rounded-lg object-cover"
+                      className="ui-image-frame aspect-[4/3] w-full rounded-lg object-cover"
                     />
                   ) : (
-                    <div className="flex aspect-[4/3] w-full items-center justify-center rounded-lg bg-surface-2 text-3xl text-fg-faint">
+                    <div className="flex aspect-[4/3] w-full items-center justify-center rounded-lg border border-border bg-control text-3xl text-fg-faint">
                       ✦
                     </div>
                   )}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
+                  <div className="flex items-start justify-between gap-3 px-1 pb-1">
+                    <div className="flex min-w-0 gap-3">
+                      <span className="font-meta mt-0.5 text-[0.625rem] font-semibold tracking-[0.14em] text-accent">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <div className="min-w-0">
                       <h2 className="font-semibold">
                         {pickText(locale, event.titleEn, event.titleZh)}
                       </h2>
@@ -74,12 +83,13 @@ export default async function AdminEventsPage() {
                         {formatDateRange(event.dateStart, event.dateEnd) || "—"}{" "}
                         · {t("photosCount", { count: event._count.photos })}
                       </p>
+                      </div>
                     </div>
                     <span
                       className={
                         event.published
-                          ? "rounded-md bg-success-surface px-2 py-0.5 text-xs text-success"
-                          : "rounded-md bg-surface-2 px-2 py-0.5 text-xs text-fg-subtle"
+                          ? "rounded-md bg-success-surface px-2 py-1 text-[0.6875rem] font-semibold text-success"
+                          : "rounded-md bg-control px-2 py-1 text-[0.6875rem] font-semibold text-fg-subtle"
                       }
                     >
                       {event.published ? t("published") : t("draft")}

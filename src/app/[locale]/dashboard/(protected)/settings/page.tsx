@@ -77,7 +77,7 @@ export default async function SiteSettingsPage({
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-2xl font-bold">{t("title")}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("title")}</h1>
         <p className="mt-1 text-fg-subtle">{t("intro")}</p>
       </div>
 
@@ -119,16 +119,22 @@ export default async function SiteSettingsPage({
         bookingPriceNotice={bookingPriceNotice}
         creditTerm={creditTerm}
         logoSlot={
-          <SiteImageUploader kind="logo" currentUrl={siteImageUrl(settings.logo)} />
+          <SiteImageUploader
+            key="site-logo-uploader"
+            kind="logo"
+            currentUrl={siteImageUrl(settings.logo)}
+          />
         }
         backgroundImageSlot={
           <SiteImageUploader
+            key="site-background-uploader"
             kind="background"
             currentUrl={siteImageUrl(settings.backgroundImage)}
           />
         }
         personalLinksSlot={
           <PersonalLinksManager
+            key="personal-links-manager"
             links={personalLinks.map((l) => ({
               id: l.id,
               labelEn: l.labelEn,
@@ -139,6 +145,7 @@ export default async function SiteSettingsPage({
         }
         announcementsSlot={
           <AnnouncementsManager
+            key="announcements-manager"
             announcements={announcements.map((a) => ({
               id: a.id,
               titleEn: a.titleEn,
@@ -151,18 +158,20 @@ export default async function SiteSettingsPage({
         }
         contactQrEnSlot={
           <SiteImageUploader
+            key="contact-qr-en-uploader"
             kind="contactQrEn"
             currentUrl={siteImageUrl(settings.contactQrImageEn)}
           />
         }
         contactQrZhSlot={
           <SiteImageUploader
+            key="contact-qr-zh-uploader"
             kind="contactQrZh"
             currentUrl={siteImageUrl(settings.contactQrImageZh)}
           />
         }
         profileSlot={
-          <div className="flex max-w-2xl flex-col gap-6">
+          <div key="profile-settings" className="flex max-w-2xl flex-col gap-6">
             <ProfileForm
               username={user.username}
               initialDisplayName={user.displayName}

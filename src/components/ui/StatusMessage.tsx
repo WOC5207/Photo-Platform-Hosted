@@ -12,12 +12,12 @@ export default function StatusMessage({
       ? "border-success-border bg-success-surface text-success-strong"
       : kind === "error"
         ? "border-danger-border bg-danger-surface text-danger-strong"
-        : "border-border bg-surface text-fg-muted";
+        : "border-accent/20 bg-accent-surface text-fg-muted";
 
   return (
     <p
       role={kind === "error" ? "alert" : "status"}
-      className={`rounded-lg border px-3 py-2 text-sm ${classes}`}
+      className={`ui-pretty rounded-lg border px-4 py-3 text-sm leading-6 ${classes}`}
     >
       {children}
     </p>

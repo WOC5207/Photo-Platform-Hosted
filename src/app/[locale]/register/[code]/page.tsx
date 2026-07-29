@@ -54,7 +54,7 @@ export default async function RegisterPage({
   const registrationForm = (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold">{t("title")}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("title")}</h1>
         <p className="text-sm text-fg-subtle">{t("subtitle")}</p>
       </div>
       <RegisterForm

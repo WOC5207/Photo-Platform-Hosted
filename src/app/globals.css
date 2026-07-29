@@ -1,24 +1,29 @@
 @import "tailwindcss";
 
-/* Explicit .dark/.light classes (set by the theme-init script in the root
-   layout) always win; absent either class, the OS preference decides. */
+/* Explicit .dark/.light classes (set before first paint in the root layout)
+   always win; absent either class, the OS preference decides. */
 @custom-variant dark (&:where(.dark, .dark *));
 @custom-variant light (&:where(.light, .light *));
 
 @theme inline {
+  --font-sans: var(--font-interface);
+  --font-display: var(--font-editorial);
+  --font-meta: var(--font-contact-sheet);
+
   --color-page: var(--color-page);
   --color-surface: var(--color-surface);
   --color-surface-2: var(--color-surface-2);
+  --color-raised: var(--color-raised);
+  --color-control: var(--color-control);
   --color-fg: var(--color-fg);
   --color-fg-muted: var(--color-fg-muted);
   --color-fg-subtle: var(--color-fg-subtle);
   --color-fg-faint: var(--color-fg-faint);
   --color-border: var(--color-border);
   --color-border-strong: var(--color-border-strong);
-  /* Semantic status colors (success/danger). Defined per-theme below so that
-     confirmations, errors, badges etc. stay legible in BOTH light and dark —
-     the previous hard-coded emerald/red Tailwind shades were tuned for dark
-     only and washed out on the light theme. */
+  --color-accent: var(--color-accent);
+  --color-accent-strong: var(--color-accent-strong);
+  --color-accent-surface: var(--color-accent-surface);
   --color-success: var(--color-success);
   --color-success-strong: var(--color-success-strong);
   --color-success-surface: var(--color-success-surface);
@@ -27,95 +32,250 @@
   --color-danger-strong: var(--color-danger-strong);
   --color-danger-surface: var(--color-danger-surface);
   --color-danger-border: var(--color-danger-border);
+  --color-warning: var(--color-warning);
+  --color-warning-surface: var(--color-warning-surface);
+  --color-warning-border: var(--color-warning-border);
 }
 
 :root {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC",
-    sans-serif;
+  --font-interface: "Avenir Next", Avenir, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-editorial: "Iowan Old Style", Baskerville, "Times New Roman",
+    "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+  --font-contact-sheet: "SFMono-Regular", Consolas, "Liberation Mono",
+    monospace;
 
-  /* Light theme (default). */
-  --color-page: #ffffff;
-  --color-surface: #f5f5f5;
-  --color-surface-2: #e5e5e5;
-  --color-fg: #0a0a0a;
-  --color-fg-muted: #404040;
-  --color-fg-subtle: #525252;
-  --color-fg-faint: #737373;
-  --color-border: #e5e5e5;
-  --color-border-strong: #d4d4d4;
-  --color-success: #047857;
-  --color-success-strong: #065f46;
-  --color-success-surface: rgba(5, 150, 105, 0.12);
-  --color-success-border: rgba(5, 150, 105, 0.35);
-  --color-danger: #b91c1c;
-  --color-danger-strong: #991b1b;
-  --color-danger-surface: rgba(220, 38, 38, 0.1);
-  --color-danger-border: rgba(220, 38, 38, 0.3);
+  /* Light table: warm paper keeps the product from feeling like a generic
+     gray SaaS shell while remaining neutral enough for photographs. */
+  --paper-canvas: #f3f0e9;
+  --paper-sheet: #fbfaf6;
+  --paper-raised: #fffefb;
+  --paper-inset: #ece8df;
+  --paper-deep: #e4ded3;
+  --graphite-ink: #211d18;
+  --graphite-secondary: #514a41;
+  --graphite-tertiary: #71685d;
+  --silver-muted: #998e80;
+  --safelight: #a44f25;
+  --safelight-deep: #7c3718;
+
+  --color-page: var(--paper-canvas);
+  --color-surface: var(--paper-sheet);
+  --color-surface-2: var(--paper-deep);
+  --color-raised: var(--paper-raised);
+  --color-control: var(--paper-inset);
+  --color-fg: var(--graphite-ink);
+  --color-fg-muted: var(--graphite-secondary);
+  --color-fg-subtle: var(--graphite-tertiary);
+  --color-fg-faint: var(--silver-muted);
+  --color-border: rgb(48 39 30 / 10%);
+  --color-border-strong: rgb(48 39 30 / 20%);
+  --color-accent: var(--safelight);
+  --color-accent-strong: var(--safelight-deep);
+  --color-accent-surface: rgb(164 79 37 / 11%);
+  --color-success: #287254;
+  --color-success-strong: #19563d;
+  --color-success-surface: rgb(40 114 84 / 11%);
+  --color-success-border: rgb(40 114 84 / 30%);
+  --color-danger: #b6463d;
+  --color-danger-strong: #8e2e28;
+  --color-danger-surface: rgb(182 70 61 / 10%);
+  --color-danger-border: rgb(182 70 61 / 28%);
+  --color-warning: #8b611f;
+  --color-warning-surface: rgb(184 128 42 / 12%);
+  --color-warning-border: rgb(139 97 31 / 30%);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
-    --color-page: #0a0a0a;
-    --color-surface: #171717;
-    --color-surface-2: #262626;
-    --color-fg: #f5f5f5;
-    --color-fg-muted: #d4d4d4;
-    --color-fg-subtle: #a3a3a3;
-    --color-fg-faint: #737373;
-    --color-border: #262626;
-    --color-border-strong: #404040;
-    --color-success: #6ee7b7;
-    --color-success-strong: #a7f3d0;
-    --color-success-surface: rgba(6, 78, 59, 0.45);
-    --color-success-border: rgba(6, 95, 70, 0.7);
-    --color-danger: #f87171;
-    --color-danger-strong: #fca5a5;
-    --color-danger-surface: rgba(69, 10, 10, 0.55);
-    --color-danger-border: rgba(127, 29, 29, 0.7);
+    --darkroom-canvas: #100f0d;
+    --darkroom-sheet: #181613;
+    --darkroom-raised: #1f1c18;
+    --darkroom-inset: #0c0b0a;
+    --darkroom-deep: #25211c;
+    --darkroom-ink: #f1ece4;
+    --darkroom-secondary: #d2c9bc;
+    --darkroom-tertiary: #a79c8e;
+    --darkroom-silver: #746b60;
+    --darkroom-safelight: #e29a68;
+
+    --color-page: var(--darkroom-canvas);
+    --color-surface: var(--darkroom-sheet);
+    --color-surface-2: var(--darkroom-deep);
+    --color-raised: var(--darkroom-raised);
+    --color-control: var(--darkroom-inset);
+    --color-fg: var(--darkroom-ink);
+    --color-fg-muted: var(--darkroom-secondary);
+    --color-fg-subtle: var(--darkroom-tertiary);
+    --color-fg-faint: var(--darkroom-silver);
+    --color-border: rgb(255 246 232 / 8%);
+    --color-border-strong: rgb(255 246 232 / 16%);
+    --color-accent: var(--darkroom-safelight);
+    --color-accent-strong: #ffc097;
+    --color-accent-surface: rgb(226 154 104 / 12%);
+    --color-success: #7ac5a2;
+    --color-success-strong: #a1ddc0;
+    --color-success-surface: rgb(48 108 80 / 32%);
+    --color-success-border: rgb(122 197 162 / 30%);
+    --color-danger: #ec8b82;
+    --color-danger-strong: #ffb2aa;
+    --color-danger-surface: rgb(114 43 37 / 35%);
+    --color-danger-border: rgb(236 139 130 / 28%);
+    --color-warning: #e4b469;
+    --color-warning-surface: rgb(128 86 26 / 30%);
+    --color-warning-border: rgb(228 180 105 / 30%);
   }
 }
 
 .dark {
-  --color-page: #0a0a0a;
-  --color-surface: #171717;
-  --color-surface-2: #262626;
-  --color-fg: #f5f5f5;
-  --color-fg-muted: #d4d4d4;
-  --color-fg-subtle: #a3a3a3;
-  --color-fg-faint: #737373;
-  --color-border: #262626;
-  --color-border-strong: #404040;
-  --color-success: #6ee7b7;
-  --color-success-strong: #a7f3d0;
-  --color-success-surface: rgba(6, 78, 59, 0.45);
-  --color-success-border: rgba(6, 95, 70, 0.7);
-  --color-danger: #f87171;
-  --color-danger-strong: #fca5a5;
-  --color-danger-surface: rgba(69, 10, 10, 0.55);
-  --color-danger-border: rgba(127, 29, 29, 0.7);
+  --darkroom-canvas: #100f0d;
+  --darkroom-sheet: #181613;
+  --darkroom-raised: #1f1c18;
+  --darkroom-inset: #0c0b0a;
+  --darkroom-deep: #25211c;
+  --darkroom-ink: #f1ece4;
+  --darkroom-secondary: #d2c9bc;
+  --darkroom-tertiary: #a79c8e;
+  --darkroom-silver: #746b60;
+  --darkroom-safelight: #e29a68;
+
+  --color-page: var(--darkroom-canvas);
+  --color-surface: var(--darkroom-sheet);
+  --color-surface-2: var(--darkroom-deep);
+  --color-raised: var(--darkroom-raised);
+  --color-control: var(--darkroom-inset);
+  --color-fg: var(--darkroom-ink);
+  --color-fg-muted: var(--darkroom-secondary);
+  --color-fg-subtle: var(--darkroom-tertiary);
+  --color-fg-faint: var(--darkroom-silver);
+  --color-border: rgb(255 246 232 / 8%);
+  --color-border-strong: rgb(255 246 232 / 16%);
+  --color-accent: var(--darkroom-safelight);
+  --color-accent-strong: #ffc097;
+  --color-accent-surface: rgb(226 154 104 / 12%);
+  --color-success: #7ac5a2;
+  --color-success-strong: #a1ddc0;
+  --color-success-surface: rgb(48 108 80 / 32%);
+  --color-success-border: rgb(122 197 162 / 30%);
+  --color-danger: #ec8b82;
+  --color-danger-strong: #ffb2aa;
+  --color-danger-surface: rgb(114 43 37 / 35%);
+  --color-danger-border: rgb(236 139 130 / 28%);
+  --color-warning: #e4b469;
+  --color-warning-surface: rgb(128 86 26 / 30%);
+  --color-warning-border: rgb(228 180 105 / 30%);
+}
+
+* {
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+html {
+  background: var(--color-page);
 }
 
 body {
-  font-family: var(--font-sans);
+  font-family: var(--font-interface);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Native <input type="date"> controls (calendar picker icon, etc.) render
-   dark by default, which reads as near-invisible against our dark theme's
-   dark input backgrounds. color-scheme hints the browser to use its dark
-   native-control palette instead; the explicit filter is a belt-and-braces
-   fix for Chromium's calendar icon specifically. */
-.dark input {
+::selection {
+  background: var(--color-accent-surface);
+  color: var(--color-fg);
+}
+
+.font-display {
+  font-family: var(--font-editorial);
+}
+
+.font-meta {
+  font-family: var(--font-contact-sheet);
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-surface);
+}
+
+.ui-panel-raised {
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-raised);
+}
+
+.ui-image-frame {
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 10%);
+}
+
+.dark .ui-image-frame {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+}
+
+.ui-balance {
+  text-wrap: balance;
+}
+
+.ui-pretty {
+  text-wrap: pretty;
+}
+
+button,
+a,
+input,
+textarea,
+select,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  button:active,
+  a[role="button"]:active {
+    transform: scale(0.97);
+  }
+}
+
+/* Native date controls need the browser's dark glyph palette. */
+.dark input,
+.dark textarea,
+.dark select {
   color-scheme: dark;
 }
+
 .dark input::-webkit-calendar-picker-indicator {
   filter: invert(1);
 }
+
 @media (prefers-color-scheme: dark) {
-  :root:not(.light) input {
+  :root:not(.light) input,
+  :root:not(.light) textarea,
+  :root:not(.light) select {
     color-scheme: dark;
   }
+
   :root:not(.light) input::-webkit-calendar-picker-indicator {
     filter: invert(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

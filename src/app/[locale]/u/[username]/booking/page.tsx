@@ -48,7 +48,7 @@ export default async function BookingListPage({
 
   return (
     <div className="flex flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
-      <h1 className="text-3xl font-bold">{t("listTitle")}</h1>
+      <h1 className="font-display text-4xl font-semibold tracking-[-0.04em]">{t("listTitle")}</h1>
       <p className="-mt-4 text-xs text-fg-subtle">
         {t("timeZoneNotice", { timeZone: settings.timeZone })}
       </p>

@@ -94,7 +94,7 @@ export default async function AddPhotosPage({
         >
           {tc("back")} · {t("editEvent")}
         </Link>
-        <h1 className="text-2xl font-bold">{tw("pageTitle")}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{tw("pageTitle")}</h1>
         <p className="mt-1 text-sm text-fg-subtle">
           {pickText(locale, event.titleEn, event.titleZh)}
         </p>

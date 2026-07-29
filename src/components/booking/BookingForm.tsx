@@ -32,7 +32,7 @@ export interface PublicDay {
 type CartSlot = PublicSlot & { date: string };
 
 const inputCls =
-  "rounded-lg border border-border-strong bg-surface px-3 py-2 text-fg outline-none focus:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
+  "min-h-11 rounded-lg border border-border-strong bg-control px-3.5 py-2.5 text-fg outline-none transition-[border-color,background-color,box-shadow] placeholder:text-fg-faint hover:border-fg-faint focus:border-accent/60 focus:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20";
 
 function dayLabel(date: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, {
@@ -155,7 +155,7 @@ export default function BookingForm({
     return (
       <section className="flex flex-col gap-5" aria-labelledby="booking-complete">
         <div className="rounded-xl border border-success/30 bg-success-surface p-5">
-          <h2 id="booking-complete" className="text-xl font-semibold text-success">
+          <h2 id="booking-complete" className="font-display text-2xl font-semibold tracking-[-0.025em] text-success">
             {t("batchConfirmedTitle")}
           </h2>
           <p className="mt-1 text-sm text-fg-muted">
@@ -168,7 +168,7 @@ export default function BookingForm({
             return (
               <li
                 key={booking.cancelToken}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-strong bg-surface p-4"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4"
               >
                 <div>
                   <p className="font-semibold">
@@ -182,7 +182,7 @@ export default function BookingForm({
                 </div>
                 <Link
                   href={`/my-booking/${booking.cancelToken}?new=1`}
-                  className="inline-flex min-h-10 items-center rounded-full border border-border-strong px-4 text-sm font-semibold transition hover:border-fg-subtle hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+                  className="inline-flex min-h-10 items-center rounded-lg border border-border-strong bg-raised px-4 text-sm font-semibold transition hover:border-accent/30 hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                 >
                   {t("manageBooking")}
                 </Link>
@@ -219,7 +219,7 @@ export default function BookingForm({
           aria-current={step === "slots" ? "step" : undefined}
           className={`rounded-lg border px-3 py-2 text-left text-sm ${
             step === "slots"
-              ? "border-fg bg-surface-2 font-semibold"
+              ? "border-accent/40 bg-accent-surface font-semibold text-accent-strong"
               : "border-border text-fg-subtle"
           }`}
         >
@@ -233,7 +233,7 @@ export default function BookingForm({
           aria-current={step === "review" ? "step" : undefined}
           className={`rounded-lg border px-3 py-2 text-left text-sm disabled:opacity-50 ${
             step === "review"
-              ? "border-fg bg-surface-2 font-semibold"
+              ? "border-accent/40 bg-accent-surface font-semibold text-accent-strong"
               : "border-border text-fg-subtle"
           }`}
         >
@@ -275,8 +275,8 @@ export default function BookingForm({
                       className={[
                         "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11",
                         selected
-                          ? "border-fg bg-fg text-page"
-                          : "border-border-strong text-fg-muted hover:border-fg-subtle hover:text-fg"
+                          ? "border-accent bg-accent text-white dark:text-page"
+                          : "border-border-strong bg-raised text-fg-muted hover:border-accent/30 hover:text-fg"
                       ].join(" ")}
                     >
                       {dayLabel(day.date, locale)}
@@ -321,7 +321,7 @@ export default function BookingForm({
                         full
                           ? "border-border bg-surface/50 text-fg-faint"
                           : selected
-                            ? "border-fg bg-surface-2"
+                            ? "border-accent/50 bg-accent-surface"
                             : "border-border-strong bg-surface"
                       }`}
                     >
@@ -354,8 +354,8 @@ export default function BookingForm({
                         onClick={() => toggleSlot(slot.id)}
                         className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:cursor-not-allowed disabled:opacity-50 ${
                           selected
-                            ? "border border-border-strong bg-surface text-fg"
-                            : "bg-fg text-page hover:opacity-90"
+                            ? "border border-accent/30 bg-raised text-accent-strong"
+                            : "bg-accent text-white hover:bg-accent-strong dark:text-page"
                         }`}
                       >
                         {selected ? t("removeFromCart") : t("addToCart")}
@@ -367,7 +367,7 @@ export default function BookingForm({
             </div>
           </fieldset>
 
-          <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-fg/20 bg-page/95 p-3 shadow-lg backdrop-blur">
+          <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/25 bg-raised/95 p-3 shadow-[0_12px_36px_rgb(0_0_0/0.12)] backdrop-blur">
             <div>
               <p className="text-sm font-semibold">
                 {t("cartCount", { count: selectedSlotIds.length })}
@@ -383,7 +383,7 @@ export default function BookingForm({
                   document.getElementById("booking-review")?.focus()
                 );
               }}
-              className="rounded-full bg-fg px-6 py-3 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent-strong disabled:opacity-50 dark:text-page"
             >
               {t("reviewCart", { count: selectedSlotIds.length })}
             </button>
@@ -397,7 +397,9 @@ export default function BookingForm({
         >
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold">{t("reviewTitle")}</h2>
+              <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">
+                {t("reviewTitle")}
+              </h2>
               <button
                 type="button"
                 onClick={() => setStep("slots")}
@@ -555,14 +557,14 @@ export default function BookingForm({
               type="button"
               disabled={pending}
               onClick={() => setStep("slots")}
-              className="rounded-full border border-border-strong px-5 py-3 text-sm font-semibold disabled:opacity-50"
+              className="rounded-lg border border-border-strong bg-raised px-5 py-3 text-sm font-semibold disabled:opacity-50"
             >
               {t("backToSlots")}
             </button>
             <button
               type="submit"
               disabled={pending || selectedSlotIds.length === 0}
-              className="rounded-full bg-fg px-6 py-3 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
+              className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent-strong disabled:opacity-50 dark:text-page"
             >
               {pending
                 ? t("bookingInProgress")

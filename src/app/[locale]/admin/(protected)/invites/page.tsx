@@ -34,7 +34,7 @@ export default async function PlatformInvitesPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{t("invitesTitle")}</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("invitesTitle")}</h1>
           <p className="mt-1 text-sm text-fg-subtle">{t("invitesSubtitle")}</p>
         </div>
         <InviteForm

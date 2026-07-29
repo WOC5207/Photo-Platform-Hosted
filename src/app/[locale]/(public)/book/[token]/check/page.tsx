@@ -27,7 +27,7 @@ export default async function CheckBookingPage({
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
       <div>
-        <h1 className="text-3xl font-bold">{t("checkTitle")}</h1>
+        <h1 className="font-display text-4xl font-semibold tracking-[-0.04em]">{t("checkTitle")}</h1>
         <p className="mt-1 text-lg font-semibold">
           {pickText(locale, event.titleEn, event.titleZh)}
         </p>

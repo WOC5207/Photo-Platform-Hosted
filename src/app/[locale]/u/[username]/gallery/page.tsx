@@ -37,20 +37,27 @@ export default async function GalleryPage({
   });
 
   return (
-    <div className="flex flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
-      <h1 className="text-3xl font-bold">{t("title")}</h1>
+    <div className="flex flex-col gap-8 rounded-xl border border-border bg-surface/92 p-5 sm:p-8">
+      <div className="flex items-end gap-4 border-b border-border pb-6">
+        <span aria-hidden="true" className="font-meta mb-1 text-[0.6875rem] font-semibold tracking-[0.18em] text-accent">
+          01
+        </span>
+        <h1 className="font-display text-4xl font-semibold tracking-[-0.04em]">
+          {t("title")}
+        </h1>
+      </div>
 
       {events.length === 0 ? (
         <p className="py-16 text-center text-fg-subtle">{t("empty")}</p>
       ) : (
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {events.map((event) => {
+          {events.map((event, index) => {
             const cover = event.coverPhoto ?? event.photos[0] ?? null;
             return (
               <li key={event.id}>
                 <Link
                   href={`${base}/gallery/${event.slug}`}
-                  className="group flex flex-col gap-2"
+                  className="group flex h-full flex-col gap-3"
                 >
                   {cover ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -58,18 +65,22 @@ export default async function GalleryPage({
                       src={photoUrls(event.id, cover.id).med}
                       alt={pickText(locale, event.titleEn, event.titleZh)}
                       loading="lazy"
-                      className="aspect-[4/3] w-full rounded-xl object-cover transition group-hover:opacity-90"
+                      className="ui-image-frame aspect-[4/3] w-full rounded-lg object-cover transition-opacity group-hover:opacity-90"
                     />
                   ) : (
-                    <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl bg-surface text-4xl text-fg-faint">
+                    <div className="flex aspect-[4/3] w-full items-center justify-center rounded-lg border border-border bg-control text-4xl text-fg-faint">
                       ✦
                     </div>
                   )}
-                  <div>
-                    <h2 className="font-semibold group-hover:underline">
+                  <div className="flex gap-3 px-1">
+                    <span className="font-meta mt-0.5 text-[0.625rem] font-semibold tracking-[0.14em] text-accent">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <div>
+                    <h2 className="font-display text-lg font-semibold tracking-[-0.015em] group-hover:text-accent-strong">
                       {pickText(locale, event.titleEn, event.titleZh)}
                     </h2>
-                    <p className="text-sm text-fg-subtle">
+                    <p className="font-meta mt-1 text-[0.6875rem] text-fg-subtle">
                       {(() => {
                         const range = formatDateRange(
                           event.dateStart,
@@ -79,6 +90,7 @@ export default async function GalleryPage({
                       })()}
                       {t("photosCount", { count: event._count.photos })}
                     </p>
+                    </div>
                   </div>
                 </Link>
               </li>

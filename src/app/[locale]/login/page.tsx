@@ -22,12 +22,21 @@ export default async function LoginPage({
   const t = await getTranslations("auth");
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
+    <div className="relative flex min-h-screen items-center justify-center px-4 py-16">
       <div className="absolute right-4 top-4">
         <LanguageSwitcher />
       </div>
-      <h1 className="text-2xl font-bold">{t("loginTitle")}</h1>
-      <LoginForm />
+      <main className="w-full max-w-md rounded-xl border border-border bg-surface p-6 sm:p-8">
+        <span aria-hidden="true" className="font-meta text-[0.6875rem] font-semibold tracking-[0.18em] text-accent">
+          01 / ACCESS
+        </span>
+        <h1 className="font-display mt-4 text-4xl font-semibold tracking-[-0.04em]">
+          {t("loginTitle")}
+        </h1>
+        <div className="mt-8">
+          <LoginForm />
+        </div>
+      </main>
     </div>
   );
 }
