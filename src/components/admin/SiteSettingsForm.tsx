@@ -20,13 +20,16 @@ import {
 } from "@/app/[locale]/dashboard/(protected)/settings/actions";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import {
+  DEFAULT_SITE_DARK_PALETTE,
   DEFAULT_SITE_PALETTE,
-  DEFAULT_THEME_COLOR,
   effectiveSitePalette,
+  GENERATED_PALETTE_TEXT_CONTRAST,
+  generateAccessibleSitePalette,
   normalizeThemeColor,
+  sitePaletteStyle,
   siteThemeMinimumContrast,
-  siteThemeStyle,
-  type SiteThemeColors
+  type SiteThemeColors,
+  type SiteThemeMode
 } from "@/lib/themeColor";
 
 const inputCls =
@@ -37,6 +40,14 @@ const checkboxCls =
 // Independently-saving widgets contain their own forms, so the section form
 // stays detached and fields opt into it with the `form` attribute.
 const FORM_ID = "site-settings-form";
+
+type SiteThemePalettes = Record<SiteThemeMode, SiteThemeColors>;
+
+type PaletteGenerationSnapshot = {
+  palette: SiteThemeColors;
+  dirty: boolean;
+  version: number;
+};
 
 function Group({
   title,
@@ -76,7 +87,6 @@ function IndependentWidget({
 }
 
 function PaletteColorField({
-  name,
   label,
   hint,
   hexLabel,
@@ -85,7 +95,6 @@ function PaletteColorField({
   defaultValue,
   onChange
 }: {
-  name: keyof SiteThemeColors;
   label: string;
   hint: string;
   hexLabel: string;
@@ -132,7 +141,6 @@ function PaletteColorField({
           onChange={(event) => onChange(event.target.value)}
           className="font-meta mt-2 h-10 w-full rounded-lg border border-border-strong bg-control px-3 text-xs text-fg outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
         />
-        <input form={FORM_ID} type="hidden" name={name} value={value} />
       </div>
     </div>
   );
@@ -165,6 +173,11 @@ export default function SiteSettingsForm({
     fieldColor: string;
     textColor: string;
     themeColor: string;
+    darkBackgroundColor: string;
+    darkSurfaceColor: string;
+    darkFieldColor: string;
+    darkTextColor: string;
+    darkThemeColor: string;
     creditTermEn: string;
     creditTermZh: string;
     subjectTermEn: string;
@@ -207,13 +220,27 @@ export default function SiteSettingsForm({
   const [dirty, setDirty] = useState(false);
   const changeVersion = useRef(0);
   const submittedVersion = useRef(0);
-  const [palette, setPalette] = useState<SiteThemeColors>({
-    backgroundColor: initial.backgroundColor,
-    surfaceColor: initial.surfaceColor,
-    fieldColor: initial.fieldColor,
-    textColor: initial.textColor,
-    themeColor: initial.themeColor
+  const [palettes, setPalettes] = useState<SiteThemePalettes>({
+    light: {
+      backgroundColor: initial.backgroundColor,
+      surfaceColor: initial.surfaceColor,
+      fieldColor: initial.fieldColor,
+      textColor: initial.textColor,
+      themeColor: initial.themeColor
+    },
+    dark: {
+      backgroundColor: initial.darkBackgroundColor,
+      surfaceColor: initial.darkSurfaceColor,
+      fieldColor: initial.darkFieldColor,
+      textColor: initial.darkTextColor,
+      themeColor: initial.darkThemeColor
+    }
   });
+  const [activePaletteMode, setActivePaletteMode] =
+    useState<SiteThemeMode>("light");
+  const [paletteBeforeGeneration, setPaletteBeforeGeneration] = useState<
+    Partial<Record<SiteThemeMode, PaletteGenerationSnapshot>>
+  >({});
   const [bookingEnabled, setBookingEnabled] = useState(initial.bookingEnabled);
   const [bookingPriceEnabled, setBookingPriceEnabled] = useState(
     initial.bookingPriceEnabled
@@ -229,6 +256,7 @@ export default function SiteSettingsForm({
   useEffect(() => {
     if (state.ok && submittedVersion.current === changeVersion.current) {
       setDirty(false);
+      setPaletteBeforeGeneration({});
     }
     if (state.error === "priceNoticeRequired") {
       setBookingPriceEnabled(false);
@@ -246,8 +274,57 @@ export default function SiteSettingsForm({
   }
 
   function setPaletteColor(name: keyof SiteThemeColors, value: string) {
-    setPalette((current) => ({ ...current, [name]: value }));
+    setPalettes((current) => ({
+      ...current,
+      [activePaletteMode]: {
+        ...current[activePaletteMode],
+        [name]: value
+      }
+    }));
+    setPaletteBeforeGeneration((current) => {
+      const next = { ...current };
+      delete next[activePaletteMode];
+      return next;
+    });
     markDirty();
+  }
+
+  function generatePalette() {
+    const snapshot: PaletteGenerationSnapshot = {
+      palette: palettes[activePaletteMode],
+      dirty,
+      version: changeVersion.current
+    };
+    setPaletteBeforeGeneration((current) => ({
+      ...current,
+      [activePaletteMode]: snapshot
+    }));
+    setPalettes((current) => ({
+      ...current,
+      [activePaletteMode]: generateAccessibleSitePalette(activePaletteMode)
+    }));
+    markDirty();
+  }
+
+  function undoGeneratedPalette() {
+    const snapshot = paletteBeforeGeneration[activePaletteMode];
+    if (!snapshot) return;
+
+    setPalettes((current) => ({
+      ...current,
+      [activePaletteMode]: snapshot.palette
+    }));
+    if (changeVersion.current === snapshot.version + 1) {
+      changeVersion.current = snapshot.version;
+      setDirty(snapshot.dirty);
+    } else {
+      markDirty();
+    }
+    setPaletteBeforeGeneration((current) => {
+      const next = { ...current };
+      delete next[activePaletteMode];
+      return next;
+    });
   }
 
   function handleSettingsChange(event: FormEvent<HTMLDivElement>) {
@@ -273,8 +350,16 @@ export default function SiteSettingsForm({
   const bookingPriceNoticeAvailable = Boolean(
     bookingPriceNotice.title.trim() && bookingPriceNotice.body.trim()
   );
-  const palettePreview = effectiveSitePalette(palette);
-  const paletteContrast = siteThemeMinimumContrast(palette);
+  const palette = palettes[activePaletteMode];
+  const paletteDefaults =
+    activePaletteMode === "dark"
+      ? DEFAULT_SITE_DARK_PALETTE
+      : DEFAULT_SITE_PALETTE;
+  const palettePreview = effectiveSitePalette(palette, activePaletteMode);
+  const paletteContrast = siteThemeMinimumContrast(
+    palette,
+    activePaletteMode
+  );
   const paletteHasInvalidValue = Object.values(palette).some(
     (value) => value.trim() && !normalizeThemeColor(value)
   );
@@ -299,6 +384,56 @@ export default function SiteSettingsForm({
         className="hidden"
       >
         <input type="hidden" name="section" value={activeSection} />
+        <input
+          type="hidden"
+          name="backgroundColor"
+          value={palettes.light.backgroundColor}
+        />
+        <input
+          type="hidden"
+          name="surfaceColor"
+          value={palettes.light.surfaceColor}
+        />
+        <input
+          type="hidden"
+          name="fieldColor"
+          value={palettes.light.fieldColor}
+        />
+        <input
+          type="hidden"
+          name="textColor"
+          value={palettes.light.textColor}
+        />
+        <input
+          type="hidden"
+          name="themeColor"
+          value={palettes.light.themeColor}
+        />
+        <input
+          type="hidden"
+          name="darkBackgroundColor"
+          value={palettes.dark.backgroundColor}
+        />
+        <input
+          type="hidden"
+          name="darkSurfaceColor"
+          value={palettes.dark.surfaceColor}
+        />
+        <input
+          type="hidden"
+          name="darkFieldColor"
+          value={palettes.dark.fieldColor}
+        />
+        <input
+          type="hidden"
+          name="darkTextColor"
+          value={palettes.dark.textColor}
+        />
+        <input
+          type="hidden"
+          name="darkThemeColor"
+          value={palettes.dark.themeColor}
+        />
       </form>
 
       {activeSection === "appearance" && (
@@ -335,10 +470,49 @@ export default function SiteSettingsForm({
             title={t("groupBackgroundTitle")}
             hint={t("groupBackgroundHint")}
           >
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <div>
+                <p className="text-sm font-semibold text-fg">
+                  {t("sitePaletteTitle")}
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
+                  {activePaletteMode === "light"
+                    ? t("lightPaletteHint")
+                    : t("darkPaletteHint")}
+                </p>
+              </div>
+              <div
+                role="tablist"
+                aria-label={t("paletteModeLabel")}
+                className="grid w-full grid-cols-2 rounded-lg border border-border bg-control p-1 sm:w-auto"
+              >
+                {(["light", "dark"] as const).map((mode) => {
+                  const selected = activePaletteMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => setActivePaletteMode(mode)}
+                      className={`min-h-10 rounded-md px-4 text-sm font-semibold transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                        selected
+                          ? "bg-raised text-fg shadow-[0_0_0_1px_var(--color-border)]"
+                          : "text-fg-subtle hover:text-fg"
+                      }`}
+                    >
+                      {mode === "light"
+                        ? t("paletteModeLight")
+                        : t("paletteModeDark")}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)] lg:items-start">
               <div
                 className="overflow-hidden rounded-xl border border-border-strong bg-page"
-                style={siteThemeStyle(palette)}
+                style={sitePaletteStyle(palette, activePaletteMode)}
                 aria-label={t("themeColorPreview")}
               >
                 <div className="flex items-center justify-between border-b border-border bg-page px-4 py-3">
@@ -399,7 +573,9 @@ export default function SiteSettingsForm({
                   </span>
                   {!paletteHasInvalidValue && paletteContrast >= 4.5 ? (
                     <span className="font-semibold text-success">
-                      {t("paletteContrastPass")}
+                      {paletteContrast >= GENERATED_PALETTE_TEXT_CONTRAST
+                        ? t("paletteContrastExcellent")
+                        : t("paletteContrastPass")}
                     </span>
                   ) : (
                     <span className="font-semibold text-danger">
@@ -414,82 +590,107 @@ export default function SiteSettingsForm({
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-fg">
-                      {t("sitePaletteTitle")}
-                    </p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
-                      {t("sitePaletteHint")}
+                    <p className="font-meta text-[0.6875rem] uppercase tracking-[0.1em] text-fg-subtle">
+                      {t("editingPalette", {
+                        mode:
+                          activePaletteMode === "light"
+                            ? t("paletteModeLight")
+                            : t("paletteModeDark")
+                      })}
                     </p>
                   </div>
-                  {Object.values(palette).some(Boolean) && (
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
                       size="compact"
-                      onClick={() => {
-                        setPalette({
-                          backgroundColor: "",
-                          surfaceColor: "",
-                          fieldColor: "",
-                          textColor: "",
-                          themeColor: ""
-                        });
-                        markDirty();
-                      }}
+                      onClick={generatePalette}
                     >
-                      {t("resetPalette")}
+                      {t("generatePalette")}
                     </Button>
-                  )}
+                    {paletteBeforeGeneration[activePaletteMode] && (
+                      <Button
+                        type="button"
+                        size="compact"
+                        variant="ghost"
+                        onClick={undoGeneratedPalette}
+                      >
+                        {t("undoGeneratedPalette")}
+                      </Button>
+                    )}
+                    {Object.values(palette).some(Boolean) && (
+                      <Button
+                        type="button"
+                        size="compact"
+                        variant="ghost"
+                        onClick={() => {
+                          setPalettes((current) => ({
+                            ...current,
+                            [activePaletteMode]: {
+                              backgroundColor: "",
+                              surfaceColor: "",
+                              fieldColor: "",
+                              textColor: "",
+                              themeColor: ""
+                            }
+                          }));
+                          setPaletteBeforeGeneration((current) => {
+                            const next = { ...current };
+                            delete next[activePaletteMode];
+                            return next;
+                          });
+                          markDirty();
+                        }}
+                      >
+                        {t("resetPalette")}
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <PaletteColorField
-                  name="backgroundColor"
                   label={t("backgroundColorSection")}
                   hint={t("backgroundColorHint")}
                   hexLabel={t("backgroundColorHexLabel")}
                   resetLabel={t("resetColor")}
                   value={palette.backgroundColor}
-                  defaultValue={DEFAULT_SITE_PALETTE.backgroundColor}
+                  defaultValue={paletteDefaults.backgroundColor}
                   onChange={(value) =>
                     setPaletteColor("backgroundColor", value)
                   }
                 />
                 <PaletteColorField
-                  name="surfaceColor"
                   label={t("surfaceColorSection")}
                   hint={t("surfaceColorHint")}
                   hexLabel={t("surfaceColorHexLabel")}
                   resetLabel={t("resetColor")}
                   value={palette.surfaceColor}
-                  defaultValue={DEFAULT_SITE_PALETTE.surfaceColor}
+                  defaultValue={paletteDefaults.surfaceColor}
                   onChange={(value) => setPaletteColor("surfaceColor", value)}
                 />
                 <PaletteColorField
-                  name="fieldColor"
                   label={t("fieldColorSection")}
                   hint={t("fieldColorHint")}
                   hexLabel={t("fieldColorHexLabel")}
                   resetLabel={t("resetColor")}
                   value={palette.fieldColor}
-                  defaultValue={DEFAULT_SITE_PALETTE.fieldColor}
+                  defaultValue={paletteDefaults.fieldColor}
                   onChange={(value) => setPaletteColor("fieldColor", value)}
                 />
                 <PaletteColorField
-                  name="textColor"
                   label={t("textColorSection")}
                   hint={t("textColorHint")}
                   hexLabel={t("textColorHexLabel")}
                   resetLabel={t("resetColor")}
                   value={palette.textColor}
-                  defaultValue={DEFAULT_SITE_PALETTE.textColor}
+                  defaultValue={paletteDefaults.textColor}
                   onChange={(value) => setPaletteColor("textColor", value)}
                 />
                 <PaletteColorField
-                  name="themeColor"
                   label={t("themeColorSection")}
                   hint={t("themeColorHint")}
                   hexLabel={t("themeColorHexLabel")}
                   resetLabel={t("resetColor")}
                   value={palette.themeColor}
-                  defaultValue={DEFAULT_THEME_COLOR}
+                  defaultValue={paletteDefaults.themeColor}
                   onChange={(value) => setPaletteColor("themeColor", value)}
                 />
               </div>

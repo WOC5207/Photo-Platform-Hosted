@@ -60,12 +60,14 @@ Derive the strong, surface, and contrast-foreground variants through
 components. The platform directory and management workspace keep the platform
 safelight identity.
 
-Photographers may also build a fixed semantic palette for the public site:
-canvas, panel, inset field, text, and buttons/accent. Keep these as semantic
-tokens rather than styling individual components. The appearance editor uses a
-single live public-site specimen plus compact swatches so the palette is judged
-as a system. Empty values use the contact-sheet defaults; missing surface/text
-values in a custom palette are derived through `siteThemeStyle`. Primary text
+Photographers may also build independent light and dark semantic palettes for
+the public site: canvas, panel, inset field, text, and buttons/accent. Keep
+these as semantic tokens rather than styling individual components. The
+appearance editor uses one Light/Dark mode switch, a single live public-site
+specimen, and compact swatches so each palette is judged as a system without
+doubling the page length. The selected mode controls both preview and
+randomization. Empty values use that mode's contact-sheet defaults; missing
+surface/text values are derived through the theme-color helpers. Primary text
 must maintain at least 4.5:1 contrast against the canvas, panels, and fields,
 and button foreground remains automatic.
 

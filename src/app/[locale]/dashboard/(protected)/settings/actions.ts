@@ -59,7 +59,12 @@ const appearanceSchema = z.object({
   fieldColor: z.string().trim().regex(THEME_COLOR_PATTERN),
   textColor: z.string().trim().regex(THEME_COLOR_PATTERN),
   // Empty (platform default) or a #rgb / #rrggbb site accent.
-  themeColor: z.string().trim().regex(THEME_COLOR_PATTERN)
+  themeColor: z.string().trim().regex(THEME_COLOR_PATTERN),
+  darkBackgroundColor: z.string().trim().regex(THEME_COLOR_PATTERN),
+  darkSurfaceColor: z.string().trim().regex(THEME_COLOR_PATTERN),
+  darkFieldColor: z.string().trim().regex(THEME_COLOR_PATTERN),
+  darkTextColor: z.string().trim().regex(THEME_COLOR_PATTERN),
+  darkThemeColor: z.string().trim().regex(THEME_COLOR_PATTERN)
 });
 
 const homepageSchema = z.object({
@@ -108,18 +113,35 @@ export async function updateSiteSettings(
       surfaceColor: formData.get("surfaceColor") ?? "",
       fieldColor: formData.get("fieldColor") ?? "",
       textColor: formData.get("textColor") ?? "",
-      themeColor: formData.get("themeColor") ?? ""
+      themeColor: formData.get("themeColor") ?? "",
+      darkBackgroundColor: formData.get("darkBackgroundColor") ?? "",
+      darkSurfaceColor: formData.get("darkSurfaceColor") ?? "",
+      darkFieldColor: formData.get("darkFieldColor") ?? "",
+      darkTextColor: formData.get("darkTextColor") ?? "",
+      darkThemeColor: formData.get("darkThemeColor") ?? ""
     });
     if (!parsed.success) return { error: "validation" };
-    if (
-      siteThemeMinimumContrast({
+    const lightContrast = siteThemeMinimumContrast(
+      {
         backgroundColor: parsed.data.backgroundColor,
         surfaceColor: parsed.data.surfaceColor,
         fieldColor: parsed.data.fieldColor,
         textColor: parsed.data.textColor,
         themeColor: parsed.data.themeColor
-      }) < 4.5
-    ) {
+      },
+      "light"
+    );
+    const darkContrast = siteThemeMinimumContrast(
+      {
+        backgroundColor: parsed.data.darkBackgroundColor,
+        surfaceColor: parsed.data.darkSurfaceColor,
+        fieldColor: parsed.data.darkFieldColor,
+        textColor: parsed.data.darkTextColor,
+        themeColor: parsed.data.darkThemeColor
+      },
+      "dark"
+    );
+    if (lightContrast < 4.5 || darkContrast < 4.5) {
       return { error: "themeContrast" };
     }
     await prisma.siteSettings.upsert({

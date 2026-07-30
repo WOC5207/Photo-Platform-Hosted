@@ -212,6 +212,61 @@ test.describe("locale and theme compatibility", () => {
       "/api/site/bge2etest.webp"
     );
   });
+
+  test("generated light and dark site palettes remain accessible and can be undone", async ({
+    page
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop-1280", "Run the palette assertion once.");
+    await openAdminDashboard(page);
+    await page.goto("/en/dashboard/settings?section=appearance");
+
+    for (const mode of ["Light", "Dark"]) {
+      await page.getByRole("tab", { name: mode, exact: true }).click();
+      const fields = [
+        page.getByLabel("Background color hex value"),
+        page.getByLabel("Panel background hex value"),
+        page.getByLabel("Field background hex value"),
+        page.getByLabel("Text color hex value"),
+        page.getByLabel("Theme accent hex value")
+      ];
+      const originalValues = await Promise.all(
+        fields.map((field) => field.inputValue())
+      );
+
+      await page.getByRole("button", { name: "Generate palette" }).click();
+      for (const field of fields) {
+        await expect(field).toHaveValue(/^#[0-9a-f]{6}$/);
+      }
+      const contrast = page.getByText(/^Minimum text contrast /);
+      await expect(contrast).toBeVisible();
+      const ratio = Number.parseFloat(
+        (await contrast.innerText()).match(/[\d.]+/)?.[0] ?? "0"
+      );
+      expect(ratio).toBeGreaterThanOrEqual(7);
+      await expect(
+        page.getByText("Excellent contrast", { exact: true })
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Save", exact: true })
+      ).toBeEnabled();
+
+      await page
+        .getByRole("button", { name: "Undo generated palette", exact: true })
+        .click();
+      for (let index = 0; index < fields.length; index += 1) {
+        await expect(fields[index]).toHaveValue(originalValues[index]);
+      }
+      await expect(
+        page.getByRole("button", {
+          name: "Undo generated palette",
+          exact: true
+        })
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Save", exact: true })
+      ).toBeDisabled();
+    }
+  });
 });
 
 test.describe.serial("management workflows", () => {

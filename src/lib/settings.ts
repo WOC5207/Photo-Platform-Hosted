@@ -17,6 +17,11 @@ export interface SiteSettings {
   fieldColor: string;
   textColor: string;
   themeColor: string;
+  darkBackgroundColor: string;
+  darkSurfaceColor: string;
+  darkFieldColor: string;
+  darkTextColor: string;
+  darkThemeColor: string;
   backgroundImage: string;
   logo: string;
   creditTermEn: string;
@@ -57,6 +62,11 @@ const DEFAULTS: Omit<SiteSettings, "id" | "ownerId"> = {
   fieldColor: "",
   textColor: "",
   themeColor: "",
+  darkBackgroundColor: "",
+  darkSurfaceColor: "",
+  darkFieldColor: "",
+  darkTextColor: "",
+  darkThemeColor: "",
   backgroundImage: "",
   logo: "",
   creditTermEn: "",
