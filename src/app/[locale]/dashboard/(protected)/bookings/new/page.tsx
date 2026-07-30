@@ -4,13 +4,31 @@ import { Link } from "@/i18n/navigation";
 import { createBookingEvent } from "../actions";
 import { requireUser } from "@/lib/auth";
 import { getSiteSettings } from "@/lib/settings";
+import { getPlatformSettings } from "@/lib/platformSettings";
+import { pickText } from "@/lib/content";
 
 export default async function NewBookingEventPage() {
   const t = await getTranslations("adminBookings");
   const tc = await getTranslations("common");
   const locale = await getLocale();
   const user = await requireUser(locale);
-  const settings = await getSiteSettings(user.id);
+  const [settings, platformSettings] = await Promise.all([
+    getSiteSettings(user.id),
+    getPlatformSettings()
+  ]);
+  const bookingPriceNotice = {
+    title: pickText(
+      locale,
+      platformSettings.bookingPriceNoticeTitleEn,
+      platformSettings.bookingPriceNoticeTitleZh
+    ),
+    body: pickText(
+      locale,
+      platformSettings.bookingPriceNoticeBodyEn,
+      platformSettings.bookingPriceNoticeBodyZh
+    ),
+    version: platformSettings.bookingPriceNoticeVersion
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -29,6 +47,10 @@ export default async function NewBookingEventPage() {
         showOpenToggle={false}
         cancelHref="/dashboard/bookings"
         timeZone={settings.timeZone}
+        priceDisplay={{
+          enabled: settings.bookingPriceEnabled,
+          notice: bookingPriceNotice
+        }}
         initial={{
           titleEn: "",
           titleZh: "",

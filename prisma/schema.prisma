@@ -540,8 +540,15 @@ model SiteSettings {
   homeTitleZh                       String    @default("")
   homeSubtitleEn                    String    @default("")
   homeSubtitleZh                    String    @default("")
-  // Empty = use the default dark theme color. Otherwise a CSS hex like "#0a0a0a".
+  // Empty = use the contact-sheet canvas. Otherwise a CSS hex like "#0a0a0a".
   backgroundColor                   String    @default("")
+  // Optional semantic palette overrides for the photographer's public site.
+  // Empty values keep the contact-sheet defaults. Once any surface/text value
+  // is set, the remaining empty values fall back to the standard light palette
+  // so the public site remains a coherent, contrast-checked color system.
+  surfaceColor                      String    @default("")
+  fieldColor                        String    @default("")
+  textColor                         String    @default("")
   // Public-site accent used for primary actions, active states and focus.
   // Empty = use the platform's safelight accent.
   themeColor                        String    @default("")

@@ -35,7 +35,7 @@ hardcoded neutral or accent colors.
 - Deep paper: `#e4ded3`
 - Graphite ink: `#211d18`
 - Supporting graphite: `#514a41`
-- Tertiary graphite: `#71685d`
+- Tertiary graphite: `#6f665b`
 - Silver metadata: `#998e80`
 - Safelight accent: `#a44f25`
 - Strong safelight: `#7c3718`
@@ -56,9 +56,18 @@ colors remain semantic and must not compete with the primary accent.
 
 Each photographer may replace the safelight accent for their own public site.
 Derive the strong, surface, and contrast-foreground variants through
-`themeColorStyle`; do not place a saved hex directly into individual
+`siteThemeStyle`; do not place a saved hex directly into individual
 components. The platform directory and management workspace keep the platform
 safelight identity.
+
+Photographers may also build a fixed semantic palette for the public site:
+canvas, panel, inset field, text, and buttons/accent. Keep these as semantic
+tokens rather than styling individual components. The appearance editor uses a
+single live public-site specimen plus compact swatches so the palette is judged
+as a system. Empty values use the contact-sheet defaults; missing surface/text
+values in a custom palette are derived through `siteThemeStyle`. Primary text
+must maintain at least 4.5:1 contrast against the canvas, panels, and fields,
+and button foreground remains automatic.
 
 ## Depth and Surfaces
 
@@ -189,6 +198,9 @@ Use `SectionHeading` for repeated sections:
 - Multiple selections remain visible in the sticky summary/cart.
 - Review separates the selected schedule from contact details rather than
   presenting one uninterrupted form.
+- A new event may opt into price display in context. The enable action reveals
+  the current versioned responsibility agreement; only affirmative acceptance
+  marks the event form ready, and persistence happens atomically with creation.
 
 ## Motion and Accessibility
 

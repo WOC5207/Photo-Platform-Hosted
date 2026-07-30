@@ -22,9 +22,15 @@ import {
   splitEvent
 } from "@/lib/booking";
 import { getSiteSettings } from "@/lib/settings";
+import { acceptBookingPriceNotice } from "@/lib/bookingPriceNotice";
 
 export type BookingEventFormState = {
-  error?: "validation" | "noSlots" | "dayHasBookings" | "unknown";
+  error?:
+    | "validation"
+    | "priceNoticeRequired"
+    | "noSlots"
+    | "dayHasBookings"
+    | "unknown";
   ok?: boolean;
 };
 export type SlotFormState = { error?: "validation"; ok?: boolean };
@@ -106,29 +112,51 @@ export async function createBookingEvent(
   const dates = parseSelectedDates(formData.get("dates"));
   if (!parsed.success || !dates) return { error: "validation" };
   const d = parsed.data;
+  const enablePriceDisplay = formData.get("enablePriceDisplay") === "on";
+  const acceptedVersion = Number(
+    formData.get("bookingPriceNoticeAcceptedVersion")
+  );
 
-  const event = await prisma.bookingEvent.create({
-    data: {
-      ownerId: user.id,
-      token: randomUUID().replace(/-/g, ""),
-      titleEn: d.titleEn,
-      titleZh: d.titleZh,
-      descriptionEn: d.descriptionEn,
-      descriptionZh: d.descriptionZh,
-      location: d.location,
-      // `date` is the denormalized earliest day; the days themselves are the
-      // source of truth (dates is sorted ascending).
-      date: toDate(dates[0]),
-      // A new event cannot have slots yet, so it always starts as a closed
-      // draft. The edit action below is the only path that can publish it and
-      // enforces the public-booking prerequisites before doing so.
-      open: false,
-      days: { create: dates.map((day) => ({ date: toDate(day) })) }
+  const result = await prisma.$transaction(async (tx) => {
+    if (enablePriceDisplay) {
+      const acceptance = await acceptBookingPriceNotice(tx, {
+        ownerId: user.id,
+        acceptedVersion,
+        locale
+      });
+      if (!acceptance.ok) return { error: "priceNoticeRequired" as const };
+      await tx.siteSettings.upsert({
+        where: { ownerId: user.id },
+        create: { ownerId: user.id, ...acceptance.acceptance },
+        update: acceptance.acceptance
+      });
     }
+
+    const event = await tx.bookingEvent.create({
+      data: {
+        ownerId: user.id,
+        token: randomUUID().replace(/-/g, ""),
+        titleEn: d.titleEn,
+        titleZh: d.titleZh,
+        descriptionEn: d.descriptionEn,
+        descriptionZh: d.descriptionZh,
+        location: d.location,
+        // `date` is the denormalized earliest day; the days themselves are the
+        // source of truth (dates is sorted ascending).
+        date: toDate(dates[0]),
+        // A new event cannot have slots yet, so it always starts as a closed
+        // draft. The edit action below is the only path that can publish it and
+        // enforces the public-booking prerequisites before doing so.
+        open: false,
+        days: { create: dates.map((day) => ({ date: toDate(day) })) }
+      }
+    });
+    return { event };
   });
+  if ("error" in result) return { error: result.error };
 
   revalidatePath("/", "layout");
-  redirect(`/${locale}/dashboard/bookings/${event.id}`);
+  redirect(`/${locale}/dashboard/bookings/${result.event.id}`);
 }
 
 export async function updateBookingEvent(
