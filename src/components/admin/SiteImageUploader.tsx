@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { removeSiteImage } from "@/app/[locale]/dashboard/(protected)/settings/actions";
+import StatusMessage from "@/components/ui/StatusMessage";
 
 type Kind = "background" | "logo" | "contactQrEn" | "contactQrZh";
 
@@ -55,14 +56,42 @@ export default function SiteImageUploader({
   const t = useTranslations("adminSite");
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const objectUrlRef = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
+  const [displayUrl, setDisplayUrl] = useState(currentUrl);
+  const [status, setStatus] = useState<
+    "idle" | "uploading" | "saved" | "error"
+  >("idle");
+  const [errorCode, setErrorCode] = useState("");
   const L = LABELS[kind];
+
+  useEffect(() => {
+    if (!objectUrlRef.current) setDisplayUrl(currentUrl);
+  }, [currentUrl]);
+
+  useEffect(
+    () => () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    },
+    []
+  );
+
+  function releaseObjectUrl() {
+    if (!objectUrlRef.current) return;
+    URL.revokeObjectURL(objectUrlRef.current);
+    objectUrlRef.current = null;
+  }
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
+
+    releaseObjectUrl();
+    objectUrlRef.current = URL.createObjectURL(file);
+    setDisplayUrl(objectUrlRef.current);
     setBusy(true);
-    setError(false);
+    setStatus("uploading");
+    setErrorCode("");
+
     try {
       const body = new FormData();
       body.append("kind", kind);
@@ -71,14 +100,42 @@ export default function SiteImageUploader({
         method: "POST",
         body
       });
-      if (!res.ok) setError(true);
+      const result = (await res.json().catch(() => null)) as {
+        error?: unknown;
+        url?: unknown;
+      } | null;
+
+      if (!res.ok || typeof result?.url !== "string") {
+        releaseObjectUrl();
+        setDisplayUrl(currentUrl);
+        setErrorCode(
+          typeof result?.error === "string" ? result.error : "unknown"
+        );
+        setStatus("error");
+        return;
+      }
+
+      releaseObjectUrl();
+      setDisplayUrl(result.url);
+      setStatus("saved");
+      router.refresh();
     } catch {
-      setError(true);
+      releaseObjectUrl();
+      setDisplayUrl(currentUrl);
+      setErrorCode("unknown");
+      setStatus("error");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
     }
-    setBusy(false);
-    if (inputRef.current) inputRef.current.value = "";
-    router.refresh();
   }
+
+  const errorMessage =
+    errorCode === "tooLarge"
+      ? t("uploadImageTooLarge")
+      : errorCode === "quotaExceeded"
+        ? t("uploadImageQuotaExceeded")
+        : t(L.error);
 
   const previewCls =
     kind === "logo"
@@ -88,14 +145,21 @@ export default function SiteImageUploader({
         : "h-32 w-56 rounded-lg border border-border object-cover";
 
   return (
-    <section className="flex flex-col gap-3 border-t border-border pt-6">
+    <section
+      className="flex flex-col gap-3 border-t border-border pt-6"
+      aria-busy={busy}
+    >
       <h2 className="text-lg font-semibold">{t(L.section)}</h2>
       <p className="-mt-1 text-xs text-fg-subtle">{t(L.hint)}</p>
 
-      {currentUrl ? (
+      {displayUrl ? (
         <div className="flex flex-wrap items-start gap-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={currentUrl} alt="" className={previewCls} />
+          <img
+            src={displayUrl}
+            alt={t("siteImagePreviewAlt")}
+            className={`${previewCls} transition-opacity ${busy ? "opacity-70" : "opacity-100"}`}
+          />
           <form
             action={removeSiteImage.bind(null, kind)}
             onSubmit={(event) => {
@@ -104,7 +168,8 @@ export default function SiteImageUploader({
           >
             <button
               type="submit"
-              className="inline-flex min-h-10 items-center rounded-lg border border-danger-border px-3 py-2 text-sm font-semibold text-danger transition hover:border-danger hover:text-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 max-sm:min-h-11"
+              disabled={busy}
+              className="inline-flex min-h-10 items-center rounded-lg border border-danger-border px-3 py-2 text-sm font-semibold text-danger transition hover:border-danger hover:text-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-11"
             >
               {t(L.remove)}
             </button>
@@ -114,7 +179,13 @@ export default function SiteImageUploader({
         <p className="text-sm text-fg-subtle">{t(L.none)}</p>
       )}
 
-      <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border-strong px-4 py-2 text-sm font-medium text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-within:ring-2 focus-within:ring-fg/40">
+      <label
+        className={`flex min-h-11 w-fit items-center gap-2 rounded-lg border border-dashed px-4 py-2 text-sm font-medium transition focus-within:ring-2 focus-within:ring-accent/40 ${
+          busy
+            ? "cursor-wait border-accent bg-accent-surface text-fg"
+            : "cursor-pointer border-border-strong text-fg-muted hover:border-fg-subtle hover:text-fg"
+        }`}
+      >
         <input
           ref={inputRef}
           type="file"
@@ -123,13 +194,14 @@ export default function SiteImageUploader({
           onChange={(e) => handleFile(e.target.files?.[0])}
           className="sr-only"
         />
-        <span>{busy ? "…" : `+ ${t(L.upload)}`}</span>
+        <span>{busy ? t("uploadImageProcessing") : `+ ${t(L.upload)}`}</span>
       </label>
 
-      {error && (
-        <p role="alert" className="text-sm text-danger">
-          {t(L.error)}
-        </p>
+      {status === "saved" && (
+        <StatusMessage kind="success">{t("uploadImageSaved")}</StatusMessage>
+      )}
+      {status === "error" && (
+        <StatusMessage kind="error">{errorMessage}</StatusMessage>
       )}
     </section>
   );

@@ -49,13 +49,16 @@ export default function ScrollBlurBackground({
       <div
         ref={ref}
         aria-hidden
-        className="fixed -inset-16 -z-10 transition-[filter] duration-100 ease-out"
+        className="pointer-events-none fixed -inset-16 z-0 transition-[filter] duration-100 ease-out"
         style={style}
       />
       {/* Theme-aware scrim: tints the admin's background image/color with
           the theme's own base color, so it darkens in dark mode and washes
           lighter in light mode instead of staying fixed regardless of theme. */}
-      <div aria-hidden className="fixed -inset-16 -z-10 bg-page/40 transition-colors" />
+      <div
+        aria-hidden
+        className="pointer-events-none fixed -inset-16 z-0 bg-page/55 transition-colors"
+      />
     </>
   );
 }

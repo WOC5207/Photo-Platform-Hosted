@@ -248,7 +248,7 @@ export default async function HomePage({
           <h1 className="font-display ui-balance text-5xl font-semibold leading-[0.98] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
             {heroTitle}
           </h1>
-          <p className="ui-pretty mt-5 max-w-2xl text-base leading-7 text-fg-subtle sm:text-lg">
+          <p className="ui-pretty mt-5 max-w-2xl text-base leading-7 text-fg-muted sm:text-lg">
             {heroSubtitle}
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-3">

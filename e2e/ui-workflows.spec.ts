@@ -148,6 +148,70 @@ test.describe("locale and theme compatibility", () => {
       /\/zh\/dashboard\/settings\?section=features#lottery$/
     );
   });
+
+  test("site background previews immediately and confirms when saved", async ({
+    page
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop-1280", "Run the upload-state assertion once.");
+    await openAdminDashboard(page);
+    await page.goto("/en/dashboard/settings?section=appearance");
+
+    let releaseUpload!: () => void;
+    const uploadGate = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    await page.route("**/api/admin/site-image", async (route) => {
+      await uploadGate;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          token: "bge2etest",
+          url: "/api/site/bge2etest.webp"
+        })
+      });
+    });
+
+    const backgroundSection = page
+      .getByRole("heading", { name: "Background image", exact: true })
+      .locator("..");
+    const image = await sharp({
+      create: {
+        width: 24,
+        height: 16,
+        channels: 3,
+        background: { r: 118, g: 83, b: 61 }
+      }
+    })
+      .png()
+      .toBuffer();
+
+    await backgroundSection.locator('input[type="file"]').setInputFiles({
+      name: "background.png",
+      mimeType: "image/png",
+      buffer: image
+    });
+    await expect(
+      backgroundSection.getByText("Processing and saving image…", {
+        exact: true
+      })
+    ).toBeVisible();
+    await expect(backgroundSection.locator("img")).toHaveAttribute(
+      "src",
+      /^blob:/
+    );
+
+    releaseUpload();
+    await expect(
+      backgroundSection.getByRole("status").filter({
+        hasText: "Image uploaded and saved."
+      })
+    ).toBeVisible();
+    await expect(backgroundSection.locator("img")).toHaveAttribute(
+      "src",
+      "/api/site/bge2etest.webp"
+    );
+  });
 });
 
 test.describe.serial("management workflows", () => {
