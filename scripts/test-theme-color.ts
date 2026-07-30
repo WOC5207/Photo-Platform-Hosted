@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import {
   colorContrastRatio,
   effectiveSitePalette,
+  GENERATED_PALETTE_TEXT_CONTRAST,
+  generateAccessibleSitePalette,
   normalizeThemeColor,
+  siteThemeMinimumPhotoScrimContrast,
   siteThemeMinimumContrast,
+  siteDualThemeStyle,
   siteThemeStyle,
   themeColorForeground,
   themeColorStyle
@@ -74,5 +78,68 @@ assert.ok(
     themeColor: ""
   }) < 4.5
 );
+
+const emptyPalette = {
+  backgroundColor: "",
+  surfaceColor: "",
+  fieldColor: "",
+  textColor: "",
+  themeColor: ""
+};
+const darkDefault = effectiveSitePalette(emptyPalette, "dark");
+assert.equal(darkDefault.backgroundColor, "#100f0d");
+assert.equal(darkDefault.textColor, "#f1ece4");
+
+const dualStyle = siteDualThemeStyle(emptyPalette, emptyPalette);
+assert.equal(dualStyle["--site-light-color-page"], "#f3f0e9");
+assert.equal(dualStyle["--site-dark-color-page"], "#100f0d");
+assert.equal(dualStyle["--site-light-color-accent"], "#a44f25");
+assert.equal(dualStyle["--site-dark-color-accent"], "#e29a68");
+
+let randomState = 0x9e3779b9;
+const seededRandom = () => {
+  randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
+  return randomState / 0x100000000;
+};
+
+for (const mode of ["light", "dark"] as const) {
+  for (let index = 0; index < 1_000; index += 1) {
+    const generated = generateAccessibleSitePalette(mode, seededRandom);
+    const generatedEffective = effectiveSitePalette(generated, mode);
+    const backgrounds = [
+      generatedEffective.backgroundColor,
+      generatedEffective.surfaceColor,
+      generatedEffective.fieldColor
+    ];
+
+    assert.equal(
+      generatedEffective.textColor,
+      mode === "dark" ? "#fffefb" : "#211d18"
+    );
+    assert.ok(
+      siteThemeMinimumContrast(generated, mode) >=
+        GENERATED_PALETTE_TEXT_CONTRAST,
+      `Generated ${mode} palette ${index} missed the text target`
+    );
+    assert.ok(
+      siteThemeMinimumPhotoScrimContrast(generated, mode) >= 4.5,
+      `Generated ${mode} palette ${index} was unsafe over the background scrim`
+    );
+    assert.ok(
+      colorContrastRatio(
+        generatedEffective.themeColor,
+        themeColorForeground(generatedEffective.themeColor)
+      ) >= 4.5,
+      `Generated ${mode} palette ${index} produced unreadable button text`
+    );
+    assert.ok(
+      backgrounds.every(
+        (background) =>
+          colorContrastRatio(generatedEffective.themeColor, background) >= 3
+      ),
+      `Generated ${mode} palette ${index} produced an indistinct accent`
+    );
+  }
+}
 
 console.log("Theme color normalization, derivation and contrast tests passed.");

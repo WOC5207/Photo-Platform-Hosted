@@ -17,7 +17,7 @@ import {
 } from "@/lib/settings";
 import { siteImageUrl } from "@/lib/images";
 import { ownerBasePath } from "@/lib/owner";
-import { siteThemeStyle } from "@/lib/themeColor";
+import { siteDualThemeStyle } from "@/lib/themeColor";
 
 /**
  * The public header/background/footer for ONE owner's site.
@@ -67,7 +67,6 @@ export default async function SiteChrome({
   // wrapper, so its scroll-driven blur never affects the header/main/footer
   // sitting on top of it.
   const style: CSSProperties = {};
-  if (settings.backgroundColor) style.backgroundColor = settings.backgroundColor;
   if (bgImage) {
     style.backgroundImage = `url(${bgImage})`;
     style.backgroundSize = "cover";
@@ -76,14 +75,23 @@ export default async function SiteChrome({
 
   return (
     <div
-      className="relative isolate flex min-h-screen flex-col"
-      style={siteThemeStyle({
-        backgroundColor: settings.backgroundColor,
-        surfaceColor: settings.surfaceColor,
-        fieldColor: settings.fieldColor,
-        textColor: settings.textColor,
-        themeColor: settings.themeColor
-      })}
+      className="site-dual-theme relative isolate flex min-h-screen flex-col"
+      style={siteDualThemeStyle(
+        {
+          backgroundColor: settings.backgroundColor,
+          surfaceColor: settings.surfaceColor,
+          fieldColor: settings.fieldColor,
+          textColor: settings.textColor,
+          themeColor: settings.themeColor
+        },
+        {
+          backgroundColor: settings.darkBackgroundColor,
+          surfaceColor: settings.darkSurfaceColor,
+          fieldColor: settings.darkFieldColor,
+          textColor: settings.darkTextColor,
+          themeColor: settings.darkThemeColor
+        }
+      )}
     >
       <ScrollBlurBackground style={style} />
       <header className="sticky top-0 z-40 border-b border-border bg-page/82 backdrop-blur-xl">

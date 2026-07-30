@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type CSSProperties } from "react";
+import { SITE_BACKGROUND_SCRIM_OPACITY } from "@/lib/themeColor";
 
 // Matches the content pane's backdrop-blur-xl (see SiteChrome), so
 // the background eventually looks exactly as soft as what you see through
@@ -50,14 +51,17 @@ export default function ScrollBlurBackground({
         ref={ref}
         aria-hidden
         className="pointer-events-none fixed -inset-16 z-0 transition-[filter] duration-100 ease-out"
-        style={style}
+        style={{ backgroundColor: "var(--color-page)", ...style }}
       />
       {/* Theme-aware scrim: tints the admin's background image/color with
           the theme's own base color, so it darkens in dark mode and washes
           lighter in light mode instead of staying fixed regardless of theme. */}
       <div
         aria-hidden
-        className="pointer-events-none fixed -inset-16 z-0 bg-page/55 transition-colors"
+        className="pointer-events-none fixed -inset-16 z-0 transition-colors"
+        style={{
+          backgroundColor: `color-mix(in srgb, var(--color-page) ${SITE_BACKGROUND_SCRIM_OPACITY * 100}%, transparent)`
+        }}
       />
     </>
   );

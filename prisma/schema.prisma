@@ -552,6 +552,13 @@ model SiteSettings {
   // Public-site accent used for primary actions, active states and focus.
   // Empty = use the platform's safelight accent.
   themeColor                        String    @default("")
+  // Independent dark-mode semantic palette. Existing light fields above stay
+  // unchanged for backwards compatibility and form the light-mode palette.
+  darkBackgroundColor               String    @default("")
+  darkSurfaceColor                  String    @default("")
+  darkFieldColor                    String    @default("")
+  darkTextColor                     String    @default("")
+  darkThemeColor                    String    @default("")
   // Empty = no background image. Otherwise a token; file lives at
   // <PHOTOS_DIR>/_site/<token>.webp, served via /api/site/<token>.webp.
   backgroundImage                   String    @default("")

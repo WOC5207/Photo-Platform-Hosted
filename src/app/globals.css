@@ -170,6 +170,66 @@
   --color-warning-border: rgb(228 180 105 / 30%);
 }
 
+/* A photographer's public site owns two complete semantic palettes. The
+   wrapper receives namespaced values inline; these selectors select the
+   visitor's active explicit/system theme without changing individual
+   components or leaking the photographer palette into management pages. */
+.site-dual-theme {
+  --color-page: var(--site-light-color-page);
+  --color-surface: var(--site-light-color-surface);
+  --color-surface-2: var(--site-light-color-surface-2);
+  --color-raised: var(--site-light-color-raised);
+  --color-control: var(--site-light-color-control);
+  --color-fg: var(--site-light-color-fg);
+  --color-fg-muted: var(--site-light-color-fg-muted);
+  --color-fg-subtle: var(--site-light-color-fg-subtle);
+  --color-fg-faint: var(--site-light-color-fg-faint);
+  --color-border: var(--site-light-color-border);
+  --color-border-strong: var(--site-light-color-border-strong);
+  --color-accent: var(--site-light-color-accent);
+  --color-accent-strong: var(--site-light-color-accent-strong);
+  --color-accent-surface: var(--site-light-color-accent-surface);
+  --color-accent-fg: var(--site-light-color-accent-fg);
+}
+
+.dark .site-dual-theme {
+  --color-page: var(--site-dark-color-page);
+  --color-surface: var(--site-dark-color-surface);
+  --color-surface-2: var(--site-dark-color-surface-2);
+  --color-raised: var(--site-dark-color-raised);
+  --color-control: var(--site-dark-color-control);
+  --color-fg: var(--site-dark-color-fg);
+  --color-fg-muted: var(--site-dark-color-fg-muted);
+  --color-fg-subtle: var(--site-dark-color-fg-subtle);
+  --color-fg-faint: var(--site-dark-color-fg-faint);
+  --color-border: var(--site-dark-color-border);
+  --color-border-strong: var(--site-dark-color-border-strong);
+  --color-accent: var(--site-dark-color-accent);
+  --color-accent-strong: var(--site-dark-color-accent-strong);
+  --color-accent-surface: var(--site-dark-color-accent-surface);
+  --color-accent-fg: var(--site-dark-color-accent-fg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) .site-dual-theme {
+    --color-page: var(--site-dark-color-page);
+    --color-surface: var(--site-dark-color-surface);
+    --color-surface-2: var(--site-dark-color-surface-2);
+    --color-raised: var(--site-dark-color-raised);
+    --color-control: var(--site-dark-color-control);
+    --color-fg: var(--site-dark-color-fg);
+    --color-fg-muted: var(--site-dark-color-fg-muted);
+    --color-fg-subtle: var(--site-dark-color-fg-subtle);
+    --color-fg-faint: var(--site-dark-color-fg-faint);
+    --color-border: var(--site-dark-color-border);
+    --color-border-strong: var(--site-dark-color-border-strong);
+    --color-accent: var(--site-dark-color-accent);
+    --color-accent-strong: var(--site-dark-color-accent-strong);
+    --color-accent-surface: var(--site-dark-color-accent-surface);
+    --color-accent-fg: var(--site-dark-color-accent-fg);
+  }
+}
+
 * {
   scrollbar-color: var(--color-border-strong) transparent;
 }
