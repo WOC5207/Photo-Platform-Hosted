@@ -76,7 +76,7 @@ export default async function SiteChrome({
 
   return (
     <div
-      className="flex min-h-screen flex-col"
+      className="relative isolate flex min-h-screen flex-col"
       style={siteThemeStyle({
         backgroundColor: settings.backgroundColor,
         surfaceColor: settings.surfaceColor,
@@ -157,10 +157,10 @@ export default async function SiteChrome({
           />
         </div>
       </header>
-      <main className="mx-auto my-6 w-full max-w-[1600px] flex-1 px-4 sm:my-10 sm:px-6 lg:my-14">
+      <main className="relative z-10 mx-auto my-6 w-full max-w-[1600px] flex-1 px-4 sm:my-10 sm:px-6 lg:my-14">
         {children}
       </main>
-      <footer className="font-meta flex flex-col items-center justify-center gap-2 border-t border-border bg-page/82 py-7 text-center text-[0.6875rem] tracking-[0.08em] text-fg-subtle backdrop-blur-xl sm:flex-row sm:gap-4">
+      <footer className="font-meta relative z-10 flex flex-col items-center justify-center gap-2 border-t border-border bg-page/82 py-7 text-center text-[0.6875rem] tracking-[0.08em] text-fg-subtle backdrop-blur-xl sm:flex-row sm:gap-4">
         <span>
           © {new Date().getFullYear()} {siteTitle}
         </span>

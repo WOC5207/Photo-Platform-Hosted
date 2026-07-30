@@ -120,7 +120,7 @@ export default function HomeSearchBox({
     <div ref={searchRef} className={`relative ${className ?? ""}`}>
       <label
         htmlFor={inputId}
-        className="mb-2 block text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-fg-subtle"
+        className="mb-2 block text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-fg-muted"
       >
         {labels.placeholder}
       </label>
