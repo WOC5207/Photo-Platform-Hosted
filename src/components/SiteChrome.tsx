@@ -17,7 +17,7 @@ import {
 } from "@/lib/settings";
 import { siteImageUrl } from "@/lib/images";
 import { ownerBasePath } from "@/lib/owner";
-import { themeColorStyle } from "@/lib/themeColor";
+import { siteThemeStyle } from "@/lib/themeColor";
 
 /**
  * The public header/background/footer for ONE owner's site.
@@ -77,7 +77,13 @@ export default async function SiteChrome({
   return (
     <div
       className="flex min-h-screen flex-col"
-      style={themeColorStyle(settings.themeColor)}
+      style={siteThemeStyle({
+        backgroundColor: settings.backgroundColor,
+        surfaceColor: settings.surfaceColor,
+        fieldColor: settings.fieldColor,
+        textColor: settings.textColor,
+        themeColor: settings.themeColor
+      })}
     >
       <ScrollBlurBackground style={style} />
       <header className="sticky top-0 z-40 border-b border-border bg-page/82 backdrop-blur-xl">

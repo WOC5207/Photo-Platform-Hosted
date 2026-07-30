@@ -9,7 +9,11 @@ import { getCurrentUser, requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { discardSiteImage } from "@/lib/siteImages";
 import { isValidTimeZone } from "@/lib/timeZone";
-import { THEME_COLOR_PATTERN } from "@/lib/themeColor";
+import { acceptBookingPriceNotice } from "@/lib/bookingPriceNotice";
+import {
+  siteThemeMinimumContrast,
+  THEME_COLOR_PATTERN
+} from "@/lib/themeColor";
 
 export type SiteSettingsSection =
   | "appearance"
@@ -18,7 +22,7 @@ export type SiteSettingsSection =
   | "features";
 
 export type SiteSettingsState = {
-  error?: "validation" | "priceNoticeRequired";
+  error?: "validation" | "themeContrast" | "priceNoticeRequired";
   ok?: boolean;
 };
 
@@ -51,6 +55,9 @@ const appearanceSchema = z.object({
     .string()
     .trim()
     .regex(THEME_COLOR_PATTERN),
+  surfaceColor: z.string().trim().regex(THEME_COLOR_PATTERN),
+  fieldColor: z.string().trim().regex(THEME_COLOR_PATTERN),
+  textColor: z.string().trim().regex(THEME_COLOR_PATTERN),
   // Empty (platform default) or a #rgb / #rrggbb site accent.
   themeColor: z.string().trim().regex(THEME_COLOR_PATTERN)
 });
@@ -98,9 +105,23 @@ export async function updateSiteSettings(
       siteTitleEn: formData.get("siteTitleEn") ?? "",
       siteTitleZh: formData.get("siteTitleZh") ?? "",
       backgroundColor: formData.get("backgroundColor") ?? "",
+      surfaceColor: formData.get("surfaceColor") ?? "",
+      fieldColor: formData.get("fieldColor") ?? "",
+      textColor: formData.get("textColor") ?? "",
       themeColor: formData.get("themeColor") ?? ""
     });
     if (!parsed.success) return { error: "validation" };
+    if (
+      siteThemeMinimumContrast({
+        backgroundColor: parsed.data.backgroundColor,
+        surfaceColor: parsed.data.surfaceColor,
+        fieldColor: parsed.data.fieldColor,
+        textColor: parsed.data.textColor,
+        themeColor: parsed.data.themeColor
+      }) < 4.5
+    ) {
+      return { error: "themeContrast" };
+    }
     await prisma.siteSettings.upsert({
       where: { ownerId: user.id },
       create: { ownerId: user.id, ...parsed.data },
@@ -162,50 +183,19 @@ export async function updateSiteSettings(
     );
     const locale = await getLocale();
     const result = await prisma.$transaction(async (tx) => {
-      // The admin notice editor uses the same row lock. That makes checking the
-      // version and enabling the feature one atomic decision: the notice cannot
-      // change between acknowledgement and the settings write.
-      const notices = await tx.$queryRaw<
-        {
-          bookingPriceNoticeTitleEn: string;
-          bookingPriceNoticeTitleZh: string;
-          bookingPriceNoticeBodyEn: string;
-          bookingPriceNoticeBodyZh: string;
-          bookingPriceNoticeVersion: number;
-        }[]
-      >`SELECT * FROM "PlatformSettings" WHERE id = 'platform' FOR UPDATE`;
-      const notice = notices[0];
-      const existing = await tx.siteSettings.findUnique({
-        where: { ownerId: user.id },
-        select: { bookingPriceEnabled: true }
-      });
-      const newlyEnabling =
-        data.bookingPriceEnabled && !existing?.bookingPriceEnabled;
+      const acceptance = data.bookingPriceEnabled
+        ? await acceptBookingPriceNotice(tx, {
+            ownerId: user.id,
+            acceptedVersion,
+            locale
+          })
+        : { ok: true as const, acceptance: {} };
+      if (!acceptance.ok) return "priceNoticeRequired" as const;
 
-      if (
-        newlyEnabling &&
-        (!notice ||
-          (!notice.bookingPriceNoticeTitleEn.trim() &&
-            !notice.bookingPriceNoticeTitleZh.trim()) ||
-          (!notice.bookingPriceNoticeBodyEn.trim() &&
-            !notice.bookingPriceNoticeBodyZh.trim()) ||
-          acceptedVersion !== notice.bookingPriceNoticeVersion)
-      ) {
-        return "priceNoticeRequired" as const;
-      }
-
-      const acceptance = newlyEnabling
-        ? {
-            bookingPriceNoticeAcceptedVersion:
-              notice.bookingPriceNoticeVersion,
-            bookingPriceNoticeAcceptedLocale: locale,
-            bookingPriceNoticeAcceptedAt: new Date()
-          }
-        : {};
       await tx.siteSettings.upsert({
         where: { ownerId: user.id },
-        create: { ownerId: user.id, ...data, ...acceptance },
-        update: { ...data, ...acceptance }
+        create: { ownerId: user.id, ...data, ...acceptance.acceptance },
+        update: { ...data, ...acceptance.acceptance }
       });
       return "ok" as const;
     });

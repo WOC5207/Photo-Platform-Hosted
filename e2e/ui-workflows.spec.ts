@@ -792,6 +792,102 @@ test.describe.serial("management workflows", () => {
     await expect(sentItem).toHaveCount(0);
   });
 
+  test("new booking event can enable price display after accepting the responsibility agreement", async ({
+    page
+  }) => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: adminUsername! },
+      include: { settings: true }
+    });
+    const platform = await prisma.platformSettings.findUniqueOrThrow({
+      where: { id: "platform" }
+    });
+    const title = `E2E priced event ${Date.now()}`;
+    const noticeVersion = platform.bookingPriceNoticeVersion + 1;
+    const nextMonth = new Date();
+    nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1, 1);
+    const eventDay = `${nextMonth.getUTCFullYear()}-${String(
+      nextMonth.getUTCMonth() + 1
+    ).padStart(2, "0")}-15`;
+
+    await prisma.platformSettings.update({
+      where: { id: "platform" },
+      data: {
+        bookingPriceNoticeTitleEn: "E2E price responsibility agreement",
+        bookingPriceNoticeBodyEn:
+          "Prices are informational. The platform does not collect or process payment.",
+        bookingPriceNoticeVersion: noticeVersion
+      }
+    });
+    await prisma.siteSettings.upsert({
+      where: { ownerId: admin.id },
+      create: { ownerId: admin.id, bookingPriceEnabled: false },
+      update: { bookingPriceEnabled: false }
+    });
+
+    try {
+      await page.goto("/en/dashboard/bookings/new");
+      const enable = page.getByRole("button", { name: "Enable price display" });
+      await expect(enable).toBeEnabled();
+      await enable.click();
+      await expect(
+        page.getByRole("heading", {
+          name: "E2E price responsibility agreement"
+        })
+      ).toBeVisible();
+
+      const accept = page.getByRole("button", { name: "Accept and enable" });
+      await expect(accept).toBeDisabled();
+      await page
+        .getByRole("checkbox", {
+          name: "I have read and understand this agreement."
+        })
+        .check();
+      await accept.click();
+      await expect(page.getByText("Ready to enable")).toBeVisible();
+
+      await page.getByLabel("Title (English)").fill(title);
+      await page.getByRole("button", { name: "Next month" }).click();
+      await page.getByRole("button", { name: eventDay, exact: true }).click();
+      await page.getByRole("button", { name: "Create", exact: true }).click();
+      await page.waitForURL(/\/dashboard\/bookings\/(?!new$)[^/]+$/);
+
+      const settings = await prisma.siteSettings.findUniqueOrThrow({
+        where: { ownerId: admin.id }
+      });
+      expect(settings.bookingPriceEnabled).toBe(true);
+      expect(settings.bookingPriceNoticeAcceptedVersion).toBe(noticeVersion);
+      expect(settings.bookingPriceNoticeAcceptedLocale).toBe("en");
+      expect(settings.bookingPriceNoticeAcceptedAt).not.toBeNull();
+    } finally {
+      await prisma.bookingEvent.deleteMany({
+        where: { ownerId: admin.id, titleEn: title }
+      });
+      await prisma.platformSettings.update({
+        where: { id: "platform" },
+        data: {
+          bookingPriceNoticeTitleEn: platform.bookingPriceNoticeTitleEn,
+          bookingPriceNoticeTitleZh: platform.bookingPriceNoticeTitleZh,
+          bookingPriceNoticeBodyEn: platform.bookingPriceNoticeBodyEn,
+          bookingPriceNoticeBodyZh: platform.bookingPriceNoticeBodyZh,
+          bookingPriceNoticeVersion: platform.bookingPriceNoticeVersion
+        }
+      });
+      await prisma.siteSettings.update({
+        where: { ownerId: admin.id },
+        data: {
+          bookingPriceEnabled: admin.settings?.bookingPriceEnabled ?? false,
+          bookingPriceNoticeAcceptedVersion:
+            admin.settings?.bookingPriceNoticeAcceptedVersion ?? null,
+          bookingPriceNoticeAcceptedLocale:
+            admin.settings?.bookingPriceNoticeAcceptedLocale ?? null,
+          bookingPriceNoticeAcceptedAt:
+            admin.settings?.bookingPriceNoticeAcceptedAt ?? null
+        }
+      });
+    }
+  });
+
   test("multi-day booking: calendar day-picker, per-day availability tabs, public day tabs", async ({ page }) => {
     const title = `E2E multiday ${Date.now()}`;
     // Two specific days in next month, so the calendar cells always exist (day

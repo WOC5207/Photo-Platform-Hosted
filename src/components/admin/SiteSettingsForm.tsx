@@ -20,17 +20,19 @@ import {
 } from "@/app/[locale]/dashboard/(protected)/settings/actions";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import {
+  DEFAULT_SITE_PALETTE,
   DEFAULT_THEME_COLOR,
+  effectiveSitePalette,
   normalizeThemeColor,
-  themeColorStyle
+  siteThemeMinimumContrast,
+  siteThemeStyle,
+  type SiteThemeColors
 } from "@/lib/themeColor";
 
 const inputCls =
   "h-10 rounded-lg border border-border-strong bg-surface px-3 text-sm text-fg outline-none transition focus:border-fg-subtle focus:ring-2 focus:ring-fg-faint/20";
 const checkboxCls =
   "h-5 w-5 rounded border-border-strong accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:cursor-not-allowed disabled:opacity-50";
-
-const BACKGROUND_DEFAULT_COLOR = "#0a0a0a";
 
 // Independently-saving widgets contain their own forms, so the section form
 // stays detached and fields opt into it with the `form` attribute.
@@ -73,6 +75,69 @@ function IndependentWidget({
   );
 }
 
+function PaletteColorField({
+  name,
+  label,
+  hint,
+  hexLabel,
+  resetLabel,
+  value,
+  defaultValue,
+  onChange
+}: {
+  name: keyof SiteThemeColors;
+  label: string;
+  hint: string;
+  hexLabel: string;
+  resetLabel: string;
+  value: string;
+  defaultValue: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-3 rounded-lg border border-border bg-surface p-3">
+      <input
+        type="color"
+        aria-label={label}
+        value={normalizeThemeColor(value) || defaultValue}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-14 cursor-pointer rounded-lg border border-border-strong bg-control p-1"
+      />
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-fg">{label}</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
+              {hint}
+            </p>
+          </div>
+          {value && (
+            <Button
+              type="button"
+              size="compact"
+              variant="ghost"
+              onClick={() => onChange("")}
+            >
+              {resetLabel}
+            </Button>
+          )}
+        </div>
+        <input
+          type="text"
+          aria-label={hexLabel}
+          value={value}
+          placeholder={defaultValue}
+          maxLength={7}
+          spellCheck={false}
+          onChange={(event) => onChange(event.target.value)}
+          className="font-meta mt-2 h-10 w-full rounded-lg border border-border-strong bg-control px-3 text-xs text-fg outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+        />
+        <input form={FORM_ID} type="hidden" name={name} value={value} />
+      </div>
+    </div>
+  );
+}
+
 export default function SiteSettingsForm({
   activeSection,
   initial,
@@ -96,6 +161,9 @@ export default function SiteSettingsForm({
     homeSubtitleEn: string;
     homeSubtitleZh: string;
     backgroundColor: string;
+    surfaceColor: string;
+    fieldColor: string;
+    textColor: string;
     themeColor: string;
     creditTermEn: string;
     creditTermZh: string;
@@ -139,8 +207,13 @@ export default function SiteSettingsForm({
   const [dirty, setDirty] = useState(false);
   const changeVersion = useRef(0);
   const submittedVersion = useRef(0);
-  const [color, setColor] = useState(initial.backgroundColor);
-  const [themeColor, setThemeColor] = useState(initial.themeColor);
+  const [palette, setPalette] = useState<SiteThemeColors>({
+    backgroundColor: initial.backgroundColor,
+    surfaceColor: initial.surfaceColor,
+    fieldColor: initial.fieldColor,
+    textColor: initial.textColor,
+    themeColor: initial.themeColor
+  });
   const [bookingEnabled, setBookingEnabled] = useState(initial.bookingEnabled);
   const [bookingPriceEnabled, setBookingPriceEnabled] = useState(
     initial.bookingPriceEnabled
@@ -172,6 +245,11 @@ export default function SiteSettingsForm({
     setDirty(true);
   }
 
+  function setPaletteColor(name: keyof SiteThemeColors, value: string) {
+    setPalette((current) => ({ ...current, [name]: value }));
+    markDirty();
+  }
+
   function handleSettingsChange(event: FormEvent<HTMLDivElement>) {
     const target = event.target;
     if (
@@ -194,6 +272,11 @@ export default function SiteSettingsForm({
   ];
   const bookingPriceNoticeAvailable = Boolean(
     bookingPriceNotice.title.trim() && bookingPriceNotice.body.trim()
+  );
+  const palettePreview = effectiveSitePalette(palette);
+  const paletteContrast = siteThemeMinimumContrast(palette);
+  const paletteHasInvalidValue = Object.values(palette).some(
+    (value) => value.trim() && !normalizeThemeColor(value)
   );
 
   return (
@@ -252,114 +335,163 @@ export default function SiteSettingsForm({
             title={t("groupBackgroundTitle")}
             hint={t("groupBackgroundHint")}
           >
-            <div className="grid gap-5 lg:grid-cols-2">
-              <div className="flex flex-col gap-1 rounded-xl border border-border bg-raised p-4">
-                <span className="text-sm font-semibold text-fg">
-                  {t("themeColorSection")}
-                </span>
-                <p className="text-xs leading-relaxed text-fg-subtle">
-                  {t("themeColorHint")}
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <input
-                    type="color"
-                    aria-label={t("themeColorSection")}
-                    value={normalizeThemeColor(themeColor) || DEFAULT_THEME_COLOR}
-                    onChange={(event) => {
-                      setThemeColor(event.target.value);
-                      markDirty();
-                    }}
-                    className="h-10 w-14 cursor-pointer rounded-md border border-border-strong bg-control"
-                  />
-                  <input
-                    type="text"
-                    aria-label={t("themeColorHexLabel")}
-                    value={themeColor}
-                    placeholder={DEFAULT_THEME_COLOR}
-                    maxLength={7}
-                    spellCheck={false}
-                    onChange={(event) => {
-                      setThemeColor(event.target.value);
-                      markDirty();
-                    }}
-                    className="font-meta h-10 w-28 rounded-lg border border-border-strong bg-control px-3 text-xs text-fg outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-                  />
-                  {!themeColor && (
-                    <span className="text-xs text-fg-subtle">
-                      {t("themeColorDefault")}
-                    </span>
-                  )}
-                  {themeColor && (
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        setThemeColor("");
-                        markDirty();
-                      }}
-                    >
-                      {t("resetThemeColor")}
-                    </Button>
-                  )}
-                  <input
-                    form={FORM_ID}
-                    type="hidden"
-                    name="themeColor"
-                    value={themeColor}
-                  />
-                </div>
-                <div
-                  className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-page p-3"
-                  style={themeColorStyle(themeColor)}
-                  aria-label={t("themeColorPreview")}
-                >
-                  <span className="font-meta text-[0.6875rem] tracking-[0.16em] text-accent">
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)] lg:items-start">
+              <div
+                className="overflow-hidden rounded-xl border border-border-strong bg-page"
+                style={siteThemeStyle(palette)}
+                aria-label={t("themeColorPreview")}
+              >
+                <div className="flex items-center justify-between border-b border-border bg-page px-4 py-3">
+                  <span className="font-display text-lg font-semibold text-fg">
+                    {initial.siteTitleEn || t("themePreviewSiteName")}
+                  </span>
+                  <span className="font-meta text-[0.6875rem] tracking-[0.14em] text-accent">
                     01 / {t("themeColorPreviewLabel")}
                   </span>
-                  <span className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-accent-fg">
-                    {t("themeColorPreviewAction")}
+                </div>
+                <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_9rem] sm:p-5">
+                  <div className="rounded-xl border border-border bg-surface p-4">
+                    <p className="font-display text-xl font-semibold text-fg">
+                      {t("themePreviewTitle")}
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-fg-muted">
+                      {t("themePreviewBody")}
+                    </p>
+                    <label className="mt-4 block text-xs font-semibold text-fg-subtle">
+                      {t("themePreviewFieldLabel")}
+                      <span className="mt-1 block min-h-11 rounded-lg border border-border-strong bg-control px-3 py-2.5 text-sm font-normal text-fg">
+                        {t("themePreviewFieldValue")}
+                      </span>
+                    </label>
+                    <span className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg">
+                      {t("themeColorPreviewAction")}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">
+                    {[
+                      [t("paletteCanvasShort"), palettePreview.backgroundColor],
+                      [t("paletteSurfaceShort"), palettePreview.surfaceColor],
+                      [t("paletteFieldShort"), palettePreview.fieldColor],
+                      [t("paletteTextShort"), palettePreview.textColor],
+                      [t("paletteButtonShort"), palettePreview.themeColor]
+                    ].map(([label, swatch]) => (
+                      <div
+                        key={label}
+                        className="rounded-lg border border-border bg-raised p-2"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="mb-2 block h-5 rounded-md border border-border"
+                          style={{ backgroundColor: swatch }}
+                        />
+                        <span className="font-meta block truncate text-[0.625rem] uppercase tracking-[0.08em] text-fg-subtle">
+                          {label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface px-4 py-3 text-xs">
+                  <span className="text-fg-subtle">
+                    {t("paletteContrast", {
+                      ratio: paletteContrast.toFixed(2)
+                    })}
                   </span>
+                  {!paletteHasInvalidValue && paletteContrast >= 4.5 ? (
+                    <span className="font-semibold text-success">
+                      {t("paletteContrastPass")}
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-danger">
+                      {paletteHasInvalidValue
+                        ? t("paletteInvalidColor")
+                        : t("paletteContrastFail")}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1 rounded-xl border border-border bg-raised p-4">
-                <span className="text-sm font-semibold text-fg">
-                  {t("backgroundColorSection")}
-                </span>
-                <p className="text-xs leading-relaxed text-fg-subtle">
-                  {t("backgroundColorHint")}
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <input
-                    type="color"
-                    aria-label={t("backgroundColorSection")}
-                    value={color || BACKGROUND_DEFAULT_COLOR}
-                    onChange={(event) => {
-                      setColor(event.target.value);
-                      markDirty();
-                    }}
-                    className="h-10 w-14 cursor-pointer rounded-md border border-border-strong bg-control"
-                  />
-                  <span className="font-meta text-xs text-fg-muted">
-                    {color || t("colorDefault")}
-                  </span>
-                  {color && (
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-fg">
+                      {t("sitePaletteTitle")}
+                    </p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
+                      {t("sitePaletteHint")}
+                    </p>
+                  </div>
+                  {Object.values(palette).some(Boolean) && (
                     <Button
                       type="button"
+                      size="compact"
                       onClick={() => {
-                        setColor("");
+                        setPalette({
+                          backgroundColor: "",
+                          surfaceColor: "",
+                          fieldColor: "",
+                          textColor: "",
+                          themeColor: ""
+                        });
                         markDirty();
                       }}
                     >
-                      {t("resetColor")}
+                      {t("resetPalette")}
                     </Button>
                   )}
-                  <input
-                    form={FORM_ID}
-                    type="hidden"
-                    name="backgroundColor"
-                    value={color}
-                  />
                 </div>
+                <PaletteColorField
+                  name="backgroundColor"
+                  label={t("backgroundColorSection")}
+                  hint={t("backgroundColorHint")}
+                  hexLabel={t("backgroundColorHexLabel")}
+                  resetLabel={t("resetColor")}
+                  value={palette.backgroundColor}
+                  defaultValue={DEFAULT_SITE_PALETTE.backgroundColor}
+                  onChange={(value) =>
+                    setPaletteColor("backgroundColor", value)
+                  }
+                />
+                <PaletteColorField
+                  name="surfaceColor"
+                  label={t("surfaceColorSection")}
+                  hint={t("surfaceColorHint")}
+                  hexLabel={t("surfaceColorHexLabel")}
+                  resetLabel={t("resetColor")}
+                  value={palette.surfaceColor}
+                  defaultValue={DEFAULT_SITE_PALETTE.surfaceColor}
+                  onChange={(value) => setPaletteColor("surfaceColor", value)}
+                />
+                <PaletteColorField
+                  name="fieldColor"
+                  label={t("fieldColorSection")}
+                  hint={t("fieldColorHint")}
+                  hexLabel={t("fieldColorHexLabel")}
+                  resetLabel={t("resetColor")}
+                  value={palette.fieldColor}
+                  defaultValue={DEFAULT_SITE_PALETTE.fieldColor}
+                  onChange={(value) => setPaletteColor("fieldColor", value)}
+                />
+                <PaletteColorField
+                  name="textColor"
+                  label={t("textColorSection")}
+                  hint={t("textColorHint")}
+                  hexLabel={t("textColorHexLabel")}
+                  resetLabel={t("resetColor")}
+                  value={palette.textColor}
+                  defaultValue={DEFAULT_SITE_PALETTE.textColor}
+                  onChange={(value) => setPaletteColor("textColor", value)}
+                />
+                <PaletteColorField
+                  name="themeColor"
+                  label={t("themeColorSection")}
+                  hint={t("themeColorHint")}
+                  hexLabel={t("themeColorHexLabel")}
+                  resetLabel={t("resetColor")}
+                  value={palette.themeColor}
+                  defaultValue={DEFAULT_THEME_COLOR}
+                  onChange={(value) => setPaletteColor("themeColor", value)}
+                />
               </div>
             </div>
             <IndependentWidget label={t("imageChangesSaveAutomatically")}>
@@ -781,7 +913,12 @@ export default function SiteSettingsForm({
         <Button
           type="submit"
           form={FORM_ID}
-          disabled={pending || !dirty}
+          disabled={
+            pending ||
+            !dirty ||
+            (activeSection === "appearance" &&
+              (paletteHasInvalidValue || paletteContrast < 4.5))
+          }
           variant="primary"
           className="px-5"
         >
@@ -796,6 +933,8 @@ export default function SiteSettingsForm({
           <StatusMessage kind="error">
             {state.error === "priceNoticeRequired"
               ? t("bookingPriceSaveError")
+              : state.error === "themeContrast"
+                ? t("paletteContrastSaveError")
               : t("saveError")}
           </StatusMessage>
         )}
