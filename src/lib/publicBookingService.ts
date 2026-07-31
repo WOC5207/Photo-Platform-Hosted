@@ -55,10 +55,12 @@ export type CreatePublicBookingsResult =
     };
 
 export async function createPublicBookings(
-  input: Omit<PublicBookingInput, "slotId"> & { slotIds: string[] }
+  input: Omit<PublicBookingInput, "slotId" | "subject"> & {
+    slots: { slotId: string; subject: string }[];
+  }
 ): Promise<CreatePublicBookingsResult> {
-  const slotIds = Array.from(new Set(input.slotIds));
-  if (slotIds.length === 0 || slotIds.length !== input.slotIds.length) {
+  const slotIds = Array.from(new Set(input.slots.map((slot) => slot.slotId)));
+  if (slotIds.length === 0 || slotIds.length !== input.slots.length) {
     return { ok: false, error: "slotUnavailable" };
   }
 
@@ -84,7 +86,7 @@ export async function createPublicBookings(
   const cancelTokens = slotIds.map(() => randomUUID().replace(/-/g, ""));
   const result = await reserveSlots(slotIds, {
     name: input.name,
-    subject: input.subject,
+    subjects: input.slots.map((slot) => slot.subject),
     contactMethod: "",
     contactValue: input.contactValue,
     email: input.email,
@@ -105,7 +107,7 @@ export async function createPublicBookings(
     notifyBookingCreated({
       bookingId: cancelToken,
       name: input.name,
-      subject: input.subject,
+      subject: reservation.booking.subject,
       contactMethod: "",
       contactValue: input.contactValue,
       eventTitle: pickText(

@@ -269,6 +269,7 @@ async function testBatchBookingIsAtomic() {
 
   const result = await reserveSlots([firstSlotId, secondSlot.id], {
     ...booking(91),
+    subjects: ["Character A", "Character B"],
     cancelTokens: [
       randomUUID().replace(/-/g, ""),
       randomUUID().replace(/-/g, "")
@@ -291,6 +292,7 @@ async function testBatchBookingIsAtomic() {
 
   const duplicate = await reserveSlots([firstSlotId, firstSlotId], {
     ...booking(92),
+    subjects: ["Character A", "Character B"],
     cancelTokens: [
       randomUUID().replace(/-/g, ""),
       randomUUID().replace(/-/g, "")

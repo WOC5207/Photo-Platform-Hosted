@@ -35,8 +35,8 @@ export type BookingFormState = {
 const bookingSchema = z.object({
   eventToken: z.string().min(1).max(100),
   slotIds: z.array(z.string().min(1).max(100)).min(1).max(20),
+  subjects: z.array(z.string().trim().max(200)).min(1).max(20),
   name: z.string().trim().min(1).max(200),
-  subject: z.string().trim().max(200),
   contactValue: z.string().trim().min(1).max(200),
   // Optional: a real email so we can send a confirmation and status updates.
   // Empty is allowed (the visitor may only want to give a WeChat, etc.); a
@@ -52,14 +52,17 @@ export async function createBooking(
   const parsed = bookingSchema.safeParse({
     eventToken: formData.get("eventToken") ?? "",
     slotIds: formData.getAll("slotIds"),
+    subjects: formData.getAll("subjects"),
     name: formData.get("name") ?? "",
-    subject: formData.get("subject") ?? "",
     contactValue: formData.get("contactValue") ?? "",
     email: formData.get("email") ?? "",
     notes: formData.get("notes") ?? ""
   });
   if (!parsed.success) return { error: "validation" };
   const d = parsed.data;
+  if (d.subjects.length !== d.slotIds.length) {
+    return { error: "validation" };
+  }
   const ip = clientIp(await headers());
 
   // Keep random-but-well-formed slot IDs from turning this public action into
@@ -117,9 +120,11 @@ export async function createBooking(
 
   const locale = await getLocale();
   const result = await createPublicBookings({
-    slotIds: d.slotIds,
+    slots: d.slotIds.map((slotId, index) => ({
+      slotId,
+      subject: d.subjects[index]
+    })),
     name: d.name,
-    subject: d.subject,
     contactValue: d.contactValue,
     email: d.email,
     notes: d.notes,
