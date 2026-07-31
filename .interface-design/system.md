@@ -200,6 +200,9 @@ Use `SectionHeading` for repeated sections:
 - Multiple selections remain visible in the sticky summary/cart.
 - Review separates the selected schedule from contact details rather than
   presenting one uninterrupted form.
+- Shared visitor identity and contact details are entered once. Character or
+  subject information belongs inside each selected slot card so multi-slot
+  bookings can describe different subjects without duplicating contact data.
 - A new event may opt into price display in context. The enable action reveals
   the current versioned responsibility agreement; only affirmative acceptance
   marks the event form ready, and persistence happens atomically with creation.

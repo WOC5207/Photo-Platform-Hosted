@@ -250,19 +250,26 @@ export async function reserveSlot(
  */
 export async function reserveSlots(
   slotIds: string[],
-  details: Omit<BookingDetails, "cancelToken"> & { cancelTokens: string[] }
+  details: Omit<BookingDetails, "cancelToken" | "subject"> & {
+    cancelTokens: string[];
+    subjects: string[];
+  }
 ): Promise<ReserveSlotsResult> {
   const uniqueSlotIds = Array.from(new Set(slotIds));
   if (
     uniqueSlotIds.length === 0 ||
     uniqueSlotIds.length !== slotIds.length ||
-    details.cancelTokens.length !== slotIds.length
+    details.cancelTokens.length !== slotIds.length ||
+    details.subjects.length !== slotIds.length
   ) {
     return { ok: false, error: "slotUnavailable" };
   }
 
   const tokenBySlot = new Map(
     slotIds.map((slotId, index) => [slotId, details.cancelTokens[index]])
+  );
+  const subjectBySlot = new Map(
+    slotIds.map((slotId, index) => [slotId, details.subjects[index]])
   );
   const orderedIds = [...uniqueSlotIds].sort();
 
@@ -368,14 +375,15 @@ export async function reserveSlots(
     for (const slotId of slotIds) {
       const slot = slots.find((candidate) => candidate.id === slotId);
       const cancelToken = tokenBySlot.get(slotId);
-      if (!slot || !cancelToken) {
+      const subject = subjectBySlot.get(slotId);
+      if (!slot || !cancelToken || subject === undefined) {
         return { ok: false, error: "slotUnavailable" } as const;
       }
       const booking = await tx.booking.create({
         data: {
           timeSlotId: slot.id,
           name: details.name,
-          subject: details.subject,
+          subject,
           contactMethod: details.contactMethod,
           contactValue: details.contactValue,
           email: details.email,

@@ -64,9 +64,11 @@ export default function BookingForm({
   >(createBooking, {});
   const [step, setStep] = useState<"slots" | "review">("slots");
   const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
+  const [subjectsBySlot, setSubjectsBySlot] = useState<Record<string, string>>(
+    {}
+  );
   const [details, setDetails] = useState({
     name: "",
-    subject: "",
     contactValue: "",
     email: "",
     notes: ""
@@ -139,6 +141,11 @@ export default function BookingForm({
 
   function removeSlot(slotId: string) {
     setSelectedSlotIds((current) => current.filter((id) => id !== slotId));
+    setSubjectsBySlot((current) => {
+      const next = { ...current };
+      delete next[slotId];
+      return next;
+    });
   }
 
   const errorMessage = state.error
@@ -408,11 +415,14 @@ export default function BookingForm({
                 {t("addMoreSlots")}
               </button>
             </div>
+            <p className="text-sm text-fg-subtle">
+              {t("subjectPerSlotHint", { term: subjectTerm })}
+            </p>
             <ol className="flex flex-col gap-2">
               {selectedSlots.map((slot) => (
                 <li
                   key={slot.id}
-                  className={`flex items-center justify-between gap-3 rounded-xl border bg-surface p-4 ${
+                  className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-xl border bg-surface p-4 ${
                     state.failedSlotId === slot.id
                       ? "border-danger"
                       : "border-border-strong"
@@ -446,6 +456,28 @@ export default function BookingForm({
                   >
                     {t("remove")}
                   </button>
+                  <label className="col-span-2 flex flex-col gap-1 text-sm">
+                    <span className="text-fg-muted">
+                      {t("subjectForSlot", { term: subjectTerm })}
+                    </span>
+                    <input
+                      name="subjects"
+                      maxLength={200}
+                      aria-label={t("subjectForSlotA11y", {
+                        term: subjectTerm,
+                        date: dayLabel(slot.date, locale),
+                        time: slotTime(slot)
+                      })}
+                      value={subjectsBySlot[slot.id] ?? ""}
+                      onChange={(event) =>
+                        setSubjectsBySlot((current) => ({
+                          ...current,
+                          [slot.id]: event.target.value
+                        }))
+                      }
+                      className={inputCls}
+                    />
+                  </label>
                 </li>
               ))}
             </ol>
@@ -467,23 +499,6 @@ export default function BookingForm({
                   setDetails((current) => ({
                     ...current,
                     name: event.target.value
-                  }))
-                }
-                className={inputCls}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">
-                {t("subject", { term: subjectTerm })}
-              </span>
-              <input
-                name="subject"
-                maxLength={200}
-                value={details.subject}
-                onChange={(event) =>
-                  setDetails((current) => ({
-                    ...current,
-                    subject: event.target.value
                   }))
                 }
                 className={inputCls}

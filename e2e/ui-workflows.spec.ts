@@ -1087,6 +1087,10 @@ test.describe.serial("management workflows", () => {
       await expect(page.getByText("2 time slots selected")).toBeVisible();
       await page.getByRole("button", { name: "Review 2 slots" }).click();
       await expect(page.getByRole("heading", { name: "Booking summary" })).toBeVisible();
+      const subjects = page.locator('input[name="subjects"]');
+      await expect(subjects).toHaveCount(2);
+      await subjects.nth(0).fill("Character A");
+      await subjects.nth(1).fill("Character B");
       await page.getByLabel("CN").fill("E2E Visitor");
       await page.getByLabel("Contact info").fill("visitor@example.com");
       await page.getByRole("button", { name: "Confirm 2 bookings" }).click();
@@ -1109,6 +1113,10 @@ test.describe.serial("management workflows", () => {
         )
       ).toEqual([day1, day2]);
       expect(bookings.every((booking) => booking.contactValue === "visitor@example.com")).toBe(true);
+      expect(bookings.map((booking) => booking.subject)).toEqual([
+        "Character A",
+        "Character B"
+      ]);
     } finally {
       await prisma.bookingEvent.delete({ where: { id: event.id } }).catch(() => {});
     }
