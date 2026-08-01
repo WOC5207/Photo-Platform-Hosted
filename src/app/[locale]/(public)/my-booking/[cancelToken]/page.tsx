@@ -4,8 +4,14 @@ import { prisma } from "@/lib/db";
 import { pickText } from "@/lib/content";
 import { formatSlotRange } from "@/lib/datetime";
 import { getSiteSettings, resolveSubjectTerm } from "@/lib/settings";
+import {
+  isVisitorBookingEditWindowOpen,
+  visitorBookingEditDeadline
+} from "@/lib/booking";
+import { wallClockNow } from "@/lib/timeZone";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import MyBookingDraw from "@/components/booking/MyBookingDraw";
+import EditBookingForm from "@/components/booking/EditBookingForm";
 import { cancelMyBooking } from "../../book/actions";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +61,64 @@ export default async function MyBookingPage({
   const settings = await getSiteSettings(event.ownerId);
   const subjectTerm = resolveSubjectTerm(settings, locale, tc("subjectTerm"));
   const cancelled = booking.status === "cancelled";
+  const editDeadline = visitorBookingEditDeadline(
+    booking.timeSlot.startTime,
+    event.visitorEditCutoffHours
+  );
+  const editWindowOpen =
+    !cancelled &&
+    event.visitorEditsEnabled &&
+    isVisitorBookingEditWindowOpen(
+      booking.timeSlot.startTime,
+      event.visitorEditCutoffHours,
+      settings.timeZone
+    );
+  const editDeadlineLabel = new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC"
+  }).format(editDeadline);
+
+  const editableSlots = editWindowOpen
+    ? (
+        await prisma.timeSlot.findMany({
+          where: {
+            bookingEventId: event.id,
+            startTime: { gt: wallClockNow(settings.timeZone) }
+          },
+          include: {
+            _count: {
+              select: { bookings: { where: { status: "confirmed" } } }
+            }
+          },
+          orderBy: { startTime: "asc" }
+        })
+      )
+        .filter(
+          (slot) =>
+            slot.id === booking.timeSlotId ||
+            (event.open &&
+              settings.bookingEnabled &&
+              slot._count.bookings < slot.capacity)
+        )
+        .map((slot) => {
+          const description = pickText(
+            locale,
+            slot.descriptionEn,
+            slot.descriptionZh
+          );
+          const price =
+            settings.bookingPriceEnabled && slot.pricePerPerson
+              ? t("pricePerPersonDisplay", { price: slot.pricePerPerson })
+              : "";
+          return {
+            id: slot.id,
+            label: [formatSlotRange(slot.startTime, slot.endTime), description, price]
+              .filter(Boolean)
+              .join(" · ")
+          };
+        })
+    : [];
 
   // The wheel shows whenever the site + event have lottery on and a draw
   // (with its prizes) has been set up; enabling lottery is all it takes —
@@ -116,6 +180,55 @@ export default async function MyBookingPage({
           </span>
         </Row>
       </dl>
+
+      {!cancelled && (
+        <section className="flex flex-col gap-3" aria-labelledby="booking-edit-window">
+          <div
+            className={`rounded-xl border p-4 ${
+              editWindowOpen
+                ? "border-accent/25 bg-accent-surface"
+                : "border-border bg-surface"
+            }`}
+          >
+            <p className="font-meta text-[0.6875rem] uppercase tracking-[0.14em] text-accent">
+              {t("editWindowMarker")}
+            </p>
+            <h2 id="booking-edit-window" className="mt-1 font-semibold text-fg">
+              {editWindowOpen
+                ? t("editWindowOpenTitle")
+                : t("editWindowClosedTitle")}
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-fg-subtle">
+              {event.visitorEditsEnabled
+                ? editWindowOpen
+                  ? t("editWindowOpenHint", {
+                      deadline: editDeadlineLabel,
+                      timeZone: settings.timeZone
+                    })
+                  : t("editWindowClosedHint", {
+                      hours: event.visitorEditCutoffHours
+                    })
+                : t("editWindowDisabledHint")}
+            </p>
+          </div>
+
+          {editWindowOpen && (
+            <EditBookingForm
+              cancelToken={cancelToken}
+              subjectTerm={subjectTerm}
+              currentSlotId={booking.timeSlotId}
+              slots={editableSlots}
+              initial={{
+                name: booking.name,
+                subject: booking.subject,
+                contactValue: booking.contactValue,
+                email: booking.email,
+                notes: booking.notes
+              }}
+            />
+          )}
+        </section>
+      )}
 
       {showWheel && (
         <MyBookingDraw

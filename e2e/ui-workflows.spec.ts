@@ -1122,6 +1122,100 @@ test.describe.serial("management workflows", () => {
     }
   });
 
+  test("photographer cutoff allows a visitor to update time and details", async ({ page }) => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: adminUsername! }
+    });
+    const day = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    day.setUTCHours(0, 0, 0, 0);
+    const firstStart = new Date(day.getTime() + 12 * 60 * 60 * 1000);
+    const secondStart = new Date(day.getTime() + 13 * 60 * 60 * 1000);
+    const token = randomUUID().replace(/-/g, "");
+    const cancelToken = randomUUID().replace(/-/g, "");
+    const event = await prisma.bookingEvent.create({
+      data: {
+        ownerId: admin.id,
+        token,
+        titleEn: "E2E visitor booking edit",
+        titleZh: "E2E 访客修改预约",
+        date: day,
+        open: true,
+        days: { create: { date: day } }
+      },
+      include: { days: true }
+    });
+    const [firstSlot, secondSlot] = await Promise.all([
+      prisma.timeSlot.create({
+        data: {
+          bookingEventId: event.id,
+          bookingDayId: event.days[0].id,
+          startTime: firstStart,
+          endTime: new Date(firstStart.getTime() + 30 * 60 * 1000),
+          capacity: 1
+        }
+      }),
+      prisma.timeSlot.create({
+        data: {
+          bookingEventId: event.id,
+          bookingDayId: event.days[0].id,
+          startTime: secondStart,
+          endTime: new Date(secondStart.getTime() + 30 * 60 * 1000),
+          capacity: 1
+        }
+      })
+    ]);
+    await prisma.booking.create({
+      data: {
+        timeSlotId: firstSlot.id,
+        name: "Original visitor",
+        subject: "Original subject",
+        contactValue: "original-contact",
+        email: "",
+        notes: "Original notes",
+        locale: "en",
+        cancelToken
+      }
+    });
+
+    try {
+      await page.goto(`/en/dashboard/bookings/${event.id}`);
+      await page
+        .getByRole("checkbox", { name: "Allow visitors to edit their booking" })
+        .check();
+      await page
+        .getByLabel("Close visitor editing this long before the booking")
+        .fill("24");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
+
+      await page.goto(`/en/my-booking/${cancelToken}`);
+      await expect(page.getByText("Changes are still available")).toBeVisible();
+      await page.getByText("Edit time or details", { exact: true }).click();
+      await page.getByLabel("Time").selectOption(secondSlot.id);
+      await page.getByLabel("CN").fill("Updated visitor");
+      await page.getByLabel("Subject (optional)").fill("Updated subject");
+      await page.getByLabel("Contact info").fill("updated-contact");
+      await page.getByRole("button", { name: "Save booking changes" }).click();
+      await expect(page.getByText("Your booking changes are saved.")).toBeVisible();
+
+      await expect
+        .poll(() =>
+          prisma.booking.findUnique({
+            where: { cancelToken },
+            select: { timeSlotId: true, name: true, subject: true, contactValue: true }
+          })
+        )
+        .toEqual({
+          timeSlotId: secondSlot.id,
+          name: "Updated visitor",
+          subject: "Updated subject",
+          contactValue: "updated-contact"
+        });
+    } finally {
+      await prisma.bookingEvent.delete({ where: { id: event.id } }).catch(() => {});
+    }
+  });
+
   test(
     "lottery identity and recovery survive a locale switch",
     { tag: "@desktop-only" },

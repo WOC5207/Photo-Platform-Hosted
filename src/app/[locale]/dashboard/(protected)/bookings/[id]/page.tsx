@@ -121,6 +121,8 @@ export default async function EditBookingEventPage({
           location: event.location,
           descriptionEn: event.descriptionEn,
           descriptionZh: event.descriptionZh,
+          visitorEditsEnabled: event.visitorEditsEnabled,
+          visitorEditCutoffHours: event.visitorEditCutoffHours,
           open: event.open
         }}
       />

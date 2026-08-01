@@ -22,6 +22,7 @@ import {
   notifyAnnouncement,
   notifyBookingCreated,
   notifyBookingStatusChanged,
+  notifyBookingUpdated,
   type BookingNotification
 } from "../src/lib/notify";
 
@@ -298,6 +299,29 @@ async function testNotifyBookingCreated() {
   reset();
 }
 
+async function testNotifyBookingUpdated() {
+  const reset = withSmtpConfigured();
+  const fake = fakeTransport();
+  await notifyBookingUpdated(
+    bookingInfo({
+      visitorEmail: "v@test",
+      ownerEmail: "o@test",
+      locale: "en"
+    }),
+    fake.transport
+  );
+  const visitor = fake.sent.find((message) => message.to === "v@test");
+  const owner = fake.sent.find((message) => message.to === "o@test");
+  report(
+    "booking updated: both parties receive update-specific messages",
+    fake.sent.length === 2 &&
+      visitor?.subject === "Booking updated" &&
+      owner?.subject.includes("Booking updated") === true,
+    `subjects=${JSON.stringify(fake.sent.map((message) => message.subject))}`
+  );
+  reset();
+}
+
 /**
  * The visitor's email is written in the *one* language they booked in (carried
  * on `locale`), not both — a zh booking never leaks English and vice versa.
@@ -434,6 +458,7 @@ async function main() {
   await testEmptyRecipientSkipped();
   testResolveBookingRecipients();
   await testNotifyBookingCreated();
+  await testNotifyBookingUpdated();
   await testVisitorEmailLanguage();
   await testVisitorEmailHtml();
   await testNotifyAnnouncement();

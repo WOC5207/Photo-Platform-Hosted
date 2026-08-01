@@ -26,7 +26,8 @@ import { PrismaClient } from "@prisma/client";
 import {
   addSlotBatchForOwner,
   reserveSlot,
-  reserveSlots
+  reserveSlots,
+  updateVisitorBookingReservation
 } from "../src/lib/booking";
 import {
   deleteLotteryPrizeForOwner,
@@ -356,6 +357,120 @@ async function testExpiredSlotIsRejectedInOwnerTimeZone() {
   });
 }
 
+async function testVisitorBookingEditWindow() {
+  await prisma.siteSettings.update({
+    where: { ownerId },
+    data: { bookingEnabled: true, timeZone: "UTC" }
+  });
+  const date = new Date("2035-04-12T00:00:00Z");
+  const event = await prisma.bookingEvent.create({
+    data: {
+      ownerId,
+      token: randomUUID().replace(/-/g, ""),
+      titleEn: "visitor edit test",
+      titleZh: "visitor edit test",
+      date,
+      open: true,
+      visitorEditsEnabled: true,
+      visitorEditCutoffHours: 24,
+      days: { create: { date } }
+    },
+    include: { days: true }
+  });
+  const [slotA, slotB] = await Promise.all([
+    prisma.timeSlot.create({
+      data: {
+        bookingEventId: event.id,
+        bookingDayId: event.days[0].id,
+        startTime: new Date("2035-04-12T12:00:00Z"),
+        endTime: new Date("2035-04-12T12:30:00Z"),
+        capacity: 1
+      }
+    }),
+    prisma.timeSlot.create({
+      data: {
+        bookingEventId: event.id,
+        bookingDayId: event.days[0].id,
+        startTime: new Date("2035-04-12T13:00:00Z"),
+        endTime: new Date("2035-04-12T13:30:00Z"),
+        capacity: 1
+      }
+    })
+  ]);
+  const original = booking(120);
+  const reserved = await reserveSlot(slotA.id, original);
+  if (!reserved.ok) throw new Error("visitor edit test could not seed booking");
+
+  const moved = await updateVisitorBookingReservation(
+    original.cancelToken,
+    {
+      targetSlotId: slotB.id,
+      name: "Updated visitor",
+      subject: "Updated subject",
+      contactValue: "updated@example.com",
+      email: "updated@example.com",
+      notes: "Updated notes"
+    },
+    new Date("2035-04-10T10:00:00Z")
+  );
+  const afterMove = await prisma.booking.findUnique({
+    where: { cancelToken: original.cancelToken }
+  });
+  report(
+    "booking edit: moves the booking and details atomically before cutoff",
+    moved.ok &&
+      afterMove?.timeSlotId === slotB.id &&
+      afterMove.name === "Updated visitor" &&
+      afterMove.subject === "Updated subject",
+    `result=${moved.ok ? "ok" : moved.error}, slot=${afterMove?.timeSlotId}`
+  );
+
+  await reserveSlot(slotA.id, booking(121));
+  const fullMove = await updateVisitorBookingReservation(
+    original.cancelToken,
+    {
+      targetSlotId: slotA.id,
+      name: "Should not save",
+      subject: "",
+      contactValue: "updated@example.com",
+      email: "",
+      notes: ""
+    },
+    new Date("2035-04-10T10:00:00Z")
+  );
+  const afterFullMove = await prisma.booking.findUnique({
+    where: { cancelToken: original.cancelToken }
+  });
+  report(
+    "booking edit: a full target leaves time and details unchanged",
+    !fullMove.ok &&
+      fullMove.error === "slotFull" &&
+      afterFullMove?.timeSlotId === slotB.id &&
+      afterFullMove.name === "Updated visitor",
+    `result=${fullMove.ok ? "ok" : fullMove.error}, slot=${afterFullMove?.timeSlotId}`
+  );
+
+  const atCutoff = await updateVisitorBookingReservation(
+    original.cancelToken,
+    {
+      targetSlotId: slotB.id,
+      name: "Too late",
+      subject: "",
+      contactValue: "updated@example.com",
+      email: "",
+      notes: ""
+    },
+    new Date("2035-04-11T13:00:00Z")
+  );
+  report(
+    "booking edit: the exact cutoff boundary is closed",
+    !atCutoff.ok && atCutoff.error === "cutoff",
+    `result=${atCutoff.ok ? "ok" : atCutoff.error}`
+  );
+
+  await prisma.bookingEvent.delete({ where: { id: event.id } });
+}
+
 async function testNewEventSlotBatchSync() {
   const event = await prisma.bookingEvent.create({
     data: {
@@ -567,6 +682,7 @@ async function main() {
   await testBookingStampede();
   await testBatchBookingIsAtomic();
   await testExpiredSlotIsRejectedInOwnerTimeZone();
+  await testVisitorBookingEditWindow();
   await testNewEventSlotBatchSync();
   await testLotteryLockIsHonoured();
   await testLotteryPrizeDeleteLockIsHonoured();
