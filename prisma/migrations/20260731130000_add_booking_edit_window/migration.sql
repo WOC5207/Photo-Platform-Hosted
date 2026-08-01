@@ -1,0 +1,3 @@
+ALTER TABLE "BookingEvent"
+ADD COLUMN "visitorEditsEnabled" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "visitorEditCutoffHours" INTEGER NOT NULL DEFAULT 24;

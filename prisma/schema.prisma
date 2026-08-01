@@ -466,6 +466,10 @@ model BookingEvent {
   location         String       @default("")
   date             DateTime
   open             Boolean      @default(true)
+  // Whether holders of a private booking link may update their reservation.
+  // The cutoff is measured backwards from the booking's current start time.
+  visitorEditsEnabled     Boolean      @default(false)
+  visitorEditCutoffHours  Int          @default(24)
   // Whether the prize-draw tool is enabled for this event at all. Off by
   // default so existing/new events don't suddenly expose a "Prize draw"
   // link and public entry page until the admin opts in.

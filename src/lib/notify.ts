@@ -112,7 +112,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
 
 // Per-kind heading / subject line / greeting, keyed by language.
 const VISITOR_KIND: Record<
-  "confirmed" | "cancelled",
+  "confirmed" | "cancelled" | "updated",
   Record<Lang, { subject: string; heading: string; intro: (name: string) => string }>
 > = {
   confirmed: {
@@ -137,6 +137,18 @@ const VISITOR_KIND: Record<
       subject: "预约已取消",
       heading: "预约已取消",
       intro: (n) => `${n} 您好，您的预约已取消。`
+    }
+  },
+  updated: {
+    en: {
+      subject: "Booking updated",
+      heading: "Booking updated",
+      intro: (n) => `Hi ${n}, your booking changes are saved.`
+    },
+    zh: {
+      subject: "预约已更新",
+      heading: "预约已更新",
+      intro: (n) => `${n} 您好，您的预约修改已保存。`
     }
   }
 };
@@ -233,18 +245,18 @@ function actionHtml(action: {
   );
 }
 
-/** Build a visitor confirmation/cancellation email in the booking's language. */
+/** Build a visitor booking email in the language used for the reservation. */
 function visitorMessage(
   info: BookingNotification,
-  kind: "confirmed" | "cancelled"
+  kind: "confirmed" | "cancelled" | "updated"
 ): MailMessage {
   const lang = langOf(info.locale);
   const s = STRINGS[lang];
   const k = VISITOR_KIND[kind][lang];
   const slot = bookingSlotLabel(info);
-  const statusText = kind === "confirmed" ? s.confirmed : s.cancelled;
+  const statusText = kind === "cancelled" ? s.cancelled : s.confirmed;
   const statusColor =
-    kind === "confirmed" ? STATUS_CONFIRMED_COLOR : STATUS_CANCELLED_COLOR;
+    kind === "cancelled" ? STATUS_CANCELLED_COLOR : STATUS_CONFIRMED_COLOR;
 
   const rows: EmailRow[] = [
     { label: s.event, value: info.eventTitle },
@@ -281,6 +293,10 @@ function visitorConfirmedMessage(info: BookingNotification): MailMessage {
 
 function visitorCancelledMessage(info: BookingNotification): MailMessage {
   return visitorMessage(info, "cancelled");
+}
+
+function visitorUpdatedMessage(info: BookingNotification): MailMessage {
+  return visitorMessage(info, "updated");
 }
 
 /**
@@ -405,6 +421,26 @@ function ownerCancelledMessage(info: BookingNotification): MailMessage {
   };
 }
 
+function ownerUpdatedMessage(info: BookingNotification): MailMessage {
+  const d = ownerBookingLine(info);
+  const heading = "Booking updated · 预约已更新";
+  const intro = "A visitor updated their booking. · 访客修改了一条预约。";
+  return {
+    to: info.ownerEmail,
+    subject: "Booking updated · 预约已更新",
+    text: bilingual(
+      `A visitor updated their booking.\n\n${d.en}`,
+      `访客修改了一条预约。\n\n${d.zh}`
+    ),
+    html: bookingEmailHtml({
+      heading,
+      intro,
+      rows: ownerRows(info, "Confirmed · 已确认", STATUS_CONFIRMED_COLOR),
+      action: ownerAction(info)
+    })
+  };
+}
+
 // ── booking notifiers ─────────────────────────────────────────────────────
 
 /** New booking: confirm to the visitor, alert the owner. */
@@ -430,6 +466,19 @@ export async function notifyBookingCancelled(
     sends.push(sendMail(visitorCancelledMessage(info), transport));
   if (info.ownerEmail.trim())
     sends.push(sendMail(ownerCancelledMessage(info), transport));
+  await Promise.allSettled(sends);
+}
+
+/** Visitor self-edit: confirm the new details and alert the photographer. */
+export async function notifyBookingUpdated(
+  info: BookingNotification,
+  transport?: MailTransport
+): Promise<void> {
+  const sends: Promise<unknown>[] = [];
+  if (info.visitorEmail.trim())
+    sends.push(sendMail(visitorUpdatedMessage(info), transport));
+  if (info.ownerEmail.trim())
+    sends.push(sendMail(ownerUpdatedMessage(info), transport));
   await Promise.allSettled(sends);
 }
 

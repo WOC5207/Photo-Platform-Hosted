@@ -2,13 +2,18 @@ import "server-only";
 import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { routing } from "@/i18n/routing";
-import { reserveSlot, reserveSlots } from "@/lib/booking";
+import {
+  reserveSlot,
+  reserveSlots,
+  updateVisitorBookingReservation
+} from "@/lib/booking";
 import { config } from "@/lib/config";
 import { pickText } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import {
   notifyBookingCancelled,
-  notifyBookingCreated
+  notifyBookingCreated,
+  notifyBookingUpdated
 } from "@/lib/notify";
 import { getSiteSettings } from "@/lib/settings";
 
@@ -23,6 +28,28 @@ export interface PublicBookingInput {
   wechatIdentityId?: string;
   requireMiniappAvailability?: boolean;
 }
+
+export interface PublicBookingUpdateInput {
+  targetSlotId: string;
+  name: string;
+  subject: string;
+  contactValue: string;
+  email: string;
+  notes: string;
+}
+
+export type UpdatePublicBookingResult =
+  | { ok: true; data: { slotId: string } }
+  | {
+      ok: false;
+      error:
+        | "notFound"
+        | "disabled"
+        | "cutoff"
+        | "closed"
+        | "slotUnavailable"
+        | "slotFull";
+    };
 
 export type CreatePublicBookingResult =
   | {
@@ -209,6 +236,45 @@ export async function createPublicBooking(
       eventId: result.slot.bookingEvent.id
     }
   };
+}
+
+export async function updatePublicBookingByToken(
+  cancelToken: string,
+  input: PublicBookingUpdateInput
+): Promise<UpdatePublicBookingResult> {
+  const result = await updateVisitorBookingReservation(cancelToken, input);
+  if (!result.ok) return result;
+
+  const event = result.slot.bookingEvent;
+  const [settings, owner] = await Promise.all([
+    getSiteSettings(event.ownerId),
+    prisma.user.findUnique({
+      where: { id: event.ownerId },
+      select: { email: true }
+    })
+  ]);
+  const booking = result.booking;
+  notifyBookingUpdated({
+    bookingId: booking.cancelToken,
+    name: booking.name,
+    subject: booking.subject,
+    contactMethod: booking.contactMethod,
+    contactValue: booking.contactValue,
+    eventTitle: pickText(booking.locale, event.titleEn, event.titleZh),
+    slotStart: result.slot.startTime,
+    slotEnd: result.slot.endTime,
+    timeZone: settings.timeZone,
+    pricePerPerson: settings.bookingPriceEnabled
+      ? result.slot.pricePerPerson
+      : "",
+    manageUrl: `${config.appBaseUrl()}/${booking.locale}/my-booking/${booking.cancelToken}`,
+    dashboardUrl: `${config.appBaseUrl()}/${routing.defaultLocale}/dashboard/bookings/${event.id}`,
+    locale: booking.locale,
+    visitorEmail: booking.email,
+    ownerEmail: owner?.email ?? ""
+  }).catch(() => {});
+
+  return { ok: true, data: { slotId: result.slot.id } };
 }
 
 const cancellableBookingInclude = {

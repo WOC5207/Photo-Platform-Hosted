@@ -58,6 +58,8 @@ export default async function NewBookingEventPage() {
           location: "",
           descriptionEn: "",
           descriptionZh: "",
+          visitorEditsEnabled: false,
+          visitorEditCutoffHours: 24,
           open: false
         }}
       />

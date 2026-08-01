@@ -7,7 +7,11 @@ import {
   type TimeSlot
 } from "@prisma/client";
 import { prisma } from "./db";
-import { DEFAULT_TIME_ZONE, isNaiveDateTimePast } from "./timeZone";
+import {
+  DEFAULT_TIME_ZONE,
+  isNaiveDateTimePast,
+  wallClockNow
+} from "./timeZone";
 import { formatDate, parseNaiveDateTime } from "./datetime";
 
 export interface BookingDetails {
@@ -25,6 +29,34 @@ export interface BookingDetails {
   // Recheck and lock the tenant's mini-program visibility at the insert
   // boundary. Web callers omit this and retain their existing behavior.
   requireMiniappAvailability?: boolean;
+}
+
+export interface VisitorBookingUpdateDetails {
+  targetSlotId: string;
+  name: string;
+  subject: string;
+  contactValue: string;
+  email: string;
+  notes: string;
+}
+
+export function visitorBookingEditDeadline(
+  startTime: Date,
+  cutoffHours: number
+): Date {
+  return new Date(startTime.getTime() - cutoffHours * 60 * 60 * 1000);
+}
+
+export function isVisitorBookingEditWindowOpen(
+  startTime: Date,
+  cutoffHours: number,
+  timeZone: string,
+  instant: Date = new Date()
+): boolean {
+  return (
+    wallClockNow(timeZone, instant).getTime() <
+    visitorBookingEditDeadline(startTime, cutoffHours).getTime()
+  );
 }
 
 export type ReserveSlotResult =
@@ -47,6 +79,23 @@ export type ReserveSlotsResult =
       ok: false;
       error: "slotUnavailable" | "closed" | "slotFull";
       slotId?: string;
+    };
+
+export type UpdateVisitorBookingResult =
+  | {
+      ok: true;
+      booking: Booking;
+      slot: TimeSlot & { bookingEvent: BookingEvent };
+    }
+  | {
+      ok: false;
+      error:
+        | "notFound"
+        | "disabled"
+        | "cutoff"
+        | "closed"
+        | "slotUnavailable"
+        | "slotFull";
     };
 
 export interface SlotBatchInput {
@@ -392,6 +441,164 @@ export async function reserveSlots(
   });
 }
 
+/**
+ * Update one confirmed booking through its private visitor token. The booking,
+ * current slot and requested slot are locked before policy and capacity are
+ * rechecked, so two visitors cannot move into the final opening together.
+ */
+export async function updateVisitorBookingReservation(
+  cancelToken: string,
+  details: VisitorBookingUpdateDetails,
+  instant: Date = new Date()
+): Promise<UpdateVisitorBookingResult> {
+  return prisma.$transaction(async (tx) => {
+    const preflight = await tx.booking.findUnique({
+      where: { cancelToken },
+      select: { timeSlotId: true, status: true }
+    });
+    if (!preflight || preflight.status !== "confirmed") {
+      return { ok: false, error: "notFound" } as const;
+    }
+
+    const orderedSlotIds = Array.from(
+      new Set([preflight.timeSlotId, details.targetSlotId])
+    ).sort();
+    await tx.$queryRaw(
+      Prisma.sql`
+        SELECT id
+        FROM "TimeSlot"
+        WHERE id IN (${Prisma.join(orderedSlotIds)})
+        ORDER BY id
+        FOR UPDATE
+      `
+    );
+
+    // Slot rows are locked before the booking row to match the slot-deletion
+    // path and avoid a booking↔slot lock inversion. Re-read after both locks;
+    // a concurrent edit that moved this booking wins and this request asks the
+    // visitor to refresh instead of applying against a stale schedule.
+    await tx.$queryRaw`
+      SELECT id
+      FROM "Booking"
+      WHERE "cancelToken" = ${cancelToken}
+      FOR UPDATE
+    `;
+    const currentBooking = await tx.booking.findUnique({
+      where: { cancelToken },
+      include: { timeSlot: { include: { bookingEvent: true } } }
+    });
+    if (!currentBooking || currentBooking.status !== "confirmed") {
+      return { ok: false, error: "notFound" } as const;
+    }
+    if (currentBooking.timeSlotId !== preflight.timeSlotId) {
+      return { ok: false, error: "slotUnavailable" } as const;
+    }
+
+    const slots = await tx.timeSlot.findMany({
+      where: { id: { in: orderedSlotIds } },
+      include: { bookingEvent: true }
+    });
+    const currentSlot = slots.find(
+      (slot) => slot.id === currentBooking.timeSlotId
+    );
+    const targetSlot = slots.find((slot) => slot.id === details.targetSlotId);
+    if (
+      !currentSlot ||
+      !targetSlot ||
+      targetSlot.bookingEventId !== currentSlot.bookingEventId
+    ) {
+      return { ok: false, error: "slotUnavailable" } as const;
+    }
+
+    const eventId = currentSlot.bookingEventId;
+    const ownerId = currentSlot.bookingEvent.ownerId;
+    await tx.$queryRaw`
+      SELECT id
+      FROM "BookingEvent"
+      WHERE id = ${eventId}
+      FOR SHARE
+    `;
+    await tx.$queryRaw`
+      SELECT id
+      FROM "User"
+      WHERE id = ${ownerId}
+      FOR SHARE
+    `;
+    await tx.$queryRaw`
+      SELECT id
+      FROM "SiteSettings"
+      WHERE "ownerId" = ${ownerId}
+      FOR SHARE
+    `;
+
+    const [event, owner, settings] = await Promise.all([
+      tx.bookingEvent.findUnique({
+        where: { id: eventId },
+        select: {
+          open: true,
+          visitorEditsEnabled: true,
+          visitorEditCutoffHours: true
+        }
+      }),
+      tx.user.findUnique({
+        where: { id: ownerId },
+        select: { status: true }
+      }),
+      tx.siteSettings.findUnique({
+        where: { ownerId },
+        select: { bookingEnabled: true, timeZone: true }
+      })
+    ]);
+    if (!event || owner?.status !== "active") {
+      return { ok: false, error: "closed" } as const;
+    }
+    if (!event.visitorEditsEnabled) {
+      return { ok: false, error: "disabled" } as const;
+    }
+
+    const timeZone = settings?.timeZone ?? DEFAULT_TIME_ZONE;
+    if (
+      !isVisitorBookingEditWindowOpen(
+        currentSlot.startTime,
+        event.visitorEditCutoffHours,
+        timeZone,
+        instant
+      )
+    ) {
+      return { ok: false, error: "cutoff" } as const;
+    }
+    if (isNaiveDateTimePast(targetSlot.startTime, timeZone, instant)) {
+      return { ok: false, error: "slotUnavailable" } as const;
+    }
+
+    if (targetSlot.id !== currentSlot.id) {
+      if (!event.open || !settings?.bookingEnabled) {
+        return { ok: false, error: "closed" } as const;
+      }
+      const confirmed = await tx.booking.count({
+        where: { timeSlotId: targetSlot.id, status: "confirmed" }
+      });
+      if (confirmed >= targetSlot.capacity) {
+        return { ok: false, error: "slotFull" } as const;
+      }
+    }
+
+    const booking = await tx.booking.update({
+      where: { id: currentBooking.id },
+      data: {
+        timeSlotId: targetSlot.id,
+        name: details.name,
+        subject: details.subject,
+        contactValue: details.contactValue,
+        email: details.email,
+        notes: details.notes
+      }
+    });
+
+    return { ok: true, booking, slot: targetSlot } as const;
+  });
+}
+
 function newToken(): string {
   return randomUUID().replace(/-/g, "");
 }
@@ -582,6 +789,8 @@ export async function splitEvent(
         location: event.location,
         date: earliestSplitDate,
         open: event.open,
+        visitorEditsEnabled: event.visitorEditsEnabled,
+        visitorEditCutoffHours: event.visitorEditCutoffHours,
         lotteryEnabled: event.lotteryEnabled
       }
     });

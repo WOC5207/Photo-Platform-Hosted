@@ -203,6 +203,10 @@ Use `SectionHeading` for repeated sections:
 - A new event may opt into price display in context. The enable action reveals
   the current versioned responsibility agreement; only affirmative acceptance
   marks the event form ready, and persistence happens atomically with creation.
+- Private booking pages lead with a dated edit-window status. When editing is
+  available, time and visitor details live in one collapsed management panel;
+  the save action is the single accent focal point and cancellation remains a
+  separate destructive action.
 
 ## Motion and Accessibility
 

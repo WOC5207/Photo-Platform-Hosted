@@ -83,6 +83,8 @@ const bookingEventSchema = z
     location: z.string().trim().max(300),
     descriptionEn: z.string().trim().max(5000),
     descriptionZh: z.string().trim().max(5000),
+    visitorEditsEnabled: z.boolean(),
+    visitorEditCutoffHours: z.coerce.number().int().min(0).max(8760),
     open: z.boolean()
   })
   .refine((d) => d.titleEn.length > 0 || d.titleZh.length > 0);
@@ -94,6 +96,8 @@ function parseBookingEventForm(formData: FormData) {
     location: formData.get("location") ?? "",
     descriptionEn: formData.get("descriptionEn") ?? "",
     descriptionZh: formData.get("descriptionZh") ?? "",
+    visitorEditsEnabled: formData.get("visitorEditsEnabled") === "on",
+    visitorEditCutoffHours: formData.get("visitorEditCutoffHours") ?? "",
     open: formData.get("open") === "on"
   });
 }
@@ -141,6 +145,8 @@ export async function createBookingEvent(
         descriptionEn: d.descriptionEn,
         descriptionZh: d.descriptionZh,
         location: d.location,
+        visitorEditsEnabled: d.visitorEditsEnabled,
+        visitorEditCutoffHours: d.visitorEditCutoffHours,
         // `date` is the denormalized earliest day; the days themselves are the
         // source of truth (dates is sorted ascending).
         date: toDate(dates[0]),
@@ -218,6 +224,8 @@ export async function updateBookingEvent(
           descriptionEn: d.descriptionEn,
           descriptionZh: d.descriptionZh,
           location: d.location,
+          visitorEditsEnabled: d.visitorEditsEnabled,
+          visitorEditCutoffHours: d.visitorEditCutoffHours,
           date: toDate(dates[0]),
           open: d.open
         }

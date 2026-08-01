@@ -24,6 +24,8 @@ export interface BookingEventFormValues {
   descriptionEn: string;
   descriptionZh: string;
   open: boolean;
+  visitorEditsEnabled: boolean;
+  visitorEditCutoffHours: number;
 }
 
 const inputCls =
@@ -66,6 +68,9 @@ export default function BookingEventForm({
   const [priceNoticeOpen, setPriceNoticeOpen] = useState(false);
   const [priceNoticeAcknowledged, setPriceNoticeAcknowledged] = useState(false);
   const [priceEnableRequested, setPriceEnableRequested] = useState(false);
+  const [visitorEditsEnabled, setVisitorEditsEnabled] = useState(
+    initial.visitorEditsEnabled
+  );
   const changeVersion = useRef(0);
   const submittedVersion = useRef(0);
   const markDirty = () => {
@@ -321,6 +326,50 @@ export default function BookingEventForm({
           )}
         </section>
       )}
+
+      <section className="rounded-xl border border-border bg-surface p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <input
+            id="visitor-edits-enabled"
+            type="checkbox"
+            name="visitorEditsEnabled"
+            checked={visitorEditsEnabled}
+            onChange={(event) => setVisitorEditsEnabled(event.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0 rounded border-border-strong accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+          />
+          <label htmlFor="visitor-edits-enabled" className="min-w-0">
+            <span className="block font-semibold text-fg">
+              {t("visitorEditsLabel")}
+            </span>
+            <span className="mt-1 block text-sm leading-6 text-fg-subtle">
+              {t("visitorEditsHint")}
+            </span>
+          </label>
+        </div>
+
+        <label className="mt-4 flex max-w-sm flex-col gap-1 text-sm">
+          <span className="text-fg-muted">{t("visitorEditCutoffLabel")}</span>
+          <div className="flex items-center gap-2">
+            <input
+              name="visitorEditCutoffHours"
+              type="number"
+              min={0}
+              max={8760}
+              step={1}
+              required
+              readOnly={!visitorEditsEnabled}
+              defaultValue={initial.visitorEditCutoffHours}
+              className={`${inputCls} w-28 ${
+                visitorEditsEnabled ? "" : "cursor-not-allowed opacity-55"
+              }`}
+            />
+            <span className="text-fg-subtle">{t("hours")}</span>
+          </div>
+          <span className="text-xs text-fg-subtle">
+            {t("visitorEditCutoffHint")}
+          </span>
+        </label>
+      </section>
 
       {showOpenToggle && (
         <label className="flex items-center gap-2 text-sm">
