@@ -183,6 +183,26 @@ Use `SectionHeading` for repeated sections:
 - Editing categories use native `<details>` sections to keep dense forms
   scannable.
 
+### Homepage infinite archive
+
+- Treat the homepage photo stream as a progressively revealed contact sheet,
+  not a finite “recent work” sample: server-render the first 24 public photos
+  and request later batches as the visitor approaches the trailing edge.
+- Preserve album recency and photographer-defined gallery order. When a batch
+  ends inside an album, merge the continuation beneath the existing album
+  heading without repeating the heading or any photograph.
+- Keep photographs as the focal point. Loading chrome stays below the current
+  contact sheet and uses the indexed `font-meta` marker plus muted operational
+  text; it must not compete with album titles or imagery.
+- Automatic loading must retain a native 44px manual “load more” fallback,
+  explicit loading and retry states, an `aria-live` count announcement, and a
+  quiet bilingual archive-end marker that stacks cleanly on narrow screens.
+- Transport data in bounded pages and apply the central public-photo predicate
+  to every batch. Infinite discovery must never weaken moderation, publication,
+  or tenant boundaries.
+- Do not create continuous movement, repeat photographs to fill space, or
+  replace the contact sheet with generic equal-sized cards.
+
 ### Upload wizard
 
 - The current step uses the safelight accent and an active rail.
