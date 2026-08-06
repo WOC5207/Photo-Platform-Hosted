@@ -6,6 +6,9 @@ import { spinForEntry, uniqueEntryToken } from "../src/lib/lottery";
 import { registrationNoticeHash } from "../src/lib/registrationNotice";
 import { setPassword } from "../src/lib/password";
 import bcrypt from "bcryptjs";
+import { getHomePhotoStreamPage } from "../src/lib/homePhotoStream";
+import { mergeStreamEvents } from "../src/lib/homePhotoStreamMerge";
+import type { StreamEvent } from "../src/lib/homePhotoStreamTypes";
 
 const prisma = new PrismaClient();
 
@@ -273,11 +276,112 @@ async function testPasswordRevokesOldSessions() {
   }
 }
 
+async function testHomePhotoStreamPagination() {
+  const suffix = randomUUID().slice(0, 8);
+  const owner = await prisma.user.create({
+    data: {
+      username: `home-stream-owner-${suffix}`,
+      passwordHash: "test-only-password-hash"
+    }
+  });
+
+  try {
+    const [newerEvent, olderEvent, privateEvent] = await Promise.all([
+      prisma.event.create({
+        data: {
+          ownerId: owner.id,
+          slug: `newer-${suffix}`,
+          titleEn: "Newer album",
+          titleZh: "较新的相册",
+          published: true,
+          dateStart: new Date("2026-07-02T00:00:00.000Z")
+        }
+      }),
+      prisma.event.create({
+        data: {
+          ownerId: owner.id,
+          slug: `older-${suffix}`,
+          titleEn: "Older album",
+          titleZh: "较早的相册",
+          published: true,
+          dateStart: new Date("2026-07-01T00:00:00.000Z")
+        }
+      }),
+      prisma.event.create({
+        data: {
+          ownerId: owner.id,
+          slug: `private-${suffix}`,
+          titleEn: "Private album",
+          titleZh: "未公开相册",
+          published: false
+        }
+      })
+    ]);
+
+    const photoData = (eventId: string, prefix: string, count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        eventId,
+        filename: `${prefix}-${index}.jpg`,
+        originalName: `${prefix}-${index}.jpg`,
+        width: 1200,
+        height: 800,
+        sortOrder: index
+      }));
+
+    await prisma.photo.createMany({
+      data: [
+        ...photoData(newerEvent.id, "newer", 16),
+        ...photoData(olderEvent.id, "older", 15),
+        ...photoData(privateEvent.id, "private", 1),
+        {
+          ...photoData(newerEvent.id, "held", 1)[0],
+          moderationStatus: "queued"
+        }
+      ]
+    });
+
+    let cursor: string | null = null;
+    let merged: StreamEvent[] = [];
+    let pages = 0;
+    do {
+      const page = await getHomePhotoStreamPage({
+        ownerId: owner.id,
+        locale: "en",
+        cursor,
+        pageSize: 7
+      });
+      merged = mergeStreamEvents(merged, page.events);
+      cursor = page.nextCursor;
+      pages += 1;
+    } while (cursor);
+
+    const photoIds = merged.flatMap((event) =>
+      event.photos.map((photo) => photo.id)
+    );
+    assert.equal(pages, 5, "31 public photos should require five seven-photo pages");
+    assert.equal(merged.length, 2, "album continuations must merge into two sections");
+    assert.equal(photoIds.length, 31, "every public photo should eventually load");
+    assert.equal(new Set(photoIds).size, 31, "cursor pages must not duplicate photos");
+    assert.deepEqual(
+      merged.map((event) => [event.title, event.photos.length]),
+      [
+        ["Newer album", 16],
+        ["Older album", 15]
+      ],
+      "the stream should preserve album recency and gallery order"
+    );
+    console.log("PASS  homepage stream paginates every public photo without duplicates");
+  } finally {
+    await prisma.user.delete({ where: { id: owner.id } }).catch(() => undefined);
+  }
+}
+
 async function main() {
   await testRegistrationConsent();
   await testLotteryAvailability();
   await testHomePhotoWeightDefault();
   await testPasswordRevokesOldSessions();
+  await testHomePhotoStreamPagination();
   await prisma.$disconnect();
 }
 
