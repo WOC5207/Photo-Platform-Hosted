@@ -15,9 +15,7 @@ import {
   resolveSubjectTerm,
   resolveHomeCreditsLabel
 } from "@/lib/settings";
-import EventPhotoStream, {
-  type StreamEvent
-} from "@/components/EventPhotoStream";
+import EventPhotoStream from "@/components/EventPhotoStream";
 import HomeHighlightsPanel, {
   type HighlightEventGroup,
   type HighlightAnnouncement
@@ -32,6 +30,7 @@ import PersonalLinksList, {
 } from "@/components/PersonalLinksList";
 import { wallClockNow } from "@/lib/timeZone";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
+import { getHomePhotoStreamPage } from "@/lib/homePhotoStream";
 
 // Reads site settings + published events from the DB at request time (the
 // DB isn't available during the Docker build), like the other public pages.
@@ -63,7 +62,7 @@ export default async function HomePage({
   const bookingNow = wallClockNow(settings.timeZone);
 
   const [
-    events,
+    streamPage,
     highlightSourceEvents,
     bookingEvents,
     personalLinks,
@@ -72,23 +71,7 @@ export default async function HomePage({
     albumCount,
     creditedNames
   ] = await Promise.all([
-    prisma.event.findMany({
-      where: {
-        ownerId: owner.id,
-        published: true,
-        photos: { some: publicPhotoWhere }
-      },
-      orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
-      take: 6,
-      include: {
-        photos: {
-          where: publicPhotoWhere,
-          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-          take: 24,
-          include: { credits: { orderBy: { sortOrder: "asc" } } }
-        }
-      }
-    }),
+    getHomePhotoStreamPage({ ownerId: owner.id, locale }),
     prisma.event.findMany({
       where: {
         ownerId: owner.id,
@@ -159,8 +142,8 @@ export default async function HomePage({
     })
   ]);
 
-  // Counts remain complete even though recent work is deliberately bounded for
-  // photographers with large portfolios.
+  // Counts remain complete while the photo stream transports large portfolios
+  // in bounded pages instead of making the initial homepage response unbounded.
   const siteStats = {
     photoCount,
     albumCount,
@@ -187,22 +170,7 @@ export default async function HomePage({
     url: l.url
   }));
 
-  const streamEvents: StreamEvent[] = events
-    .filter((e) => e.photos.length > 0)
-    .map((e) => ({
-      slug: e.slug,
-      title: pickText(locale, e.titleEn, e.titleZh),
-      date: formatDateRange(e.dateStart, e.dateEnd) || null,
-      location: e.location,
-      photos: e.photos.map((p) => ({
-        id: p.id,
-        url: photoUrls(e.id, p.id).med,
-        alt: formatCredits(p.credits),
-        width: p.width,
-        height: p.height,
-        homeWeight: p.homeWeight
-      }))
-    }));
+  const streamEvents = streamPage.events;
 
   // The highlights panel only shows events that have at least one photo the
   // admin explicitly marked for it (Photo.homeHighlight, toggled per photo
@@ -306,8 +274,19 @@ export default async function HomePage({
             </div>
             <EventPhotoStream
               basePath={base}
+              ownerUsername={owner.username}
+              locale={locale}
               events={streamEvents}
-              openPhotoLabel={tg("openPhoto")}
+              nextCursor={streamPage.nextCursor}
+              labels={{
+                openPhoto: tg("openPhoto"),
+                loadMore: t("streamLoadMore"),
+                loading: t("streamLoading"),
+                loadError: t("streamLoadError"),
+                retry: t("streamRetry"),
+                end: t("streamEnd"),
+                loaded: t("streamLoaded", { count: "{count}" })
+              }}
             />
           </section>
         )}
