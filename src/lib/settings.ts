@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { pickText } from "@/lib/content";
+import { safeExternalHttpUrl } from "@/lib/externalUrl";
 
 export interface SiteSettings {
   id: string;
@@ -202,7 +203,9 @@ export function resolveContactTitle(
  * that locale.
  */
 export function resolveContactUrl(settings: SiteSettings, locale: string): string {
-  return locale === "zh" ? settings.contactUrlZh : settings.contactUrlEn;
+  return safeExternalHttpUrl(
+    locale === "zh" ? settings.contactUrlZh : settings.contactUrlEn
+  );
 }
 
 /** Same as resolveContactUrl, for the QR code image token. */
@@ -212,10 +215,13 @@ export function resolveContactQrToken(settings: SiteSettings, locale: string): s
 
 /** One owner's links to their other sites/profiles. */
 export const getPersonalLinks = cache(async (ownerId: string) => {
-  return prisma.personalLink.findMany({
+  const links = await prisma.personalLink.findMany({
     where: { ownerId },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
   });
+  return links
+    .map((link) => ({ ...link, url: safeExternalHttpUrl(link.url) }))
+    .filter((link) => link.url !== "");
 });
 
 /** One owner's notices, shown in their homepage panel's Announcements tab. */

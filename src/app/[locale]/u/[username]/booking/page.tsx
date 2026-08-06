@@ -7,6 +7,7 @@ import { formatDate, formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { getSiteSettings } from "@/lib/settings";
 import { wallClockNow } from "@/lib/timeZone";
+import EventLocalTimeNotice from "@/components/booking/EventLocalTimeNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -49,9 +50,9 @@ export default async function BookingListPage({
   return (
     <div className="flex flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
       <h1 className="font-display text-4xl font-semibold tracking-[-0.04em]">{t("listTitle")}</h1>
-      <p className="-mt-4 text-xs text-fg-subtle">
-        {t("timeZoneNotice", { timeZone: settings.timeZone })}
-      </p>
+      <EventLocalTimeNotice marker={t("eventLocalTimeMarker")}>
+        {t("eventLocalTimeNotice")}
+      </EventLocalTimeNotice>
 
       {events.length === 0 ? (
         <p className="py-16 text-center text-fg-subtle">{t("listEmpty")}</p>

@@ -102,6 +102,7 @@ export default function BookingForm({
   const selectedSlots = selectedSlotIds
     .map((id) => slotById.get(id))
     .filter((slot): slot is CartSlot => Boolean(slot));
+  const cartAtLimit = selectedSlotIds.length >= 20;
 
   function selectDay(index: number, focus = false) {
     const day = days[index];
@@ -280,7 +281,7 @@ export default function BookingForm({
                       onClick={() => setActiveDayId(day.id)}
                       onKeyDown={(event) => handleTabKeyDown(event, index)}
                       className={[
-                        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11",
+                        "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 max-sm:min-h-11",
                         selected
                           ? "border-accent bg-accent text-accent-fg"
                           : "border-border-strong bg-raised text-fg-muted hover:border-accent/30 hover:text-fg"
@@ -356,8 +357,13 @@ export default function BookingForm({
                       </div>
                       <button
                         type="button"
-                        disabled={full || pending}
+                        disabled={full || pending || (cartAtLimit && !selected)}
                         aria-pressed={selected}
+                        aria-describedby={
+                          cartAtLimit && !selected
+                            ? "booking-cart-limit"
+                            : undefined
+                        }
                         onClick={() => toggleSlot(slot.id)}
                         className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:cursor-not-allowed disabled:opacity-50 ${
                           selected
@@ -379,7 +385,18 @@ export default function BookingForm({
               <p className="text-sm font-semibold">
                 {t("cartCount", { count: selectedSlotIds.length })}
               </p>
-              <p className="text-xs text-fg-subtle">{t("cartHint")}</p>
+              <p
+                id={cartAtLimit ? "booking-cart-limit" : undefined}
+                role={cartAtLimit ? "status" : undefined}
+                aria-live={cartAtLimit ? "polite" : undefined}
+                className={`text-xs ${
+                  cartAtLimit ? "font-semibold text-warning" : "text-fg-subtle"
+                }`}
+              >
+                {cartAtLimit
+                  ? t("cartLimitReached", { count: 20 })
+                  : t("cartHint")}
+              </p>
             </div>
             <button
               type="button"

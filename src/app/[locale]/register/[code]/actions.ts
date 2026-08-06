@@ -3,13 +3,17 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getLocale } from "next-intl/server";
-import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { clientIp } from "@/lib/clientIp";
 import { redeemInvite } from "@/lib/invite";
 import { usernameError } from "@/lib/username";
 import { rateLimit } from "@/lib/rate-limit";
+import {
+  hashPassword,
+  PASSWORD_MAX_LENGTH,
+  passwordFitsHashLimit
+} from "@/lib/password";
 
 export type RegisterState = {
   error?:
@@ -28,8 +32,16 @@ export type RegisterState = {
 const registerSchema = z.object({
   username: z.string().trim().min(1).max(40),
   displayName: z.string().trim().max(80),
-  password: z.string().min(8).max(500),
-  confirmPassword: z.string().min(1).max(500)
+  password: z
+    .string()
+    .min(8)
+    .max(PASSWORD_MAX_LENGTH)
+    .refine(passwordFitsHashLimit),
+  confirmPassword: z
+    .string()
+    .min(1)
+    .max(PASSWORD_MAX_LENGTH)
+    .refine(passwordFitsHashLimit)
 });
 
 export async function register(
@@ -61,7 +73,7 @@ export async function register(
   if (nameProblem === "invalid") return { error: "usernameInvalid" };
   if (nameProblem === "reserved") return { error: "usernameReserved" };
 
-  const passwordHash = await bcrypt.hash(d.password, 12);
+  const passwordHash = await hashPassword(d.password);
 
   // Locked and atomic; see redeemInvite for why.
   const locale = await getLocale();
@@ -89,6 +101,7 @@ export async function register(
   // Straight into their dashboard — the setup wizard takes it from here.
   const session = await getSession();
   session.userId = result.user.id;
+  session.credentialVersion = result.user.credentialVersion;
   await session.save();
 
   redirect(`/${locale}/dashboard`);

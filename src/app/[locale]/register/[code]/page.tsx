@@ -12,6 +12,7 @@ import RegistrationGate from "./RegistrationGate";
 // Reads the invite and the session cookie — never prerender.
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
+  referrer: "no-referrer",
   robots: {
     index: false,
     follow: false
@@ -70,6 +71,7 @@ export default async function RegisterPage({
           displayName: t("displayName"),
           displayNameHint: t("displayNameHint"),
           password: t("password"),
+          passwordHint: t("passwordHint"),
           confirmPassword: t("confirmPassword"),
           submit: t("submit"),
           errorValidation: t("errorValidation"),
@@ -102,7 +104,7 @@ export default async function RegisterPage({
     ) || t("noticeDefaultBody");
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col justify-center gap-6 px-4 py-10">
+    <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col justify-center gap-6 px-4 py-10">
       <div className="absolute right-4 top-4">
         <LanguageSwitcher />
       </div>
@@ -132,6 +134,6 @@ export default async function RegisterPage({
           registrationForm
         )
       )}
-    </div>
+    </main>
   );
 }

@@ -482,7 +482,7 @@ export default function SiteSettingsForm({
                 </p>
               </div>
               <div
-                role="tablist"
+                role="group"
                 aria-label={t("paletteModeLabel")}
                 className="grid w-full grid-cols-2 rounded-lg border border-border bg-control p-1 sm:w-auto"
               >
@@ -492,8 +492,7 @@ export default function SiteSettingsForm({
                     <button
                       key={mode}
                       type="button"
-                      role="tab"
-                      aria-selected={selected}
+                      aria-pressed={selected}
                       onClick={() => setActivePaletteMode(mode)}
                       className={`min-h-10 rounded-md px-4 text-sm font-semibold transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
                         selected
@@ -973,24 +972,32 @@ export default function SiteSettingsForm({
               )}
             </div>
 
-            <label className="flex max-w-xl flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("timeZoneLabel")}</span>
-              <select
-                form={FORM_ID}
-                name="timeZone"
-                defaultValue={initial.timeZone}
-                className={inputCls}
-              >
-                {timeZones.map((zone) => (
-                  <option key={zone} value={zone}>
-                    {zone}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs text-fg-subtle">
-                {t("timeZoneHint")}
-              </span>
-            </label>
+            <details className="max-w-xl rounded-xl border border-border bg-page/60 p-4">
+              <summary className="min-h-10 cursor-pointer font-semibold text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
+                {t("timingReferenceTitle")}
+              </summary>
+              <p className="mt-2 text-sm leading-6 text-fg-subtle">
+                {t("timingReferenceHint")}
+              </p>
+              <label className="mt-4 flex flex-col gap-1 text-sm">
+                <span className="text-fg-muted">{t("timeZoneLabel")}</span>
+                <select
+                  form={FORM_ID}
+                  name="timeZone"
+                  defaultValue={initial.timeZone}
+                  className={inputCls}
+                >
+                  {timeZones.map((zone) => (
+                    <option key={zone} value={zone}>
+                      {zone}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-fg-subtle">
+                  {t("timeZoneHint")}
+                </span>
+              </label>
+            </details>
 
             <div className="ml-2 rounded-r-xl border-l-2 border-border-strong bg-page/60 p-4 sm:ml-4">
               <h3 className="text-base font-semibold">{t("groupLotteryTitle")}</h3>

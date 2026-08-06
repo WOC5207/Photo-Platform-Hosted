@@ -98,13 +98,13 @@ export default async function SiteChrome({
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
           <Link
             href={base}
-            className="font-display flex min-h-11 items-center gap-3 text-xl font-semibold tracking-[-0.025em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            className="font-display flex min-h-11 min-w-0 flex-1 items-center gap-3 text-xl font-semibold tracking-[-0.025em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:flex-none"
           >
             {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoUrl} alt="" className="h-8 w-auto" />
             )}
-            {siteTitle}
+            <span className="truncate">{siteTitle}</span>
           </Link>
           <nav className="hidden items-center gap-1 text-sm sm:flex">
             <Link

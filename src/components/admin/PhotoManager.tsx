@@ -19,7 +19,8 @@ import {
   updateHomeWeight,
   type HomeWeightFormState,
   updatePhotoCredits,
-  updatePhotoExif
+  updatePhotoExif,
+  type PhotoExifFormState
 } from "@/app/[locale]/dashboard/(protected)/events/actions";
 import SocialLinksEditor, {
   emptySocialLink,
@@ -286,13 +287,21 @@ function ExifForm({
   const t = useTranslations("adminEvents");
   const tc = useTranslations("common");
   const [dirty, setDirty] = useState(false);
+  const [state, action, pending] = useActionState<
+    PhotoExifFormState,
+    FormData
+  >(updatePhotoExif, {});
   useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
+
+  useEffect(() => {
+    if (state.status === "saved") setDirty(false);
+  }, [state]);
 
   return (
     <form
-      action={updatePhotoExif}
+      action={action}
       onChange={() => setDirty(true)}
-      onSubmit={() => setDirty(false)}
+      aria-busy={pending}
       className="flex flex-col gap-1 rounded-md border border-border-strong/40 p-1.5"
     >
       <input type="hidden" name="photoId" value={photoId} />
@@ -326,9 +335,26 @@ function ExifForm({
           />
         </label>
       </div>
-      <button type="submit" disabled={!dirty} className={`${btnCls} mt-2 self-start`}>
+      <button
+        type="submit"
+        disabled={pending || !dirty}
+        className={`${buttonClasses({
+          variant: dirty ? "primary" : "secondary",
+          size: "compact"
+        })} mt-2 self-start`}
+      >
         {tc("save")}
       </button>
+      {state.status === "saved" && !dirty && (
+        <p role="status" className="text-xs font-medium text-success">
+          {tc("saved")}
+        </p>
+      )}
+      {state.status === "error" && (
+        <p role="alert" className="text-xs font-medium text-danger">
+          {tc("error")}
+        </p>
+      )}
     </form>
   );
 }

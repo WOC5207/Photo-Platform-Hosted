@@ -43,7 +43,17 @@ export async function setUserStatus(formData: FormData): Promise<void> {
   // unadministrable, and nothing else can undo it.
   if (id === admin.id) return;
 
-  await prisma.user.update({ where: { id }, data: { status } }).catch(() => {});
+  await prisma.user
+    .updateMany({
+      where: { id, status: { not: status } },
+      data: {
+        status,
+        ...(status === "suspended"
+          ? { credentialVersion: { increment: 1 } }
+          : {})
+      }
+    })
+    .catch(() => {});
   revalidatePath("/", "layout");
 }
 
@@ -187,10 +197,8 @@ export type ResetPasswordState = {
  * to invent a password for someone else. It also means the admin's knowledge of
  * it is momentary rather than a value they picked and might reuse.
  *
- * Deliberately does NOT touch the account's session: the point is usually that
- * someone is locked out, and there is no reason to eject them if they happen to
- * still be signed in elsewhere. Suspend the account if that is the intent —
- * that is what suspend is for.
+ * Changing a credential increments its version, invalidating every previously
+ * issued browser session. The recipient must sign in with the generated value.
  */
 export async function resetUserPassword(
   _prev: ResetPasswordState,
@@ -379,6 +387,8 @@ const inviteSchema = z.object({
   note: z.string().trim().max(200)
 });
 
+const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+
 export async function createInvite(
   _prev: InviteState,
   formData: FormData
@@ -392,7 +402,8 @@ export async function createInvite(
       // The code IS the URL — it has to be unguessable, not merely unique.
       code: randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, ""),
       issuedById: admin.id,
-      note: parsed.data.note
+      note: parsed.data.note,
+      expiresAt: new Date(Date.now() + INVITE_LIFETIME_MS)
     }
   });
   revalidatePath("/", "layout");

@@ -247,7 +247,7 @@ function CredentialsStep({
           type="password"
           autoComplete="current-password"
           required
-          maxLength={500}
+          maxLength={72}
           className={inputCls}
         />
       </label>
@@ -259,7 +259,7 @@ function CredentialsStep({
           autoComplete="new-password"
           required
           minLength={8}
-          maxLength={500}
+          maxLength={72}
           className={inputCls}
         />
       </label>
@@ -271,7 +271,7 @@ function CredentialsStep({
           autoComplete="new-password"
           required
           minLength={8}
-          maxLength={500}
+          maxLength={72}
           className={inputCls}
         />
       </label>

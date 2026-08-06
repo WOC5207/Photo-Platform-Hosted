@@ -4,6 +4,8 @@ import { PrismaClient } from "@prisma/client";
 import { redeemInvite } from "../src/lib/invite";
 import { spinForEntry, uniqueEntryToken } from "../src/lib/lottery";
 import { registrationNoticeHash } from "../src/lib/registrationNotice";
+import { setPassword } from "../src/lib/password";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -245,10 +247,37 @@ async function testHomePhotoWeightDefault() {
   }
 }
 
+async function testPasswordRevokesOldSessions() {
+  const suffix = randomUUID().slice(0, 8);
+  const owner = await prisma.user.create({
+    data: {
+      username: `credential-version-${suffix}`,
+      passwordHash: await bcrypt.hash("old-password", 4)
+    }
+  });
+  try {
+    assert.equal(owner.credentialVersion, 0);
+    const credentialVersion = await setPassword(owner.id, "new-password");
+    const changed = await prisma.user.findUniqueOrThrow({ where: { id: owner.id } });
+    assert.equal(credentialVersion, 1);
+    assert.equal(changed.credentialVersion, 1);
+    assert.equal(await bcrypt.compare("new-password", changed.passwordHash), true);
+    assert.notEqual(
+      owner.credentialVersion,
+      changed.credentialVersion,
+      "sessions issued before the password change must no longer match"
+    );
+    console.log("PASS  password changes advance the browser-session credential version");
+  } finally {
+    await prisma.user.delete({ where: { id: owner.id } }).catch(() => undefined);
+  }
+}
+
 async function main() {
   await testRegistrationConsent();
   await testLotteryAvailability();
   await testHomePhotoWeightDefault();
+  await testPasswordRevokesOldSessions();
   await prisma.$disconnect();
 }
 

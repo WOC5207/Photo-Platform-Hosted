@@ -34,6 +34,7 @@ export default function MobileNav({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -43,7 +44,11 @@ export default function MobileNav({
       }
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     }
     document.addEventListener("click", onClickAway);
     window.addEventListener("keydown", onKey);
@@ -54,17 +59,18 @@ export default function MobileNav({
   }, [open]);
 
   const linkClass =
-    "rounded-lg px-3 py-2 text-fg-muted transition hover:bg-fg/5 hover:text-fg";
+    "flex min-h-11 items-center rounded-lg px-3 py-2 text-fg-muted transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
 
   return (
-    <div ref={rootRef} className="relative sm:hidden">
+    <div ref={rootRef} className="relative shrink-0 sm:hidden">
       <button
+        ref={triggerRef}
         type="button"
         aria-label={labels.menu}
         aria-expanded={open}
         aria-controls="public-mobile-navigation"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-11 w-11 items-center justify-center rounded-lg border border-border-strong text-fg-muted transition hover:border-fg-faint hover:text-fg"
+        className="flex h-11 w-11 items-center justify-center rounded-lg border border-border-strong text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
       >
         <svg
           viewBox="0 0 24 24"
@@ -77,7 +83,11 @@ export default function MobileNav({
         </svg>
       </button>
       {open && (
-        <div id="public-mobile-navigation" className="absolute right-0 top-full z-50 mt-2 flex w-48 flex-col gap-1 rounded-xl border border-fg/10 bg-page/95 p-2 text-sm shadow-2xl backdrop-blur-xl">
+        <nav
+          id="public-mobile-navigation"
+          aria-label={labels.menu}
+          className="absolute right-0 top-full z-50 mt-2 flex w-52 flex-col gap-1 rounded-xl border border-border bg-raised/95 p-2 text-sm shadow-xl backdrop-blur-xl"
+        >
           <Link href={`${basePath}/gallery`} onClick={() => setOpen(false)} className={linkClass}>
             {labels.gallery}
           </Link>
@@ -102,7 +112,7 @@ export default function MobileNav({
             <LanguageSwitcher />
             <ThemeToggle label={labels.toggleTheme} />
           </div>
-        </div>
+        </nav>
       )}
     </div>
   );

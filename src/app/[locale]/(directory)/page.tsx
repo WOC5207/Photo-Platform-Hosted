@@ -87,7 +87,7 @@ export default async function DirectoryPage() {
   );
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col gap-10 px-4 py-7 sm:px-7 sm:py-10 lg:py-14">
+    <main className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col gap-10 px-4 py-7 sm:px-7 sm:py-10 lg:py-14">
       <header className="flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex max-w-3xl gap-4">
           <span aria-hidden="true" className="font-meta mt-2 text-[0.6875rem] font-semibold tracking-[0.18em] text-accent">
@@ -127,6 +127,6 @@ export default async function DirectoryPage() {
       ) : (
         <DirectorySearch owners={cards} />
       )}
-    </div>
+    </main>
   );
 }

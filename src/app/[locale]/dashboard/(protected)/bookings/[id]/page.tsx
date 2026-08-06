@@ -157,6 +157,7 @@ export default async function EditBookingEventPage({
         <h2 className="text-lg font-semibold">{t("slots")}</h2>
 
         <BookingDayTabs
+          label={t("daysLabel")}
           tabs={event.days.map(
             (day): DayTab => ({
               id: day.id,
@@ -182,7 +183,7 @@ export default async function EditBookingEventPage({
                             className="rounded-xl border border-border bg-surface p-4"
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="font-mono text-sm font-semibold">
+                              <p className="font-meta text-sm font-semibold">
                                 {formatSlotRange(slot.startTime, slot.endTime)}
                                 <span className="ml-3 font-sans font-normal text-fg-subtle">
                                   {t("booked", {
@@ -267,7 +268,6 @@ export default async function EditBookingEventPage({
 
                   <SlotAdder
                     bookingDayId={day.id}
-                    timeZone={settings.timeZone}
                     allowMultiDaySync={allowMultiDaySlotSync}
                     priceEnabled={settings.bookingPriceEnabled}
                   />

@@ -9,6 +9,7 @@ import {
   visitorBookingEditDeadline
 } from "@/lib/booking";
 import { wallClockNow } from "@/lib/timeZone";
+import EventLocalTimeNotice from "@/components/booking/EventLocalTimeNotice";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import MyBookingDraw from "@/components/booking/MyBookingDraw";
 import EditBookingForm from "@/components/booking/EditBookingForm";
@@ -154,6 +155,10 @@ export default async function MyBookingPage({
         </p>
       )}
 
+      <EventLocalTimeNotice marker={t("eventLocalTimeMarker")}>
+        {t("eventLocalTimeNotice")}
+      </EventLocalTimeNotice>
+
       <dl className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-5 text-sm">
         <Row label={t("eventLabel")}>
           {pickText(locale, event.titleEn, event.titleZh)}
@@ -162,9 +167,6 @@ export default async function MyBookingPage({
         <Row label={t("timeLabel")}>
           <span className="font-mono">
             {formatSlotRange(booking.timeSlot.startTime, booking.timeSlot.endTime)}
-          </span>
-          <span className="ml-2 text-xs text-fg-subtle">
-            ({settings.timeZone})
           </span>
         </Row>
         {settings.bookingPriceEnabled && booking.timeSlot.pricePerPerson && (
@@ -202,8 +204,7 @@ export default async function MyBookingPage({
               {event.visitorEditsEnabled
                 ? editWindowOpen
                   ? t("editWindowOpenHint", {
-                      deadline: editDeadlineLabel,
-                      timeZone: settings.timeZone
+                      deadline: editDeadlineLabel
                     })
                   : t("editWindowClosedHint", {
                       hours: event.visitorEditCutoffHours

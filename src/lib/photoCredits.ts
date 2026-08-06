@@ -1,19 +1,11 @@
 import "server-only";
 import { prisma } from "./db";
+import { isSafeExternalHttpUrl } from "./externalUrl";
 
 export interface CreditInput {
   creditName: string;
   subject: string;
   socialLinks: { platform: string; url: string }[];
-}
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const u = new URL(value);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 function sanitizeSocialLinks(rawLinks: unknown): { platform: string; url: string }[] {
@@ -24,7 +16,7 @@ function sanitizeSocialLinks(rawLinks: unknown): { platform: string; url: string
       const link = l as Record<string, unknown>;
       const platform = String(link.platform ?? "").trim().slice(0, 60);
       const url = String(link.url ?? "").trim().slice(0, 500);
-      if (!platform || !url || !isHttpUrl(url)) return null;
+      if (!platform || !url || !isSafeExternalHttpUrl(url)) return null;
       return { platform, url };
     })
     .filter((l): l is { platform: string; url: string } => l !== null)

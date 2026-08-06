@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
 import { prisma } from "./db";
 import { config } from "./config";
+import { hashPassword, passwordFitsHashLimit } from "./password";
 
 /**
  * The cookie carries identity and nothing else.
@@ -18,6 +19,7 @@ import { config } from "./config";
  */
 export interface SessionData {
   userId?: string;
+  credentialVersion?: number;
 }
 
 export async function getSession(): Promise<IronSession<SessionData>> {
@@ -46,7 +48,13 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
   if (!session.userId) return null;
 
   const user = await prisma.user.findUnique({ where: { id: session.userId } });
-  if (!user || user.status !== "active") return null;
+  if (
+    !user ||
+    user.status !== "active" ||
+    (session.credentialVersion ?? 0) !== user.credentialVersion
+  ) {
+    return null;
+  }
   return user;
 });
 
@@ -111,7 +119,7 @@ export async function ensureOwnerSeeded(): Promise<void> {
   await prisma.user.create({
     data: {
       username,
-      passwordHash: await bcrypt.hash(password, 12),
+      passwordHash: await hashPassword(password),
       role: "admin"
     }
   });
@@ -133,6 +141,7 @@ export async function verifyCredentials(
     return null;
   }
   if (!(await bcrypt.compare(password, user.passwordHash))) return null;
+  if (!passwordFitsHashLimit(password)) return null;
   if (user.status !== "active") return null;
   return user;
 }

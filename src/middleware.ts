@@ -39,10 +39,13 @@ export default function middleware(req: NextRequest) {
     );
     return NextResponse.redirect(target, 308);
   }
+  if (req.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
   return intlMiddleware(req);
 }
 
 export const config = {
   // Skip API routes, Next internals, and files with an extension
-  matcher: ["/((?!api|_next|.*\\..*).*)"]
+  matcher: ["/api/:path*", "/((?!_next|.*\\..*).*)"]
 };

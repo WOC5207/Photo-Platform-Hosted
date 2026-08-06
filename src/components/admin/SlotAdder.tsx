@@ -7,6 +7,7 @@ import {
   type SlotFormState
 } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
 import Button from "@/components/ui/Button";
+import EventLocalTimeNotice from "@/components/booking/EventLocalTimeNotice";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 const inputCls =
@@ -14,12 +15,10 @@ const inputCls =
 
 export default function SlotAdder({
   bookingDayId,
-  timeZone,
   allowMultiDaySync,
   priceEnabled
 }: {
   bookingDayId: string;
-  timeZone: string;
   allowMultiDaySync: boolean;
   priceEnabled: boolean;
 }) {
@@ -43,9 +42,9 @@ export default function SlotAdder({
       className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4"
     >
       <h3 className="font-semibold">{t("addSlots")}</h3>
-      <p className="-mt-3 text-xs text-fg-subtle">
-        {t("timeZoneNotice", { timeZone })}
-      </p>
+      <EventLocalTimeNotice marker={t("eventLocalTimeMarker")} compact>
+        {t("eventLocalTimeNotice")}
+      </EventLocalTimeNotice>
       <input type="hidden" name="bookingDayId" value={bookingDayId} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <label className="flex flex-col gap-1 text-sm">
