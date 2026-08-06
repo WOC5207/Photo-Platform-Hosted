@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { config } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
+import { safeExternalHttpUrl } from "@/lib/externalUrl";
 import { formatDate } from "@/lib/datetime";
 import { wallClockNow } from "@/lib/timeZone";
 import {
@@ -245,11 +246,13 @@ export async function getPhotographerProfile(
       photos: photoCount,
       credits: creditRows.length
     },
-    personalLinks: owner.personalLinks.map((link) => ({
-      id: link.id,
-      label: localized(link.labelEn, link.labelZh),
-      url: link.url
-    })),
+    personalLinks: owner.personalLinks
+      .map((link) => ({
+        id: link.id,
+        label: localized(link.labelEn, link.labelZh),
+        url: safeExternalHttpUrl(link.url)
+      }))
+      .filter((link) => link.url !== ""),
     announcements: settings.announcementsEnabled
       ? owner.announcements.map((announcement) => ({
           id: announcement.id,

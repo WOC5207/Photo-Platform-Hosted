@@ -1019,6 +1019,11 @@ test.describe.serial("management workflows", () => {
     const day2 = isoDay(12);
 
     await page.goto("/en/dashboard/bookings/new");
+    await expect(
+      page.getByText(
+        "Enter every date and time in the event's local time. The platform does not convert time zones."
+      )
+    ).toBeVisible();
     await page.getByLabel("Title (English)").fill(title);
 
     // Calendar day-picker: advance to next month, then pick two specific days.
@@ -1077,6 +1082,11 @@ test.describe.serial("management workflows", () => {
       // Public page: add a slot from each day without losing the first
       // selection, then enter shared details once on the review step.
       await page.goto(`/en/book/${event.token}`);
+      await expect(
+        page.getByText(
+          "All dates and times shown here follow the event's local time. They are not converted to your device's time zone."
+        )
+      ).toBeVisible();
       const publicDayTabs = page
         .getByRole("tablist", { name: "Choose a day" })
         .getByRole("tab");

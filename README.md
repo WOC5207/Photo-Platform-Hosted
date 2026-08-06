@@ -138,16 +138,18 @@ unselected master.
 
 Photo moderation is off by default. When enabled by a platform administrator,
 the first moderation request is made only after **Publish** commits. New photos
-stay private while the metadata-free 1280px WebP rendition is screened; safe
-photos become public automatically and flagged photos wait for manual review.
-Existing photos are not scanned retroactively.
+stay private while a metadata-free 1280px WebP rendition is sent to OpenAI for
+automated risk screening; originals, EXIF, storage paths, and public image URLs
+are not sent. Safe photos become public automatically and flagged photos wait
+for manual review. Existing photos are not scanned retroactively. Include this
+third-party processing in your public privacy notice and retention policy.
 
 `DATABASE_URL` is **not** in `.env` — `docker-compose.yml` sets it for you, to
 point at the database container.
 
-To generate good secrets, SSH into the NAS (or use any terminal) and run
-`openssl rand -base64 32` — once for `SESSION_SECRET`, once for
-`POSTGRES_PASSWORD`.
+To generate good secrets, use `openssl rand -base64 32` for `SESSION_SECRET`
+and `openssl rand -hex 32` for `POSTGRES_PASSWORD`. Hex avoids URL-reserved
+characters in the database connection string.
 
 > **`POSTGRES_PASSWORD` is only read the first time the database starts.**
 > Postgres bakes it in when it initialises `./data/pg`. Changing it in `.env`
@@ -198,7 +200,10 @@ service needs this; Postgres pulls its own official image.)
 
 ### 4. First run
 
-1. Visit `http://<NAS-IP>:3000/en/login` (or `/zh/login`).
+1. Complete the HTTPS reverse-proxy setup in [step 6](#6-https-via-dsm-reverse-proxy),
+   then visit `https://<your-domain>/en/login` (or `/zh/login`). Production
+   session cookies require HTTPS; a plain `http://<NAS-IP>:3000` login cannot
+   keep you signed in and the app port is intentionally bound to NAS loopback.
 2. Log in with `ADMIN_USERNAME` / `ADMIN_PASSWORD` — this first login creates
    your account.
 3. You land directly in the dashboard. Open the profile menu and choose
@@ -246,8 +251,9 @@ public URL (`APP_BASE_URL`).
    Container Manager select the project → **Action → Build/Recreate** so the
    new value is picked up.
 
-Only port 3000 is published, and only the app publishes it — the database is
-reachable only from the app, over the compose network. **Never forward port
+Only port 3000 is published on NAS loopback for DSM's reverse proxy, and only
+the app publishes it — the database is reachable only from the app, over the
+compose network. **Never forward port
 3000 from your router**; DSM's reverse proxy is the front door.
 
 Don't have a domain pointed at the NAS yet, or unsure how DDNS, port

@@ -1,4 +1,5 @@
 import "server-only";
+import { isIP } from "node:net";
 import { config } from "./config";
 
 /**
@@ -14,5 +15,8 @@ export function clientIp(headers: Headers): string {
     .filter(Boolean);
   if (!forwarded?.length) return "unknown";
   const index = Math.max(0, forwarded.length - config.trustedProxyHops());
-  return forwarded[index] ?? "unknown";
+  const candidate = forwarded[index];
+  return candidate && candidate.length <= 64 && isIP(candidate)
+    ? candidate
+    : "unknown";
 }

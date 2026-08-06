@@ -4,13 +4,14 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth";
+import { getSession, requireUser } from "@/lib/auth";
 import { clientIp } from "@/lib/clientIp";
 import { prisma } from "@/lib/db";
 import {
   changeOwnPassword,
   PASSWORD_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH
+  PASSWORD_MIN_LENGTH,
+  passwordFitsHashLimit
 } from "@/lib/password";
 import { rateLimit } from "@/lib/rate-limit";
 
@@ -58,9 +59,21 @@ export type ChangePasswordState = {
 };
 
 const schema = z.object({
-  currentPassword: z.string().min(1).max(PASSWORD_MAX_LENGTH),
-  newPassword: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
-  confirmPassword: z.string().min(1).max(PASSWORD_MAX_LENGTH)
+  currentPassword: z
+    .string()
+    .min(1)
+    .max(PASSWORD_MAX_LENGTH)
+    .refine(passwordFitsHashLimit),
+  newPassword: z
+    .string()
+    .min(PASSWORD_MIN_LENGTH)
+    .max(PASSWORD_MAX_LENGTH)
+    .refine(passwordFitsHashLimit),
+  confirmPassword: z
+    .string()
+    .min(1)
+    .max(PASSWORD_MAX_LENGTH)
+    .refine(passwordFitsHashLimit)
 });
 
 /**
@@ -96,11 +109,20 @@ export async function changePassword(
   const d = parsed.data;
   if (d.newPassword !== d.confirmPassword) return { error: "mismatch" };
 
-  if (!(await changeOwnPassword(user.id, d.currentPassword, d.newPassword))) {
+  const credentialVersion = await changeOwnPassword(
+    user.id,
+    d.currentPassword,
+    d.newPassword
+  );
+  if (credentialVersion === null) {
     return { error: "wrongCurrent" };
   }
 
-  // The session stays valid on purpose: you are the one who just changed it,
-  // and signing you out of the tab you did it in reads as a failure.
+  // Re-issue this browser at the new version while every other previously
+  // issued cookie becomes invalid on its next request.
+  const session = await getSession();
+  session.userId = user.id;
+  session.credentialVersion = credentialVersion;
+  await session.save();
   return { ok: true };
 }

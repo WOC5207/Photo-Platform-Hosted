@@ -56,7 +56,7 @@ export default function BookingEventSplit({
             <label
               key={day.id}
               className={[
-                "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition max-sm:min-h-11",
+                "inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition max-sm:min-h-11",
                 checked
                   ? "border-fg bg-fg text-page"
                   : "border-border-strong text-fg-muted hover:border-fg-subtle hover:text-fg"

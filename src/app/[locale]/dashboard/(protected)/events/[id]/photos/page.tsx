@@ -14,6 +14,7 @@ import { pickText } from "@/lib/content";
 import { Link } from "@/i18n/navigation";
 import PhotoWizard from "@/components/admin/wizard/PhotoWizard";
 import type { PendingPhotoValue } from "@/components/admin/wizard/usePendingUploadQueue";
+import { getPlatformSettings } from "@/lib/platformSettings";
 
 export default async function AddPhotosPage({
   params
@@ -27,6 +28,7 @@ export default async function AddPhotosPage({
   const locale = await getLocale();
   const user = await requireUser(locale);
   const settings = await getSiteSettings(user.id);
+  const platformSettings = await getPlatformSettings();
   const creditTerm = resolveCreditTerm(settings, locale, tc("creditTerm"));
   const subjectTerm = resolveSubjectTerm(settings, locale, tc("subjectTerm"));
 
@@ -108,6 +110,7 @@ export default async function AddPhotosPage({
         creditProfiles={creditProfiles}
         creditTerm={creditTerm}
         subjectTerm={subjectTerm}
+        moderationEnabled={platformSettings.moderationEnabled}
       />
     </div>
   );

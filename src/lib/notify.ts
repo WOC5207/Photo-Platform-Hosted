@@ -31,7 +31,6 @@ export interface BookingNotification {
   eventTitle: string;
   slotStart: Date;
   slotEnd: Date;
-  timeZone?: string;
   pricePerPerson?: string;
   manageUrl: string; // visitor's cancel/view link
   // The owner's dashboard link for this booking's event — the "View in
@@ -253,7 +252,7 @@ function visitorMessage(
   const lang = langOf(info.locale);
   const s = STRINGS[lang];
   const k = VISITOR_KIND[kind][lang];
-  const slot = bookingSlotLabel(info);
+  const slot = bookingSlotLabel(info, lang);
   const statusText = kind === "cancelled" ? s.cancelled : s.confirmed;
   const statusColor =
     kind === "cancelled" ? STATUS_CANCELLED_COLOR : STATUS_CONFIRMED_COLOR;
@@ -365,9 +364,18 @@ function ownerRows(info: BookingNotification, statusText: string, statusColor: s
   return rows;
 }
 
-function bookingSlotLabel(info: BookingNotification): string {
+function bookingSlotLabel(
+  info: BookingNotification,
+  language: "en" | "zh" | "bilingual" = "bilingual"
+): string {
   const slot = formatSlotRange(info.slotStart, info.slotEnd);
-  return info.timeZone ? `${slot} (${info.timeZone})` : slot;
+  const localTimeLabel =
+    language === "en"
+      ? "event local time"
+      : language === "zh"
+        ? "活动当地时间"
+        : "event local time · 活动当地时间";
+  return `${slot} (${localTimeLabel})`;
 }
 
 /** A "View in dashboard" action for the owner card, when a dashboard link exists. */
@@ -466,6 +474,69 @@ export async function notifyBookingCancelled(
     sends.push(sendMail(visitorCancelledMessage(info), transport));
   if (info.ownerEmail.trim())
     sends.push(sendMail(ownerCancelledMessage(info), transport));
+  await Promise.allSettled(sends);
+}
+
+/**
+ * A multi-slot cart produces one visitor message and one owner message, not one
+ * pair per slot. Each booking card and private management link remains in the
+ * combined message while large carts cannot amplify into dozens of emails.
+ */
+export async function notifyBookingsCreated(
+  infos: BookingNotification[],
+  transport?: MailTransport
+): Promise<void> {
+  if (infos.length === 0) return;
+  if (infos.length === 1) return notifyBookingCreated(infos[0], transport);
+
+  const sends: Promise<unknown>[] = [];
+  const visitorGroups = new Map<string, BookingNotification[]>();
+  const ownerGroups = new Map<string, BookingNotification[]>();
+  for (const info of infos) {
+    const visitor = info.visitorEmail.trim().toLowerCase();
+    const owner = info.ownerEmail.trim().toLowerCase();
+    if (visitor) {
+      visitorGroups.set(visitor, [...(visitorGroups.get(visitor) ?? []), info]);
+    }
+    if (owner) {
+      ownerGroups.set(owner, [...(ownerGroups.get(owner) ?? []), info]);
+    }
+  }
+
+  for (const group of visitorGroups.values()) {
+    const messages = group.map(visitorConfirmedMessage);
+    const lang = langOf(group[0].locale);
+    sends.push(
+      sendMail(
+        {
+          to: group[0].visitorEmail,
+          subject:
+            lang === "en"
+              ? `${group.length} bookings confirmed`
+              : `${group.length} 个预约已确认`,
+          text: messages.map((message) => message.text).join("\n\n———\n\n"),
+          html: messages.map((message) => message.html ?? "").join("")
+        },
+        transport
+      )
+    );
+  }
+
+  for (const group of ownerGroups.values()) {
+    const messages = group.map(ownerCreatedMessage);
+    sends.push(
+      sendMail(
+        {
+          to: group[0].ownerEmail,
+          subject: `${group.length} new bookings received · 收到 ${group.length} 条新预约`,
+          text: messages.map((message) => message.text).join("\n\n———\n\n"),
+          html: messages.map((message) => message.html ?? "").join("")
+        },
+        transport
+      )
+    );
+  }
+
   await Promise.allSettled(sends);
 }
 

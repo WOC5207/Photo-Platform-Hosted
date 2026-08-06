@@ -8,6 +8,7 @@ import {
   type VisitorLotteryEntry
 } from "@/app/[locale]/(public)/draw/actions";
 import LotteryWheel from "@/components/admin/LotteryWheel";
+import Button from "@/components/ui/Button";
 
 export interface PublicLotteryPrize {
   id: string;
@@ -116,14 +117,14 @@ export default function PublicLotteryDraw({
         targetIndex={targetIndex}
         onSpinComplete={handleSpinComplete}
       />
-      <button
+      <Button
         type="button"
         onClick={handleSpin}
         disabled={!canSpin}
-        className="rounded-full bg-fg px-6 py-3 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
+        variant="primary"
       >
         {spinning || busy ? t("spinning") : t("spin")}
-      </button>
+      </Button>
       {wheelSlices.length === 0 && (
         <p className="text-xs text-fg-subtle">{t("noPrizesYet")}</p>
       )}

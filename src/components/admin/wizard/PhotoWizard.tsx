@@ -23,7 +23,8 @@ export default function PhotoWizard({
   uploadMaxBytes,
   creditProfiles,
   creditTerm,
-  subjectTerm
+  subjectTerm,
+  moderationEnabled
 }: {
   eventId: string;
   initialPendingPhotos: PendingPhotoValue[];
@@ -32,6 +33,7 @@ export default function PhotoWizard({
   creditProfiles: CreditProfile[];
   creditTerm: string;
   subjectTerm: string;
+  moderationEnabled: boolean;
 }) {
   const t = useTranslations("adminEvents");
   const tw = useTranslations("photoWizard");
@@ -61,6 +63,8 @@ export default function PhotoWizard({
   const [publishedCount, setPublishedCount] = useState(0);
   const guidanceTimer = useRef<number | null>(null);
   const navigationStarted = useRef(false);
+  const stepContentRef = useRef<HTMLElement>(null);
+  const stepNavigationStarted = useRef(false);
   const hasDraft =
     publishPhase !== "success" &&
     (queue.files.length > 0 ||
@@ -92,6 +96,14 @@ export default function PhotoWizard({
     { key: "credits", label: creditTerm },
     { key: "confirm", label: tw("stepConfirm") }
   ];
+
+  useEffect(() => {
+    if (!stepNavigationStarted.current) {
+      stepNavigationStarted.current = true;
+      return;
+    }
+    requestAnimationFrame(() => stepContentRef.current?.focus());
+  }, [stepIndex]);
 
   // Transfers must finish before advancing, but background compression need
   // not: compressing photos are browsable and get credited while the server
@@ -314,35 +326,47 @@ export default function PhotoWizard({
         }
       />
 
-      {stepIndex === 0 && (
-        <UploadStep queue={queue} uploadMaxBytes={uploadMaxBytes} />
-      )}
-      {stepIndex === 1 && (
-        <CompressionStep queue={queue} allowOriginal={allowOriginal} />
-      )}
-      {stepIndex === 2 && (
-        <CreditsStep
-          queue={queue}
-          creditsByPhoto={creditsByPhoto}
-          onAssign={assignCredits}
-          commentByPhoto={commentByPhoto}
-          onAssignComment={assignComment}
-          creditProfiles={creditProfiles}
-          creditTerm={creditTerm}
-          subjectTerm={subjectTerm}
-          ackUncredited={ackUncredited}
-          onAckUncredited={setAckUncredited}
-        />
-      )}
-      {stepIndex === 3 && (
-        <ConfirmStep
-          queue={queue}
-          creditsByPhoto={creditsByPhoto}
-          failedCount={failedCount}
-          publishPhase={publishPhase}
-          publishedCount={publishedCount}
-        />
-      )}
+      <section
+        ref={stepContentRef}
+        tabIndex={-1}
+        aria-label={tw("stepAria", {
+          current: stepIndex + 1,
+          total: steps.length,
+          name: steps[stepIndex].label
+        })}
+        className="outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+      >
+        {stepIndex === 0 && (
+          <UploadStep queue={queue} uploadMaxBytes={uploadMaxBytes} />
+        )}
+        {stepIndex === 1 && (
+          <CompressionStep queue={queue} allowOriginal={allowOriginal} />
+        )}
+        {stepIndex === 2 && (
+          <CreditsStep
+            queue={queue}
+            creditsByPhoto={creditsByPhoto}
+            onAssign={assignCredits}
+            commentByPhoto={commentByPhoto}
+            onAssignComment={assignComment}
+            creditProfiles={creditProfiles}
+            creditTerm={creditTerm}
+            subjectTerm={subjectTerm}
+            ackUncredited={ackUncredited}
+            onAckUncredited={setAckUncredited}
+          />
+        )}
+        {stepIndex === 3 && (
+          <ConfirmStep
+            queue={queue}
+            creditsByPhoto={creditsByPhoto}
+            failedCount={failedCount}
+            publishPhase={publishPhase}
+            publishedCount={publishedCount}
+            moderationEnabled={moderationEnabled}
+          />
+        )}
+      </section>
 
       <div className="sticky bottom-3 z-20 flex items-center justify-between gap-3 rounded-xl border border-accent/30 bg-raised/95 p-3 shadow-[0_16px_48px_rgb(0_0_0/0.2)] backdrop-blur-xl max-sm:flex-col max-sm:items-stretch">
         <button

@@ -122,7 +122,12 @@ export async function GET(
     "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream",
     "Cache-Control": cacheControl,
     ...(publicEtag ? { ETag: publicEtag } : {}),
-    ...(publicRendition ? {} : { Vary: "Cookie" }),
+    ...(publicRendition
+      ? {}
+      : {
+          Vary: "Cookie",
+          "Cross-Origin-Resource-Policy": "same-origin"
+        }),
     "X-Content-Type-Options": "nosniff"
   };
 

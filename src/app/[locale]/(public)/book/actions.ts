@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -89,7 +90,9 @@ export async function createBooking(
     where: { id: { in: uniqueSlotIds } },
     select: {
       id: true,
-      bookingEvent: { select: { id: true, ownerId: true, token: true } }
+      bookingEvent: {
+        select: { id: true, ownerId: true, token: true, open: true }
+      }
     }
   });
   const event = slots[0]?.bookingEvent;
@@ -100,6 +103,11 @@ export async function createBooking(
     event.token !== d.eventToken
   ) {
     return { error: "slotUnavailable" };
+  }
+
+  const settings = await getSiteSettings(event.ownerId);
+  if (!event.open || !settings.bookingEnabled) {
+    return { error: "closed" };
   }
 
   // Consume an attempt only after basic validation, and scope the limit to the
@@ -113,9 +121,23 @@ export async function createBooking(
     return { error: "rateLimited" };
   }
 
-  const settings = await getSiteSettings(event.ownerId);
-  if (!settings.bookingEnabled) {
-    return { error: "closed" };
+  // A recipient-scoped bucket prevents an attacker from bypassing the IP gate
+  // with proxy churn to repeatedly mail the same person. Only a one-way digest
+  // is kept in memory; no contact information becomes a limiter key.
+  const recipientIdentity = (d.email || d.contactValue)
+    .trim()
+    .toLocaleLowerCase("en-US")
+    .replace(/\s+/g, " ");
+  const recipientDigest = createHash("sha256")
+    .update(recipientIdentity)
+    .digest("hex");
+  if (
+    !rateLimit(`book-recipient:${event.id}:${recipientDigest}`, {
+      limit: 5,
+      windowMs: 60 * 60 * 1000
+    })
+  ) {
+    return { error: "rateLimited" };
   }
 
   const locale = await getLocale();

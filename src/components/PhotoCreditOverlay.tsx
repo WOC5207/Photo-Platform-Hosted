@@ -8,7 +8,7 @@ export default function PhotoCreditOverlay({ credit }: { credit: string }) {
   if (!credit) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden items-end bg-linear-to-t from-black/85 via-black/40 to-transparent px-3 pb-2 pt-10 opacity-0 backdrop-blur-sm transition-opacity duration-200 md:flex md:group-hover:opacity-100">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end bg-black/65 px-3 py-2 opacity-100 backdrop-blur-sm transition-opacity duration-150 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
       <p className="truncate text-sm font-medium text-white">{credit}</p>
     </div>
   );

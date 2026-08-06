@@ -358,7 +358,6 @@ async function emailVisitorBookingStatus(
       eventTitle: pickText(locale, event.titleEn, event.titleZh),
       slotStart: booking.timeSlot.startTime,
       slotEnd: booking.timeSlot.endTime,
-      timeZone: settings.timeZone,
       pricePerPerson: settings.bookingPriceEnabled
         ? booking.timeSlot.pricePerPerson
         : "",

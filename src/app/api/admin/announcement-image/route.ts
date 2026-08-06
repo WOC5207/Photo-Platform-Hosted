@@ -10,6 +10,7 @@ import {
 import { adjustReservation, releaseBytes, reserveBytes } from "@/lib/quota";
 import { discardSiteImage } from "@/lib/siteImages";
 import { MultipartUploadError, parseSingleImageMultipart } from "@/lib/multipartUpload";
+import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
 
 const IMAGE_OPTIONS = {
   prefix: "ann",
@@ -26,6 +27,9 @@ const IMAGE_OPTIONS = {
  * exactly why the row is re-checked against the uploader below.
  */
 export async function POST(req: NextRequest) {
+  if (!isTrustedMutationOrigin(req)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

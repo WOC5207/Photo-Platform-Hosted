@@ -21,6 +21,7 @@ import {
   resolveBookingRecipients,
   notifyAnnouncement,
   notifyBookingCreated,
+  notifyBookingsCreated,
   notifyBookingStatusChanged,
   notifyBookingUpdated,
   type BookingNotification
@@ -299,6 +300,43 @@ async function testNotifyBookingCreated() {
   reset();
 }
 
+async function testNotifyBookingsCreatedIsConsolidated() {
+  const reset = withSmtpConfigured();
+  const fake = fakeTransport();
+  await notifyBookingsCreated(
+    [
+      bookingInfo({
+        bookingId: "one",
+        manageUrl: "https://example.com/en/my-booking/one",
+        visitorEmail: "v@test",
+        ownerEmail: "o@test",
+        locale: "en"
+      }),
+      bookingInfo({
+        bookingId: "two",
+        manageUrl: "https://example.com/en/my-booking/two",
+        visitorEmail: "v@test",
+        ownerEmail: "o@test",
+        locale: "en"
+      })
+    ],
+    fake.transport
+  );
+  const visitor = fake.sent.find((message) => message.to === "v@test");
+  const owner = fake.sent.find((message) => message.to === "o@test");
+  report(
+    "booking cart: multiple slots are consolidated into two emails",
+    fake.sent.length === 2 && Boolean(visitor) && Boolean(owner),
+    `sent ${fake.sent.length} messages (want one per recipient)`
+  );
+  report(
+    "booking cart: consolidated visitor email retains every management link",
+    visitor?.text.includes("/one") === true && visitor.text.includes("/two") === true,
+    `visitor links preserved=${Boolean(visitor?.text.includes("/one") && visitor.text.includes("/two"))}`
+  );
+  reset();
+}
+
 async function testNotifyBookingUpdated() {
   const reset = withSmtpConfigured();
   const fake = fakeTransport();
@@ -343,6 +381,8 @@ async function testVisitorEmailLanguage() {
     !!zhMsg &&
       zhMsg.subject === "预约已确认" &&
       zhMsg.text.includes("您的预约已确认") &&
+      zhMsg.text.includes("活动当地时间") &&
+      !zhMsg.text.toLowerCase().includes("event local time") &&
       !zhMsg.text.toLowerCase().includes("your booking is confirmed"),
     `subject=${zhMsg?.subject}, text=${JSON.stringify(zhMsg?.text.slice(0, 40))}`
   );
@@ -359,6 +399,8 @@ async function testVisitorEmailLanguage() {
     !!enMsg &&
       enMsg.subject === "Booking confirmed" &&
       enMsg.text.includes("your booking is confirmed") &&
+      enMsg.text.includes("event local time") &&
+      !enMsg.text.includes("活动当地时间") &&
       !enMsg.text.includes("您的预约"),
     `subject=${enMsg?.subject}, text=${JSON.stringify(enMsg?.text.slice(0, 40))}`
   );
@@ -458,6 +500,7 @@ async function main() {
   await testEmptyRecipientSkipped();
   testResolveBookingRecipients();
   await testNotifyBookingCreated();
+  await testNotifyBookingsCreatedIsConsolidated();
   await testNotifyBookingUpdated();
   await testVisitorEmailLanguage();
   await testVisitorEmailHtml();

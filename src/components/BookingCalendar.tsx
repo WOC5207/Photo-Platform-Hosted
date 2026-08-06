@@ -64,6 +64,15 @@ export default function BookingCalendar({
     );
   }, [locale]);
 
+  const fullDateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        dateStyle: "full",
+        timeZone: "UTC"
+      }),
+    [locale]
+  );
+
   const cells = useMemo(() => {
     const startOffset = new Date(Date.UTC(view.year, view.month, 1)).getUTCDay();
     const daysInMonth = new Date(Date.UTC(view.year, view.month + 1, 0)).getUTCDate();
@@ -96,7 +105,7 @@ export default function BookingCalendar({
             type="button"
             aria-label={t("calendarPrevMonth")}
             onClick={() => shiftMonth(-1)}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-8 sm:w-8"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-10 sm:w-10"
           >
             ‹
           </button>
@@ -107,7 +116,7 @@ export default function BookingCalendar({
             type="button"
             aria-label={t("calendarNextMonth")}
             onClick={() => shiftMonth(1)}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-8 sm:w-8"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-10 sm:w-10"
           >
             ›
           </button>
@@ -126,6 +135,15 @@ export default function BookingCalendar({
           const hasOpen = daySessions.some((s) => s.remaining > 0);
           const isToday = cell.dateStr === todayStr;
           const primary = daySessions[0];
+          const accessibleDayLabel = t("calendarDaySessions", {
+            date: fullDateFormatter.format(
+              new Date(`${cell.dateStr}T00:00:00Z`)
+            ),
+            count: daySessions.length,
+            availability: hasOpen
+              ? t("calendarLegendOpen")
+              : t("calendarLegendFull")
+          });
 
           const inner = (
             <div
@@ -138,6 +156,7 @@ export default function BookingCalendar({
               <span>{cell.day}</span>
               {daySessions.length > 0 && (
                 <span
+                  aria-hidden="true"
                   className={[
                     "h-1.5 w-1.5 rounded-full",
                     hasOpen ? "bg-success" : "bg-fg-faint"
@@ -150,7 +169,12 @@ export default function BookingCalendar({
           return primary ? (
             <Link
               key={i}
-              href={`/book/${primary.token}`}
+              href={
+                daySessions.length > 1
+                  ? `${basePath}/booking`
+                  : `/book/${primary.token}`
+              }
+              aria-label={accessibleDayLabel}
               title={
                 daySessions.length > 1
                   ? `${primary.title} +${daySessions.length - 1}`
@@ -173,11 +197,11 @@ export default function BookingCalendar({
       ) : (
         <div className="mt-3 flex items-center justify-center gap-4 text-xs text-fg-subtle">
           <span className="flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
+            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success" />
             {t("calendarLegendOpen")}
           </span>
           <span className="flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-fg-faint" />
+            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-fg-faint" />
             {t("calendarLegendFull")}
           </span>
         </div>
@@ -185,7 +209,7 @@ export default function BookingCalendar({
 
       <Link
         href={`${basePath}/booking`}
-        className="mt-3 flex min-h-11 items-center justify-center text-center text-xs text-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:min-h-8"
+        className="mt-3 flex min-h-11 items-center justify-center text-center text-xs text-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:min-h-10"
       >
         {t("calendarViewAll")}
       </Link>

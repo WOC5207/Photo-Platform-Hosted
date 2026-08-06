@@ -9,9 +9,9 @@ import {
   type VisitorLotteryEntry
 } from "@/app/[locale]/(public)/draw/actions";
 import PublicLotteryDraw, { type PublicLotteryPrize } from "./PublicLotteryDraw";
-
-const inputCls =
-  "rounded-lg border border-border-strong bg-surface px-3 py-2 text-fg outline-none focus:border-fg-subtle";
+import Button from "@/components/ui/Button";
+import { Field, Input } from "@/components/ui/Field";
+import StatusMessage from "@/components/ui/StatusMessage";
 
 function ErrorMessage({ state }: { state: LotteryEntryFormState }) {
   const t = useTranslations("lotteryEntry");
@@ -23,26 +23,35 @@ function ErrorMessage({ state }: { state: LotteryEntryFormState }) {
     duplicate: "errorDuplicate",
     notFound: "recoveryNotFound"
   }[state.error];
-  return (
-    <p role="alert" className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
-      {t(key)}
-    </p>
-  );
+  return <StatusMessage kind="error">{t(key)}</StatusMessage>;
 }
 
 function ContactFields() {
   const t = useTranslations("lotteryEntry");
   return (
     <>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-fg-muted">{t("name")} *</span>
-        <input name="name" required maxLength={200} className={inputCls} />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-fg-muted">{t("contactValue")} *</span>
-        <input name="contactValue" required maxLength={200} className={inputCls} />
-        <span className="text-xs text-fg-subtle">{t("contactHint")}</span>
-      </label>
+      <Field label={t("name")} htmlFor="lottery-entry-name" required>
+        <Input
+          id="lottery-entry-name"
+          name="name"
+          required
+          maxLength={200}
+          autoComplete="name"
+        />
+      </Field>
+      <Field
+        label={t("contactValue")}
+        htmlFor="lottery-entry-contact"
+        hint={t("contactHint")}
+        required
+      >
+        <Input
+          id="lottery-entry-contact"
+          name="contactValue"
+          required
+          maxLength={200}
+        />
+      </Field>
     </>
   );
 }
@@ -102,13 +111,14 @@ export default function LotteryEntryForm({
                 onFocus={(event) => event.currentTarget.select()}
                 className="min-w-0 flex-1 rounded-lg border border-success-border bg-page/70 px-3 py-2 text-center font-mono text-xl font-bold normal-case tracking-normal text-success-strong outline-none focus-visible:ring-2 focus-visible:ring-success"
               />
-              <button
+              <Button
                 type="button"
                 onClick={copyActiveToken}
-                className="min-h-11 rounded-lg border border-success-border bg-page/70 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-success-strong transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success"
+                variant="secondary"
+                className="border-success-border bg-page/70 text-success-strong"
               >
                 {tokenCopied ? t("copied") : t("copyToken")}
-              </button>
+              </Button>
             </span>
           </div>
         </div>
@@ -119,37 +129,35 @@ export default function LotteryEntryForm({
 
   return (
     <div className="flex flex-col gap-5">
-      <form action={entryAction} className="flex flex-col gap-4">
+      <form action={entryAction} aria-busy={entryPending} className="flex flex-col gap-4">
         <input type="hidden" name="drawToken" value={drawToken} />
         <ContactFields />
         <ErrorMessage state={entryState} />
-        <button
-          type="submit"
-          disabled={entryPending}
-          className="rounded-full bg-fg px-6 py-3 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="submit" variant="primary" disabled={entryPending}>
           {t("submit")}
-        </button>
+        </Button>
       </form>
 
       <details className="rounded-xl border border-border bg-surface p-4">
         <summary className="cursor-pointer text-sm font-semibold">{t("recoveryTitle")}</summary>
-        <form action={recoveryAction} className="mt-4 flex flex-col gap-4">
+        <form action={recoveryAction} aria-busy={recoveryPending} className="mt-4 flex flex-col gap-4">
           <input type="hidden" name="drawToken" value={drawToken} />
           <p className="text-sm text-fg-subtle">{t("recoveryHint")}</p>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-fg-muted">{t("yourToken")} *</span>
-            <input name="entryToken" required minLength={5} maxLength={12} className={inputCls} />
-          </label>
+          <Field label={t("yourToken")} htmlFor="lottery-recovery-token" required>
+            <Input
+              id="lottery-recovery-token"
+              name="entryToken"
+              required
+              minLength={5}
+              maxLength={12}
+              className="font-meta uppercase"
+            />
+          </Field>
           <ContactFields />
           <ErrorMessage state={recoveryState} />
-          <button
-            type="submit"
-            disabled={recoveryPending}
-            className="rounded-lg border border-border-strong px-4 py-2 text-sm font-semibold disabled:opacity-50"
-          >
+          <Button type="submit" variant="secondary" disabled={recoveryPending}>
             {t("recoverySubmit")}
-          </button>
+          </Button>
         </form>
       </details>
     </div>

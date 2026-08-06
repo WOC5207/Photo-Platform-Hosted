@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import {
   notifyBookingCancelled,
   notifyBookingCreated,
+  notifyBookingsCreated,
   notifyBookingUpdated
 } from "@/lib/notify";
 import { getSiteSettings } from "@/lib/settings";
@@ -129,9 +130,9 @@ export async function createPublicBookings(
     where: { id: result.reservations[0].slot.bookingEvent.ownerId },
     select: { email: true }
   });
-  for (const reservation of result.reservations) {
+  const notifications = result.reservations.map((reservation) => {
     const cancelToken = reservation.booking.cancelToken;
-    notifyBookingCreated({
+    return {
       bookingId: cancelToken,
       name: input.name,
       subject: reservation.booking.subject,
@@ -144,7 +145,6 @@ export async function createPublicBookings(
       ),
       slotStart: reservation.slot.startTime,
       slotEnd: reservation.slot.endTime,
-      timeZone: settings.timeZone,
       pricePerPerson: settings.bookingPriceEnabled
         ? reservation.slot.pricePerPerson
         : "",
@@ -153,8 +153,9 @@ export async function createPublicBookings(
       locale: input.locale,
       visitorEmail: input.email,
       ownerEmail: owner?.email ?? ""
-    }).catch(() => {});
-  }
+    };
+  });
+  notifyBookingsCreated(notifications).catch(() => {});
 
   return {
     ok: true,
@@ -219,7 +220,6 @@ export async function createPublicBooking(
     ),
     slotStart: result.slot.startTime,
     slotEnd: result.slot.endTime,
-    timeZone: settings.timeZone,
     pricePerPerson: settings.bookingPriceEnabled
       ? result.slot.pricePerPerson
       : "",
@@ -265,7 +265,6 @@ export async function updatePublicBookingByToken(
     eventTitle: pickText(booking.locale, event.titleEn, event.titleZh),
     slotStart: result.slot.startTime,
     slotEnd: result.slot.endTime,
-    timeZone: settings.timeZone,
     pricePerPerson: settings.bookingPriceEnabled
       ? result.slot.pricePerPerson
       : "",
@@ -306,7 +305,6 @@ async function sendCancellationNotification(
     eventTitle: pickText(booking.locale, event.titleEn, event.titleZh),
     slotStart: booking.timeSlot.startTime,
     slotEnd: booking.timeSlot.endTime,
-    timeZone: settings.timeZone,
     pricePerPerson: settings.bookingPriceEnabled
       ? booking.timeSlot.pricePerPerson
       : "",

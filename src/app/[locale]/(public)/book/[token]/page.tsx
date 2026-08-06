@@ -7,6 +7,7 @@ import { getSiteSettings, resolveSubjectTerm } from "@/lib/settings";
 import { Link } from "@/i18n/navigation";
 import BookingForm, { type PublicDay } from "@/components/booking/BookingForm";
 import { isNaiveDateTimePast } from "@/lib/timeZone";
+import EventLocalTimeNotice from "@/components/booking/EventLocalTimeNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -89,9 +90,6 @@ export default async function BookPage({
           <h1 className="font-display ui-balance text-4xl font-semibold tracking-[-0.04em]">
             {pickText(locale, event.titleEn, event.titleZh)}
           </h1>
-          <p className="mt-1 text-xs text-fg-subtle">
-            {t("timeZoneNotice", { timeZone: settings.timeZone })}
-          </p>
           <p className="mt-1 text-sm text-fg-subtle">
             {[dateLabel, event.location || null].filter(Boolean).join(" · ")}
           </p>
@@ -111,6 +109,10 @@ export default async function BookPage({
           </Link>
         </div>
       </div>
+
+      <EventLocalTimeNotice marker={t("eventLocalTimeMarker")}>
+        {t("eventLocalTimeNotice")}
+      </EventLocalTimeNotice>
 
       {!event.open ? (
         <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">

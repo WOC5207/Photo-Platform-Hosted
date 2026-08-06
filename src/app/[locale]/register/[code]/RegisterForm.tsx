@@ -3,6 +3,9 @@
 import { useActionState, useState } from "react";
 import { usernameError } from "@/lib/username";
 import { register, type RegisterState } from "./actions";
+import Button from "@/components/ui/Button";
+import { controlClasses, Field, Input } from "@/components/ui/Field";
+import StatusMessage from "@/components/ui/StatusMessage";
 
 export interface RegisterLabels {
   username: string;
@@ -10,6 +13,7 @@ export interface RegisterLabels {
   displayName: string;
   displayNameHint: string;
   password: string;
+  passwordHint: string;
   confirmPassword: string;
   submit: string;
   errorValidation: string;
@@ -68,11 +72,8 @@ export default function RegisterForm({
     clientUsernameError = labels.errorUsernameInvalid;
   }
 
-  const inputClass =
-    "min-h-10 w-full rounded-lg border border-border-strong bg-page px-3 py-2 text-sm outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11";
-
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form action={action} aria-busy={pending} className="flex flex-col gap-4">
       <input type="hidden" name="code" value={code} />
       <input type="hidden" name="noticeVersion" value={noticeVersion} />
 
@@ -97,7 +98,8 @@ export default function RegisterForm({
               ? "register-username-hint register-username-error"
               : "register-username-hint"
           }
-          className={inputClass}
+          disabled={pending}
+          className={controlClasses}
         />
         <span id="register-username-hint" className="text-xs text-fg-subtle">
           {labels.usernameHint}
@@ -113,34 +115,53 @@ export default function RegisterForm({
         )}
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">{labels.displayName}</span>
-        <input name="displayName" maxLength={80} className={inputClass} />
-        <span className="text-xs text-fg-subtle">{labels.displayNameHint}</span>
-      </label>
+      <Field
+        label={labels.displayName}
+        htmlFor="register-display-name"
+        hint={labels.displayNameHint}
+      >
+        <Input
+          id="register-display-name"
+          name="displayName"
+          maxLength={80}
+          autoComplete="name"
+          disabled={pending}
+        />
+      </Field>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">{labels.password}</span>
-        <input
+      <Field
+        label={labels.password}
+        htmlFor="register-password"
+        hint={labels.passwordHint}
+        required
+      >
+        <Input
+          id="register-password"
           name="password"
           type="password"
           required
           minLength={8}
+          maxLength={72}
           autoComplete="new-password"
-          className={inputClass}
+          disabled={pending}
         />
-      </label>
+      </Field>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">{labels.confirmPassword}</span>
-        <input
+      <Field
+        label={labels.confirmPassword}
+        htmlFor="register-confirm-password"
+        required
+      >
+        <Input
+          id="register-confirm-password"
           name="confirmPassword"
           type="password"
           required
+          maxLength={72}
           autoComplete="new-password"
-          className={inputClass}
+          disabled={pending}
         />
-      </label>
+      </Field>
 
       {consentRequired && (
         <label className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3 text-sm">
@@ -148,23 +169,24 @@ export default function RegisterForm({
             type="checkbox"
             name="consentAccepted"
             required
-            className="mt-0.5 size-4 shrink-0 accent-fg focus-visible:ring-2 focus-visible:ring-fg/40"
+            disabled={pending}
+            className="mt-0.5 size-5 shrink-0 accent-accent focus-visible:ring-2 focus-visible:ring-accent/40"
           />
           <span>{labels.consentLabel}</span>
         </label>
       )}
 
       {state.error && (
-        <p role="alert" className="text-sm text-danger">{labels[ERROR_KEY[state.error]]}</p>
+        <StatusMessage kind="error">{labels[ERROR_KEY[state.error]]}</StatusMessage>
       )}
 
-      <button
+      <Button
         type="submit"
+        variant="primary"
         disabled={pending || Boolean(clientUsernameError)}
-        className="min-h-10 rounded-lg bg-fg px-4 py-2.5 text-sm font-semibold text-page transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-50 max-sm:min-h-11"
       >
         {labels.submit}
-      </button>
+      </Button>
     </form>
   );
 }

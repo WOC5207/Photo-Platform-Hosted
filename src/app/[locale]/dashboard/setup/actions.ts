@@ -6,11 +6,16 @@ import { getLocale } from "next-intl/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { getSession, requireUser } from "@/lib/auth";
 import { getSiteSettings } from "@/lib/settings";
 import { completeOwnerSetup } from "@/lib/setup";
 import { usernameError } from "@/lib/username";
 import type { User } from "@prisma/client";
+import {
+  hashPassword,
+  PASSWORD_MAX_LENGTH,
+  passwordFitsHashLimit
+} from "@/lib/password";
 
 async function guard(): Promise<{ locale: string; user: User }> {
   const locale = await getLocale();
@@ -38,9 +43,21 @@ export type CredentialsState = {
 
 const credentialsSchema = z.object({
   username: z.string().trim().min(1).max(40),
-  currentPassword: z.string().min(1).max(500),
-  password: z.string().min(8).max(500),
-  confirmPassword: z.string().min(1).max(500)
+  currentPassword: z
+    .string()
+    .min(1)
+    .max(PASSWORD_MAX_LENGTH)
+    .refine(passwordFitsHashLimit),
+  password: z
+    .string()
+    .min(8)
+    .max(PASSWORD_MAX_LENGTH)
+    .refine(passwordFitsHashLimit),
+  confirmPassword: z
+    .string()
+    .min(1)
+    .max(PASSWORD_MAX_LENGTH)
+    .refine(passwordFitsHashLimit)
 });
 
 /**
@@ -81,13 +98,19 @@ export async function setupUpdateCredentials(
   }
 
   try {
-    await prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id: user.id },
       data: {
         username: d.username,
-        passwordHash: await bcrypt.hash(d.password, 12)
-      }
+        passwordHash: await hashPassword(d.password),
+        credentialVersion: { increment: 1 }
+      },
+      select: { credentialVersion: true }
     });
+    const session = await getSession();
+    session.userId = user.id;
+    session.credentialVersion = updated.credentialVersion;
+    await session.save();
   } catch (error) {
     if (
       typeof error === "object" &&

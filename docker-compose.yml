@@ -29,8 +29,9 @@ services:
         # waiting for the healthcheck is what stops it racing Postgres' boot.
         condition: service_healthy
     ports:
-      # DSM reverse proxy should forward HTTPS traffic to this port.
-      - "3000:3000"
+      # Loopback-only: DSM's reverse proxy can reach this port, while LAN and
+      # internet clients cannot bypass HTTPS or forge proxy headers directly.
+      - "127.0.0.1:3000:3000"
     env_file:
       - .env
     environment:

@@ -12,6 +12,7 @@ import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import StatusMessage from "@/components/ui/StatusMessage";
 import BookingDayPicker from "@/components/admin/BookingDayPicker";
+import EventLocalTimeNotice from "@/components/booking/EventLocalTimeNotice";
 import type { BookingEventFormState } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
@@ -143,9 +144,9 @@ export default function BookingEventForm({
         timeZone={timeZone}
         onSelectionChange={markDirty}
       />
-      <p className="-mt-2 text-xs text-fg-subtle">
-        {t("timeZoneNotice", { timeZone })}
-      </p>
+      <EventLocalTimeNotice marker={t("eventLocalTimeMarker")} compact>
+        {t("eventLocalTimeNotice")}
+      </EventLocalTimeNotice>
 
       <label className="flex flex-col gap-1 text-sm">
         <span className="text-fg-muted">{t("location")}</span>
@@ -268,9 +269,7 @@ export default function BookingEventForm({
           )}
 
           {priceNoticeOpen && !priceDisplay.enabled && priceNoticeAvailable && (
-            <div
-              role="dialog"
-              aria-modal="false"
+            <section
               aria-labelledby="new-event-price-notice-title"
               className="mt-4 rounded-xl border border-border-strong bg-raised p-4 sm:p-5"
             >
@@ -294,7 +293,7 @@ export default function BookingEventForm({
                   onChange={(event) =>
                     setPriceNoticeAcknowledged(event.target.checked)
                   }
-                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-border-strong accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-border-strong accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                 />
                 <span>{t("priceDisplayAcknowledge")}</span>
               </label>
@@ -322,7 +321,7 @@ export default function BookingEventForm({
                   {t("cancelPriceAgreement")}
                 </Button>
               </div>
-            </div>
+            </section>
           )}
         </section>
       )}

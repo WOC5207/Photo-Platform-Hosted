@@ -303,7 +303,7 @@ export default function CreditsStep({
           type="button"
           disabled={busy}
           onClick={() => setSelected(new Set(photos.map((item) => item.photoId)))}
-          className={`${btnCls} min-h-8 px-2 py-1`}
+          className={`${btnCls} px-2 py-1`}
         >
           {t("bulkSelectAllVisible")}
         </button>
@@ -311,7 +311,7 @@ export default function CreditsStep({
           type="button"
           disabled={busy}
           onClick={selectUncredited}
-          className={`${btnCls} min-h-8 px-2 py-1`}
+          className={`${btnCls} px-2 py-1`}
         >
           {tw("selectUncredited")}
         </button>
@@ -319,7 +319,7 @@ export default function CreditsStep({
           type="button"
           disabled={busy || selected.size === 0}
           onClick={() => setSelected(new Set())}
-          className={`${btnCls} min-h-8 px-2 py-1`}
+          className={`${btnCls} px-2 py-1`}
         >
           {t("bulkClearSelection")}
         </button>

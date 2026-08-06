@@ -266,11 +266,16 @@ export async function updatePhotoCredits(formData: FormData): Promise<void> {
  * Every field is optional; a blank input clears that field back to unknown
  * rather than leaving the old value in place.
  */
-export async function updatePhotoExif(formData: FormData): Promise<void> {
+export type PhotoExifFormState = { status?: "saved" | "error" };
+
+export async function updatePhotoExif(
+  _prev: PhotoExifFormState,
+  formData: FormData
+): Promise<PhotoExifFormState> {
   const { user } = await guard();
   const photoId = formData.get("photoId");
-  if (typeof photoId !== "string") return;
-  if (!(await findOwnedPhoto(photoId, user))) return;
+  if (typeof photoId !== "string") return { status: "error" };
+  if (!(await findOwnedPhoto(photoId, user))) return { status: "error" };
 
   function numberOrNull(name: string): number | null {
     const raw = String(formData.get(name) ?? "").trim();
@@ -292,8 +297,8 @@ export async function updatePhotoExif(formData: FormData): Promise<void> {
   const lensModel =
     String(formData.get("exifLensModel") ?? "").trim().slice(0, 200) || null;
 
-  await prisma.photo
-    .update({
+  try {
+    await prisma.photo.update({
       where: { id: photoId },
       data: {
         exifFocalLengthMm: focalLengthMm,
@@ -304,9 +309,12 @@ export async function updatePhotoExif(formData: FormData): Promise<void> {
         exifCameraModel: cameraModel,
         exifLensModel: lensModel
       }
-    })
-    .catch(() => {});
+    });
+  } catch {
+    return { status: "error" };
+  }
   revalidatePath("/", "layout");
+  return { status: "saved" };
 }
 
 export async function deletePhoto(formData: FormData): Promise<void> {
