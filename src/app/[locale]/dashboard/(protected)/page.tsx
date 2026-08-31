@@ -22,6 +22,11 @@ export default async function AdminDashboardPage() {
       title: t("bookings"),
       hint: t("bookingsCardHint")
     },
+    {
+      href: "/dashboard/equipment",
+      title: t("equipment"),
+      hint: t("equipmentCardHint")
+    },
     ...(settings.creditProfilesEnabled
       ? [
           {

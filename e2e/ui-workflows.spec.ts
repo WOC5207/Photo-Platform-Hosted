@@ -315,6 +315,60 @@ test.describe.serial("management workflows", () => {
     await page.getByRole("button", { name: "Save", exact: true }).click();
   });
 
+  test("equipment QR labels and packing checklists work together", async ({ page }) => {
+    const suffix = Date.now();
+    const equipmentName = `E2E Camera ${suffix}`;
+    const checklistName = `E2E Shoot ${suffix}`;
+    await page.goto("/en/dashboard/equipment");
+
+    const equipmentForm = page
+      .getByRole("heading", { name: "Add equipment", exact: true })
+      .locator("..");
+    await equipmentForm.getByLabel("Equipment name").fill(equipmentName);
+    await equipmentForm.getByLabel("Category").fill("Camera");
+    await equipmentForm.getByLabel("Serial number or asset ID").fill(`ASSET-${suffix}`);
+    await equipmentForm.getByLabel("Notes").fill("Disposable E2E inventory record");
+    await equipmentForm.getByRole("button", { name: "Add to inventory" }).click();
+
+    const inventoryCard = page.locator("li").filter({
+      has: page.getByRole("heading", { name: equipmentName, exact: true })
+    });
+    await expect(inventoryCard).toContainText(`ASSET-${suffix}`);
+    await inventoryCard.getByText("Show QR label", { exact: true }).click();
+    await expect(
+      inventoryCard.getByRole("img", {
+        name: `Scannable QR code for ${equipmentName}`
+      })
+    ).toHaveAttribute("src", /^data:image\/png;base64,/);
+
+    const checklistForm = page
+      .getByRole("heading", { name: "Create a checklist", exact: true })
+      .locator("..");
+    await checklistForm.getByLabel("Checklist name").fill(checklistName);
+    await checklistForm.getByLabel("Notes").fill("E2E packing checklist");
+    await checklistForm.getByRole("button", { name: "Create checklist" }).click();
+
+    const checklist = page.getByRole("article").filter({ hasText: checklistName });
+    const equipmentSelect = checklist.getByLabel("Choose equipment");
+    await equipmentSelect.selectOption({ label: equipmentName });
+    await equipmentSelect.locator("..").getByRole("button", { name: "Add" }).click();
+    const checklistItem = checklist.getByRole("checkbox", { name: /E2E Camera/ });
+    await expect(checklistItem).toHaveAttribute("aria-checked", "false");
+    await checklistItem.click();
+    await expect(checklist.getByRole("checkbox", { name: /E2E Camera/ })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    await expect(checklist).toContainText("1/1 ready");
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await checklist.getByRole("button", { name: "Delete checklist" }).click();
+    await expect(page.getByRole("article").filter({ hasText: checklistName })).toHaveCount(0);
+    page.once("dialog", (dialog) => dialog.accept());
+    await inventoryCard.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.getByRole("heading", { name: equipmentName, exact: true })).toHaveCount(0);
+  });
+
   test("disabled booking feature stays manageable and is clearly marked", async ({ page }) => {
     await page.goto("/en/dashboard/settings?section=features");
     const booking = page.getByRole("checkbox", { name: "Event booking" });

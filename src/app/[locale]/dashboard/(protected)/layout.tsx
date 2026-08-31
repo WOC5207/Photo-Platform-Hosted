@@ -82,6 +82,11 @@ export default async function DashboardLayout({
       icon: "bookings"
     },
     {
+      href: "/dashboard/equipment",
+      label: t("admin.equipment"),
+      icon: "equipment"
+    },
+    {
       href: "/dashboard/credits",
       label: t("admin.credits", { term: creditTerm }),
       icon: "credits"
