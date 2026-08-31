@@ -67,6 +67,7 @@
     "sharp@0.35.3": true
   },
   "overrides": {
+    "deepmerge-ts": "^8.0.2",
     "next": {
       "postcss": "^8.5.26"
     },
