@@ -1,8 +1,9 @@
 import type {
   InputHTMLAttributes,
-  ReactNode,
+  ReactElement,
   TextareaHTMLAttributes
 } from "react";
+import { cloneElement, isValidElement } from "react";
 
 export const controlClasses =
   "min-h-11 w-full rounded-lg border border-border-strong bg-control px-3.5 py-2.5 text-sm text-fg outline-none transition-[border-color,background-color,box-shadow] duration-150 placeholder:text-fg-faint hover:border-fg-faint focus-visible:border-accent/60 focus-visible:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-55";
@@ -19,10 +20,21 @@ export function Field({
   htmlFor: string;
   hint?: string;
   required?: boolean;
-  children: ReactNode;
+  children: ReactElement;
   className?: string;
 }) {
   const hintId = hint ? `${htmlFor}-hint` : undefined;
+  const control =
+    hintId && isValidElement<{ "aria-describedby"?: string }>(children)
+      ? cloneElement(children, {
+          "aria-describedby": [
+            children.props["aria-describedby"],
+            hintId
+          ]
+            .filter(Boolean)
+            .join(" ")
+        })
+      : children;
 
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
@@ -33,7 +45,7 @@ export function Field({
         {label}
         {required && <span aria-hidden="true"> *</span>}
       </label>
-      {children}
+      {control}
       {hint && (
         <p id={hintId} className="ui-pretty text-xs leading-relaxed text-fg-subtle">
           {hint}

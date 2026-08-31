@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 // Resolves the owner from the request token — never prerender.
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
+  referrer: "no-referrer",
   robots: {
     index: false,
     follow: false

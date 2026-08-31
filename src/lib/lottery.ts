@@ -1,5 +1,5 @@
 import "server-only";
-import { randomBytes } from "crypto";
+import { randomBytes, randomInt } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { lockAvailablePublicDraw } from "./publicLottery";
@@ -168,7 +168,7 @@ export async function spinForEntry(
     if (available.length === 0) return { ok: false, error: "no_prizes_left" } as const;
 
     const totalWeight = available.reduce((sum, p) => sum + p.weight, 0);
-    let roll = Math.random() * totalWeight;
+    let roll = randomInt(totalWeight);
     let chosen = available[available.length - 1];
     for (const p of available) {
       if (roll < p.weight) {

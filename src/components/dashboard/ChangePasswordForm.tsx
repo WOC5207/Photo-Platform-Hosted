@@ -63,6 +63,7 @@ export default function ChangePasswordForm({
             name="currentPassword"
             type="password"
             autoComplete="current-password"
+            maxLength={72}
             required
             disabled={pending}
           />
@@ -74,6 +75,7 @@ export default function ChangePasswordForm({
             type="password"
             autoComplete="new-password"
             minLength={8}
+            maxLength={72}
             required
             disabled={pending}
           />
@@ -84,6 +86,7 @@ export default function ChangePasswordForm({
             name="confirmPassword"
             type="password"
             autoComplete="new-password"
+            maxLength={72}
             required
             disabled={pending}
           />

@@ -50,6 +50,7 @@ export async function login(
 
   const session = await getSession();
   session.userId = user.id;
+  session.credentialVersion = user.credentialVersion;
   await session.save();
 
   const locale = await getLocale();

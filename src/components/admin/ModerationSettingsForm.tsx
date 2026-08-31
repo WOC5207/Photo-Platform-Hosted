@@ -97,6 +97,7 @@ export default function ModerationSettingsForm({
           ))}
         </div>
 
+        <StatusMessage kind="info">{t("processingDisclosure")}</StatusMessage>
         <StatusMessage kind="info">{t("limitations")}</StatusMessage>
         {state.error === "validation" && (
           <StatusMessage kind="error">{t("validationError")}</StatusMessage>

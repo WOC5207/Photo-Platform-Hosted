@@ -6,6 +6,49 @@ function required(name: string): string {
   return value;
 }
 
+function validatedSecret(name: string, value: string, minLength: number): string {
+  if (
+    value.length < minLength ||
+    value.toLowerCase().startsWith("change-me")
+  ) {
+    throw new Error(
+      `${name} must be replaced with a unique secret of at least ${minLength} characters.`
+    );
+  }
+  return value;
+}
+
+function validatedOrigin(name: string, value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} must be a complete http(s) origin.`);
+  }
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username ||
+    url.password ||
+    (url.pathname !== "/" && url.pathname !== "") ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(`${name} must contain only an http(s) origin.`);
+  }
+  const loopback =
+    url.hostname === "localhost" ||
+    url.hostname === "127.0.0.1" ||
+    url.hostname === "[::1]";
+  if (
+    process.env.NODE_ENV === "production" &&
+    url.protocol !== "https:" &&
+    !loopback
+  ) {
+    throw new Error(`${name} must use HTTPS in production.`);
+  }
+  return url.origin;
+}
+
 const DEFAULT_UPLOAD_MAX_MB = 100;
 const DEFAULT_IMAGE_MAX_PIXELS = 100_000_000;
 const DEFAULT_IMAGE_PROCESSING_CONCURRENCY = 1;
@@ -61,12 +104,13 @@ function smtp(): SmtpConfig {
 
 export const config = {
   photosDir: () => path.resolve(required("PHOTOS_DIR")),
-  sessionSecret: () => required("SESSION_SECRET"),
-  appBaseUrl: () => required("APP_BASE_URL").replace(/\/+$/, ""),
+  sessionSecret: () =>
+    validatedSecret("SESSION_SECRET", required("SESSION_SECRET"), 32),
+  appBaseUrl: () => validatedOrigin("APP_BASE_URL", required("APP_BASE_URL")),
   assetBaseUrl: () =>
-    (process.env.ASSET_BASE_URL?.trim() || required("APP_BASE_URL")).replace(
-      /\/+$/,
-      ""
+    validatedOrigin(
+      "ASSET_BASE_URL",
+      process.env.ASSET_BASE_URL?.trim() || required("APP_BASE_URL")
     ),
   miniappApiEnabled: () => process.env.MINIAPP_API_ENABLED === "true",
   wechatMiniappAppId: () => required("WECHAT_MINIAPP_APP_ID"),
@@ -77,7 +121,13 @@ export const config = {
       DEFAULT_MINIAPP_SESSION_TTL_DAYS
     ),
   adminUsername: () => process.env.ADMIN_USERNAME ?? "",
-  adminPassword: () => process.env.ADMIN_PASSWORD ?? "",
+  adminPassword: () => {
+    const value = process.env.ADMIN_PASSWORD ?? "";
+    if (value && Buffer.byteLength(value, "utf8") > 72) {
+      throw new Error("ADMIN_PASSWORD must be at most 72 UTF-8 bytes.");
+    }
+    return value ? validatedSecret("ADMIN_PASSWORD", value, 12) : "";
+  },
   stripOriginalExif: () => process.env.STRIP_ORIGINAL_EXIF === "true",
   uploadMaxBytes: () =>
     Math.floor(positiveMb("UPLOAD_MAX_MB", DEFAULT_UPLOAD_MAX_MB) * 1024 * 1024),

@@ -11,6 +11,7 @@ import {
   type SiteImageOptions
 } from "@/lib/images";
 import { MultipartUploadError, parseSingleImageMultipart } from "@/lib/multipartUpload";
+import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
 
 // Per-kind processing + which settings column the token is stored in.
 const KINDS: Record<
@@ -34,6 +35,9 @@ const COLUMN: Record<
 };
 
 export async function POST(req: NextRequest) {
+  if (!isTrustedMutationOrigin(req)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

@@ -115,7 +115,7 @@ export default function UploadStep({
               type="button"
               disabled={busy}
               onClick={() => void queue.clearQueue()}
-              className={`${btnCls} min-h-8 px-2 py-1 max-sm:min-h-11`}
+              className={`${btnCls} px-2 py-1`}
             >
               {queue.clearing ? "…" : t("clearPendingQueue")}
             </button>
@@ -199,7 +199,7 @@ export default function UploadStep({
                         <button
                           type="button"
                           onClick={() => void queue.retryQueuedFile(item)}
-                          className={`${btnCls} min-h-8 px-2 py-1 max-sm:min-h-11`}
+                          className={`${btnCls} px-2 py-1`}
                         >
                           {t("retryPendingFile")}
                         </button>
@@ -209,7 +209,7 @@ export default function UploadStep({
                         type="button"
                         disabled={busy}
                         onClick={() => void queue.retryCompression(item)}
-                        className={`${btnCls} min-h-8 px-2 py-1 max-sm:min-h-11`}
+                        className={`${btnCls} px-2 py-1`}
                       >
                         {t("retryPendingFile")}
                       </button>
@@ -219,7 +219,7 @@ export default function UploadStep({
                       disabled={busy || item.state === "discarding"}
                       aria-label={t("removePendingFile", { name: item.name })}
                       onClick={() => void queue.removeQueuedFile(item)}
-                      className={`${btnCls} min-h-8 px-2 py-1 max-sm:min-h-11`}
+                      className={`${btnCls} px-2 py-1`}
                     >
                       {item.state === "uploading" ||
                       item.state === "optimizing" ||

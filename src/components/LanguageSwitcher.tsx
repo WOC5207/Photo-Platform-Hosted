@@ -29,6 +29,7 @@ export default function LanguageSwitcher() {
           <Link
             href={href}
             locale={locale}
+            aria-current={locale === current ? "page" : undefined}
             className={`inline-flex min-h-11 items-center px-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 lg:min-h-10 ${
               locale === current
                 ? "font-semibold text-fg"

@@ -2,6 +2,7 @@ import { config } from "@/lib/config";
 import { formatCredits } from "@/lib/content";
 import { formatDate, formatTime } from "@/lib/datetime";
 import { photoUrls, siteImageUrl } from "@/lib/images";
+import { safeExternalHttpUrl } from "@/lib/externalUrl";
 
 export interface LocalizedText {
   en: string;
@@ -92,10 +93,12 @@ export function toPhotoDto(
     credits: credits.map((credit) => ({
       name: credit.creditName,
       subject: credit.subject,
-      socialLinks: (credit.socialLinks ?? []).map((link) => ({
-        platform: link.platform,
-        url: link.url
-      }))
+      socialLinks: (credit.socialLinks ?? [])
+        .map((link) => ({
+          platform: link.platform,
+          url: safeExternalHttpUrl(link.url)
+        }))
+        .filter((link) => link.url !== "")
     }))
   };
 }

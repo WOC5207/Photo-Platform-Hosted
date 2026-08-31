@@ -25,6 +25,34 @@ import { siteDir } from "../src/lib/images";
 
 const prisma = new PrismaClient();
 const BASE = process.env.APP_BASE_URL ?? "http://localhost:3000";
+const APP_ORIGIN = new URL(BASE).origin;
+const nativeFetch = globalThis.fetch;
+
+// These requests model browser writes to cookie-authenticated Route Handlers.
+// Browsers send Origin automatically; Node's fetch does not, so add it here.
+globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  const requestUrl = new URL(
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url
+  );
+  const method = (
+    init?.method ?? (input instanceof Request ? input.method : "GET")
+  ).toUpperCase();
+  if (
+    requestUrl.origin === APP_ORIGIN &&
+    requestUrl.pathname.startsWith("/api/admin/") &&
+    method !== "GET" &&
+    method !== "HEAD"
+  ) {
+    const headers = new Headers(init?.headers);
+    headers.set("origin", APP_ORIGIN);
+    return nativeFetch(input, { ...init, headers });
+  }
+  return nativeFetch(input, init);
+}) as typeof fetch;
 let failures = 0;
 
 function report(name: string, ok: boolean, detail: string) {

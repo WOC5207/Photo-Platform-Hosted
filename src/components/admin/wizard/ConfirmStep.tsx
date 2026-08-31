@@ -46,13 +46,15 @@ export default function ConfirmStep({
   creditsByPhoto,
   failedCount,
   publishPhase,
-  publishedCount
+  publishedCount,
+  moderationEnabled
 }: {
   queue: PendingUploadQueue;
   creditsByPhoto: Record<string, AssignedCredit[]>;
   failedCount: number;
   publishPhase: PublishPhase;
   publishedCount: number;
+  moderationEnabled: boolean;
 }) {
   const tw = useTranslations("photoWizard");
   // Show every browsable photo (including any still compressing) so the preview
@@ -69,6 +71,12 @@ export default function ConfirmStep({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-fg-muted">{tw("confirmIntro")}</p>
+
+      {moderationEnabled && (
+        <p className="rounded-lg border border-accent/20 bg-accent-surface px-3 py-2 text-sm text-fg-muted">
+          {tw("moderationDisclosure")}
+        </p>
+      )}
 
       <section
         aria-label={tw("albumPreview")}

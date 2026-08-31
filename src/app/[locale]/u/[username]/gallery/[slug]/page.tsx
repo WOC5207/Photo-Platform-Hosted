@@ -6,6 +6,7 @@ import { pickText, formatCredits } from "@/lib/content";
 import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
 import { formatPhotoExif } from "@/lib/exif";
+import { safeExternalHttpUrl } from "@/lib/externalUrl";
 import { Link } from "@/i18n/navigation";
 import AlbumViewer, { type AlbumPhoto } from "@/components/gallery/AlbumViewer";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
@@ -101,10 +102,12 @@ export default async function AlbumPage({
       caption: formatCredits(p.credits),
       comment: p.comment,
       socialLinks: p.credits.flatMap((c) =>
-        c.socialLinks.map((s) => ({
-          label: s.platform,
-          url: s.url
-        }))
+        c.socialLinks
+          .map((s) => ({
+            label: s.platform,
+            url: safeExternalHttpUrl(s.url)
+          }))
+          .filter((link) => link.url !== "")
       ),
       width: p.width,
       height: p.height,

@@ -7,9 +7,10 @@ import {
   lookupMyBooking,
   type BookingLookupState
 } from "@/app/[locale]/(public)/book/actions";
-
-const inputCls =
-  "rounded-lg border border-border-strong bg-surface px-3 py-2 text-fg outline-none focus:border-fg-subtle";
+import { buttonClasses } from "@/components/ui/Button";
+import Button from "@/components/ui/Button";
+import { Field, Input } from "@/components/ui/Field";
+import StatusMessage from "@/components/ui/StatusMessage";
 
 function displayName(name: string, subject: string) {
   return subject ? `${name} · ${subject}` : name;
@@ -37,46 +38,52 @@ export default function CheckBookingForm({
 
   return (
     <div className="flex flex-col gap-6">
-      <form action={formAction} className="flex flex-col gap-4">
+      <form
+        action={formAction}
+        aria-busy={pending}
+        className="flex flex-col gap-4"
+      >
         <input type="hidden" name="eventToken" value={eventToken} />
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("nameLabel")} *</span>
-          <input name="name" required maxLength={200} className={inputCls} />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("contactValue")} *</span>
-          <input
+        <Field label={t("nameLabel")} htmlFor="booking-lookup-name" required>
+          <Input
+            id="booking-lookup-name"
+            name="name"
+            required
+            maxLength={200}
+            autoComplete="name"
+            disabled={pending}
+          />
+        </Field>
+        <Field
+          label={t("contactValue")}
+          htmlFor="booking-lookup-contact"
+          required
+        >
+          <Input
+            id="booking-lookup-contact"
             name="contactValue"
             required
             maxLength={200}
-            className={inputCls}
+            disabled={pending}
           />
-        </label>
+        </Field>
 
-        {errorMessage && (
-          <p role="alert" className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
-            {errorMessage}
-          </p>
-        )}
+        {errorMessage && <StatusMessage kind="error">{errorMessage}</StatusMessage>}
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="self-start rounded-full bg-fg px-6 py-3 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="submit" variant="primary" disabled={pending} className="self-start">
           {t("checkSubmit")}
-        </button>
+        </Button>
       </form>
 
       {state.results && state.results.length > 0 && (
-        <ul className="flex flex-col gap-3">
+        <ul aria-live="polite" className="flex flex-col gap-3">
           {state.results.map((r) => (
             <li
               key={r.cancelToken}
               className="rounded-xl border border-border bg-surface p-4"
             >
               <p className="font-semibold">{r.eventTitle}</p>
-              <p className="font-mono text-sm text-fg-subtle">{r.slotLabel}</p>
+              <p className="font-meta text-sm text-fg-subtle">{r.slotLabel}</p>
               {r.pricePerPerson && (
                 <p className="mt-1 text-sm font-medium text-fg-muted">
                   {t("pricePerPersonDisplay", { price: r.pricePerPerson })}
@@ -102,7 +109,10 @@ export default function CheckBookingForm({
 
               <Link
                 href={`/my-booking/${r.cancelToken}`}
-                className="mt-3 inline-block rounded-full bg-fg px-5 py-2 text-sm font-semibold text-page transition hover:opacity-90"
+                className={buttonClasses({
+                  variant: "primary",
+                  className: "mt-3"
+                })}
               >
                 {t("openBooking")}
               </Link>

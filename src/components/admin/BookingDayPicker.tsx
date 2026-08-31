@@ -159,13 +159,13 @@ export default function BookingDayPicker({
   return (
     <div className="flex flex-col gap-2">
       <span className="text-sm text-fg-muted">{t("daysLabel")}</span>
-      <div className="rounded-xl border border-border-strong bg-surface p-3 select-none">
+      <div className="w-full max-w-xl rounded-xl border border-border-strong bg-surface p-3 select-none">
         <div className="flex items-center justify-between">
           <button
             type="button"
             aria-label={t("prevMonth")}
             onClick={() => shiftMonth(-1)}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-fg/10 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:h-9 sm:w-9"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-10 sm:w-10"
           >
             ‹
           </button>
@@ -174,7 +174,7 @@ export default function BookingDayPicker({
             type="button"
             aria-label={t("nextMonth")}
             onClick={() => shiftMonth(1)}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-fg/10 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:h-9 sm:w-9"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-subtle transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:h-10 sm:w-10"
           >
             ›
           </button>
@@ -228,7 +228,7 @@ export default function BookingDayPicker({
             anchorRef.current = null;
             onSelectionChange?.();
           }}
-          className="inline-flex min-h-8 items-center rounded-lg border border-border-strong px-2 py-1 text-xs font-semibold text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40 max-sm:min-h-11"
+          className="inline-flex min-h-10 items-center rounded-lg border border-border-strong px-3 py-1 text-xs font-semibold text-fg-muted transition hover:border-accent/30 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-40 max-sm:min-h-11"
         >
           {t("clearDays")}
         </button>

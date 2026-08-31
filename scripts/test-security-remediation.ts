@@ -18,6 +18,13 @@ import {
   homePhotoWeightScale,
   normalizeHomePhotoWeight
 } from "../src/lib/homePhotoWeight";
+import {
+  isSafeExternalHttpUrl,
+  safeExternalHttpUrl
+} from "../src/lib/externalUrl";
+import { isTrustedMutationOrigin } from "../src/lib/requestSecurity";
+import { rateLimit } from "../src/lib/rate-limit";
+import { passwordFitsHashLimit } from "../src/lib/password";
 
 function multipartRequest(files: Array<[string, Uint8Array]>, fields = true) {
   const form = new FormData();
@@ -46,6 +53,48 @@ async function expectUploadError(
 }
 
 async function main() {
+  assert.equal(isSafeExternalHttpUrl("https://example.com/profile"), true);
+  assert.equal(isSafeExternalHttpUrl("http://localhost:3000/profile"), true);
+  assert.equal(isSafeExternalHttpUrl("javascript:alert(1)"), false);
+  assert.equal(isSafeExternalHttpUrl("data:text/html,unsafe"), false);
+  assert.equal(isSafeExternalHttpUrl("https://user:pass@example.com"), false);
+  assert.equal(safeExternalHttpUrl(" javascript:alert(1) "), "");
+  assert.equal(passwordFitsHashLimit("a".repeat(72)), true);
+  assert.equal(passwordFitsHashLimit("a".repeat(73)), false);
+  assert.equal(passwordFitsHashLimit("密".repeat(24)), true);
+  assert.equal(passwordFitsHashLimit("密".repeat(25)), false);
+
+  process.env.APP_BASE_URL = "https://photos.example.test";
+  const internalUrl = "http://app:3000/api/admin/photos";
+  assert.equal(
+    isTrustedMutationOrigin(
+      new Request(internalUrl, {
+        method: "POST",
+        headers: { origin: "https://photos.example.test" }
+      })
+    ),
+    true
+  );
+  assert.equal(
+    isTrustedMutationOrigin(
+      new Request(internalUrl, {
+        method: "POST",
+        headers: { origin: "https://tenant.example.test" }
+      })
+    ),
+    false
+  );
+  assert.equal(
+    isTrustedMutationOrigin(
+      new Request(internalUrl, {
+        method: "POST",
+        headers: { "sec-fetch-site": "same-site" }
+      })
+    ),
+    false
+  );
+  console.log("PASS  external URLs and cookie-auth mutations reject unsafe origins");
+
   assert.equal(normalizeHomePhotoWeight(Number.NaN), HOME_PHOTO_WEIGHT_FALLBACK);
   assert.equal(normalizeHomePhotoWeight(-10), 1);
   assert.equal(normalizeHomePhotoWeight(99), 5);
@@ -67,10 +116,20 @@ async function main() {
     process.env.TRUSTED_PROXY_HOPS = "2";
     assert.equal(
       clientIp(
-        new Headers({ "x-forwarded-for": "spoofed, 203.0.113.4, 198.51.100.7" })
+        new Headers({
+          "x-forwarded-for": "192.0.2.8, 203.0.113.4, 198.51.100.7"
+        })
       ),
       "203.0.113.4"
     );
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    assert.equal(
+      clientIp(new Headers({ "x-forwarded-for": "not-an-ip" })),
+      "unknown"
+    );
+
+    assert.equal(rateLimit("security-test", { limit: 1, windowMs: 60_000 }), true);
+    assert.equal(rateLimit("security-test", { limit: 1, windowMs: 60_000 }), false);
 
     for (const invalid of ["", ".", "..", "../victim", "..\\victim", "a/b"]) {
       assert.throws(() => userDir(invalid), /Invalid storage owner id|escaped/);

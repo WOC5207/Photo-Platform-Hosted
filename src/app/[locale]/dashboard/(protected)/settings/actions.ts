@@ -14,6 +14,7 @@ import {
   siteThemeMinimumContrast,
   THEME_COLOR_PATTERN
 } from "@/lib/themeColor";
+import { isSafeExternalHttpUrl } from "@/lib/externalUrl";
 
 export type SiteSettingsSection =
   | "appearance"
@@ -79,8 +80,16 @@ const contactSchema = z.object({
   contactEnabled: z.boolean(),
   contactTitleEn: z.string().trim().max(120),
   contactTitleZh: z.string().trim().max(120),
-  contactUrlEn: z.string().trim().max(500),
-  contactUrlZh: z.string().trim().max(500)
+  contactUrlEn: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((value) => value === "" || isSafeExternalHttpUrl(value)),
+  contactUrlZh: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((value) => value === "" || isSafeExternalHttpUrl(value))
 });
 
 const featuresSchema = z.object({
@@ -235,7 +244,12 @@ export type PersonalLinkState = { error?: "validation"; ok?: boolean };
 const personalLinkSchema = z.object({
   labelEn: z.string().trim().max(200),
   labelZh: z.string().trim().max(200),
-  url: z.string().trim().min(1).max(500)
+  url: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .refine(isSafeExternalHttpUrl)
 });
 
 function parsePersonalLinkForm(formData: FormData) {

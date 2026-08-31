@@ -109,6 +109,7 @@ export default function HomeSearchBox({
 
   const showDropdown = trimmedQuery.length > 0;
   const listboxOpen = showDropdown && !searching && Boolean(results?.length);
+  const popupId = `${listboxId}-popup`;
   const activeResult =
     activeIndex >= 0 && results ? results[activeIndex] : undefined;
 
@@ -139,8 +140,8 @@ export default function HomeSearchBox({
         type="search"
         role="combobox"
         aria-autocomplete="list"
-        aria-expanded={listboxOpen}
-        aria-controls={listboxOpen ? listboxId : undefined}
+        aria-expanded={showDropdown}
+        aria-controls={showDropdown ? popupId : undefined}
         aria-activedescendant={
           listboxOpen && activeIndex >= 0
             ? `${listboxId}-option-${activeIndex}`
@@ -180,6 +181,7 @@ export default function HomeSearchBox({
       </span>
       {showDropdown && (
         <div
+          id={popupId}
           className="absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-y-auto rounded-xl border border-border-strong bg-raised shadow-[0_18px_48px_rgb(0_0_0/0.16)]"
         >
           {searching ? (

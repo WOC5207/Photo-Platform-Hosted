@@ -119,12 +119,17 @@ To generate a good `SESSION_SECRET`:
   string, or run `openssl rand -base64 32` on your own computer (macOS/Linux
   have it built in; on Windows use Git Bash or WSL).
 
+Generate `POSTGRES_PASSWORD` separately with `openssl rand -hex 32`; the hex
+form avoids URL-reserved characters in the generated database connection
+string. Keep `ADMIN_PASSWORD` unique and at most 72 UTF-8 bytes.
+
 > **Don't leave `APP_BASE_URL` as `http://localhost:...` or the NAS's bare
 > IP.** Booking confirmation links and visitor cancel-links are built from
 > this value — if it's wrong, links you share with clients will be broken.
-> It's fine to start with `http://<nas-ip>:3000` while testing locally on
-> your own network, but switch it to the real HTTPS domain before sharing
-> any links externally (see [step 6](#6-connect-a-domain)).
+> The production container uses Secure session cookies and binds the app port
+> to NAS loopback. Complete the HTTPS domain and reverse proxy in
+> [step 6](#6-connect-a-domain) before signing in; plain NAS-IP HTTP is not an
+> authentication path.
 
 ---
 
@@ -140,8 +145,9 @@ To generate a good `SESSION_SECRET`:
    are cached.
 4. Two containers start: `photo-platform-db` (Postgres) and `photo-platform`
    (the app). The app listens on **port 3000** inside the container, which
-   `docker-compose.yml` maps to port **3000** on the NAS too; the database
-   publishes no port at all and is reachable only from the app. The app waits
+   `docker-compose.yml` maps only to **127.0.0.1:3000** on the NAS for DSM's
+   reverse proxy; the database publishes no port at all and is reachable only
+   from the app. The app waits
    for the database to report healthy, then applies migrations automatically
    before serving.
 5. The `data/photos` and `data/pg` folders (created automatically next to the
@@ -170,8 +176,8 @@ step 1 above (it will use the imported image instead of building).
 
 ## 5. First run
 
-1. Visit `http://<nas-ip>:3000/en/login` (or `/zh/login` for
-   Chinese) from a browser on your local network.
+1. Complete [step 6](#6-connect-a-domain), then visit
+   `https://<your-domain>/en/login` (or `/zh/login` for Chinese).
 2. Log in with the `ADMIN_USERNAME` / `ADMIN_PASSWORD` you set in `.env` —
    this first successful login is what creates the admin account in the
    database. After that, changing `ADMIN_PASSWORD` in `.env` has no further
@@ -346,9 +352,8 @@ valid padlock. Check a few things:
   share (visible on the confirmation page) uses `https://photos.yourstudio.com/...`,
   not `localhost` or the bare NAS IP — if it doesn't, double-check
   `APP_BASE_URL` and that you rebuilt the container after changing it.
-- `http://<nas-ip>:3000` should still work from your local network too
-  (useful for troubleshooting), but don't share that link externally — it's
-  unencrypted and bypasses the reverse proxy.
+- The app's port 3000 is loopback-only. Test through the HTTPS domain; use
+  Container Manager logs and health status for low-level troubleshooting.
 
 ---
 
@@ -514,8 +519,8 @@ again — but see the warning above about when that is safe to take.
 **Build fails or hangs on the NAS.** Usually low RAM. Build on a PC instead
 and import the image — see the note at the end of [step 4](#4-build-and-run-in-container-manager).
 
-**Container Manager shows the project running, but `http://<nas-ip>:3000`
-doesn't load.** Check the container's logs (Container Manager → Container →
+**Container Manager shows the project running, but the HTTPS domain doesn't
+load.** Check the container's logs (Container Manager → Container →
 select it → **Details → Log**) for a crash on startup — most often a missing
 or malformed `.env` value. Confirm `.env` exists in the project folder (not
 just `.env.example`) and every variable from [step 3](#3-configure-the-environment)

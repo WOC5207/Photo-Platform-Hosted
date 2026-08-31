@@ -16,7 +16,22 @@ import { prisma } from "./db";
 const BCRYPT_ROUNDS = 12;
 
 export const PASSWORD_MIN_LENGTH = 8;
-export const PASSWORD_MAX_LENGTH = 500;
+export const PASSWORD_MAX_LENGTH = 72;
+export const PASSWORD_MAX_BYTES = 72;
+
+/** bcrypt truncates after 72 UTF-8 bytes, so reject ambiguous credentials. */
+export function passwordFitsHashLimit(plain: string): boolean {
+  return Buffer.byteLength(plain, "utf8") <= PASSWORD_MAX_BYTES;
+}
+
+export async function hashPassword(plain: string): Promise<string> {
+  if (!passwordFitsHashLimit(plain)) {
+    throw new RangeError(
+      `Password must be at most ${PASSWORD_MAX_BYTES} UTF-8 bytes.`
+    );
+  }
+  return bcrypt.hash(plain, BCRYPT_ROUNDS);
+}
 
 /**
  * Unambiguous alphabet: no O/0, l/1/I. These get read off a screen and typed
@@ -49,27 +64,31 @@ export function generateTemporaryPassword(): string {
 export async function setPassword(
   userId: string,
   plain: string
-): Promise<void> {
-  await prisma.user.update({
+): Promise<number> {
+  const user = await prisma.user.update({
     where: { id: userId },
-    data: { passwordHash: await bcrypt.hash(plain, BCRYPT_ROUNDS) }
+    data: {
+      passwordHash: await hashPassword(plain),
+      credentialVersion: { increment: 1 }
+    },
+    select: { credentialVersion: true }
   });
+  return user.credentialVersion;
 }
 
 /**
  * Replace an account's password, having proved the old one.
  *
- * Returns false on a wrong current password rather than throwing, so the caller
- * can say so without distinguishing it from any other refusal.
+ * Returns the new credential version, or null for a wrong current password, so
+ * the caller can refresh only the browser that authorized the change.
  */
 export async function changeOwnPassword(
   userId: string,
   currentPlain: string,
   nextPlain: string
-): Promise<boolean> {
+): Promise<number | null> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) return false;
-  if (!(await bcrypt.compare(currentPlain, user.passwordHash))) return false;
-  await setPassword(userId, nextPlain);
-  return true;
+  if (!user) return null;
+  if (!(await bcrypt.compare(currentPlain, user.passwordHash))) return null;
+  return setPassword(userId, nextPlain);
 }

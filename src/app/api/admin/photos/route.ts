@@ -23,6 +23,7 @@ import {
   MultipartUploadError,
   parseSingleImageMultipart
 } from "@/lib/multipartUpload";
+import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
 
 const BATCH_ID_PATTERN = /^[a-zA-Z0-9_-]{16,100}$/;
 const UPLOAD_ID_PATTERN = /^[a-f0-9]{32}$/;
@@ -271,6 +272,9 @@ export async function GET(req: NextRequest) {
  * so a lost response can be retried without creating or charging a duplicate.
  */
 export async function POST(req: NextRequest) {
+  if (!isTrustedMutationOrigin(req)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -495,6 +499,9 @@ export async function POST(req: NextRequest) {
 
 /** Change one pending photo's selected master or regenerate its comparison. */
 export async function PUT(req: NextRequest) {
+  if (!isTrustedMutationOrigin(req)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -607,6 +614,9 @@ export async function PUT(req: NextRequest) {
  * response-loss retry idempotent without changing already-applied credits.
  */
 export async function PATCH(req: NextRequest) {
+  if (!isTrustedMutationOrigin(req)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -917,6 +927,9 @@ export async function PATCH(req: NextRequest) {
  * cleanup metadata available if filesystem or counter cleanup must be retried.
  */
 export async function DELETE(req: NextRequest) {
+  if (!isTrustedMutationOrigin(req)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

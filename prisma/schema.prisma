@@ -34,6 +34,9 @@ model User {
   // unique even once content is scoped per owner.
   username     String @unique
   passwordHash String
+  // Bumped whenever the credential changes. Browser sessions carry the value
+  // they were issued under, so a password reset revokes older/stolen cookies.
+  credentialVersion Int @default(0)
   // "user" | "admin". Plain strings to match Booking.status, which is a string
   // because SQLite had no enums; Postgres does, so converting them all is a
   // worthwhile follow-up, but not this phase's business.

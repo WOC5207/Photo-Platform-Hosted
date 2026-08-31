@@ -9,6 +9,7 @@ import {
 import LotteryWheel, {
   type WheelSlice
 } from "@/components/admin/LotteryWheel";
+import Button from "@/components/ui/Button";
 
 export interface MyBookingPrize {
   id: string;
@@ -153,14 +154,14 @@ export default function MyBookingDraw({
         onSpinComplete={handleSpinComplete}
       />
 
-      <button
+      <Button
         type="button"
         onClick={handleSpin}
         disabled={!canSpin}
-        className="rounded-full bg-fg px-6 py-3 text-sm font-semibold text-page transition hover:opacity-90 disabled:opacity-50"
+        variant="primary"
       >
         {spinning || busy ? t("spinning") : t("spin")}
-      </button>
+      </Button>
 
       {displayedWheelSlices.length === 0 && !revealedPrizeName && (
         <p className="text-xs text-fg-subtle">{t("noPrizesYet")}</p>

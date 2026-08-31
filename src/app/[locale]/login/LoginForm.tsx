@@ -3,6 +3,9 @@
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
 import { login, type LoginState } from "./actions";
+import Button from "@/components/ui/Button";
+import { Field, Input } from "@/components/ui/Field";
+import StatusMessage from "@/components/ui/StatusMessage";
 
 export default function LoginForm() {
   const t = useTranslations("auth");
@@ -21,45 +24,39 @@ export default function LoginForm() {
           : null;
 
   return (
-    <form action={formAction} className="flex w-full flex-col gap-5">
-      <label className="flex flex-col gap-2 text-sm">
-        <span className="text-[0.8125rem] font-semibold text-fg-muted">
-          {t("username")}
-        </span>
-        <input
+    <form
+      action={formAction}
+      aria-busy={pending}
+      className="flex w-full flex-col gap-5"
+    >
+      <Field label={t("username")} htmlFor="login-username">
+        <Input
+          id="login-username"
           name="username"
           autoComplete="username"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
           required
-          className="min-h-11 rounded-lg border border-border-strong bg-control px-3.5 py-2.5 text-sm text-fg outline-none transition-[border-color,background-color,box-shadow] hover:border-fg-faint focus-visible:border-accent/60 focus-visible:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20"
+          aria-invalid={state.error === "invalid" ? true : undefined}
+          disabled={pending}
         />
-      </label>
-      <label className="flex flex-col gap-2 text-sm">
-        <span className="text-[0.8125rem] font-semibold text-fg-muted">
-          {t("password")}
-        </span>
-        <input
+      </Field>
+      <Field label={t("password")} htmlFor="login-password">
+        <Input
+          id="login-password"
           name="password"
           type="password"
           autoComplete="current-password"
           required
-          className="min-h-11 rounded-lg border border-border-strong bg-control px-3.5 py-2.5 text-sm text-fg outline-none transition-[border-color,background-color,box-shadow] hover:border-fg-faint focus-visible:border-accent/60 focus-visible:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20"
+          aria-invalid={state.error === "invalid" ? true : undefined}
+          disabled={pending}
         />
-      </label>
-      {errorMessage && (
-        <p role="alert" className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger">
-          {errorMessage}
-        </p>
-      )}
-      <button
-        type="submit"
-        disabled={pending}
-        className="min-h-11 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg transition hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:opacity-50"
-      >
+      </Field>
+      {errorMessage && <StatusMessage kind="error">{errorMessage}</StatusMessage>}
+      <Button type="submit" variant="primary" disabled={pending}>
         {t("signIn")}
-      </button>
+      </Button>
     </form>
   );
 }
