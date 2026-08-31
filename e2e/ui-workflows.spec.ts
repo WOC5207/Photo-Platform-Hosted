@@ -220,8 +220,11 @@ test.describe("locale and theme compatibility", () => {
     await openAdminDashboard(page);
     await page.goto("/en/dashboard/settings?section=appearance");
 
+    const paletteMode = page.getByRole("group", {
+      name: "Choose palette mode"
+    });
     for (const mode of ["Light", "Dark"]) {
-      await page.getByRole("tab", { name: mode, exact: true }).click();
+      await paletteMode.getByRole("button", { name: mode, exact: true }).click();
       const fields = [
         page.getByLabel("Background color hex value"),
         page.getByLabel("Panel background hex value"),
