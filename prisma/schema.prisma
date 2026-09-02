@@ -158,14 +158,16 @@ model EquipmentItem {
 // A reusable packing/pre-shoot checklist. Keeping completion on the join row
 // lets one piece of equipment be ready for one shoot and pending for another.
 model EquipmentChecklist {
-  id        String    @id @default(cuid())
-  ownerId   String
-  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  name      String
-  shootDate DateTime?
-  notes     String    @default("")
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id           String      @id @default(cuid())
+  ownerId      String
+  owner        User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  bookingDayId String?     @unique
+  bookingDay   BookingDay? @relation(fields: [bookingDayId], references: [id], onDelete: Cascade)
+  name         String
+  shootDate    DateTime?
+  notes        String      @default("")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   items EquipmentChecklistItem[]
 
@@ -574,12 +576,13 @@ model BookingEvent {
 // naive-UTC convention matches BookingEvent.date and slot times: midnight UTC
 // stands for the wall-clock day, with no timezone conversion.
 model BookingDay {
-  id             String       @id @default(cuid())
-  bookingEventId String
-  bookingEvent   BookingEvent @relation(fields: [bookingEventId], references: [id], onDelete: Cascade)
-  date           DateTime
-  slots          TimeSlot[]
-  createdAt      DateTime     @default(now())
+  id                 String              @id @default(cuid())
+  bookingEventId     String
+  bookingEvent       BookingEvent        @relation(fields: [bookingEventId], references: [id], onDelete: Cascade)
+  date               DateTime
+  slots              TimeSlot[]
+  equipmentChecklist EquipmentChecklist?
+  createdAt          DateTime            @default(now())
 
   @@unique([bookingEventId, date])
   @@index([bookingEventId])

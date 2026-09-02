@@ -325,6 +325,42 @@ export async function deleteSlot(formData: FormData): Promise<void> {
   revalidatePath("/", "layout");
 }
 
+export async function createDailyEquipmentChecklist(
+  formData: FormData
+): Promise<void> {
+  const { locale, user } = await guard();
+  const bookingDayId = formData.get("bookingDayId");
+  if (typeof bookingDayId !== "string" || !bookingDayId) return;
+
+  const day = await prisma.bookingDay.findFirst({
+    where: { id: bookingDayId, bookingEvent: { ownerId: user.id } },
+    include: {
+      bookingEvent: { select: { titleEn: true, titleZh: true } }
+    }
+  });
+  if (!day) return;
+
+  const eventTitle = pickText(
+    locale,
+    day.bookingEvent.titleEn,
+    day.bookingEvent.titleZh
+  );
+  const date = day.date.toISOString().slice(0, 10);
+  const name = `${eventTitle} · ${date}`.slice(0, 160);
+
+  await prisma.equipmentChecklist.upsert({
+    where: { bookingDayId: day.id },
+    update: {},
+    create: {
+      ownerId: user.id,
+      bookingDayId: day.id,
+      name,
+      shootDate: day.date
+    }
+  });
+  revalidatePath("/", "layout");
+}
+
 export type BookingStatusState = { error?: "slotFull"; ok?: boolean };
 type BookingStatusTransition = BookingStatusState & { changed?: boolean };
 

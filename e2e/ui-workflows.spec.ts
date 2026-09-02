@@ -1053,6 +1053,34 @@ test.describe.serial("management workflows", () => {
       await page.getByRole("button", { name: "Create", exact: true }).click();
       await page.waitForURL(/\/dashboard\/bookings\/(?!new$)[^/]+$/);
 
+      await expect(
+        page.getByRole("heading", { name: "Daily equipment checklists" })
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Create daily checklist", exact: true })
+        .click();
+      const dailyCard = page.locator("article").filter({
+        has: page.getByText("Equipment checklist", { exact: true })
+      });
+      const reminder = `E2E batteries ${Date.now()}`;
+      const reminderInput = dailyCard.getByPlaceholder("Custom reminder");
+      await reminderInput.fill(reminder);
+      await reminderInput
+        .locator("..")
+        .getByRole("button", { name: "Add", exact: true })
+        .click();
+      const checklistItem = dailyCard.getByRole("checkbox", { name: reminder });
+      await expect(checklistItem).toHaveAttribute("aria-checked", "false");
+      await checklistItem.click();
+      await expect(checklistItem).toHaveAttribute("aria-checked", "true");
+      await expect(dailyCard).toContainText("1/1 ready");
+
+      const eventId = new URL(page.url()).pathname.split("/").at(-1)!;
+      const linkedChecklist = await prisma.equipmentChecklist.findFirst({
+        where: { bookingDay: { bookingEventId: eventId } }
+      });
+      expect(linkedChecklist?.bookingDayId).toBeTruthy();
+
       const settings = await prisma.siteSettings.findUniqueOrThrow({
         where: { ownerId: admin.id }
       });
