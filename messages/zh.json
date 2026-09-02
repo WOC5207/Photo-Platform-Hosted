@@ -106,6 +106,10 @@
   "equipment": {
     "title": "器材与出行清单",
     "description": "为相机、镜头和配件生成可扫描的二维码标签，并为每次拍摄整理可重复使用的检查清单。",
+    "manageInventory": "添加器材与分类",
+    "inventorySetupTitle": "添加器材与分类",
+    "inventorySetupDescription": "创建并整理分类，然后将器材添加到器材库。",
+    "backToInventory": "返回器材库",
     "browseCategories": "浏览分类",
     "browseCategoriesHint": "查看全部器材，或按分类筛选器材库。",
     "allCategories": "全部器材",

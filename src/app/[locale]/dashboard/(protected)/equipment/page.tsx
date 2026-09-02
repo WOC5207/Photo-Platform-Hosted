@@ -10,11 +10,8 @@ import {
   addCustomChecklistItem,
   addEquipmentToChecklist,
   createChecklist,
-  createEquipment,
-  createEquipmentCategory,
   deleteChecklist,
   deleteEquipment,
-  deleteEquipmentCategory,
   removeChecklistItem,
   resetChecklist,
   rotateEquipmentQr,
@@ -79,7 +76,18 @@ export default async function EquipmentPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader
+        title={t("title")}
+        description={t("description")}
+        action={(
+          <Link
+            href="/dashboard/equipment/manage"
+            className={buttonClasses({ variant: "primary" })}
+          >
+            {t("manageInventory")}
+          </Link>
+        )}
+      />
 
       {scan && (
         <div
@@ -132,98 +140,7 @@ export default async function EquipmentPage({
         </div>
       </nav>
 
-      <div className="grid gap-5 xl:grid-cols-3">
-        <section className="ui-panel p-5 sm:p-6">
-          <h2 className="font-display text-xl font-semibold">{t("manageCategories")}</h2>
-          <p className="mt-1 text-sm text-fg-subtle">{t("manageCategoriesHint")}</p>
-          <form action={createEquipmentCategory} className="mt-5 flex gap-2">
-            <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("categoryName")}</span>
-              <input name="name" required maxLength={100} className={inputClasses} />
-            </label>
-            <button
-              type="submit"
-              className={buttonClasses({
-                variant: "primary",
-                size: "compact",
-                className: "self-end"
-              })}
-            >
-              {t("createCategory")}
-            </button>
-          </form>
-          {categories.length === 0 ? (
-            <p className="mt-4 rounded-lg border border-dashed border-border p-4 text-sm text-fg-subtle">
-              {t("createCategoryFirst")}
-            </p>
-          ) : (
-            <ul className="mt-4 flex flex-col gap-2">
-              {categories.map((category) => (
-                <li
-                  key={category.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-control px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-fg">{category.name}</p>
-                    <p className="text-xs text-fg-subtle">
-                      {t("categoryCount", { count: category._count.items })}
-                    </p>
-                  </div>
-                  {category._count.items === 0 && (
-                    <form action={deleteEquipmentCategory}>
-                      <input type="hidden" name="id" value={category.id} />
-                      <ConfirmSubmit
-                        label={t("deleteCategory")}
-                        confirmText={t("deleteCategoryConfirm", { name: category.name })}
-                      />
-                    </form>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="ui-panel p-5 sm:p-6">
-          <h2 className="font-display text-xl font-semibold">{t("addEquipment")}</h2>
-          <p className="mt-1 text-sm text-fg-subtle">{t("addEquipmentHint")}</p>
-          <form action={createEquipment} className="mt-5 grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("equipmentName")}</span>
-              <input name="name" required maxLength={160} className={inputClasses} />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("category")}</span>
-              <select
-                name="categoryId"
-                required
-                disabled={categories.length === 0}
-                defaultValue=""
-                className={inputClasses}
-              >
-                <option value="" disabled>{t("chooseCategory")}</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>{category.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-              <span className="text-fg-muted">{t("serialNumber")}</span>
-              <input name="serialNumber" maxLength={160} className={inputClasses} />
-            </label>
-            <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-              <span className="text-fg-muted">{t("notes")}</span>
-              <textarea name="notes" rows={3} maxLength={2000} className={inputClasses} />
-            </label>
-            <button type="submit" disabled={categories.length === 0} className={buttonClasses({ variant: "primary", className: "sm:col-span-2 sm:justify-self-start" })}>
-              {t("addEquipmentButton")}
-            </button>
-            {categories.length === 0 && (
-              <p className="text-sm text-fg-subtle sm:col-span-2">{t("createCategoryFirst")}</p>
-            )}
-          </form>
-        </section>
-
+      <div className="max-w-2xl">
         <section className="ui-panel p-5 sm:p-6">
           <h2 className="font-display text-xl font-semibold">{t("createChecklist")}</h2>
           <p className="mt-1 text-sm text-fg-subtle">{t("createChecklistHint")}</p>

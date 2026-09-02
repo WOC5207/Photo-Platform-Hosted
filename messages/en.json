@@ -106,6 +106,10 @@
   "equipment": {
     "title": "Equipment & packing lists",
     "description": "Label cameras, lenses and accessories with scannable QR codes, then organize reusable checklists for every shoot.",
+    "manageInventory": "Add equipment & categories",
+    "inventorySetupTitle": "Add equipment & categories",
+    "inventorySetupDescription": "Create and organize categories, then add equipment to your inventory.",
+    "backToInventory": "Back to equipment",
     "browseCategories": "Browse categories",
     "browseCategoriesHint": "Show everything or narrow the inventory to one category.",
     "allCategories": "All equipment",

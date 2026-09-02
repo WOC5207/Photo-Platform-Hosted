@@ -321,15 +321,18 @@ test.describe.serial("management workflows", () => {
     const equipmentName = `E2E Camera ${suffix}`;
     const checklistName = `E2E Shoot ${suffix}`;
     await page.goto("/en/dashboard/equipment");
+    await page
+      .getByRole("link", { name: "Add equipment & categories", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/dashboard\/equipment\/manage$/);
 
     const categoryPanel = page
       .getByRole("heading", { name: "Equipment categories", exact: true })
       .locator("..");
     await categoryPanel.getByLabel("Category name").fill(categoryName);
     await categoryPanel.getByRole("button", { name: "Create", exact: true }).click();
-    const categoryLink = page.getByRole("link").filter({ hasText: categoryName });
     const categoryRow = categoryPanel.locator("li").filter({ hasText: categoryName });
-    await expect(categoryLink).toBeVisible();
+    await expect(categoryRow).toBeVisible();
 
     const equipmentForm = page
       .getByRole("heading", { name: "Add equipment", exact: true })
@@ -340,6 +343,9 @@ test.describe.serial("management workflows", () => {
     await equipmentForm.getByLabel("Notes").fill("Disposable E2E inventory record");
     await equipmentForm.getByRole("button", { name: "Add to inventory" }).click();
 
+    await page.getByRole("link", { name: /Back to equipment/ }).click();
+    const categoryLink = page.getByRole("link").filter({ hasText: categoryName });
+    await expect(categoryLink).toBeVisible();
     await categoryLink.click();
     await expect(page).toHaveURL(/category=/);
     const inventoryCard = page.locator("li").filter({
@@ -380,9 +386,12 @@ test.describe.serial("management workflows", () => {
     page.once("dialog", (dialog) => dialog.accept());
     await inventoryCard.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(page.getByRole("heading", { name: equipmentName, exact: true })).toHaveCount(0);
+    await page
+      .getByRole("link", { name: "Add equipment & categories", exact: true })
+      .click();
     page.once("dialog", (dialog) => dialog.accept());
     await categoryRow.getByRole("button", { name: "Delete", exact: true }).click();
-    await expect(page.getByRole("link").filter({ hasText: categoryName })).toHaveCount(0);
+    await expect(categoryRow).toHaveCount(0);
   });
 
   test("disabled booking feature stays manageable and is clearly marked", async ({ page }) => {
