@@ -19,7 +19,7 @@ export default async function EquipmentLabelPage({
   ]);
   const equipment = await prisma.equipmentItem.findUnique({
     where: { qrToken: token },
-    include: { owner: true }
+    include: { owner: true, category: true }
   });
   if (!equipment || equipment.owner.status !== "active") notFound();
   const isOwner = currentUser?.id === equipment.ownerId;
@@ -34,7 +34,7 @@ export default async function EquipmentLabelPage({
           {equipment.name}
         </h1>
         <p className="mt-3 text-sm text-fg-subtle">
-          {equipment.category || t("uncategorized")}
+          {equipment.category.name}
         </p>
         <div className="mt-8 rounded-xl border border-border bg-control p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">

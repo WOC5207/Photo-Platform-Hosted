@@ -3,6 +3,7 @@ import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import EquipmentQrCode from "@/components/equipment/EquipmentQrCode";
 import { buttonClasses } from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
+import { Link } from "@/i18n/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
@@ -10,8 +11,10 @@ import {
   addEquipmentToChecklist,
   createChecklist,
   createEquipment,
+  createEquipmentCategory,
   deleteChecklist,
   deleteEquipment,
+  deleteEquipmentCategory,
   removeChecklistItem,
   resetChecklist,
   rotateEquipmentQr,
@@ -34,18 +37,27 @@ function formatShootDate(value: Date | null, locale: string): string {
 export default async function EquipmentPage({
   searchParams
 }: {
-  searchParams: Promise<{ scan?: string }>;
+  searchParams: Promise<{ scan?: string; category?: string }>;
 }) {
-  const [{ scan }, locale, t] = await Promise.all([
+  const [{ scan, category: requestedCategory }, locale, t] = await Promise.all([
     searchParams,
     getLocale(),
     getTranslations("equipment")
   ]);
   const user = await requireUser(locale);
-  const [equipment, checklists] = await Promise.all([
+  const categories = await prisma.equipmentCategory.findMany({
+    where: { ownerId: user.id },
+    orderBy: { name: "asc" },
+    include: { _count: { select: { items: true } } }
+  });
+  const selectedCategory = categories.find(
+    (category) => category.id === requestedCategory
+  );
+  const [allEquipment, checklists] = await Promise.all([
     prisma.equipmentItem.findMany({
       where: { ownerId: user.id },
-      orderBy: [{ category: "asc" }, { name: "asc" }]
+      orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
+      include: { category: true }
     }),
     prisma.equipmentChecklist.findMany({
       where: { ownerId: user.id },
@@ -58,7 +70,12 @@ export default async function EquipmentPage({
       }
     })
   ]);
-  const scanned = scan ? equipment.find((item) => item.qrToken === scan) : null;
+  const equipment = selectedCategory
+    ? allEquipment.filter((item) => item.categoryId === selectedCategory.id)
+    : allEquipment;
+  const scanned = scan
+    ? allEquipment.find((item) => item.qrToken === scan)
+    : null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -79,7 +96,94 @@ export default async function EquipmentPage({
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <nav aria-label={t("browseCategories")} className="flex flex-col gap-3">
+        <div>
+          <h2 className="font-display text-xl font-semibold">{t("browseCategories")}</h2>
+          <p className="mt-1 text-sm text-fg-subtle">{t("browseCategoriesHint")}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/dashboard/equipment"
+            aria-current={!selectedCategory ? "page" : undefined}
+            className={`inline-flex min-h-10 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              !selectedCategory
+                ? "border-accent bg-accent text-accent-fg"
+                : "border-border-strong bg-surface text-fg-muted hover:border-accent hover:text-accent"
+            }`}
+          >
+            {t("allCategories")}
+            <span className="text-xs opacity-75">{allEquipment.length}</span>
+          </Link>
+          {categories.map((category) => (
+            <Link
+              key={category.id}
+              href={`/dashboard/equipment?category=${category.id}`}
+              aria-current={selectedCategory?.id === category.id ? "page" : undefined}
+              className={`inline-flex min-h-10 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                selectedCategory?.id === category.id
+                  ? "border-accent bg-accent text-accent-fg"
+                  : "border-border-strong bg-surface text-fg-muted hover:border-accent hover:text-accent"
+              }`}
+            >
+              {category.name}
+              <span className="text-xs opacity-75">{category._count.items}</span>
+            </Link>
+          ))}
+        </div>
+      </nav>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        <section className="ui-panel p-5 sm:p-6">
+          <h2 className="font-display text-xl font-semibold">{t("manageCategories")}</h2>
+          <p className="mt-1 text-sm text-fg-subtle">{t("manageCategoriesHint")}</p>
+          <form action={createEquipmentCategory} className="mt-5 flex gap-2">
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+              <span className="text-fg-muted">{t("categoryName")}</span>
+              <input name="name" required maxLength={100} className={inputClasses} />
+            </label>
+            <button
+              type="submit"
+              className={buttonClasses({
+                variant: "primary",
+                size: "compact",
+                className: "self-end"
+              })}
+            >
+              {t("createCategory")}
+            </button>
+          </form>
+          {categories.length === 0 ? (
+            <p className="mt-4 rounded-lg border border-dashed border-border p-4 text-sm text-fg-subtle">
+              {t("createCategoryFirst")}
+            </p>
+          ) : (
+            <ul className="mt-4 flex flex-col gap-2">
+              {categories.map((category) => (
+                <li
+                  key={category.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-control px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-fg">{category.name}</p>
+                    <p className="text-xs text-fg-subtle">
+                      {t("categoryCount", { count: category._count.items })}
+                    </p>
+                  </div>
+                  {category._count.items === 0 && (
+                    <form action={deleteEquipmentCategory}>
+                      <input type="hidden" name="id" value={category.id} />
+                      <ConfirmSubmit
+                        label={t("deleteCategory")}
+                        confirmText={t("deleteCategoryConfirm", { name: category.name })}
+                      />
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         <section className="ui-panel p-5 sm:p-6">
           <h2 className="font-display text-xl font-semibold">{t("addEquipment")}</h2>
           <p className="mt-1 text-sm text-fg-subtle">{t("addEquipmentHint")}</p>
@@ -90,7 +194,18 @@ export default async function EquipmentPage({
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-fg-muted">{t("category")}</span>
-              <input name="category" maxLength={100} className={inputClasses} />
+              <select
+                name="categoryId"
+                required
+                disabled={categories.length === 0}
+                defaultValue=""
+                className={inputClasses}
+              >
+                <option value="" disabled>{t("chooseCategory")}</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>{category.name}</option>
+                ))}
+              </select>
             </label>
             <label className="flex flex-col gap-1 text-sm sm:col-span-2">
               <span className="text-fg-muted">{t("serialNumber")}</span>
@@ -100,9 +215,12 @@ export default async function EquipmentPage({
               <span className="text-fg-muted">{t("notes")}</span>
               <textarea name="notes" rows={3} maxLength={2000} className={inputClasses} />
             </label>
-            <button type="submit" className={buttonClasses({ variant: "primary", className: "sm:col-span-2 sm:justify-self-start" })}>
+            <button type="submit" disabled={categories.length === 0} className={buttonClasses({ variant: "primary", className: "sm:col-span-2 sm:justify-self-start" })}>
               {t("addEquipmentButton")}
             </button>
+            {categories.length === 0 && (
+              <p className="text-sm text-fg-subtle sm:col-span-2">{t("createCategoryFirst")}</p>
+            )}
           </form>
         </section>
 
@@ -136,7 +254,7 @@ export default async function EquipmentPage({
         </div>
         {equipment.length === 0 ? (
           <p className="ui-panel flex min-h-32 items-center justify-center p-6 text-center text-sm text-fg-subtle">
-            {t("emptyInventory")}
+            {selectedCategory ? t("emptyCategory", { name: selectedCategory.name }) : t("emptyInventory")}
           </p>
         ) : (
           <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -152,7 +270,7 @@ export default async function EquipmentPage({
                   <div className="min-w-0">
                     <h3 className="truncate font-semibold text-fg">{item.name}</h3>
                     <p className="mt-1 text-xs text-fg-subtle">
-                      {item.category || t("uncategorized")}
+                      {item.category.name}
                     </p>
                   </div>
                   <span className="rounded-md bg-accent-surface px-2 py-1 font-mono text-[0.625rem] font-semibold text-accent">
@@ -280,13 +398,13 @@ export default async function EquipmentPage({
                     <form action={addEquipmentToChecklist} className="flex gap-2">
                       <input type="hidden" name="checklistId" value={checklist.id} />
                       <label className="sr-only" htmlFor={`equipment-${checklist.id}`}>{t("chooseEquipment")}</label>
-                      <select id={`equipment-${checklist.id}`} name="equipmentId" required disabled={equipment.length === 0} className={inputClasses} defaultValue="">
+                      <select id={`equipment-${checklist.id}`} name="equipmentId" required disabled={allEquipment.length === 0} className={inputClasses} defaultValue="">
                         <option value="" disabled>{t("chooseEquipment")}</option>
-                        {equipment.map((item) => (
+                        {allEquipment.map((item) => (
                           <option key={item.id} value={item.id}>{item.name}</option>
                         ))}
                       </select>
-                      <button type="submit" disabled={equipment.length === 0} className={buttonClasses({ size: "compact" })}>
+                      <button type="submit" disabled={allEquipment.length === 0} className={buttonClasses({ size: "compact" })}>
                         {t("add")}
                       </button>
                     </form>

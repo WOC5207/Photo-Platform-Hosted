@@ -101,6 +101,7 @@ model User {
   personalLinks       PersonalLink[]
   creditProfiles      CreditProfile[]
   siteImages          SiteImage[]
+  equipmentCategories EquipmentCategory[]
   equipmentItems      EquipmentItem[]
   equipmentChecklists EquipmentChecklist[]
 
@@ -114,25 +115,44 @@ model User {
   contentReportsReviewed ContentReport[]                 @relation("ContentReportReviewer")
 }
 
+// Photographer-defined inventory grouping. Categories must exist before an
+// equipment item can be added, and names are unique per owner ignoring case.
+model EquipmentCategory {
+  id             String   @id @default(cuid())
+  ownerId        String
+  owner          User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name           String
+  normalizedName String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items EquipmentItem[]
+
+  @@unique([ownerId, normalizedName])
+  @@index([ownerId, name])
+}
+
 // Private equipment inventory for a photographer. The QR token is deliberately
 // separate from the row id: labels can be regenerated without exposing an
 // enumerable database identifier. The public label route reveals only the
 // item name/category and the owner's already-public profile identity.
 model EquipmentItem {
-  id           String   @id @default(cuid())
+  id           String            @id @default(cuid())
   ownerId      String
-  owner        User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner        User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   name         String
-  category     String   @default("")
-  serialNumber String   @default("")
-  notes        String   @default("")
-  qrToken      String   @unique @default(uuid())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  categoryId   String
+  category     EquipmentCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  serialNumber String            @default("")
+  notes        String            @default("")
+  qrToken      String            @unique @default(uuid())
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   checklistItems EquipmentChecklistItem[]
 
   @@index([ownerId, createdAt])
+  @@index([categoryId])
 }
 
 // A reusable packing/pre-shoot checklist. Keeping completion on the join row
