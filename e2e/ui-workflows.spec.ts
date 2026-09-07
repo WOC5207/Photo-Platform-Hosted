@@ -27,6 +27,27 @@ async function openAdminDashboard(page: Page) {
   }
 }
 
+async function createPublishedGallery(page: Page, title: string, slug: string) {
+  await page.goto("/en/dashboard/events/new");
+  await page.getByLabel("Title (English)").fill(title);
+  const next = new Date();
+  next.setMonth(next.getMonth() + 1, 15);
+  const day = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-15`;
+  await page.getByRole("button", { name: "Next month" }).click();
+  await page.getByRole("button", { name: day, exact: true }).click();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await page.waitForURL(/\/dashboard\/bookings\/(?!new$)[^/]+$/);
+  const bookingId = new URL(page.url()).pathname.split("/").at(-1)!;
+  await page.getByRole("link", { name: "Gallery", exact: true }).click();
+  await page.waitForURL(/\/dashboard\/events\/(?!new$)[^/]+$/);
+  await expect(page.getByRole("checkbox", { name: /Published/ })).not.toBeChecked();
+  await page.getByLabel("URL slug").fill(slug);
+  await page.getByRole("checkbox", { name: /Published/ }).check();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("link", { name: "View public page" })).toHaveAttribute("href", new RegExp(`/gallery/${slug}$`));
+  return bookingId;
+}
+
 async function expectNoSeriousAccessibilityViolations(page: Page) {
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -66,7 +87,8 @@ test.describe("role-aware management shell", () => {
     await page.getByRole("button", { name: "Menu" }).click();
     const drawer = page.getByRole("dialog", { name: "Menu" });
     await expect(drawer).toBeVisible();
-    await expect(drawer.getByRole("link", { name: "Gallery events" })).toBeVisible();
+    await expect(drawer.getByRole("link", { name: "Events", exact: true })).toBeVisible();
+    await expect(drawer.getByRole("link", { name: "Events", exact: true })).toHaveAttribute("href", "/en/dashboard/events");
     await drawer.getByRole("button", { name: "Close" }).click();
 
     await page.getByRole("button", { name: "Account" }).click();
@@ -139,9 +161,8 @@ test.describe("locale and theme compatibility", () => {
     }
 
     await page.goto("/en/dashboard/settings?section=features#lottery");
-    await page.locator('aside button[aria-haspopup="dialog"]').click();
     await page
-      .getByRole("dialog", { name: "Account" })
+      .locator("aside")
       .getByRole("link", { name: "中文" })
       .click();
     await expect(page).toHaveURL(
@@ -360,6 +381,9 @@ test.describe.serial("management workflows", () => {
       })
     ).toHaveAttribute("src", /^data:image\/png;base64,/);
 
+    await expect(page.getByRole("heading", { name: "Create a checklist", exact: true })).toHaveCount(0);
+    await page.goto("/en/dashboard/preparation/equipment");
+    await page.getByText("Create a separate packing list", { exact: true }).click();
     const checklistForm = page
       .getByRole("heading", { name: "Create a checklist", exact: true })
       .locator("..");
@@ -368,9 +392,9 @@ test.describe.serial("management workflows", () => {
     await checklistForm.getByRole("button", { name: "Create checklist" }).click();
 
     const checklist = page.getByRole("article").filter({ hasText: checklistName });
-    const equipmentSelect = checklist.getByLabel("Choose equipment");
-    await equipmentSelect.selectOption({ label: equipmentName });
-    await equipmentSelect.locator("..").getByRole("button", { name: "Add" }).click();
+    await checklist.getByText("Pick equipment to bring", { exact: true }).click();
+    await checklist.getByRole("checkbox", { name: equipmentName + " " + categoryName, exact: true }).check();
+    await checklist.getByRole("button", { name: "Add selected (1)", exact: true }).click();
     const checklistItem = checklist.getByRole("checkbox", { name: /E2E Camera/ });
     await expect(checklistItem).toHaveAttribute("aria-checked", "false");
     await checklistItem.click();
@@ -383,6 +407,7 @@ test.describe.serial("management workflows", () => {
     page.once("dialog", (dialog) => dialog.accept());
     await checklist.getByRole("button", { name: "Delete checklist" }).click();
     await expect(page.getByRole("article").filter({ hasText: checklistName })).toHaveCount(0);
+    await page.goto("/en/dashboard/equipment");
     page.once("dialog", (dialog) => dialog.accept());
     await inventoryCard.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(page.getByRole("heading", { name: equipmentName, exact: true })).toHaveCount(0);
@@ -409,7 +434,7 @@ test.describe.serial("management workflows", () => {
     ).toBeVisible();
     await page.goto("/en/dashboard/bookings");
     await expect(page.getByRole("status")).toContainText("Off hides the Booking nav link");
-    await expect(page.getByRole("link", { name: "Bookings", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Events", exact: true })).toBeVisible();
 
     if (originallyEnabled) {
       await page.goto("/en/dashboard/settings?section=features");
@@ -423,12 +448,7 @@ test.describe.serial("management workflows", () => {
 
   test("published album preview uses the owner gallery route", async ({ page }) => {
     const slug = `e2e-preview-${Date.now()}`;
-    await page.goto("/en/dashboard/events/new");
-    await page.getByLabel("Title (English)").fill("E2E preview album");
-    await page.getByLabel("URL slug").fill(slug);
-    await page.getByRole("checkbox", { name: /Published/ }).check();
-    await page.getByRole("button", { name: "Create", exact: true }).click();
-    await page.waitForURL(/\/dashboard\/events\/(?!new$)[^/]+$/);
+    const bookingId = await createPublishedGallery(page, "E2E preview album", slug);
     const editUrl = page.url();
     const preview = page.getByRole("link", { name: "View public page" });
     await expect(preview).toHaveAttribute("href", new RegExp(`/u/[^/]+/gallery/${slug}$`));
@@ -439,6 +459,7 @@ test.describe.serial("management workflows", () => {
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Delete event" }).click();
     await expect(page).toHaveURL(/\/en\/dashboard\/events$/);
+    await prisma.bookingEvent.delete({ where: { id: bookingId } });
   });
 
   test("registration notice delays a usable invite before showing the account form", async ({
@@ -568,12 +589,7 @@ test.describe.serial("management workflows", () => {
 
   test("photo wizard uploads, compresses, credits and publishes step by step", async ({ page }) => {
     const slug = `e2e-pending-photos-${Date.now()}`;
-    await page.goto("/en/dashboard/events/new");
-    await page.getByLabel("Title (English)").fill("E2E pending photo queue");
-    await page.getByLabel("URL slug").fill(slug);
-    await page.getByRole("checkbox", { name: /Published/ }).check();
-    await page.getByRole("button", { name: "Create", exact: true }).click();
-    await page.waitForURL(/\/dashboard\/events\/(?!new$)[^/]+$/);
+    const bookingId = await createPublishedGallery(page, "E2E pending photo queue", slug);
     const editUrl = page.url();
 
     // The edit page no longer hosts the uploader; the guided wizard does.
@@ -941,6 +957,7 @@ test.describe.serial("management workflows", () => {
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Delete event" }).click();
     await expect(page).toHaveURL(/\/en\/dashboard\/events$/);
+    await prisma.bookingEvent.delete({ where: { id: bookingId } });
   });
 
   test("platform notification shows on the dashboard until dismissed", async ({ page }) => {
@@ -1053,15 +1070,17 @@ test.describe.serial("management workflows", () => {
       await page.getByRole("button", { name: "Create", exact: true }).click();
       await page.waitForURL(/\/dashboard\/bookings\/(?!new$)[^/]+$/);
 
-      await expect(
-        page.getByRole("heading", { name: "Daily equipment checklists" })
-      ).toBeVisible();
-      await page
-        .getByRole("button", { name: "Create daily checklist", exact: true })
-        .click();
-      const dailyCard = page.locator("article").filter({
-        has: page.getByText("Equipment checklist", { exact: true })
+      const eventId = new URL(page.url()).pathname.split("/").at(-1)!;
+      const workspace = await prisma.bookingEvent.findUniqueOrThrow({
+        where: { id: eventId }, include: { galleryEvent: true }
       });
+      expect(workspace.galleryEvent).not.toBeNull();
+      expect(workspace.galleryEvent!.published).toBe(false);
+      expect(workspace.open).toBe(false);
+      await page.getByRole("link", { name: "Equipment checklist", exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`/preparation/equipment\\?event=${eventId}$`));
+      const dailyCard = page.getByRole("article");
+      await expect(dailyCard).toHaveCount(1);
       const reminder = `E2E batteries ${Date.now()}`;
       const reminderInput = dailyCard.getByPlaceholder("Custom reminder");
       await reminderInput.fill(reminder);
@@ -1075,7 +1094,6 @@ test.describe.serial("management workflows", () => {
       await expect(checklistItem).toHaveAttribute("aria-checked", "true");
       await expect(dailyCard).toContainText("1/1 ready");
 
-      const eventId = new URL(page.url()).pathname.split("/").at(-1)!;
       const linkedChecklist = await prisma.equipmentChecklist.findFirst({
         where: { bookingDay: { bookingEventId: eventId } }
       });
@@ -1092,6 +1110,7 @@ test.describe.serial("management workflows", () => {
       await prisma.bookingEvent.deleteMany({
         where: { ownerId: admin.id, titleEn: title }
       });
+      await prisma.event.deleteMany({ where: { ownerId: admin.id, titleEn: title } });
       await prisma.platformSettings.update({
         where: { id: "platform" },
         data: {
