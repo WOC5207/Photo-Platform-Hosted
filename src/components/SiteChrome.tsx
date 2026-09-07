@@ -106,7 +106,7 @@ export default async function SiteChrome({
             )}
             <span className="truncate">{siteTitle}</span>
           </Link>
-          <nav className="hidden items-center gap-1 text-sm sm:flex">
+          <nav aria-label={t("nav.menu")} className="hidden items-center gap-2 text-sm xl:flex">
             <Link
               href={`${base}/gallery`}
               className="inline-flex min-h-10 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
@@ -165,7 +165,7 @@ export default async function SiteChrome({
           />
         </div>
       </header>
-      <main className="relative z-10 mx-auto my-6 w-full max-w-[1600px] flex-1 px-4 sm:my-10 sm:px-6 lg:my-14">
+      <main id="main-content" tabIndex={-1} className="relative z-10 mx-auto my-6 w-full max-w-[1600px] flex-1 px-4 sm:my-10 sm:px-6 lg:my-14">
         {children}
       </main>
       <footer className="font-meta relative z-10 flex flex-col items-center justify-center gap-2 border-t border-border bg-page/82 py-7 text-center text-[0.6875rem] tracking-[0.08em] text-fg-subtle backdrop-blur-xl sm:flex-row sm:gap-4">

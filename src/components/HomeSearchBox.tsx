@@ -126,6 +126,7 @@ export default function HomeSearchBox({
         {labels.placeholder}
       </label>
       <svg
+        aria-hidden="true"
         viewBox="0 0 24 24"
         className="pointer-events-none absolute bottom-3.5 left-4 h-4 w-4 text-fg-faint"
         fill="none"

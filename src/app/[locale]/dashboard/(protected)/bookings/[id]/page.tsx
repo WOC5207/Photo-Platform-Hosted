@@ -1,3 +1,4 @@
+import EventWorkspaceHeader from "@/components/events/EventWorkspaceHeader";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
@@ -21,23 +22,10 @@ import BookingStatusButton from "@/components/admin/BookingStatusButton";
 import LotteryEnabledToggle from "@/components/admin/LotteryEnabledToggle";
 import { Link } from "@/i18n/navigation";
 import {
-  createDailyEquipmentChecklist,
   deleteBookingEvent,
   deleteSlot,
   updateBookingEvent
 } from "../actions";
-import {
-  addCustomChecklistItem,
-  addEquipmentToChecklist,
-  deleteChecklist,
-  removeChecklistItem,
-  resetChecklist,
-  toggleChecklistItem
-} from "../../equipment/actions";
-
-const inputClasses =
-  "min-h-11 w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none transition focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
-
 export default async function EditBookingEventPage({
   params
 }: {
@@ -46,26 +34,20 @@ export default async function EditBookingEventPage({
   const { id, locale } = await params;
   const user = await requireUser(locale);
   const t = await getTranslations("adminBookings");
-  const te = await getTranslations("equipment");
+  const tp = await getTranslations("preparation");
   const tc = await getTranslations("common");
+  const tw = await getTranslations("eventWorkspace");
   const ts = await getTranslations("adminSite");
   const settings = await getSiteSettings(user.id);
 
   const event = await prisma.bookingEvent.findFirst({
     where: { id, ownerId: user.id },
     include: {
+      galleryEvent: { where: { ownerId: user.id }, select: { id: true, titleEn: true, titleZh: true } },
       lotteryDraw: { select: { id: true } },
       days: {
         orderBy: { date: "asc" },
         include: {
-          equipmentChecklist: {
-            include: {
-              items: {
-                orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-                include: { equipment: true }
-              }
-            }
-          },
           slots: {
             orderBy: { startTime: "asc" },
             include: {
@@ -77,11 +59,6 @@ export default async function EditBookingEventPage({
     }
   });
   if (!event) notFound();
-  const equipment = await prisma.equipmentItem.findMany({
-    where: { ownerId: user.id },
-    orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
-    include: { category: true }
-  });
 
   const shareUrl = `${config.appBaseUrl()}/${locale}/book/${event.token}`;
   const showLotteryManagement =
@@ -93,15 +70,7 @@ export default async function EditBookingEventPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <Link
-          href="/dashboard/bookings"
-          className="mb-2 inline-flex min-h-10 items-center text-sm text-fg-subtle underline-offset-4 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/20"
-        >
-          {tc("back")} · {t("listTitle")}
-        </Link>
-        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("editEvent")}</h1>
-      </div>
+      <EventWorkspaceHeader title={pickText(locale, (event.galleryEvent ?? event).titleEn, (event.galleryEvent ?? event).titleZh)} galleryId={event.galleryEvent?.id} bookingId={event.id} active="bookings" />
 
       {!settings.bookingEnabled && (
         <p
@@ -137,7 +106,7 @@ export default async function EditBookingEventPage({
       <BookingEventForm
         action={updateBookingEvent}
         submitLabel={tc("save")}
-        cancelHref="/dashboard/bookings"
+        cancelHref="/dashboard/events"
         timeZone={settings.timeZone}
         initial={{
           id: event.id,
@@ -304,198 +273,7 @@ export default async function EditBookingEventPage({
         />
       </section>
 
-      <section className="flex flex-col gap-5 border-t border-border pt-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">{t("dailyEquipmentTitle")}</h2>
-            <p className="mt-1 text-sm text-fg-subtle">{t("dailyEquipmentHint")}</p>
-          </div>
-          <Link
-            href="/dashboard/equipment/manage"
-            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-4 py-2 text-sm font-semibold text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11"
-          >
-            {te("manageInventory")}
-          </Link>
-        </div>
-
-        <div className="grid gap-5 xl:grid-cols-2">
-          {event.days.map((day) => {
-            const checklist = day.equipmentChecklist;
-            const completed = checklist?.items.filter((item) => item.checked).length ?? 0;
-            const total = checklist?.items.length ?? 0;
-            const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
-
-            return (
-              <article key={day.id} className="rounded-xl border border-border bg-surface p-5">
-                <header className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
-                      {t("dailyChecklistLabel")}
-                    </p>
-                    <h3 className="mt-1 font-display text-xl font-semibold">
-                      {formatDayTab(day.date, locale)}
-                    </h3>
-                  </div>
-                  {checklist && (
-                    <span className="rounded-full bg-control px-3 py-1 text-xs font-semibold text-fg-muted">
-                      {te("progress", { completed, total })}
-                    </span>
-                  )}
-                </header>
-
-                {!checklist ? (
-                  <div className="mt-5 rounded-lg border border-dashed border-border p-4">
-                    <p className="text-sm text-fg-subtle">{t("noDailyChecklist")}</p>
-                    <form action={createDailyEquipmentChecklist} className="mt-3">
-                      <input type="hidden" name="bookingDayId" value={day.id} />
-                      <button
-                        type="submit"
-                        className="inline-flex min-h-10 items-center justify-center rounded-lg border border-transparent bg-accent px-4 py-2 text-sm font-semibold text-accent-fg transition hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 max-sm:min-h-11"
-                      >
-                        {t("createDailyChecklist")}
-                      </button>
-                    </form>
-                  </div>
-                ) : (
-                  <div className="mt-5 flex flex-col gap-4">
-                    <div className="h-2 overflow-hidden rounded-full bg-control" aria-hidden="true">
-                      <div
-                        className="h-full rounded-full bg-accent transition-[width]"
-                        style={{ width: `${percent}%` }}
-                      />
-                    </div>
-
-                    {total === 0 ? (
-                      <p className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-fg-subtle">
-                        {te("emptyChecklistItems")}
-                      </p>
-                    ) : (
-                      <ul className="flex flex-col gap-2">
-                        {checklist.items.map((item) => (
-                          <li key={item.id} className="flex items-center gap-2 rounded-lg border border-border bg-control p-2">
-                            <form action={toggleChecklistItem} className="min-w-0 flex-1">
-                              <input type="hidden" name="id" value={item.id} />
-                              <input type="hidden" name="checked" value={String(!item.checked)} />
-                              <button
-                                type="submit"
-                                role="checkbox"
-                                aria-checked={item.checked}
-                                className="flex w-full items-center gap-3 rounded-md p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-                              >
-                                <span
-                                  aria-hidden="true"
-                                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-xs ${
-                                    item.checked
-                                      ? "border-accent bg-accent text-accent-fg"
-                                      : "border-border-strong bg-surface"
-                                  }`}
-                                >
-                                  {item.checked ? "✓" : ""}
-                                </span>
-                                <span className={`min-w-0 flex-1 ${item.checked ? "text-fg-subtle line-through" : "text-fg"}`}>
-                                  {item.label}
-                                </span>
-                                {item.equipment && (
-                                  <span className="shrink-0 text-[0.625rem] font-semibold uppercase tracking-wide text-accent">
-                                    {te("inventoryItem")}
-                                  </span>
-                                )}
-                              </button>
-                            </form>
-                            <form action={removeChecklistItem}>
-                              <input type="hidden" name="id" value={item.id} />
-                              <button
-                                type="submit"
-                                aria-label={te("removeItem", { name: item.label })}
-                                className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle hover:bg-danger-surface hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
-                              >
-                                ×
-                              </button>
-                            </form>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    <div className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
-                      <form action={addEquipmentToChecklist} className="flex gap-2">
-                        <input type="hidden" name="checklistId" value={checklist.id} />
-                        <label className="sr-only" htmlFor={`daily-equipment-${day.id}`}>
-                          {te("chooseEquipment")}
-                        </label>
-                        <select
-                          id={`daily-equipment-${day.id}`}
-                          name="equipmentId"
-                          required
-                          disabled={equipment.length === 0}
-                          className={inputClasses}
-                          defaultValue=""
-                        >
-                          <option value="" disabled>{te("chooseEquipment")}</option>
-                          {equipment.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.name} · {item.category.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="submit"
-                          disabled={equipment.length === 0}
-                          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-3 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-45 max-sm:min-h-11"
-                        >
-                          {te("add")}
-                        </button>
-                      </form>
-                      <form action={addCustomChecklistItem} className="flex gap-2">
-                        <input type="hidden" name="checklistId" value={checklist.id} />
-                        <label className="sr-only" htmlFor={`daily-custom-${day.id}`}>
-                          {te("customItem")}
-                        </label>
-                        <input
-                          id={`daily-custom-${day.id}`}
-                          name="label"
-                          required
-                          maxLength={200}
-                          placeholder={te("customItem")}
-                          className={inputClasses}
-                        />
-                        <button
-                          type="submit"
-                          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-3 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-subtle hover:text-fg max-sm:min-h-11"
-                        >
-                          {te("add")}
-                        </button>
-                      </form>
-                    </div>
-
-                    <footer className="flex flex-wrap gap-2 border-t border-border pt-4">
-                      <form action={resetChecklist}>
-                        <input type="hidden" name="checklistId" value={checklist.id} />
-                        <button
-                          type="submit"
-                          disabled={completed === 0}
-                          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-4 py-2 text-sm font-semibold text-fg-muted transition hover:border-fg-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-45 max-sm:min-h-11"
-                        >
-                          {te("resetChecklist")}
-                        </button>
-                      </form>
-                      <form action={deleteChecklist}>
-                        <input type="hidden" name="id" value={checklist.id} />
-                        <ConfirmSubmit
-                          label={te("deleteChecklist")}
-                          confirmText={t("deleteDailyChecklistConfirm", {
-                            date: formatDayTab(day.date, locale)
-                          })}
-                        />
-                      </form>
-                    </footer>
-                  </div>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </section>
+      <Link href={"/dashboard/preparation/slots?event=" + event.id} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent underline underline-offset-4">{tp("openPreparation")}</Link>
 
       {event.days.length >= 2 && (
         <BookingEventSplit
@@ -510,6 +288,7 @@ export default async function EditBookingEventPage({
       <section className="rounded-xl border border-danger-border bg-danger-surface/40 p-5">
         <h2 className="text-lg font-semibold text-danger-strong">{tc("dangerZone")}</h2>
         <p className="mt-1 text-sm text-fg-subtle">{t("confirmDeleteEvent")}</p>
+        {event.galleryEvent && <p className="mt-2 text-sm text-fg-muted">{tw("bookingDeleteHint")}</p>}
         <form action={deleteBookingEvent} className="mt-4">
           <input type="hidden" name="id" value={event.id} />
           <ConfirmSubmit

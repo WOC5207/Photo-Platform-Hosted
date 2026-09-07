@@ -7,6 +7,8 @@ import { Link } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
 import DirectorySearch from "@/components/DirectorySearch";
+import EmptyState from "@/components/ui/EmptyState";
+import { buttonClasses } from "@/components/ui/Button";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
 
 // Lists live accounts — never prerender.
@@ -87,8 +89,8 @@ export default async function DirectoryPage() {
   );
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col gap-10 px-4 py-7 sm:px-7 sm:py-10 lg:py-14">
-      <header className="flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
+    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-10 px-4 py-7 sm:px-7 sm:py-10 lg:py-14">
+      <header className="flex flex-col gap-6 border-b border-border pb-8 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex max-w-3xl gap-4">
           <span aria-hidden="true" className="font-meta mt-2 text-[0.6875rem] font-semibold tracking-[0.18em] text-accent">
             01
@@ -120,10 +122,9 @@ export default async function DirectoryPage() {
       </header>
 
       {cards.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-surface py-20 text-center">
-          <p className="text-fg-subtle">{t("empty")}</p>
-          <p className="text-xs text-fg-subtle">{t("emptyHint")}</p>
-        </div>
+        <EmptyState title={t("empty")} description={t("emptyHint")}
+          action={<Link href="/login" className={buttonClasses({ variant: "secondary" })}>{t("login")}</Link>}
+        />
       ) : (
         <DirectorySearch owners={cards} />
       )}

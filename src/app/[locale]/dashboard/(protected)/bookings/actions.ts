@@ -1,6 +1,5 @@
 "use server";
 
-import { randomUUID } from "crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
@@ -23,6 +22,7 @@ import {
 } from "@/lib/booking";
 import { getSiteSettings } from "@/lib/settings";
 import { acceptBookingPriceNotice } from "@/lib/bookingPriceNotice";
+import { createEventWorkspace, ensureDayChecklists, validEventDates } from "@/lib/eventWorkspace";
 
 export type BookingEventFormState = {
   error?:
@@ -35,38 +35,9 @@ export type BookingEventFormState = {
 };
 export type SlotFormState = { error?: "validation"; ok?: boolean };
 
-// The calendar day-picker submits its selected days as a JSON array of
-// yyyy-mm-dd strings. At most this many days per event — a generous cap that
-// still stops a crafted request from creating thousands of rows.
-const MAX_EVENT_DAYS = 60;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * Parse and normalize the selected days: deduped, sorted ascending, each a
- * valid yyyy-mm-dd. Returns null when the input is missing, malformed, empty or
- * over the cap — the caller treats that as a validation error.
- */
 function parseSelectedDates(raw: FormDataEntryValue | null): string[] | null {
   if (typeof raw !== "string") return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(parsed)) return null;
-  const days = Array.from(
-    new Set(
-      parsed.filter(
-        (d): d is string =>
-          typeof d === "string" &&
-          DATE_PATTERN.test(d) &&
-          !Number.isNaN(Date.parse(`${d}T00:00:00Z`))
-      )
-    )
-  ).sort();
-  if (days.length === 0 || days.length > MAX_EVENT_DAYS) return null;
-  return days;
+  try { return validEventDates(JSON.parse(raw)); } catch { return null; }
 }
 
 /** See the note in the events actions: signed in is not the same as owns it. */
@@ -136,40 +107,25 @@ export async function createBookingEvent(
       });
     }
 
-    const event = await tx.bookingEvent.create({
-      data: {
-        ownerId: user.id,
-        token: randomUUID().replace(/-/g, ""),
-        titleEn: d.titleEn,
-        titleZh: d.titleZh,
-        descriptionEn: d.descriptionEn,
-        descriptionZh: d.descriptionZh,
-        location: d.location,
-        visitorEditsEnabled: d.visitorEditsEnabled,
-        visitorEditCutoffHours: d.visitorEditCutoffHours,
-        // `date` is the denormalized earliest day; the days themselves are the
-        // source of truth (dates is sorted ascending).
-        date: toDate(dates[0]),
-        // A new event cannot have slots yet, so it always starts as a closed
-        // draft. The edit action below is the only path that can publish it and
-        // enforces the public-booking prerequisites before doing so.
-        open: false,
-        days: { create: dates.map((day) => ({ date: toDate(day) })) }
-      }
-    });
-    return { event };
-  });
+    const galleryId = formData.get("galleryEventId");
+    const workspace = await createEventWorkspace(tx, user.id, {
+      titleEn: d.titleEn, titleZh: d.titleZh, descriptionEn: d.descriptionEn,
+      descriptionZh: d.descriptionZh, location: d.location,
+      visitorEditsEnabled: d.visitorEditsEnabled, visitorEditCutoffHours: d.visitorEditCutoffHours
+    }, dates, locale, typeof galleryId === "string" && galleryId ? galleryId : undefined);
+    return { workspace };
+  }).catch(() => ({ error: "unknown" as const }));
   if ("error" in result) return { error: result.error };
 
   revalidatePath("/", "layout");
-  redirect(`/${locale}/dashboard/bookings/${result.event.id}`);
+  redirect(`/${locale}/dashboard/bookings/${result.workspace.bookingId}`);
 }
 
 export async function updateBookingEvent(
   _prev: BookingEventFormState,
   formData: FormData
 ): Promise<BookingEventFormState> {
-  const { user } = await guard();
+  const { user, locale } = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return { error: "unknown" };
   const parsed = parseBookingEventForm(formData);
@@ -241,6 +197,7 @@ export async function updateBookingEvent(
       if (removedDayIds.length > 0) {
         await tx.bookingDay.deleteMany({ where: { id: { in: removedDayIds } } });
       }
+      if (existing.galleryEventId) await ensureDayChecklists(tx, user.id, existing.id, locale);
     });
   } catch {
     return { error: "unknown" };
@@ -325,41 +282,6 @@ export async function deleteSlot(formData: FormData): Promise<void> {
   revalidatePath("/", "layout");
 }
 
-export async function createDailyEquipmentChecklist(
-  formData: FormData
-): Promise<void> {
-  const { locale, user } = await guard();
-  const bookingDayId = formData.get("bookingDayId");
-  if (typeof bookingDayId !== "string" || !bookingDayId) return;
-
-  const day = await prisma.bookingDay.findFirst({
-    where: { id: bookingDayId, bookingEvent: { ownerId: user.id } },
-    include: {
-      bookingEvent: { select: { titleEn: true, titleZh: true } }
-    }
-  });
-  if (!day) return;
-
-  const eventTitle = pickText(
-    locale,
-    day.bookingEvent.titleEn,
-    day.bookingEvent.titleZh
-  );
-  const date = day.date.toISOString().slice(0, 10);
-  const name = `${eventTitle} · ${date}`.slice(0, 160);
-
-  await prisma.equipmentChecklist.upsert({
-    where: { bookingDayId: day.id },
-    update: {},
-    create: {
-      ownerId: user.id,
-      bookingDayId: day.id,
-      name,
-      shootDate: day.date
-    }
-  });
-  revalidatePath("/", "layout");
-}
 
 export type BookingStatusState = { error?: "slotFull"; ok?: boolean };
 type BookingStatusTransition = BookingStatusState & { changed?: boolean };

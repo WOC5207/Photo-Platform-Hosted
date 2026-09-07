@@ -56,7 +56,7 @@
   --graphite-ink: #211d18;
   --graphite-secondary: #514a41;
   --graphite-tertiary: #6f665b;
-  --silver-muted: #998e80;
+  --silver-muted: #6a6055;
   --safelight: #a44f25;
   --safelight-deep: #7c3718;
 
@@ -71,6 +71,7 @@
   --color-fg-faint: var(--silver-muted);
   --color-border: rgb(48 39 30 / 10%);
   --color-border-strong: rgb(48 39 30 / 20%);
+  --color-control-border: #8e8272;
   --color-accent: var(--safelight);
   --color-accent-strong: var(--safelight-deep);
   --color-accent-surface: rgb(164 79 37 / 11%);
@@ -98,7 +99,7 @@
     --darkroom-ink: #f1ece4;
     --darkroom-secondary: #d2c9bc;
     --darkroom-tertiary: #a79c8e;
-    --darkroom-silver: #746b60;
+    --darkroom-silver: #9c9184;
     --darkroom-safelight: #e29a68;
 
     --color-page: var(--darkroom-canvas);
@@ -112,6 +113,7 @@
     --color-fg-faint: var(--darkroom-silver);
     --color-border: rgb(255 246 232 / 8%);
     --color-border-strong: rgb(255 246 232 / 16%);
+    --color-control-border: #817566;
     --color-accent: var(--darkroom-safelight);
     --color-accent-strong: #ffc097;
     --color-accent-surface: rgb(226 154 104 / 12%);
@@ -139,7 +141,7 @@
   --darkroom-ink: #f1ece4;
   --darkroom-secondary: #d2c9bc;
   --darkroom-tertiary: #a79c8e;
-  --darkroom-silver: #746b60;
+  --darkroom-silver: #9c9184;
   --darkroom-safelight: #e29a68;
 
   --color-page: var(--darkroom-canvas);
@@ -153,6 +155,7 @@
   --color-fg-faint: var(--darkroom-silver);
   --color-border: rgb(255 246 232 / 8%);
   --color-border-strong: rgb(255 246 232 / 16%);
+  --color-control-border: #817566;
   --color-accent: var(--darkroom-safelight);
   --color-accent-strong: #ffc097;
   --color-accent-surface: rgb(226 154 104 / 12%);
@@ -175,6 +178,7 @@
    visitor's active explicit/system theme without changing individual
    components or leaking the photographer palette into management pages. */
 .site-dual-theme {
+  --color-control-border: color-mix(in srgb, var(--color-fg) 55%, var(--color-control));
   --color-page: var(--site-light-color-page);
   --color-surface: var(--site-light-color-surface);
   --color-surface-2: var(--site-light-color-surface-2);
@@ -240,7 +244,7 @@ html {
 
 body {
   font-family: var(--font-interface);
-  font-size: 0.9375rem;
+  font-size: 1rem;
   line-height: 1.5;
   letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
@@ -303,6 +307,49 @@ a {
   touch-action: manipulation;
 }
 
+button:not(:disabled),
+summary,
+select:not(:disabled) {
+  cursor: pointer;
+}
+
+/* An opaque outline also covers links and controls outside shared primitives. */
+:root :focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]) {
+  scroll-margin-block: 6rem;
+}
+
+main {
+  scroll-margin-top: 6rem;
+}
+
+.ui-skip-link {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: var(--color-raised);
+  color: var(--color-fg);
+  transform: translateY(-200%);
+}
+
+.ui-skip-link:focus {
+  transform: translateY(0);
+}
+
+@media (max-width: 40rem) {
+  /* Preserve browser zoom behavior while avoiding iOS focus zoom. */
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+    font-size: 1rem;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   button:active,
   a[role="button"]:active {
@@ -341,5 +388,11 @@ a {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  a:hover, button:active, a:hover img {
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
   }
 }

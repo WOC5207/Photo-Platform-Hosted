@@ -7,100 +7,69 @@ import { formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { buttonClasses } from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
+import EmptyState from "@/components/ui/EmptyState";
 
 export default async function AdminEventsPage() {
   const locale = await getLocale();
-  const t = await getTranslations("adminEvents");
+  const t = await getTranslations("eventWorkspace");
   const user = await requireUser(locale);
-
-  const events = await prisma.event.findMany({
-    where: { ownerId: user.id },
-    orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
-    include: {
-      coverPhoto: { where: { pendingBatchId: null } },
-      photos: {
-        where: { pendingBatchId: null },
-        orderBy: { sortOrder: "asc" },
-        take: 1
-      },
-      _count: {
-        select: { photos: { where: { pendingBatchId: null } } }
-      }
-    }
-  });
-
-  return (
-    <div className="flex flex-col gap-8">
-      <PageHeader
-        title={t("listTitle")}
-        action={
-        <Link
-          href="/dashboard/events/new"
-          className={buttonClasses({ variant: "primary" })}
-        >
-          + {t("newEvent")}
-        </Link>
+  const [events, legacyBookings] = await Promise.all([
+    prisma.event.findMany({
+      where: { ownerId: user.id }, orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
+      include: {
+        coverPhoto: { where: { pendingBatchId: null } },
+        _count: { select: { photos: { where: { pendingBatchId: null } } } },
+        bookingEvent: {
+          where: { ownerId: user.id },
+          include: { _count: { select: { days: true } } }
         }
-      />
-
-      {events.length === 0 ? (
-        <p className="ui-panel flex min-h-40 items-center justify-center p-8 text-center text-sm text-fg-subtle">
-          {t("noEvents")}
-        </p>
-      ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {events.map((event, index) => {
-            const cover = event.coverPhoto ?? event.photos[0] ?? null;
-            return (
-              <li key={event.id}>
-                <Link
-                  href={`/dashboard/events/${event.id}`}
-                  className="group flex h-full flex-col gap-3 rounded-xl border border-border bg-surface p-3 transition-[border-color,background-color,transform] hover:-translate-y-0.5 hover:border-accent/30 hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-                >
-                  {cover ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={photoUrls(event.id, cover.id).thumb}
-                      alt=""
-                      loading="lazy"
-                      className="ui-image-frame aspect-[4/3] w-full rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="flex aspect-[4/3] w-full items-center justify-center rounded-lg border border-border bg-control text-3xl text-fg-faint">
-                      ✦
-                    </div>
-                  )}
-                  <div className="flex items-start justify-between gap-3 px-1 pb-1">
-                    <div className="flex min-w-0 gap-3">
-                      <span className="font-meta mt-0.5 text-[0.625rem] font-semibold tracking-[0.14em] text-accent">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-                      <div className="min-w-0">
-                      <h2 className="font-semibold">
-                        {pickText(locale, event.titleEn, event.titleZh)}
-                      </h2>
-                      <p className="text-xs text-fg-subtle">
-                        {formatDateRange(event.dateStart, event.dateEnd) || "—"}{" "}
-                        · {t("photosCount", { count: event._count.photos })}
-                      </p>
-                      </div>
-                    </div>
-                    <span
-                      className={
-                        event.published
-                          ? "rounded-md bg-success-surface px-2 py-1 text-[0.6875rem] font-semibold text-success"
-                          : "rounded-md bg-control px-2 py-1 text-[0.6875rem] font-semibold text-fg-subtle"
-                      }
-                    >
-                      {event.published ? t("published") : t("draft")}
-                    </span>
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
+      }
+    }),
+    prisma.bookingEvent.findMany({
+      where: { ownerId: user.id, galleryEventId: null },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }]
+    })
+  ]);
+  return <div className="flex flex-col gap-8">
+    <PageHeader title={t("listTitle")} description={t("listDescription")} index="02"
+      action={(events.length + legacyBookings.length) > 0 ? <Link href="/dashboard/events/new" className={buttonClasses({ variant: "primary" })}>+ {t("newEvent")}</Link> : undefined} />
+    <nav aria-label={t("allEventTools")} className="flex flex-wrap gap-2">
+      <Link href="/dashboard/preparation/slots" className={buttonClasses({ size: "compact", variant: "ghost" })}>{t("allSlots")}</Link>
+      <Link href="/dashboard/preparation/equipment" className={buttonClasses({ size: "compact", variant: "ghost" })}>{t("allChecklists")}</Link>
+      <Link href="/dashboard/bookings" className={buttonClasses({ size: "compact", variant: "ghost" })}>{t("allBookings")}</Link>
+    </nav>
+    {events.length + legacyBookings.length === 0 ? <EmptyState
+      title={t("emptyTitle")} description={t("createHint")}
+      action={<Link href="/dashboard/events/new" className={buttonClasses({ variant: "primary" })}>+ {t("newEvent")}</Link>}
+      steps={["gallery", "bookings", "equipment"].map(key => ({ title: t(key), description: t(key + "Description") }))}
+    /> : <ul className="grid gap-4 lg:grid-cols-2">
+      {events.map((event, index) => <li key={event.id} className="ui-panel flex min-w-0 flex-col gap-5 p-5 sm:p-6">
+        <header className="flex items-start gap-4">
+          {event.coverPhoto && <img src={photoUrls(event.id, event.coverPhoto.id).thumb} alt="" loading="lazy" className="ui-image-frame h-20 w-20 shrink-0 rounded-lg object-cover" />}
+          <div className="min-w-0 flex-1">
+            <p className="font-meta mb-2 text-xs tabular-nums text-accent">{String(index + 1).padStart(2, "0")} · {formatDateRange(event.dateStart, event.dateEnd) || t("noDate")}</p>
+            <h2 className="break-words font-display text-2xl font-semibold"><Link href={"/dashboard/events/" + event.id} className="underline-offset-4 hover:underline">{pickText(locale, event.titleEn, event.titleZh)}</Link></h2>
+            {event.location && <p className="mt-2 break-words text-sm text-fg-subtle">{event.location}</p>}
+          </div>
+        </header>
+        <dl className="grid grid-cols-2 gap-4 rounded-lg bg-control p-4 text-sm">
+          <div><dt className="text-xs text-fg-subtle">{t("gallery")}</dt><dd className="mt-1 font-medium">{t("photoCount", { count: event._count.photos })} · {event.published ? t("published") : t("draft")}</dd></div>
+          <div><dt className="text-xs text-fg-subtle">{t("bookings")}</dt><dd className="mt-1 font-medium">{event.bookingEvent ? t("dayCount", { count: event.bookingEvent._count.days }) + " · " + (event.bookingEvent.open ? t("open") : t("closed")) : t("notSetUp")}</dd></div>
+        </dl>
+        <div className="mt-auto flex flex-wrap gap-2">
+          <Link href={"/dashboard/events/" + event.id} className={buttonClasses({ size: "compact" })}>{t("gallery")}</Link>
+          {event.bookingEvent ? <>
+            <Link href={"/dashboard/bookings/" + event.bookingEvent.id} className={buttonClasses({ size: "compact" })}>{t("bookings")}</Link>
+            <Link href={"/dashboard/preparation/equipment?event=" + event.bookingEvent.id} className={buttonClasses({ size: "compact" })}>{t("equipment")}</Link>
+          </> : <Link href={"/dashboard/events/" + event.id + "/setup"} className={buttonClasses({ size: "compact" })}>{t("addBooking")}</Link>}
+        </div>
+      </li>)}
+      {legacyBookings.map(booking => <li key={booking.id} className="ui-panel flex min-w-0 flex-col gap-4 p-5 sm:p-6">
+        <p className="font-meta text-xs text-fg-subtle">{t("legacyBooking")}</p>
+        <h2 className="break-words font-display text-2xl font-semibold">{pickText(locale, booking.titleEn, booking.titleZh)}</h2>
+        <p className="text-sm text-fg-subtle">{t("legacyBookingHint")}</p>
+        <Link href={"/dashboard/bookings/" + booking.id} className={buttonClasses({ className: "mt-auto self-start" })}>{t("openEvent")}</Link>
+      </li>)}
+    </ul>}
+  </div>;
 }

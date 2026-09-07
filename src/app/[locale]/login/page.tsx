@@ -26,7 +26,7 @@ export default async function LoginPage({
       <div className="absolute right-4 top-4">
         <LanguageSwitcher />
       </div>
-      <main className="w-full max-w-md rounded-xl border border-border bg-surface p-6 sm:p-8">
+      <main id="main-content" tabIndex={-1} className="w-full max-w-md rounded-xl border border-border bg-surface p-6 sm:p-8">
         <span aria-hidden="true" className="font-meta text-[0.6875rem] font-semibold tracking-[0.18em] text-accent">
           01 / ACCESS
         </span>

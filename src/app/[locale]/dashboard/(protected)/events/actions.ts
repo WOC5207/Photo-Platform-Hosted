@@ -85,40 +85,6 @@ function parseDateRange(
   return { dateStart, dateEnd };
 }
 
-export async function createEvent(
-  _prev: EventFormState,
-  formData: FormData
-): Promise<EventFormState> {
-  const { locale, user } = await guard();
-  const parsed = parseEventForm(formData);
-  if (!parsed.success) return { error: "validation" };
-  const d = parsed.data;
-  const range = parseDateRange(d.dateStart, d.dateEnd);
-  if (!range) return { error: "validation" };
-
-  const slug = await uniqueEventSlug(
-    user.id,
-    d.slug || slugify(d.titleEn || d.titleZh)
-  );
-  const event = await prisma.event.create({
-    data: {
-      ownerId: user.id,
-      slug,
-      titleEn: d.titleEn,
-      titleZh: d.titleZh,
-      descriptionEn: d.descriptionEn,
-      descriptionZh: d.descriptionZh,
-      location: d.location,
-      dateStart: range.dateStart,
-      dateEnd: range.dateEnd,
-      published: d.published
-    }
-  });
-
-  revalidatePath("/", "layout");
-  redirect(`/${locale}/dashboard/events/${event.id}`);
-}
-
 export async function updateEvent(
   _prev: EventFormState,
   formData: FormData

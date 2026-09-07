@@ -25,7 +25,7 @@ export default async function EquipmentLabelPage({
   const isOwner = currentUser?.id === equipment.ownerId;
 
   return (
-    <main className="mx-auto flex min-h-[70vh] w-full max-w-2xl items-center px-4 py-12 sm:px-6">
+    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-[70vh] w-full max-w-2xl items-center px-4 py-12 sm:px-6">
       <article className="ui-panel w-full overflow-hidden p-6 sm:p-10">
         <p className="font-meta text-xs font-semibold uppercase tracking-[0.18em] text-accent">
           {t("scanPageEyebrow")}

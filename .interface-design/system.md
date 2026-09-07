@@ -36,7 +36,7 @@ hardcoded neutral or accent colors.
 - Graphite ink: `#211d18`
 - Supporting graphite: `#514a41`
 - Tertiary graphite: `#6f665b`
-- Silver metadata: `#998e80`
+- Silver metadata: `#6a6055` (readable on the inset and deep surfaces)
 - Safelight accent: `#a44f25`
 - Strong safelight: `#7c3718`
 
@@ -104,7 +104,7 @@ Three roles:
 Hierarchy uses a roughly 1.25 scale, supported by weight, color, and spacing:
 
 - Metadata/caption: 11–12px, tracked, muted or accent.
-- Operational body: 14–15px, regular/medium.
+- Body: 16px; compact operational text: 14px, regular/medium.
 - Component title: 16–18px, semibold.
 - Section title: 22–28px, editorial semibold.
 - Page title: 32–40px, editorial semibold with approximately `-0.03em`
@@ -126,6 +126,7 @@ Base unit: **4px**.
 - Management content maximum width: `max-w-7xl`.
 - Management desktop sidebar: 272px / `17rem`.
 - Controls must retain at least a 40px hit area and 44px on narrow screens.
+  Language links and theme controls use 44px targets at all widths.
 
 Operational screens are compact but never cramped. Visitor pages use more open
 space around photographs and editorial headings.
@@ -152,12 +153,13 @@ Use `SectionHeading` for repeated sections:
 
 ### Buttons
 
-- Default height: 44px; compact height: 36px.
+- Default height: 44px; compact height: 40px (44px on narrow screens).
 - Primary: safelight background, light text.
 - Secondary: raised surface with stronger quiet border.
 - Ghost: transparent, gains `accent-surface` on hover.
 - Danger: semantic danger surface and border.
-- Focus: two-pixel safelight ring with page-colored offset.
+- Focus: opaque two-pixel safelight outline with 3px clearance, including
+  controls that do not use the shared button primitive.
 - Press: scale to `0.97` when reduced motion is not requested.
 
 ### Fields
@@ -166,6 +168,8 @@ Use `SectionHeading` for repeated sections:
 - 8px radius and quiet strong border.
 - Safelight border/ring on focus.
 - Labels rely on weight and text hierarchy instead of large size.
+- Use `controlClasses` for booking, album, login, and search fields. Mobile
+  input text is 16px. Field borders have dedicated light/dark contrast tokens.
 
 ### Navigation
 
@@ -173,6 +177,19 @@ Use `SectionHeading` for repeated sections:
   rail.
 - Inactive items remain graphite and gain a subtle surface on hover.
 - Workspace switch uses an inset group with a raised selected option.
+- Desktop utilities expose the public-site link, language, and theme above
+  the account control. Theme controls share the document's effective state.
+- The public header switches to its compact menu below 1280px so translated
+  labels fit. Every main landmark is a keyboard skip destination.
+
+### First-use guidance
+
+- Use `EmptyState` for empty booking lists, album lists, and the directory.
+- Lead with a 32px line icon and editorial heading, then readable supporting
+  copy and a single creation action. Avoid duplicating that primary action
+  in the page header when the list is empty.
+- For author workflows, use three indexed steps on a raised lower surface;
+  stack the steps on phones. Keep English and Chinese copy equivalent.
 
 ### Photo cards and image lists
 

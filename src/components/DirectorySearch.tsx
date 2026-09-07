@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
+import { Input } from "@/components/ui/Field";
+import Button from "@/components/ui/Button";
 
 export interface DirectoryOwner {
   username: string;
@@ -37,17 +39,20 @@ export default function DirectorySearch({ owners }: { owners: DirectoryOwner[] }
     <div className="flex flex-col gap-6">
       <label className="flex w-full max-w-md flex-col gap-1.5 text-sm font-medium text-fg-muted">
         <span>{t("searchPlaceholder")}</span>
-        <input
+        <Input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("searchPlaceholder")}
-          className="min-h-12 w-full rounded-lg border border-border-strong bg-control px-4 py-2.5 text-sm outline-none transition-[border-color,background-color,box-shadow] hover:border-fg-faint focus-visible:border-accent/60 focus-visible:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20"
         />
       </label>
+      <p role="status" aria-atomic="true" className="text-sm text-fg-subtle">{t("searchResults", { count: matches.length })}</p>
 
       {matches.length === 0 ? (
-        <p className="py-16 text-center text-fg-subtle">{t("noMatches")}</p>
+        <div className="ui-panel flex flex-col items-center gap-4 px-6 py-12 text-center">
+          <p className="text-fg-muted">{t("noMatches")}</p>
+          <Button onClick={() => setQuery("")}>{t("clearSearch")}</Button>
+        </div>
       ) : (
         <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {matches.map((o, index) => (
@@ -62,6 +67,8 @@ export default function DirectorySearch({ owners }: { owners: DirectoryOwner[] }
                     <img
                       src={o.thumbUrl}
                       alt=""
+                      loading={index < 3 ? "eager" : "lazy"}
+                      decoding="async"
                       className="ui-image-frame h-full w-full object-cover transition-transform duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover:scale-[1.025]"
                     />
                   )}
@@ -79,8 +86,8 @@ export default function DirectorySearch({ owners }: { owners: DirectoryOwner[] }
                     />
                   )}
                   <div className="flex min-w-0 flex-col">
-                    <span className="truncate font-semibold">{o.name}</span>
-                    <span className="truncate text-xs text-fg-subtle">
+                    <span className="font-semibold [overflow-wrap:anywhere]">{o.name}</span>
+                    <span className="text-xs text-fg-subtle">
                       {t("albums", { count: o.albumCount })} ·{" "}
                       {t("photos", { count: o.photoCount })}
                     </span>

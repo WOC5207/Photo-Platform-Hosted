@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Link, usePathname } from "@/i18n/navigation";
 import { routing, type AppLocale } from "@/i18n/routing";
@@ -15,6 +15,7 @@ export default function LanguageSwitcher() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const current = useLocale();
+  const t = useTranslations("languageSwitcher");
   const [hash, setHash] = useState("");
   const query = searchParams.toString();
   useEffect(() => setHash(window.location.hash), [pathname, query]);
@@ -22,23 +23,23 @@ export default function LanguageSwitcher() {
   const href = `${pathname}${suffix}`;
 
   return (
-    <span className="inline-flex min-h-11 items-center gap-1 text-sm lg:min-h-10">
-      {routing.locales.map((locale, i) => (
-        <span key={locale} className="inline-flex items-center gap-1">
-          {i > 0 && <span className="text-fg-faint">/</span>}
+    <span role="group" aria-label={t("label")} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border-strong bg-control p-1 text-sm">
+      {routing.locales.map((locale) => (
           <Link
+            key={locale}
             href={href}
             locale={locale}
+            lang={locale === "zh" ? "zh-Hans" : "en"}
+            aria-label={locale === "zh" ? "中文" : "English"}
             aria-current={locale === current ? "page" : undefined}
-            className={`inline-flex min-h-11 items-center px-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 lg:min-h-10 ${
+            className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md px-2 transition-colors ${
               locale === current
-                ? "font-semibold text-fg"
-                : "text-fg-subtle hover:text-fg"
+                ? "bg-raised font-semibold text-fg"
+                : "text-fg-subtle hover:bg-raised hover:text-fg"
             }`}
           >
             {LABELS[locale]}
           </Link>
-        </span>
       ))}
     </span>
   );

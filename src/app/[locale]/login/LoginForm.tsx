@@ -39,6 +39,7 @@ export default function LoginForm() {
           spellCheck={false}
           required
           aria-invalid={state.error === "invalid" ? true : undefined}
+          aria-describedby={errorMessage ? "login-error" : undefined}
           disabled={pending}
         />
       </Field>
@@ -50,12 +51,13 @@ export default function LoginForm() {
           autoComplete="current-password"
           required
           aria-invalid={state.error === "invalid" ? true : undefined}
+          aria-describedby={errorMessage ? "login-error" : undefined}
           disabled={pending}
         />
       </Field>
-      {errorMessage && <StatusMessage kind="error">{errorMessage}</StatusMessage>}
+      {errorMessage && <div id="login-error"><StatusMessage kind="error">{errorMessage}</StatusMessage></div>}
       <Button type="submit" variant="primary" disabled={pending}>
-        {t("signIn")}
+        {pending ? t("signingIn") : t("signIn")}
       </Button>
     </form>
   );

@@ -97,9 +97,9 @@ export default function BookingCalendar({
   return (
     <div className="rounded-xl border border-border bg-surface/92 p-5">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-subtle">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-subtle">
           {t("calendarTitle")}
-        </h3>
+        </h2>
         <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-1 sm:flex">
           <button
             type="button"

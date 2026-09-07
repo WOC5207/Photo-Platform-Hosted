@@ -10,6 +10,7 @@ import {
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
+import { controlClasses } from "@/components/ui/Field";
 import StatusMessage from "@/components/ui/StatusMessage";
 import BookingDayPicker from "@/components/admin/BookingDayPicker";
 import EventLocalTimeNotice from "@/components/booking/EventLocalTimeNotice";
@@ -17,6 +18,7 @@ import type { BookingEventFormState } from "@/app/[locale]/dashboard/(protected)
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 export interface BookingEventFormValues {
+  galleryEventId?: string;
   id?: string;
   titleEn: string;
   titleZh: string;
@@ -29,8 +31,7 @@ export interface BookingEventFormValues {
   visitorEditCutoffHours: number;
 }
 
-const inputCls =
-  "min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none transition focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
+const inputCls = controlClasses;
 
 export default function BookingEventForm({
   action,
@@ -116,6 +117,7 @@ export default function BookingEventForm({
       className="flex flex-col gap-4"
     >
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
+      {initial.galleryEventId && <input type="hidden" name="galleryEventId" value={initial.galleryEventId} />}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">

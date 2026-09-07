@@ -303,6 +303,7 @@ model PlatformSettings {
 
 // A gallery event = one photo album (a con, a shoot, etc.)
 model Event {
+  bookingEvent  BookingEvent?
   id            String    @id @default(cuid())
   ownerId       String
   owner         User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -533,6 +534,8 @@ model CreditProfileSocialLink {
 
 // A bookable photoshoot event with time slots (separate from gallery events)
 model BookingEvent {
+  galleryEventId          String?      @unique
+  galleryEvent            Event?       @relation(fields: [galleryEventId], references: [id], onDelete: SetNull)
   id                     String       @id @default(cuid())
   ownerId                String
   owner                  User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -589,6 +592,8 @@ model BookingDay {
 }
 
 model TimeSlot {
+  // Photographer's preparation status; independent of booking/capacity state.
+  finishedAt     DateTime?
   id             String       @id @default(cuid())
   bookingEventId String
   bookingEvent   BookingEvent @relation(fields: [bookingEventId], references: [id], onDelete: Cascade)

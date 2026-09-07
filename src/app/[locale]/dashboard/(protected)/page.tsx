@@ -7,6 +7,7 @@ import PageHeader from "@/components/ui/PageHeader";
 export default async function AdminDashboardPage() {
   const t = await getTranslations("admin");
   const tc = await getTranslations("common");
+  const tw = await getTranslations("eventWorkspace");
   const locale = await getLocale();
   const user = await requireUser(locale);
   const settings = await getSiteSettings(user.id);
@@ -14,13 +15,8 @@ export default async function AdminDashboardPage() {
   const destinations = [
     {
       href: "/dashboard/events",
-      title: t("events"),
-      hint: t("eventsCardHint")
-    },
-    {
-      href: "/dashboard/bookings",
-      title: t("bookings"),
-      hint: t("bookingsCardHint")
+      title: tw("listTitle"),
+      hint: tw("listDescription")
     },
     {
       href: "/dashboard/equipment",

@@ -30,6 +30,8 @@ data/photos/*
 .DS_Store
 next-env.d.ts
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 # browser test artifacts and authenticated state
 e2e/.auth/

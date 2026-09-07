@@ -7,6 +7,7 @@ import { formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { buttonClasses } from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
+import EmptyState from "@/components/ui/EmptyState";
 import BookingMergePanel, {
   type MergeEventItem
 } from "@/components/admin/BookingMergePanel";
@@ -14,6 +15,7 @@ import BookingMergePanel, {
 export default async function AdminBookingsPage() {
   const locale = await getLocale();
   const t = await getTranslations("adminBookings");
+  const tw = await getTranslations("eventWorkspace");
   const ts = await getTranslations("adminSite");
   const user = await requireUser(locale);
   const settings = await getSiteSettings(user.id);
@@ -68,14 +70,17 @@ export default async function AdminBookingsPage() {
 
   return (
     <div className="flex flex-col gap-8">
+      <Link href="/dashboard/events" className="inline-flex min-h-11 self-start items-center text-sm font-semibold text-fg-subtle hover:text-accent">{tw("back")}</Link>
       <PageHeader
         title={t("listTitle")}
-        action={
+        description={t("listDescription")}
+        index="03"
+        action={events.length > 0 &&
         <Link
-          href="/dashboard/bookings/new"
+          href="/dashboard/events/new"
           className={buttonClasses({ variant: "primary" })}
         >
-          + {t("newEvent")}
+          + {tw("newEvent")}
         </Link>
         }
       />
@@ -90,9 +95,13 @@ export default async function AdminBookingsPage() {
       )}
 
       {events.length === 0 ? (
-        <p className="ui-panel flex min-h-40 items-center justify-center p-8 text-center text-sm text-fg-subtle">
-          {t("noEvents")}
-        </p>
+        <EmptyState
+          kind="bookings"
+          title={t("emptyTitle")}
+          description={t("emptyDescription")}
+          action={<Link href="/dashboard/events/new" className={buttonClasses({ variant: "primary" })}>+ {tw("newEvent")}</Link>}
+          steps={[1, 2, 3].map((step) => ({ title: t(`emptyStep${step}Title`), description: t(`emptyStep${step}Description`) }))}
+        />
       ) : (
         <BookingMergePanel events={mergeItems} lotteryLabel={t("lotteryTool")} />
       )}

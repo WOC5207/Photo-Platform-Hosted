@@ -15,7 +15,7 @@ const variants: Record<ButtonVariant, string> = {
 };
 
 const sizes: Record<ButtonSize, string> = {
-  compact: "min-h-9 px-3 py-1.5 text-xs",
+  compact: "min-h-10 px-3 py-2 text-sm",
   default: "min-h-11 px-4 py-2.5 text-sm"
 };
 

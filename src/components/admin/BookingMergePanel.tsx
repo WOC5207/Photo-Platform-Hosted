@@ -71,7 +71,7 @@ export default function BookingMergePanel({
               key={event.id}
               className="flex items-stretch gap-3 rounded-xl border border-border bg-surface p-4"
             >
-              <label className="flex items-center">
+              <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-accent-surface">
                 <input
                   type="checkbox"
                   checked={checked}
@@ -85,10 +85,10 @@ export default function BookingMergePanel({
                 className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3 rounded-lg transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
               >
                 <div className="min-w-0">
-                  <h2 className="truncate font-semibold">{event.title}</h2>
-                  <p className="text-sm text-fg-subtle">{event.meta}</p>
+                  <h2 className="font-semibold [overflow-wrap:anywhere]">{event.title}</h2>
+                  <p className="text-sm text-fg-subtle [overflow-wrap:anywhere]">{event.meta}</p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {event.hasLottery && (
                     <span className="rounded-md bg-surface-2 px-2 py-0.5 text-xs text-fg-subtle">
                       {lotteryLabel}
