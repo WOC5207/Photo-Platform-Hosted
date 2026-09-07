@@ -1,3 +1,4 @@
+import EventWorkspaceHeader from "@/components/events/EventWorkspaceHeader";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
@@ -25,7 +26,6 @@ import {
   deleteSlot,
   updateBookingEvent
 } from "../actions";
-
 export default async function EditBookingEventPage({
   params
 }: {
@@ -34,13 +34,16 @@ export default async function EditBookingEventPage({
   const { id, locale } = await params;
   const user = await requireUser(locale);
   const t = await getTranslations("adminBookings");
+  const tp = await getTranslations("preparation");
   const tc = await getTranslations("common");
+  const tw = await getTranslations("eventWorkspace");
   const ts = await getTranslations("adminSite");
   const settings = await getSiteSettings(user.id);
 
   const event = await prisma.bookingEvent.findFirst({
     where: { id, ownerId: user.id },
     include: {
+      galleryEvent: { where: { ownerId: user.id }, select: { id: true, titleEn: true, titleZh: true } },
       lotteryDraw: { select: { id: true } },
       days: {
         orderBy: { date: "asc" },
@@ -67,15 +70,7 @@ export default async function EditBookingEventPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <Link
-          href="/dashboard/bookings"
-          className="mb-2 inline-flex min-h-10 items-center text-sm text-fg-subtle underline-offset-4 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/20"
-        >
-          {tc("back")} · {t("listTitle")}
-        </Link>
-        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("editEvent")}</h1>
-      </div>
+      <EventWorkspaceHeader title={pickText(locale, (event.galleryEvent ?? event).titleEn, (event.galleryEvent ?? event).titleZh)} galleryId={event.galleryEvent?.id} bookingId={event.id} active="bookings" />
 
       {!settings.bookingEnabled && (
         <p
@@ -111,7 +106,7 @@ export default async function EditBookingEventPage({
       <BookingEventForm
         action={updateBookingEvent}
         submitLabel={tc("save")}
-        cancelHref="/dashboard/bookings"
+        cancelHref="/dashboard/events"
         timeZone={settings.timeZone}
         initial={{
           id: event.id,
@@ -278,6 +273,8 @@ export default async function EditBookingEventPage({
         />
       </section>
 
+      <Link href={"/dashboard/preparation/slots?event=" + event.id} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent underline underline-offset-4">{tp("openPreparation")}</Link>
+
       {event.days.length >= 2 && (
         <BookingEventSplit
           eventId={event.id}
@@ -291,6 +288,7 @@ export default async function EditBookingEventPage({
       <section className="rounded-xl border border-danger-border bg-danger-surface/40 p-5">
         <h2 className="text-lg font-semibold text-danger-strong">{tc("dangerZone")}</h2>
         <p className="mt-1 text-sm text-fg-subtle">{t("confirmDeleteEvent")}</p>
+        {event.galleryEvent && <p className="mt-2 text-sm text-fg-muted">{tw("bookingDeleteHint")}</p>}
         <form action={deleteBookingEvent} className="mt-4">
           <input type="hidden" name="id" value={event.id} />
           <ConfirmSubmit

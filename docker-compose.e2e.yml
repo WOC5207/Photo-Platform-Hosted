@@ -26,6 +26,8 @@ services:
       - .env
     environment:
       DATABASE_URL: "postgresql://photo:${E2E_POSTGRES_PASSWORD:-photo-e2e-only}@db:5432/photo_e2e?schema=public&connection_limit=10"
+      # Match the isolated browser origin instead of inheriting the preview URL.
+      APP_BASE_URL: "http://127.0.0.1:3001"
       PHOTOS_DIR: "/data/photos"
     volumes:
       # Bind this disposable folder so host-side HTTP isolation tests and the

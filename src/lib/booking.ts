@@ -13,6 +13,7 @@ import {
   wallClockNow
 } from "./timeZone";
 import { formatDate, parseNaiveDateTime } from "./datetime";
+import { addGalleryToBooking } from "./eventWorkspace";
 
 export interface BookingDetails {
   name: string;
@@ -784,6 +785,9 @@ export async function splitEvent(
     .reduce((min, date) => (date < min ? date : min));
 
   const newEventId = await prisma.$transaction(async (tx) => {
+    if (event.galleryEventId) {
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${ownerId} FOR UPDATE`;
+    }
     await tx.$queryRaw`SELECT id FROM "BookingEvent" WHERE id = ${eventId} FOR UPDATE`;
 
     const created = await tx.bookingEvent.create({
@@ -824,6 +828,9 @@ export async function splitEvent(
       });
     }
 
+    // A split from a unified event gets its own empty gallery. Existing photos
+    // stay with the original event; moved days keep their checklist IDs/state.
+    if (event.galleryEventId) await addGalleryToBooking(tx, ownerId, created.id, "en");
     return created.id;
   });
 

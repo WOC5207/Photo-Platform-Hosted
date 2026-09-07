@@ -104,7 +104,7 @@ export default async function RegisterPage({
     ) || t("noticeDefaultBody");
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col justify-center gap-6 px-4 py-10">
+    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col justify-center gap-6 px-4 py-10">
       <div className="absolute right-4 top-4">
         <LanguageSwitcher />
       </div>

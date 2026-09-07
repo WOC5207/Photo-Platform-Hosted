@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
+import { controlClasses } from "@/components/ui/Field";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import type { EventFormState } from "@/app/[locale]/dashboard/(protected)/events/actions";
 
@@ -20,8 +21,7 @@ export interface EventFormValues {
   published: boolean;
 }
 
-const inputCls =
-  "min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none transition focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20";
+const inputCls = controlClasses;
 
 export default function EventForm({
   action,

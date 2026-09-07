@@ -18,6 +18,8 @@ export type ManagementIcon =
   | "overview"
   | "gallery"
   | "bookings"
+  | "equipment"
+  | "preparation"
   | "credits"
   | "settings"
   | "storage"
@@ -97,6 +99,18 @@ function NavigationIcon({ name }: { name: ManagementIcon }) {
         <rect x="3" y="5" width="18" height="16" rx="2" />
         <path d="M16 3v4M8 3v4M3 10h18" />
         <path d="m8 15 2 2 5-5" />
+      </>
+    ),
+    equipment: (
+      <>
+        <rect x="3" y="7" width="18" height="13" rx="2" />
+        <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18M10 12v2h4v-2" />
+      </>
+    ),
+    preparation: (
+      <>
+        <rect x="5" y="4" width="14" height="17" rx="2" />
+        <path d="M9 4V2h6v2M8 10l1 1 2-2M13 10h3M8 16l1 1 2-2M13 16h3" />
       </>
     ),
     credits: (
@@ -303,7 +317,9 @@ function ProfileMenu({
   }, [open]);
 
   return (
-    <div ref={rootRef} className={`relative ${compact ? "" : "w-full"}`}>
+    <div ref={rootRef} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+    }} className={`relative ${compact ? "" : "w-full"}`}>
       <button
         ref={buttonRef}
         type="button"
@@ -391,7 +407,7 @@ function ProfileMenu({
             <span aria-hidden="true">↗</span>
           </Link>
           <div className="my-1 border-t border-border" />
-          <div className="flex min-h-11 items-center justify-between gap-3 px-3 text-sm">
+          {compact && <><div className="flex min-h-11 items-center justify-between gap-3 px-3 text-sm">
             <span className="text-fg-muted">{labels.language}</span>
             <LanguageSwitcher />
           </div>
@@ -400,6 +416,7 @@ function ProfileMenu({
             <ThemeToggle label={labels.theme} />
           </div>
           <div className="my-1 border-t border-border" />
+          </>}
           <form action={logoutAction}>
             <button
               type="submit"
@@ -464,6 +481,7 @@ export default function ManagementShell({
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const restoreMenuFocus = useRef(false);
   const drawerId = useId();
   const workspaceHome = workspace === "platform" ? "/admin" : "/dashboard";
 
@@ -481,7 +499,14 @@ export default function ManagementShell({
   }, []);
 
   useEffect(() => {
-    if (!drawerOpen) return;
+    if (!drawerOpen) {
+      if (restoreMenuFocus.current) {
+        menuButtonRef.current?.focus();
+        restoreMenuFocus.current = false;
+      }
+      return;
+    }
+    restoreMenuFocus.current = true;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus();
@@ -489,7 +514,6 @@ export default function ManagementShell({
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setDrawerOpen(false);
-        menuButtonRef.current?.focus();
         return;
       }
       if (event.key !== "Tab") return;
@@ -518,11 +542,13 @@ export default function ManagementShell({
     };
   }, [drawerOpen]);
 
-  const closeDrawer = () => setDrawerOpen(false);
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+  };
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]">
-      <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-page p-4 lg:flex">
+    <div className="min-h-dvh lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]">
+      <aside className="sticky top-0 hidden h-dvh flex-col border-r border-border bg-page p-4 lg:flex">
         <div className="px-2 py-2">
           <Brand logoUrl={logoUrl} siteTitle={siteTitle} href={workspaceHome} />
         </div>
@@ -535,6 +561,13 @@ export default function ManagementShell({
           <ManagementNavigation navigation={navigation} pathname={pathname} />
         </div>
         <div className="mt-4 border-t border-border pt-4">
+          <Link href={publicSiteHref} className="mb-3 flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-semibold text-fg-muted hover:bg-surface hover:text-fg">
+            {labels.viewSite}<span aria-hidden="true">↗</span>
+          </Link>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <LanguageSwitcher />
+            <ThemeToggle label={labels.theme} />
+          </div>
           <ProfileMenu
             labels={labels}
             username={username}
@@ -546,7 +579,7 @@ export default function ManagementShell({
       </aside>
 
       <div className="min-w-0">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-border bg-page/92 px-4 backdrop-blur-xl lg:hidden">
+        <header inert={drawerOpen} className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-border bg-page px-4 lg:hidden">
           <button
             ref={menuButtonRef}
             type="button"
@@ -652,7 +685,7 @@ export default function ManagementShell({
           </div>
         )}
 
-        <main className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-7 sm:py-9 lg:px-10 lg:py-10">
+        <main id="main-content" tabIndex={-1} inert={drawerOpen} className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-7 sm:py-9 lg:px-10 lg:py-10">
           {children}
         </main>
       </div>

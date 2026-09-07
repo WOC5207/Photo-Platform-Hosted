@@ -73,13 +73,14 @@ export default async function DashboardLayout({
     },
     {
       href: "/dashboard/events",
-      label: t("admin.events"),
-      icon: "gallery"
+      label: t("eventWorkspace.listTitle"),
+      icon: "gallery",
+      activePrefixes: ["/dashboard/events", "/dashboard/bookings", "/dashboard/preparation"]
     },
     {
-      href: "/dashboard/bookings",
-      label: t("admin.bookings"),
-      icon: "bookings"
+      href: "/dashboard/equipment",
+      label: t("admin.equipment"),
+      icon: "equipment"
     },
     {
       href: "/dashboard/credits",

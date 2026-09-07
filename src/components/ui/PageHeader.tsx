@@ -12,7 +12,7 @@ export default function PageHeader({
   index?: string;
 }) {
   return (
-    <header className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
+    <header className="flex flex-col gap-5 border-b border-border pb-6 md:flex-row md:items-end md:justify-between">
       <div className="flex min-w-0 gap-4">
         <span
           aria-hidden="true"
@@ -21,7 +21,7 @@ export default function PageHeader({
           {index}
         </span>
         <div className="min-w-0">
-          <h1 className="font-display ui-balance text-[2rem] font-semibold leading-[1.08] tracking-[-0.035em] text-fg sm:text-[2.5rem]">
+          <h1 className="font-display ui-balance text-[2rem] font-semibold leading-[1.15] tracking-[-0.035em] text-fg [overflow-wrap:anywhere] sm:text-[2.5rem]">
             {title}
           </h1>
           {description && (
@@ -31,7 +31,7 @@ export default function PageHeader({
           )}
         </div>
       </div>
-      {action && <div className="shrink-0 sm:pb-0.5">{action}</div>}
+      {action && <div className="flex flex-wrap gap-2 md:shrink-0 md:pb-0.5">{action}</div>}
     </header>
   );
 }

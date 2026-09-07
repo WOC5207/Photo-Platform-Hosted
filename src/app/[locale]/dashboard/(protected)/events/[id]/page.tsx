@@ -1,3 +1,5 @@
+import EventWorkspaceHeader from "@/components/events/EventWorkspaceHeader";
+import { pickText } from "@/lib/content";
 import { notFound } from "next/navigation";
 import { getTranslations, getLocale } from "next-intl/server";
 import { prisma } from "@/lib/db";
@@ -29,6 +31,7 @@ export default async function EditEventPage({
   const { id } = await params;
   const t = await getTranslations("adminEvents");
   const tc = await getTranslations("common");
+  const tw = await getTranslations("eventWorkspace");
   const locale = await getLocale();
   const user = await requireUser(locale);
   const settings = await getSiteSettings(user.id);
@@ -38,6 +41,7 @@ export default async function EditEventPage({
   const event = await prisma.event.findFirst({
     where: { id, ownerId: user.id },
     include: {
+      bookingEvent: { where: { ownerId: user.id }, select: { id: true } },
       photos: {
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         include: {
@@ -101,25 +105,8 @@ export default async function EditEventPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <Link
-            href="/dashboard/events"
-            className="mb-2 inline-flex min-h-10 items-center text-sm text-fg-subtle underline-offset-4 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/20"
-          >
-            {tc("back")} · {t("listTitle")}
-          </Link>
-          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("editEvent")}</h1>
-        </div>
-        {event.published && (
-          <Link
-            href={`${ownerBasePath(user.username)}/gallery/${event.slug}`}
-            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-4 py-2 text-sm font-semibold text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11"
-          >
-            {t("viewPublic")}
-          </Link>
-        )}
-      </div>
+      <EventWorkspaceHeader title={pickText(locale, event.titleEn, event.titleZh)} galleryId={event.id} bookingId={event.bookingEvent?.id} active="gallery" />
+      {event.published && <Link href={ownerBasePath(user.username) + "/gallery/" + event.slug} className="inline-flex min-h-11 items-center self-start font-semibold text-accent underline underline-offset-4">{t("viewPublic")}</Link>}
 
       <EventForm
         action={updateEvent}
@@ -165,6 +152,7 @@ export default async function EditEventPage({
       <section className="rounded-xl border border-danger-border bg-danger-surface/40 p-5">
         <h2 className="text-lg font-semibold text-danger-strong">{tc("dangerZone")}</h2>
         <p className="mt-1 text-sm text-fg-subtle">{t("confirmDeleteEvent")}</p>
+        {event.bookingEvent && <p className="mt-2 text-sm text-fg-muted">{tw("galleryDeleteHint")}</p>}
         <div className="mt-4">
           <DeleteEventButton
             id={event.id}

@@ -62,7 +62,9 @@ export default function MobileNav({
     "flex min-h-11 items-center rounded-lg px-3 py-2 text-fg-muted transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
 
   return (
-    <div ref={rootRef} className="relative shrink-0 sm:hidden">
+    <div ref={rootRef} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+    }} className="relative shrink-0 xl:hidden">
       <button
         ref={triggerRef}
         type="button"
@@ -73,6 +75,7 @@ export default function MobileNav({
         className="flex h-11 w-11 items-center justify-center rounded-lg border border-border-strong text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
       >
         <svg
+          aria-hidden="true"
           viewBox="0 0 24 24"
           className="h-5 w-5"
           fill="none"

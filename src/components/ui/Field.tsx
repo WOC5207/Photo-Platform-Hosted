@@ -6,7 +6,7 @@ import type {
 import { cloneElement, isValidElement } from "react";
 
 export const controlClasses =
-  "min-h-11 w-full rounded-lg border border-border-strong bg-control px-3.5 py-2.5 text-sm text-fg outline-none transition-[border-color,background-color,box-shadow] duration-150 placeholder:text-fg-faint hover:border-fg-faint focus-visible:border-accent/60 focus-visible:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-55";
+  "min-h-11 w-full min-w-0 rounded-lg border border-[var(--color-control-border,var(--color-border-strong))] bg-control px-3 py-2.5 text-base sm:text-sm text-fg transition-[border-color,background-color,box-shadow] duration-150 placeholder:text-fg-faint hover:border-fg-subtle focus-visible:border-accent focus-visible:bg-raised disabled:cursor-not-allowed disabled:opacity-55 aria-invalid:border-danger";
 
 export function Field({
   label,

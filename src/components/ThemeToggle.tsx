@@ -27,21 +27,30 @@ export default function ThemeToggle({ label }: { label: string }) {
   const [theme, setTheme] = useState<Theme | null>(null);
 
   useEffect(() => {
-    setTheme(effectiveTheme());
+    const syncTheme = () => setTheme(effectiveTheme());
+    syncTheme();
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    function onSystemChange() {
-      if (!localStorage.getItem("theme")) setTheme(systemTheme());
-    }
-    mq.addEventListener("change", onSystemChange);
-    return () => mq.removeEventListener("change", onSystemChange);
+    // Desktop and mobile controls can be mounted together. Reflect changes
+    // made by either control instead of keeping a stale local pressed state.
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    mq.addEventListener("change", syncTheme);
+    return () => {
+      observer.disconnect();
+      mq.removeEventListener("change", syncTheme);
+    };
   }, []);
 
   function toggle() {
-    const next: Theme = theme === "dark" ? "light" : "dark";
+    const next: Theme = effectiveTheme() === "dark" ? "light" : "dark";
     const root = document.documentElement;
     root.classList.remove("light", "dark");
     root.classList.add(next);
-    localStorage.setItem("theme", next);
+    try {
+      localStorage.setItem("theme", next);
+    } catch {
+      // Theme switching still works when browser storage is unavailable.
+    }
     setTheme(next);
   }
 
@@ -52,9 +61,14 @@ export default function ThemeToggle({ label }: { label: string }) {
       aria-pressed={theme === null ? undefined : theme === "dark"}
       aria-label={label || "Toggle light/dark theme"}
       title={label || "Toggle light/dark theme"}
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border text-fg-subtle transition hover:border-border-strong hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-lg:h-11 max-lg:w-11"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border-strong bg-raised text-fg-muted transition-colors hover:border-accent hover:text-accent"
     >
-      {theme === null ? null : theme === "dark" ? "☀" : "☾"}
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        {theme === "dark" ? <>
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M2 12h2M20 12h2m-3-9-1.5 1.5M5.5 18.5 4 20m16 0-1.5-1.5M5.5 5.5 4 4" />
+        </> : <path d="M20.9 13a9 9 0 0 1-9.9-9.9A9 9 0 1 0 20.9 13Z" />}
+      </svg>
     </button>
   );
 }

@@ -82,7 +82,7 @@ export default function Dialog({
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
-        className={`w-full rounded-2xl border border-fg/10 bg-page shadow-2xl outline-none ${panelClassName}`}
+        className={`max-h-[calc(100dvh-2rem)] w-full overflow-y-auto overscroll-contain rounded-2xl border border-border-strong bg-raised shadow-2xl outline-none ${panelClassName}`}
       >
         {children}
       </div>

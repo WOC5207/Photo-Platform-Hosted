@@ -202,10 +202,10 @@ export default function BookingDayPicker({
                 onPointerDown={() => onDayPointerDown(cell.dateStr)}
                 onPointerEnter={() => onDayPointerEnter(cell.dateStr)}
                 className={[
-                  "flex aspect-square items-center justify-center rounded-lg text-sm transition",
+                  "flex min-h-11 min-w-0 items-center justify-center rounded-lg text-sm transition-colors",
                   active
-                    ? "bg-fg text-page"
-                    : "text-fg hover:bg-fg/10",
+                    ? "bg-accent text-accent-fg"
+                    : "text-fg hover:bg-accent-surface",
                   !active && isToday ? "border border-fg/30" : ""
                 ].join(" ")}
               >

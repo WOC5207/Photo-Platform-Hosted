@@ -44,6 +44,7 @@ export default async function LocaleLayout({
   if (!hasLocale(routing.locales, locale)) notFound();
   setRequestLocale(locale);
   const messages = await getMessages();
+  const t = await getTranslations("common");
 
   return (
     <html lang={locale === "zh" ? "zh-Hans" : "en"} suppressHydrationWarning>
@@ -57,6 +58,9 @@ export default async function LocaleLayout({
           }}
         />
         <NextIntlClientProvider messages={messages}>
+          <a href="#main-content" className="ui-skip-link">
+            {t("skipToContent")}
+          </a>
           {children}
         </NextIntlClientProvider>
       </body>

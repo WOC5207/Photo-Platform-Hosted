@@ -1,0 +1,1 @@
+ALTER TABLE "TimeSlot" ADD COLUMN "finishedAt" TIMESTAMP(3);
