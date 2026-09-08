@@ -493,6 +493,7 @@ async function testNewEventSlotBatchSync() {
     bookingDayId: event.days[0].id,
     startTime: "10:00",
     slotMinutes: 30,
+    bufferMinutes: 10,
     slotCount: 2,
     capacity: 3,
     pricePerPerson: "CAD 50",
@@ -516,6 +517,8 @@ async function testNewEventSlotBatchSync() {
       !duplicate &&
       fresh?.slotsInitialized === true &&
       fresh.slots.length === 4 &&
+      fresh.slots.map((slot) => slot.startTime.toISOString().slice(11, 16)).join(",") ===
+        "10:00,10:40,10:00,10:40" &&
       fresh.slots.every(
         (slot) =>
           slot.capacity === 3 &&

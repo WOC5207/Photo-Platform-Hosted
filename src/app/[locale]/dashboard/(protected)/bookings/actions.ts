@@ -228,6 +228,7 @@ const slotsSchema = z.object({
   // by which tab the admin is on), as "HH:MM".
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
   slotMinutes: z.coerce.number().int().min(5).max(24 * 60),
+  bufferMinutes: z.coerce.number().int().min(0).max(24 * 60),
   slotCount: z.coerce.number().int().min(1).max(100),
   capacity: z.coerce.number().int().min(1).max(1000),
   pricePerPerson: z.string().trim().max(60),
@@ -246,6 +247,10 @@ export async function addSlots(
     bookingDayId: formData.get("bookingDayId") ?? "",
     startTime: formData.get("startTime") ?? "",
     slotMinutes: formData.get("slotMinutes") ?? "",
+    bufferMinutes:
+      formData.get("bufferEnabled") === "on"
+        ? formData.get("bufferMinutes") ?? ""
+        : 0,
     slotCount: formData.get("slotCount") ?? "",
     capacity: formData.get("capacity") ?? "",
     pricePerPerson: formData.get("pricePerPerson") ?? "",

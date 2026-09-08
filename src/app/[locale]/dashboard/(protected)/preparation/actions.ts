@@ -4,7 +4,6 @@ import { getLocale } from "next-intl/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { pickText } from "@/lib/content";
 import { redirect } from "next/navigation";
 import { pickEquipment, setSlotFinished } from "@/lib/preparation";
 
@@ -32,6 +31,11 @@ const checklistSchema = z.object({
 });
 
 const customItemSchema = z.string().trim().min(1).max(200);
+const quickEquipmentStatusSchema = z.enum([
+  "SIGNED_OUT",
+  "IN_INVENTORY",
+  "BROKEN"
+]);
 
 async function ownerId(): Promise<string> {
   const locale = await getLocale();
@@ -72,16 +76,27 @@ export async function createChecklist(formData: FormData): Promise<void> {
     }
   });
   refreshPreparation();
-  redirect("/" + await getLocale() + "/dashboard/preparation/equipment#checklist-" + checklist.id);
+  redirect("/" + await getLocale() + "/dashboard/preparation/equipment/" + checklist.id);
 }
 
 export async function deleteChecklist(formData: FormData): Promise<void> {
   const id = text(formData, "id");
   if (!id) return;
+  const locale = await getLocale();
+  const owner = await ownerId();
+  const checklist = await prisma.equipmentChecklist.findFirst({
+    where: { id, ownerId: owner },
+    select: { bookingDay: { select: { bookingEventId: true } } }
+  });
+  if (!checklist) return;
   await prisma.equipmentChecklist.deleteMany({
-    where: { id, ownerId: await ownerId() }
+    where: { id, ownerId: owner }
   });
   refreshPreparation();
+  const eventQuery = checklist.bookingDay
+    ? `?event=${checklist.bookingDay.bookingEventId}`
+    : "";
+  redirect(`/${locale}/dashboard/preparation/equipment${eventQuery}`);
 }
 
 export async function addCustomChecklistItem(formData: FormData): Promise<void> {
@@ -110,16 +125,6 @@ export async function addCustomChecklistItem(formData: FormData): Promise<void> 
   refreshPreparation();
 }
 
-export async function toggleChecklistItem(formData: FormData): Promise<void> {
-  const id = text(formData, "id");
-  if (!id) return;
-  await prisma.equipmentChecklistItem.updateMany({
-    where: { id, checklist: { ownerId: await ownerId() } },
-    data: { checked: text(formData, "checked") === "true" }
-  });
-  refreshPreparation();
-}
-
 export async function removeChecklistItem(formData: FormData): Promise<void> {
   const id = text(formData, "id");
   if (!id) return;
@@ -129,50 +134,22 @@ export async function removeChecklistItem(formData: FormData): Promise<void> {
   refreshPreparation();
 }
 
-export async function resetChecklist(formData: FormData): Promise<void> {
+export async function setChecklistEquipmentStatus(formData: FormData): Promise<void> {
   const checklistId = text(formData, "checklistId");
-  if (!checklistId) return;
-  await prisma.equipmentChecklistItem.updateMany({
-    where: { checklistId, checklist: { ownerId: await ownerId() } },
-    data: { checked: false }
+  const equipmentId = text(formData, "equipmentId");
+  const parsed = quickEquipmentStatusSchema.safeParse(text(formData, "status"));
+  if (!checklistId || !equipmentId || !parsed.success) return;
+  const owner = await ownerId();
+
+  await prisma.equipmentItem.updateMany({
+    where: {
+      id: equipmentId,
+      ownerId: owner,
+      checklistItems: {
+        some: { checklistId, checklist: { ownerId: owner } }
+      }
+    },
+    data: { status: parsed.data }
   });
   refreshPreparation();
-}
-
-export async function createDailyEquipmentChecklist(
-  formData: FormData
-): Promise<void> {
-  const locale = await getLocale();
-  const user = await requireUser(locale);
-  const bookingDayId = formData.get("bookingDayId");
-  if (typeof bookingDayId !== "string" || !bookingDayId) return;
-
-  const day = await prisma.bookingDay.findFirst({
-    where: { id: bookingDayId, bookingEvent: { ownerId: user.id } },
-    include: {
-      bookingEvent: { select: { titleEn: true, titleZh: true } }
-    }
-  });
-  if (!day) return;
-
-  const eventTitle = pickText(
-    locale,
-    day.bookingEvent.titleEn,
-    day.bookingEvent.titleZh
-  );
-  const date = day.date.toISOString().slice(0, 10);
-  const name = `${eventTitle} · ${date}`.slice(0, 160);
-
-  const checklist = await prisma.equipmentChecklist.upsert({
-    where: { bookingDayId: day.id },
-    update: {},
-    create: {
-      ownerId: user.id,
-      bookingDayId: day.id,
-      name,
-      shootDate: day.date
-    }
-  });
-  revalidatePath("/", "layout");
-  redirect(`/${locale}/dashboard/preparation/equipment?event=${day.bookingEventId}#checklist-${checklist.id}`);
 }

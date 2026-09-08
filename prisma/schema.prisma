@@ -132,19 +132,32 @@ model EquipmentCategory {
   @@index([ownerId, name])
 }
 
+enum EquipmentStatus {
+  SIGNED_OUT
+  IN_INVENTORY
+  MAINTENANCE
+  BROKEN
+  OTHER
+}
+
 // Private equipment inventory for a photographer. The QR token is deliberately
 // separate from the row id: labels can be regenerated without exposing an
-// enumerable database identifier. The public label route reveals only the
-// item name/category and the owner's already-public profile identity.
+// enumerable database identifier. The public label route reveals identity,
+// serial number, current photo and the owner's configured QR contact only.
 model EquipmentItem {
   id           String            @id @default(cuid())
   ownerId      String
   owner        User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   name         String
+  brand        String            @default("")
+  model        String            @default("")
   categoryId   String
   category     EquipmentCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  status       EquipmentStatus   @default(IN_INVENTORY)
+  statusNote   String            @default("")
   serialNumber String            @default("")
   notes        String            @default("")
+  photoToken   String            @default("")
   qrToken      String            @unique @default(uuid())
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
@@ -204,7 +217,8 @@ model SiteImage {
   ownerId   String
   owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   token     String   @unique
-  // "bg" | "logo" | "qr" | "announcement" — for the admin storage breakdown.
+  // Site and equipment images for storage accounting; equipment photos are
+  // also served through their owning equipment's public QR token.
   purpose   String
   bytes     Int
   createdAt DateTime @default(now())
@@ -700,6 +714,9 @@ model SiteSettings {
   // locale, even if the other language has one configured). QR image
   // fields use the same token/storage scheme as backgroundImage/logo.
   contactEnabled                    Boolean   @default(false)
+  equipmentContactMethod            String    @default("")
+  equipmentContactLabel             String    @default("")
+  equipmentContactValue             String    @default("")
   contactTitleEn                    String    @default("")
   contactTitleZh                    String    @default("")
   contactUrlEn                      String    @default("")
