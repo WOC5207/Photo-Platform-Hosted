@@ -130,24 +130,46 @@ test("scanner resolves images, adds items, updates inventory and protects owners
     await page.getByRole("button", { name: "Close scanner", exact: true }).click();
     await expect.poll(() => page.evaluate(() => (window as unknown as { testStream: MediaStream }).testStream.getTracks().every(t => t.readyState === "ended"))).toBe(true);
     await page.getByRole("button", { name: "Scan equipment QR", exact: true }).click();
+    await panel.getByText("Other ways to scan", { exact: true }).click();
     await panel.getByLabel("Paste QR link").fill("not-a-code");
-    await panel.getByRole("button", { name: "Find equipment" }).click();
+    await panel.getByRole("button", { name: "Process QR link" }).click();
     await expect(panel.getByRole("alert")).toContainText("not a valid");
-    const lookupRequest = page.waitForRequest(r => r.method() === "POST" && Boolean(r.headers()["next-action"]));
+    const scanRequest = page.waitForRequest(r => r.method() === "POST" && Boolean(r.headers()["next-action"]));
     await panel.getByLabel("Scan QR image").setInputFiles({ name: "qr.png", mimeType: "image/png", buffer: await QRCode.toBuffer(url) });
-    const request = await lookupRequest;
-    await expect(panel.getByRole("heading", { name: item.name })).toBeVisible();
-    const notMember = await page.evaluate(async ({ actionId, args }) => (await fetch(location.href, { method: "POST", headers: { "next-action": actionId, "content-type": "text/plain;charset=UTF-8" }, body: JSON.stringify(args) })).text(), { actionId: request.headers()["next-action"], args: [checklist.id, url, "BROKEN"] });
-    expect(notMember).toContain("notMember");
-    await panel.getByRole("button", { name: "Add to checklist", exact: true }).click();
-    await expect(panel.getByRole("button", { name: "In use", exact: true })).toBeVisible();
-    for (const [label, status] of [["In use", "SIGNED_OUT"], ["Broken", "BROKEN"], ["In inventory", "IN_INVENTORY"]]) {
-      await panel.getByRole("button", { name: label, exact: true }).click();
-      await expect(page.locator(`[data-equipment-status="${status}"]`)).toHaveCount(1);
-      await expect.poll(async () => (await prisma.equipmentItem.findUniqueOrThrow({ where: { id: item.id } })).status).toBe(status);
-    }
-    // Replay the actual action transport without an authenticated session.
+    const request = await scanRequest;
+    await expect(panel.getByRole("status")).toContainText(`${item.name} added and updated`);
+    await expect.poll(async () => (await prisma.equipmentItem.findUniqueOrThrow({ where: { id: item.id } })).status).toBe("SIGNED_OUT");
+    await expect.poll(async () => (await prisma.equipmentChecklistItem.findFirstOrThrow({ where: { checklistId: checklist.id, equipmentId: item.id } })).eventState).toBe("AT_EVENT");
+    await expect(panel.getByText("1 / 1", { exact: true })).toBeVisible();
+
     const actionId = request.headers()["next-action"];
+    for (const [operation, status, eventState] of [
+      ["RETURN", "IN_INVENTORY", "RETURNED"],
+      ["REPORT_BROKEN", "BROKEN", "BROKEN"],
+      ["ARRIVAL", "SIGNED_OUT", "AT_EVENT"]
+    ] as const) {
+      const response = await page.evaluate(async ({ actionId: nextAction, args }) => (
+        await fetch(location.href, {
+          method: "POST",
+          headers: { "next-action": nextAction, "content-type": "text/plain;charset=UTF-8" },
+          body: JSON.stringify(args)
+        })
+      ).text(), { actionId, args: [checklist.id, url, operation] });
+      expect(response).toContain(eventState);
+      await expect.poll(async () => (await prisma.equipmentItem.findUniqueOrThrow({ where: { id: item.id } })).status).toBe(status);
+      await expect.poll(async () => (await prisma.equipmentChecklistItem.findFirstOrThrow({ where: { checklistId: checklist.id, equipmentId: item.id } })).eventState).toBe(eventState);
+    }
+    const duplicate = await page.evaluate(async ({ actionId: nextAction, args }) => (
+      await fetch(location.href, {
+        method: "POST",
+        headers: { "next-action": nextAction, "content-type": "text/plain;charset=UTF-8" },
+        body: JSON.stringify(args)
+      })
+    ).text(), { actionId, args: [checklist.id, url, "ARRIVAL"] });
+    expect(duplicate).toContain("duplicate");
+    expect(duplicate).toContain("true");
+    expect(await prisma.equipmentChecklistItem.count({ where: { checklistId: checklist.id, equipmentId: item.id } })).toBe(1);
+    // Replay the actual action transport without an authenticated session.
     const denied = await anonymous.request.post(request.url(), { headers: { "next-action": actionId, origin, "content-type": "text/plain;charset=UTF-8" }, data: JSON.stringify([checklist.id, url, "BROKEN"]) });
     expect(await denied.text()).toContain("unauthorized");
     for (const operation of ["lookup", "add", "BROKEN"]) {
@@ -160,6 +182,7 @@ test("scanner resolves images, adds items, updates inventory and protects owners
     await page.screenshot({ path: `test-results/qr-scanner-${test.info().project.name}.png`, fullPage: true });
     await page.goto(`/zh/dashboard/preparation/equipment/${checklist.id}`);
     await page.getByRole("button", { name: "扫描器材二维码", exact: true }).click();
+    await page.getByText("其他扫描方式", { exact: true }).click();
     await expect(page.getByLabel("粘贴二维码链接")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.goto(`/en/dashboard/equipment/${item.id}`);

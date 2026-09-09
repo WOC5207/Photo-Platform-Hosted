@@ -140,6 +140,16 @@ enum EquipmentStatus {
   OTHER
 }
 
+// Event-day lifecycle for one piece of equipment on one checklist. This stays
+// separate from EquipmentStatus so returning an item to inventory does not
+// erase the fact that it completed this event's sign-out / return cycle.
+enum EquipmentChecklistState {
+  PLANNED
+  AT_EVENT
+  RETURNED
+  BROKEN
+}
+
 // Private equipment inventory for a photographer. The QR token is deliberately
 // separate from the row id: labels can be regenerated without exposing an
 // enumerable database identifier. The public label route reveals identity,
@@ -188,15 +198,20 @@ model EquipmentChecklist {
 }
 
 model EquipmentChecklistItem {
-  id          String             @id @default(cuid())
-  checklistId String
-  checklist   EquipmentChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
-  equipmentId String?
-  equipment   EquipmentItem?     @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
-  label       String
-  checked     Boolean            @default(false)
-  sortOrder   Int                @default(0)
-  createdAt   DateTime           @default(now())
+  id            String                  @id @default(cuid())
+  checklistId   String
+  checklist     EquipmentChecklist      @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  equipmentId   String?
+  equipment     EquipmentItem?          @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  label         String
+  checked       Boolean                 @default(false)
+  eventState    EquipmentChecklistState @default(PLANNED)
+  signedOutAt   DateTime?
+  returnedAt    DateTime?
+  brokenAt      DateTime?
+  lastScannedAt DateTime?
+  sortOrder     Int                     @default(0)
+  createdAt     DateTime                @default(now())
 
   @@unique([checklistId, equipmentId])
   @@index([checklistId, sortOrder])

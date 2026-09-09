@@ -1,16 +1,44 @@
 "use client";
+
 import { useEffect, useRef, useState } from "react";
 import type QrScanner from "qr-scanner";
 import { useTranslations } from "next-intl";
 import { useRouter, Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import { controlClasses } from "@/components/ui/Field";
-import { scanEquipment } from "@/app/[locale]/dashboard/(protected)/preparation/scanner-actions";
+import {
+  scanEquipment,
+  type ScanProgress,
+  type ScanSessionMode
+} from "@/app/[locale]/dashboard/(protected)/preparation/scanner-actions";
 
-type Item = Extract<Awaited<ReturnType<typeof scanEquipment>>, { item: unknown }>["item"];
-const statusKey = { SIGNED_OUT: "quickStatusSignedOut", IN_INVENTORY: "statusInInventory", BROKEN: "statusBroken", MAINTENANCE: "statusMaintenance", OTHER: "statusOther" } as const;
+type ScannedItem = {
+  id: string;
+  name: string;
+  serialNumber: string;
+  photo: string | null;
+  category: string;
+  status: "SIGNED_OUT" | "IN_INVENTORY" | "MAINTENANCE" | "BROKEN" | "OTHER";
+  eventState: "PLANNED" | "AT_EVENT" | "RETURNED" | "BROKEN" | null;
+  included: boolean;
+};
 
-export default function EquipmentScanner({ checklistId }: { checklistId: string }) {
+type ScanFeedback = {
+  key: number;
+  kind: "success" | "duplicate" | "error";
+  message: string;
+  item?: ScannedItem;
+};
+
+const MODES: ScanSessionMode[] = ["ARRIVAL", "RETURN", "REPORT_BROKEN"];
+
+export default function EquipmentScanner({
+  checklistId,
+  initialProgress
+}: {
+  checklistId: string;
+  initialProgress: ScanProgress;
+}) {
   const t = useTranslations("equipmentScan");
   const te = useTranslations("equipment");
   const router = useRouter();
@@ -18,104 +46,352 @@ export default function EquipmentScanner({ checklistId }: { checklistId: string 
   const scanner = useRef<QrScanner | null>(null);
   const generation = useRef(0);
   const locked = useRef(false);
+  const modeRef = useRef<ScanSessionMode>("ARRIVAL");
+  const recentlyScanned = useRef(new Map<string, number>());
+  const feedbackKey = useRef(0);
   const [open, setOpen] = useState(false);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
+  const [mode, setModeState] = useState<ScanSessionMode>("ARRIVAL");
   const [value, setValue] = useState("");
-  const [matchedCode, setMatchedCode] = useState("");
-  const [item, setItem] = useState<Item | null>(null);
-  const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [progress, setProgress] = useState(initialProgress);
+  const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
+  const [history, setHistory] = useState<ScanFeedback[]>([]);
+  const hasUpdates = useRef(false);
 
-  function stop() { generation.current++; scanner.current?.destroy(); scanner.current = null; setRunning(false); }
-  useEffect(() => () => { generation.current++; scanner.current?.destroy(); }, []);
   useEffect(() => {
-    const hide = () => { if (document.hidden) stop(); };
+    setProgress(initialProgress);
+  }, [
+    initialProgress.total,
+    initialProgress.planned,
+    initialProgress.atEvent,
+    initialProgress.returned,
+    initialProgress.broken
+  ]);
+
+  function stopCamera() {
+    generation.current += 1;
+    scanner.current?.destroy();
+    scanner.current = null;
+    setRunning(false);
+  }
+
+  function closeScanner() {
+    stopCamera();
+    setOpen(false);
+    if (hasUpdates.current) {
+      hasUpdates.current = false;
+      router.refresh();
+    }
+  }
+
+  useEffect(() => () => {
+    generation.current += 1;
+    scanner.current?.destroy();
+  }, []);
+
+  useEffect(() => {
+    const hide = () => {
+      if (document.hidden) stopCamera();
+    };
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
 
-  async function resolve(code: string, operation = "lookup") {
-    if (locked.current) return;
+  function setMode(nextMode: ScanSessionMode) {
+    modeRef.current = nextMode;
+    setModeState(nextMode);
+    setFeedback(null);
+  }
+
+  function pulse(kind: ScanFeedback["kind"]) {
+    if (!("vibrate" in navigator)) return;
+    if (kind === "success") navigator.vibrate(60);
+    else if (kind === "duplicate") navigator.vibrate([35, 45, 35]);
+    else navigator.vibrate([90, 60, 90]);
+  }
+
+  async function processCode(code: string) {
+    const normalized = code.trim();
+    if (!normalized || locked.current) return;
+    const now = Date.now();
+    const recent = recentlyScanned.current.get(normalized);
+    if (recent && now - recent < 2200) return;
+
     locked.current = true;
-    stop();
-    const request = generation.current;
-    setBusy(true); setError(""); setSaved(false);
-    if (operation === "lookup") setItem(null);
+    recentlyScanned.current.set(normalized, now);
+    const requestGeneration = generation.current;
+    const operation = modeRef.current;
+    setBusy(true);
+    setFeedback(null);
+
     try {
-      const result = await scanEquipment(checklistId, code, operation);
-      if (generation.current !== request) return;
-      if (result.error) setError(t(result.error));
-      else if (result.item) { setItem(result.item); setValue(code); setMatchedCode(code); setSaved(operation !== "lookup"); if (operation !== "lookup") router.refresh(); }
-    } catch { if (generation.current === request) setError(t("failed")); }
-    finally { locked.current = false; setBusy(false); }
+      const result = await scanEquipment(checklistId, normalized, operation);
+      if (generation.current !== requestGeneration) return;
+      if (result.error) {
+        const next = { key: ++feedbackKey.current, kind: "error" as const, message: t(result.error) };
+        setFeedback(next);
+        setHistory((current) => [next, ...current].slice(0, 4));
+        pulse("error");
+        return;
+      }
+
+      const kind = result.duplicate ? "duplicate" as const : "success" as const;
+      const message = result.duplicate
+        ? t("alreadyProcessed", { name: result.item.name })
+        : result.added
+          ? t("addedAndProcessed", { name: result.item.name })
+          : t("processed", { name: result.item.name });
+      const next = { key: ++feedbackKey.current, kind, message, item: result.item as ScannedItem };
+      setProgress(result.progress);
+      setFeedback(next);
+      setHistory((current) => [next, ...current].slice(0, 4));
+      hasUpdates.current ||= !result.duplicate;
+      pulse(kind);
+    } catch {
+      if (generation.current === requestGeneration) {
+        const next = { key: ++feedbackKey.current, kind: "error" as const, message: t("failed") };
+        setFeedback(next);
+        setHistory((current) => [next, ...current].slice(0, 4));
+        pulse("error");
+      }
+    } finally {
+      locked.current = false;
+      setBusy(false);
+    }
   }
 
   async function start() {
-    stop(); setError(""); setItem(null); setSaved(false); setBusy(true);
-    const request = generation.current;
+    stopCamera();
+    setFeedback(null);
+    setBusy(true);
+    const requestGeneration = generation.current;
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error("camera");
       const { default: Scanner } = await import("qr-scanner");
-      if (generation.current !== request || !video.current) return;
-      const instance = new Scanner(video.current, result => { void resolve(result.data); }, { preferredCamera: "environment", returnDetailedScanResult: true });
+      if (generation.current !== requestGeneration || !video.current) return;
+      const instance = new Scanner(
+        video.current,
+        (result) => { void processCode(result.data); },
+        { preferredCamera: "environment", returnDetailedScanResult: true, highlightScanRegion: true }
+      );
       scanner.current = instance;
       await instance.start();
-      if (generation.current !== request) { instance.destroy(); return; }
+      if (generation.current !== requestGeneration) {
+        instance.destroy();
+        return;
+      }
       setRunning(true);
       const available = await Scanner.listCameras(true);
-      if (generation.current === request) setCameras(available);
-    } catch { if (generation.current === request) { stop(); setError(t("cameraError")); } }
-    finally { setBusy(false); }
+      if (generation.current === requestGeneration) setCameras(available);
+    } catch {
+      if (generation.current === requestGeneration) {
+        stopCamera();
+        setFeedback({ key: ++feedbackKey.current, kind: "error", message: t("cameraError") });
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function scanFile(file?: File) {
     if (!file) return;
-    stop(); setItem(null); setSaved(false); setError(""); setBusy(true);
-    const request = generation.current;
+    setFeedback(null);
+    setBusy(true);
+    const requestGeneration = generation.current;
     try {
       const { default: Scanner } = await import("qr-scanner");
       const result = await Scanner.scanImage(file, { returnDetailedScanResult: true });
-      if (generation.current === request) await resolve(result.data);
-    } catch { if (generation.current === request) setError(t("imageError")); }
-    finally { setBusy(false); }
+      if (generation.current === requestGeneration) await processCode(result.data);
+    } catch {
+      if (generation.current === requestGeneration) {
+        setFeedback({ key: ++feedbackKey.current, kind: "error", message: t("imageError") });
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
-  return <div className="flex flex-col gap-4">
-    <Button className="self-start" aria-expanded={open} onClick={() => { stop(); setOpen(!open); }}>{open ? t("close") : t("scan")}</Button>
-    {open && <section aria-label={t("scan")} className="rounded-xl border border-border bg-control p-4 flex flex-col gap-4">
-      <p className="text-sm text-fg-muted">{t("hint")}</p>
-      <video ref={video} muted playsInline className={`w-full max-h-72 rounded-lg bg-page ${running ? "" : "hidden"}`} />
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={busy} onClick={running ? stop : start}>{running ? t("stop") : t("start")}</Button>
-        {running && cameras.length > 1 && <select aria-label={t("camera")} className={controlClasses} onChange={async e => { try { await scanner.current?.setCamera(e.target.value); } catch { stop(); setError(t("cameraError")); } }} defaultValue="">
-          <option value="" disabled>{t("camera")}</option>
-          {cameras.map(c => <option key={c.id} value={c.id}>{c.label || c.id}</option>)}
-        </select>}
-      </div>
-      <label className="text-sm font-semibold flex flex-col gap-2">{t("image")}
-        <input type="file" accept="image/*" disabled={busy} className={controlClasses} onChange={e => { void scanFile(e.target.files?.[0]); e.target.value = ""; }} />
-      </label>
-      <form className="flex flex-col gap-2" onSubmit={e => { e.preventDefault(); void resolve(value); }}>
-        <label htmlFor={`qr-link-${checklistId}`} className="text-sm font-semibold">{t("paste")}</label>
-        <input id={`qr-link-${checklistId}`} value={value} onChange={e => setValue(e.target.value)} maxLength={2048} required className={controlClasses} />
-        <Button type="submit" disabled={busy || !value.trim()}>{t("find")}</Button>
-      </form>
-      {busy && <p role="status" className="text-sm">{t("working")}</p>}
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      {item && <div className="rounded-lg bg-surface p-4 flex flex-col gap-3">
-        <h3 className="font-semibold break-words">{item.name}</h3>
-        <p className="text-sm text-fg-subtle">{item.category}</p>
-        {item.photo && <img src={item.photo} alt={item.name} className="max-h-48 w-full object-contain rounded-lg" />}
-        {item.serialNumber && <p className="text-sm break-words">{te("serialShort")}: {item.serialNumber}</p>}
-        <p className="text-sm">{te("inventoryStatus")}: {te(statusKey[item.status])}</p>
-        {!item.included ? <><p className="text-sm">{t("notIncluded")}</p><Button disabled={busy} onClick={() => resolve(matchedCode, "add")}>{t("add")}</Button></> :
-          <div className="flex flex-wrap gap-2">{(["SIGNED_OUT", "IN_INVENTORY", "BROKEN"] as const).map(status => <Button key={status} disabled={busy || item.status === status} aria-pressed={item.status === status} onClick={() => resolve(matchedCode, status)}>{te(statusKey[status])}</Button>)}</div>}
-        {saved && <p role="status" className="text-sm text-success">{t("saved")}</p>}
-        <Button disabled={busy} onClick={() => { stop(); setItem(null); setValue(""); setSaved(false); setError(""); }}>{t("another")}</Button>
-      </div>}
-      <Link href="/dashboard/equipment/contact" className={buttonClasses({ variant: "ghost", className: "self-start" })}>{t("contactTitle")}</Link>
-    </section>}
-  </div>;
+  const processed = mode === "ARRIVAL"
+    ? progress.atEvent + progress.returned + progress.broken
+    : mode === "RETURN"
+      ? progress.returned + progress.broken
+      : progress.broken;
+  const progressLabel = mode === "ARRIVAL"
+    ? t("arrivalProgress")
+    : mode === "RETURN"
+      ? t("returnProgress")
+      : t("brokenProgress");
+  const feedbackClass = feedback?.kind === "error"
+    ? "border-danger-border bg-danger-surface text-danger-strong"
+    : feedback?.kind === "duplicate"
+      ? "border-warning-border bg-warning-surface text-warning"
+      : "border-success-border bg-success-surface text-success-strong";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Button
+        variant="primary"
+        className="self-start"
+        aria-expanded={open}
+        disabled={busy}
+        onClick={() => open ? closeScanner() : setOpen(true)}
+      >
+        {open ? t("close") : t("scan")}
+      </Button>
+
+      {open && (
+        <section aria-label={t("scan")} className="flex flex-col gap-4 rounded-xl border border-border bg-control p-4">
+          <div>
+            <p className="font-meta text-[0.6875rem] font-semibold tracking-[0.14em] text-accent">{t("sessionMarker")}</p>
+            <h3 className="mt-1 font-display text-xl font-semibold">{t("sessionTitle")}</h3>
+            <p className="mt-1 text-sm text-fg-muted">{t("sessionHint")}</p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1 rounded-xl bg-surface p-1" role="group" aria-label={t("chooseMode")}>
+            {MODES.map((choice) => (
+              <Button
+                key={choice}
+                variant={mode === choice ? (choice === "REPORT_BROKEN" ? "danger" : "primary") : "ghost"}
+                className="w-full px-2"
+                aria-pressed={mode === choice}
+                disabled={busy}
+                onClick={() => setMode(choice)}
+              >
+                {choice === "ARRIVAL" ? t("arrival") : choice === "RETURN" ? t("packUp") : t("reportBroken")}
+              </Button>
+            ))}
+          </div>
+          <p className="text-sm font-semibold text-fg-muted">
+            {mode === "ARRIVAL" ? t("arrivalHint") : mode === "RETURN" ? t("packUpHint") : t("reportBrokenHint")}
+          </p>
+
+          <div className="rounded-xl border border-border bg-surface p-3">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-fg-muted">{progressLabel}</span>
+              <strong className="font-meta tabular-nums">{processed} / {progress.total}</strong>
+            </div>
+            <div
+              className="mt-2 h-2 overflow-hidden rounded-full bg-surface-2"
+              role="progressbar"
+              aria-label={progressLabel}
+              aria-valuemin={0}
+              aria-valuemax={progress.total}
+              aria-valuenow={processed}
+            >
+              <div
+                className={`h-full rounded-full ${mode === "REPORT_BROKEN" ? "bg-danger" : "bg-accent"}`}
+                style={{ width: `${progress.total ? Math.min(100, (processed / progress.total) * 100) : 0}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl bg-page">
+            <video ref={video} muted playsInline className={`max-h-[28rem] min-h-64 w-full object-cover ${running ? "" : "hidden"}`} />
+            {!running && (
+              <div className="flex min-h-52 flex-col items-center justify-center gap-3 p-6 text-center">
+                <p className="max-w-md text-sm text-fg-muted">{t("cameraReady")}</p>
+                <Button variant="primary" disabled={busy} onClick={start}>{t("start")}</Button>
+              </div>
+            )}
+            {running && (
+              <div className="absolute inset-x-3 bottom-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-page/90 p-2 backdrop-blur-sm">
+                <span className="px-2 text-xs font-semibold text-fg-muted">{busy ? t("working") : t("cameraRunning")}</span>
+                <div className="flex flex-wrap gap-2">
+                  {cameras.length > 1 && (
+                    <select
+                      aria-label={t("camera")}
+                      className={controlClasses}
+                      onChange={async (event) => {
+                        try {
+                          await scanner.current?.setCamera(event.target.value);
+                        } catch {
+                          stopCamera();
+                          setFeedback({ key: ++feedbackKey.current, kind: "error", message: t("cameraError") });
+                        }
+                      }}
+                      defaultValue=""
+                    >
+                      <option value="" disabled>{t("camera")}</option>
+                      {cameras.map((camera) => <option key={camera.id} value={camera.id}>{camera.label || camera.id}</option>)}
+                    </select>
+                  )}
+                  <Button size="compact" disabled={busy} onClick={stopCamera}>{t("stop")}</Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {feedback && (
+            <div
+              key={feedback.key}
+              role={feedback.kind === "error" ? "alert" : "status"}
+              className={`rounded-xl border p-4 ${feedbackClass}`}
+            >
+              <p className="font-semibold">{feedback.message}</p>
+              {feedback.item && (
+                <p className="mt-1 text-sm opacity-80">
+                  {feedback.item.category}
+                  {feedback.item.serialNumber ? ` · ${te("serialShort")} ${feedback.item.serialNumber}` : ""}
+                </p>
+              )}
+              <p className="mt-2 text-xs opacity-80">{t("keepScanning")}</p>
+            </div>
+          )}
+
+          {history.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold">{t("recentScans")}</h4>
+              <ul className="mt-2 divide-y divide-border rounded-xl border border-border bg-surface px-3">
+                {history.map((entry) => (
+                  <li key={entry.key} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm">
+                    <span className="min-w-0 break-words">{entry.message}</span>
+                    <span className={`shrink-0 font-meta text-[0.6875rem] font-semibold uppercase tracking-wide ${entry.kind === "error" ? "text-danger" : entry.kind === "duplicate" ? "text-warning" : "text-success"}`}>
+                      {entry.kind === "error" ? t("failedShort") : entry.kind === "duplicate" ? t("duplicateShort") : t("syncedShort")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <details className="rounded-xl border border-border bg-surface p-3">
+            <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">{t("otherWays")}</summary>
+            <div className="mt-3 flex flex-col gap-4 border-t border-border pt-4">
+              <label className="flex flex-col gap-2 text-sm font-semibold">
+                {t("image")}
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={busy}
+                  className={controlClasses}
+                  onChange={(event) => {
+                    void scanFile(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+              <form
+                className="flex flex-col gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void processCode(value);
+                }}
+              >
+                <label htmlFor={`qr-link-${checklistId}`} className="text-sm font-semibold">{t("paste")}</label>
+                <input id={`qr-link-${checklistId}`} value={value} onChange={(event) => setValue(event.target.value)} maxLength={2048} required className={controlClasses} />
+                <Button type="submit" disabled={busy || !value.trim()}>{t("processLink")}</Button>
+              </form>
+            </div>
+          </details>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+            <Link href="/dashboard/equipment/contact" className={buttonClasses({ variant: "ghost" })}>{t("contactTitle")}</Link>
+            <Button disabled={busy} onClick={closeScanner}>{t("finishSession")}</Button>
+          </div>
+        </section>
+      )}
+    </div>
+  );
 }

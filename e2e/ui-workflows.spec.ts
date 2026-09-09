@@ -439,8 +439,9 @@ test.describe.serial("management workflows", () => {
     await page.getByRole("checkbox", { name: new RegExp(`^${equipmentName}`) }).check();
     await page.getByRole("button", { name: "Add selected (1)", exact: true }).click();
     await page.getByRole("button", { name: "Broken", exact: true }).click();
-    await expect(page.getByText("Inventory status: Broken", { exact: true })).toBeVisible();
+    await expect(page.getByText("Event status: Broken", { exact: true })).toBeVisible();
     const checklistItem = page.locator('[data-equipment-status="BROKEN"]');
+    await expect(checklistItem).toHaveAttribute("data-equipment-event-state", "BROKEN");
     await expect(checklistItem).toContainText(equipmentName);
     await expect(checklistItem).toHaveClass(/bg-danger-surface/);
     await expect(
