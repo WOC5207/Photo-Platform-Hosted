@@ -8,10 +8,8 @@ import {
 } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
 import Button from "@/components/ui/Button";
 import EventLocalTimeNotice from "@/components/booking/EventLocalTimeNotice";
+import { controlClasses } from "@/components/ui/Field";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
-
-const inputCls =
-  "min-h-10 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-fg outline-none focus-visible:border-fg-subtle focus-visible:ring-2 focus-visible:ring-fg/20 max-sm:min-h-11";
 
 export default function SlotAdder({
   bookingDayId,
@@ -29,6 +27,7 @@ export default function SlotAdder({
     {}
   );
   const [dirty, setDirty] = useState(false);
+  const [bufferEnabled, setBufferEnabled] = useState(false);
   useUnsavedChanges(dirty, tc("unsavedNavigationConfirm"));
 
   useEffect(() => {
@@ -53,7 +52,7 @@ export default function SlotAdder({
             name="startTime"
             type="time"
             required
-            className={inputCls}
+            className={controlClasses}
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
@@ -65,7 +64,7 @@ export default function SlotAdder({
             max={1440}
             defaultValue={20}
             required
-            className={inputCls}
+            className={controlClasses}
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
@@ -77,7 +76,7 @@ export default function SlotAdder({
             max={100}
             defaultValue={1}
             required
-            className={inputCls}
+            className={controlClasses}
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
@@ -89,7 +88,7 @@ export default function SlotAdder({
             max={1000}
             defaultValue={1}
             required
-            className={inputCls}
+            className={controlClasses}
           />
         </label>
         {priceEnabled && (
@@ -100,7 +99,7 @@ export default function SlotAdder({
               maxLength={60}
               placeholder={t("pricePerPersonPlaceholder")}
               autoComplete="off"
-              className={inputCls}
+              className={controlClasses}
             />
           </label>
         )}
@@ -110,6 +109,37 @@ export default function SlotAdder({
           {t("pricePerPersonHint")}
         </p>
       )}
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-page/60 p-3 sm:flex-row sm:items-end sm:justify-between">
+        <label className="flex min-h-11 flex-1 items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            name="bufferEnabled"
+            checked={bufferEnabled}
+            onChange={(event) => setBufferEnabled(event.target.checked)}
+            aria-controls="slot-buffer-minutes"
+            className="mt-0.5 h-5 w-5 shrink-0 rounded border-border-strong accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+          />
+          <span className="flex flex-col gap-1">
+            <span className="font-semibold">{t("enableBuffer")}</span>
+            <span className="text-xs text-fg-subtle">{t("bufferHint")}</span>
+          </span>
+        </label>
+        {bufferEnabled && (
+          <label className="flex w-full flex-col gap-1 text-sm sm:w-40">
+            <span className="font-semibold text-fg-muted">{t("bufferMinutes")}</span>
+            <input
+              id="slot-buffer-minutes"
+              name="bufferMinutes"
+              type="number"
+              min={1}
+              max={1440}
+              defaultValue={10}
+              required
+              className={controlClasses}
+            />
+          </label>
+        )}
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-fg-muted">{t("slotDescriptionEn")}</span>
@@ -117,7 +147,7 @@ export default function SlotAdder({
             name="descriptionEn"
             maxLength={120}
             placeholder={t("slotDescriptionPlaceholder")}
-            className={inputCls}
+            className={controlClasses}
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
@@ -126,7 +156,7 @@ export default function SlotAdder({
             name="descriptionZh"
             maxLength={120}
             placeholder={t("slotDescriptionPlaceholder")}
-            className={inputCls}
+            className={controlClasses}
           />
         </label>
       </div>

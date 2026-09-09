@@ -155,9 +155,16 @@ test.describe("locale and theme compatibility", () => {
       await expect(page.locator("html")).toHaveClass(new RegExp(theme));
       await expect(page.getByRole("heading", { name: "Site settings" })).toBeVisible();
 
-      await page.goto("/zh/dashboard/settings?section=appearance");
+      await page.locator("aside").getByRole("link", { name: "中文" }).click();
+      await expect(page).toHaveURL(/\/zh\/dashboard\/settings\?section=appearance$/);
       await expect(page.locator("html")).toHaveClass(new RegExp(theme));
       await expect(page.getByRole("heading", { name: "网站设置" })).toBeVisible();
+      await expect.poll(() => page.evaluate(() => localStorage.getItem("theme"))).toBe(theme);
+
+      await page.locator("aside").getByRole("link", { name: "English" }).click();
+      await expect(page).toHaveURL(/\/en\/dashboard\/settings\?section=appearance$/);
+      await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+      await expect(page.getByRole("heading", { name: "Site settings" })).toBeVisible();
     }
 
     await page.goto("/en/dashboard/settings?section=features#lottery");
@@ -336,33 +343,46 @@ test.describe.serial("management workflows", () => {
     await page.getByRole("button", { name: "Save", exact: true }).click();
   });
 
-  test("equipment QR labels and packing checklists work together", async ({ page }) => {
+  test("equipment QR labels and packing checklists work together", async ({ page, browser }) => {
     const suffix = Date.now();
     const categoryName = `E2E Cameras ${suffix}`;
-    const equipmentName = `E2E Camera ${suffix}`;
+    const brand = "E2E";
+    const model = `Camera ${suffix}`;
+    const equipmentName = `${brand} ${model}`;
     const checklistName = `E2E Shoot ${suffix}`;
     await page.goto("/en/dashboard/equipment");
     await page
-      .getByRole("link", { name: "Add equipment & categories", exact: true })
+      .getByRole("link", { name: "Equipment categories", exact: true })
       .click();
     await expect(page).toHaveURL(/\/dashboard\/equipment\/manage$/);
 
     const categoryPanel = page
-      .getByRole("heading", { name: "Equipment categories", exact: true })
+      .getByRole("heading", { name: "Inventory categories", exact: true })
       .locator("..");
     await categoryPanel.getByLabel("Category name").fill(categoryName);
     await categoryPanel.getByRole("button", { name: "Create", exact: true }).click();
     const categoryRow = categoryPanel.locator("li").filter({ hasText: categoryName });
     await expect(categoryRow).toBeVisible();
 
+    await page.getByRole("link", { name: "Add equipment", exact: true }).click();
+    await expect(page).toHaveURL(/\/dashboard\/equipment\/new$/);
     const equipmentForm = page
-      .getByRole("heading", { name: "Add equipment", exact: true })
-      .locator("..");
-    await equipmentForm.getByLabel("Equipment name").fill(equipmentName);
+      .getByRole("heading", { name: "Equipment details", exact: true })
+      .locator("xpath=ancestor::section");
+    await equipmentForm.getByLabel("Brand").fill(brand);
+    await equipmentForm.getByLabel("Model").fill(model);
     await equipmentForm.getByLabel("Category").selectOption({ label: categoryName });
+    await equipmentForm.locator('select[name="status"]').selectOption("MAINTENANCE");
+    await equipmentForm.getByLabel("Status note").fill("Sensor inspection");
     await equipmentForm.getByLabel("Serial number or asset ID").fill(`ASSET-${suffix}`);
     await equipmentForm.getByLabel("Notes").fill("Disposable E2E inventory record");
+    await equipmentForm.getByLabel("Photo (optional)").setInputFiles({
+      name: "equipment.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")
+    });
     await equipmentForm.getByRole("button", { name: "Add to inventory" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Equipment added to inventory." })).toBeVisible();
 
     await page.getByRole("link", { name: /Back to equipment/ }).click();
     const categoryLink = page.getByRole("link").filter({ hasText: categoryName });
@@ -373,6 +393,28 @@ test.describe.serial("management workflows", () => {
       has: page.getByRole("heading", { name: equipmentName, exact: true })
     });
     await expect(inventoryCard).toContainText(`ASSET-${suffix}`);
+    await expect(inventoryCard).toContainText("Maintenance");
+    await expect(inventoryCard).toContainText("Sensor inspection");
+    const equipmentPhoto = inventoryCard.getByRole("img", { name: `Reference photo of ${equipmentName}` });
+    await expect(equipmentPhoto).toBeVisible();
+    await expect.poll(() => equipmentPhoto.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const photoUrl = await equipmentPhoto.getAttribute("src");
+    expect(photoUrl).toBeTruthy();
+    const anonymousContext = await browser.newContext({ baseURL: new URL(page.url()).origin });
+    try {
+      const anonymousPhoto = await anonymousContext.request.get(photoUrl!);
+      expect(anonymousPhoto.status()).toBe(404);
+      const token = photoUrl!.split("/").at(-1)!;
+      const publicSiteImage = await anonymousContext.request.get(`/api/site/${token}`);
+      expect(publicSiteImage.status()).toBe(404);
+    } finally {
+      await anonymousContext.close();
+    }
+    await inventoryCard.getByRole("link", { name: "Edit", exact: true }).click();
+    await expect(page).toHaveURL(/\/dashboard\/equipment\/[^/]+$/);
+    await expect(page.getByRole("heading", { name: equipmentName, exact: true })).toBeVisible();
+    await expect(page.locator('select[name="status"]')).toHaveValue("MAINTENANCE");
+    await page.getByRole("link", { name: "Back to equipment", exact: true }).click();
     await page.getByRole("link", { name: /All equipment/ }).click();
     await inventoryCard.getByText("Show QR label", { exact: true }).click();
     await expect(
@@ -391,28 +433,31 @@ test.describe.serial("management workflows", () => {
     await checklistForm.getByLabel("Notes").fill("E2E packing checklist");
     await checklistForm.getByRole("button", { name: "Create checklist" }).click();
 
-    const checklist = page.getByRole("article").filter({ hasText: checklistName });
-    await checklist.getByText("Pick equipment to bring", { exact: true }).click();
-    await checklist.getByRole("checkbox", { name: equipmentName + " " + categoryName, exact: true }).check();
-    await checklist.getByRole("button", { name: "Add selected (1)", exact: true }).click();
-    const checklistItem = checklist.getByRole("checkbox", { name: /E2E Camera/ });
-    await expect(checklistItem).toHaveAttribute("aria-checked", "false");
-    await checklistItem.click();
-    await expect(checklist.getByRole("checkbox", { name: /E2E Camera/ })).toHaveAttribute(
-      "aria-checked",
-      "true"
-    );
-    await expect(checklist).toContainText("1/1 ready");
+    await expect(page).toHaveURL(/\/dashboard\/preparation\/equipment\/[^/]+$/);
+    await expect(page.getByRole("heading", { name: checklistName, exact: true })).toBeVisible();
+    await page.getByLabel("Filter by category").selectOption({ label: categoryName });
+    await page.getByRole("checkbox", { name: new RegExp(`^${equipmentName}`) }).check();
+    await page.getByRole("button", { name: "Add selected (1)", exact: true }).click();
+    await page.getByRole("button", { name: "Broken", exact: true }).click();
+    await expect(page.getByText("Inventory status: Broken", { exact: true })).toBeVisible();
+    const checklistItem = page.locator('[data-equipment-status="BROKEN"]');
+    await expect(checklistItem).toContainText(equipmentName);
+    await expect(checklistItem).toHaveClass(/bg-danger-surface/);
+    await expect(
+      checklistItem.getByRole("checkbox", { name: new RegExp(`^${equipmentName}`) })
+    ).toHaveCount(0);
 
     page.once("dialog", (dialog) => dialog.accept());
-    await checklist.getByRole("button", { name: "Delete checklist" }).click();
-    await expect(page.getByRole("article").filter({ hasText: checklistName })).toHaveCount(0);
+    await page.getByRole("button", { name: "Delete checklist" }).click();
+    await expect(page).toHaveURL(/\/dashboard\/preparation\/equipment$/);
+    await expect(page.getByRole("heading", { name: checklistName, exact: true })).toHaveCount(0);
     await page.goto("/en/dashboard/equipment");
+    await expect(inventoryCard).toContainText("Broken");
     page.once("dialog", (dialog) => dialog.accept());
     await inventoryCard.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(page.getByRole("heading", { name: equipmentName, exact: true })).toHaveCount(0);
     await page
-      .getByRole("link", { name: "Add equipment & categories", exact: true })
+      .getByRole("link", { name: "Equipment categories", exact: true })
       .click();
     page.once("dialog", (dialog) => dialog.accept());
     await categoryRow.getByRole("button", { name: "Delete", exact: true }).click();
@@ -1079,20 +1124,21 @@ test.describe.serial("management workflows", () => {
       expect(workspace.open).toBe(false);
       await page.getByRole("link", { name: "Equipment checklist", exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`/preparation/equipment\\?event=${eventId}$`));
-      const dailyCard = page.getByRole("article");
+      const dailyCard = page.getByRole("listitem").filter({
+        has: page.getByRole("link", { name: "Open checklist", exact: true })
+      });
       await expect(dailyCard).toHaveCount(1);
+      await dailyCard.getByRole("link", { name: "Open checklist", exact: true }).click();
+      await expect(page).toHaveURL(/\/preparation\/equipment\/[^/]+$/);
       const reminder = `E2E batteries ${Date.now()}`;
-      const reminderInput = dailyCard.getByPlaceholder("Custom reminder");
+      const reminderInput = page.getByPlaceholder("Custom reminder");
       await reminderInput.fill(reminder);
       await reminderInput
-        .locator("..")
+        .locator("xpath=ancestor::form")
         .getByRole("button", { name: "Add", exact: true })
         .click();
-      const checklistItem = dailyCard.getByRole("checkbox", { name: reminder });
-      await expect(checklistItem).toHaveAttribute("aria-checked", "false");
-      await checklistItem.click();
-      await expect(checklistItem).toHaveAttribute("aria-checked", "true");
-      await expect(dailyCard).toContainText("1/1 ready");
+      await expect(page.getByText(reminder, { exact: true })).toBeVisible();
+      await expect(page.getByRole("checkbox", { name: reminder })).toHaveCount(0);
 
       const linkedChecklist = await prisma.equipmentChecklist.findFirst({
         where: { bookingDay: { bookingEventId: eventId } }
@@ -1174,8 +1220,12 @@ test.describe.serial("management workflows", () => {
 
     // Add a slot under each day tab. Only the active day's adder is mounted.
     await page.getByLabel("First slot time").fill("10:00");
+    await page.getByLabel("Number of consecutive slots").fill("2");
+    await page.getByRole("checkbox", { name: "Add a buffer between slots" }).check();
+    await page.getByLabel("Buffer (minutes)").fill("10");
     await page.getByRole("button", { name: "Add slots" }).click();
     await expect(page.getByText(/10:00/).first()).toBeVisible();
+    await expect(page.getByText(/10:30/).first()).toBeVisible();
 
     await dayTabs.nth(1).click();
     await page.getByLabel("First slot time").fill("14:00");
@@ -1220,9 +1270,9 @@ test.describe.serial("management workflows", () => {
         .getByRole("tablist", { name: "Choose a day" })
         .getByRole("tab");
       await expect(publicDayTabs).toHaveCount(2);
-      await page.getByRole("button", { name: "Add to cart" }).click();
+      await page.getByRole("button", { name: "Add to cart" }).first().click();
       await publicDayTabs.nth(1).click();
-      await page.getByRole("button", { name: "Add to cart" }).click();
+      await page.getByRole("button", { name: "Add to cart" }).first().click();
       await expect(page.getByText("2 time slots selected")).toBeVisible();
       await page.getByRole("button", { name: "Review 2 slots" }).click();
       await expect(page.getByRole("heading", { name: "Booking summary" })).toBeVisible();

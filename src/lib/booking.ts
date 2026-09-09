@@ -103,6 +103,7 @@ export interface SlotBatchInput {
   bookingDayId: string;
   startTime: string;
   slotMinutes: number;
+  bufferMinutes: number;
   slotCount: number;
   capacity: number;
   pricePerPerson: string;
@@ -153,8 +154,10 @@ export async function addSlotBatchForOwner(
         `${formatDate(targetDay.date)}T${input.startTime}`
       );
       if (!start) return [];
+      const intervalMinutes = input.slotMinutes + input.bufferMinutes;
       const finalEnd = new Date(
-        start.getTime() + input.slotMinutes * input.slotCount * 60_000
+        start.getTime() +
+          (input.slotMinutes + intervalMinutes * (input.slotCount - 1)) * 60_000
       );
       const nextDayStart = new Date(start);
       nextDayStart.setUTCHours(24, 0, 0, 0);
@@ -162,7 +165,7 @@ export async function addSlotBatchForOwner(
 
       return Array.from({ length: input.slotCount }, (_, i) => {
         const slotStart = new Date(
-          start.getTime() + i * input.slotMinutes * 60_000
+          start.getTime() + i * intervalMinutes * 60_000
         );
         return {
           bookingEventId: day.bookingEventId,

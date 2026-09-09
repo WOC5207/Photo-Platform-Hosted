@@ -26,8 +26,11 @@ export async function GET(
   // QR codes come down with the rest of its site, the same rule the images
   // route applies to photos.
   const token = file.replace(/\.webp$/, "");
-  const image = await prisma.siteImage.findUnique({
-    where: { token },
+  const image = await prisma.siteImage.findFirst({
+    where: {
+      token,
+      purpose: { in: ["bg", "logo", "qren", "qrzh", "announcement"] }
+    },
     select: { ownerId: true, owner: { select: { status: true } } }
   });
   if (!image || image.owner.status !== "active") {

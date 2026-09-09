@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Link, usePathname } from "@/i18n/navigation";
@@ -18,6 +18,22 @@ export default function LanguageSwitcher() {
   const t = useTranslations("languageSwitcher");
   const [hash, setHash] = useState("");
   const query = searchParams.toString();
+
+  // A locale change replaces the locale layout. During client navigation,
+  // React can therefore reconcile away the light/dark class added by the
+  // pre-paint theme script. Restore the saved choice in a layout effect so
+  // the language changes without a theme flash or an unintended theme swap.
+  useLayoutEffect(() => {
+    try {
+      const theme = localStorage.getItem("theme");
+      if (theme !== "light" && theme !== "dark") return;
+      document.documentElement.classList.remove("light", "dark");
+      document.documentElement.classList.add(theme);
+    } catch {
+      // Without browser storage, the site continues to follow the OS theme.
+    }
+  }, [current]);
+
   useEffect(() => setHash(window.location.hash), [pathname, query]);
   const suffix = `${query ? `?${query}` : ""}${hash}`;
   const href = `${pathname}${suffix}`;
