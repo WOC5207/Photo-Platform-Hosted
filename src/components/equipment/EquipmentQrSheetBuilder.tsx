@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import QRCode from "qrcode";
 import Button, { buttonClasses } from "@/components/ui/Button";
@@ -14,7 +14,8 @@ import {
   QR_LABEL_MIN_LOGO_HEIGHT_MM,
   QR_LABEL_MIN_SIZE_MM,
   QR_LABEL_MIN_TEXT_SIZE_PT,
-  type EquipmentQrLabelLayout
+  type EquipmentQrLabelLayout,
+  type EquipmentQrLogoPlacement
 } from "@/lib/equipmentQrSheet";
 
 export type EquipmentQrLabelItem = {
@@ -25,12 +26,17 @@ export type EquipmentQrLabelItem = {
 };
 
 type SavedSize = { widthMm: number; heightMm: number };
+type EquipmentQrRotation = 0 | 90 | 180 | 270;
 
 const STORAGE_KEY = "photo-platform:equipment-qr-label-size:v2";
 const DEFAULT_SIZE: SavedSize = { widthMm: 50, heightMm: 70 };
 const DEFAULT_TEXT_SIZE_PT = 10;
 const DEFAULT_LOGO_HEIGHT_MM = 7;
+const CENTER_LOGO_BACKING_MM = 1.2;
 const PX_PER_MM = 300 / 25.4;
+const DEFAULT_BACKGROUND_OPACITY = 30;
+const MAX_BACKGROUND_BYTES = 12 * 1024 * 1024;
+const QR_ROTATIONS: EquipmentQrRotation[] = [0, 90, 180, 270];
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -61,7 +67,11 @@ async function renderLabelCanvas({
   heightMm,
   layout,
   includeName,
-  logo
+  logo,
+  logoPlacement,
+  qrRotation,
+  background,
+  backgroundOpacity
 }: {
   item: EquipmentQrLabelItem;
   scanUrl: string;
@@ -70,6 +80,10 @@ async function renderLabelCanvas({
   layout: EquipmentQrLabelLayout;
   includeName: boolean;
   logo: HTMLImageElement | null;
+  logoPlacement: EquipmentQrLogoPlacement;
+  qrRotation: EquipmentQrRotation;
+  background: HTMLImageElement | null;
+  backgroundOpacity: number;
 }): Promise<HTMLCanvasElement> {
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(widthMm * PX_PER_MM);
@@ -79,9 +93,27 @@ async function renderLabelCanvas({
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, canvas.width, canvas.height);
+  if (background) {
+    const scale = Math.max(
+      canvas.width / background.naturalWidth,
+      canvas.height / background.naturalHeight
+    );
+    const backgroundWidth = background.naturalWidth * scale;
+    const backgroundHeight = background.naturalHeight * scale;
+    context.save();
+    context.globalAlpha = Math.min(1, Math.max(0, backgroundOpacity / 100));
+    context.drawImage(
+      background,
+      (canvas.width - backgroundWidth) / 2,
+      (canvas.height - backgroundHeight) / 2,
+      backgroundWidth,
+      backgroundHeight
+    );
+    context.restore();
+  }
   let cursorY = layout.paddingMm * PX_PER_MM;
 
-  if (logo) {
+  if (logo && logoPlacement === "ABOVE") {
     const maxLogoWidth = canvas.width - 16 * PX_PER_MM;
     const maxLogoHeight = layout.logoHeightMm * PX_PER_MM;
     const scale = Math.min(
@@ -109,7 +141,35 @@ async function renderLabelCanvas({
   const qrImage = await loadImage(qrDataUrl);
   const qrSize = layout.qrSizeMm * PX_PER_MM;
   context.imageSmoothingEnabled = false;
-  context.drawImage(qrImage, (canvas.width - qrSize) / 2, cursorY, qrSize, qrSize);
+  const qrX = (canvas.width - qrSize) / 2;
+  const qrY = cursorY;
+  context.save();
+  context.translate(qrX + qrSize / 2, qrY + qrSize / 2);
+  context.rotate((qrRotation * Math.PI) / 180);
+  context.drawImage(qrImage, -qrSize / 2, -qrSize / 2, qrSize, qrSize);
+  context.restore();
+
+  if (logo && logoPlacement === "CENTER") {
+    const maxLogoSize = layout.logoHeightMm * PX_PER_MM;
+    const scale = Math.min(
+      maxLogoSize / logo.naturalWidth,
+      maxLogoSize / logo.naturalHeight
+    );
+    const logoWidth = logo.naturalWidth * scale;
+    const logoHeight = logo.naturalHeight * scale;
+    const logoX = qrX + (qrSize - logoWidth) / 2;
+    const logoY = qrY + (qrSize - logoHeight) / 2;
+    const backing = (CENTER_LOGO_BACKING_MM * PX_PER_MM) / 2;
+    context.imageSmoothingEnabled = true;
+    context.fillStyle = "#ffffff";
+    context.fillRect(
+      logoX - backing,
+      logoY - backing,
+      logoWidth + backing * 2,
+      logoHeight + backing * 2
+    );
+    context.drawImage(logo, logoX, logoY, logoWidth, logoHeight);
+  }
   cursorY += qrSize;
 
   if (includeName) {
@@ -126,6 +186,35 @@ async function renderLabelCanvas({
     );
   }
   return canvas;
+}
+
+function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("PNG could not be generated"))),
+      "image/png"
+    );
+  });
+}
+
+function safeFileName(value: string): string {
+  const normalized = value
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 70);
+  return normalized || "equipment";
+}
+
+function triggerDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function isSavedSize(value: unknown): value is SavedSize {
@@ -148,8 +237,13 @@ export default function EquipmentQrSheetBuilder({
   const t = useTranslations("equipmentQrPrint");
   const [includeName, setIncludeName] = useState(true);
   const [includeLogo, setIncludeLogo] = useState(Boolean(logoUrl));
+  const [logoPlacement, setLogoPlacement] = useState<EquipmentQrLogoPlacement>("ABOVE");
+  const [qrRotation, setQrRotation] = useState<EquipmentQrRotation>(0);
   const [textSizeInput, setTextSizeInput] = useState(String(DEFAULT_TEXT_SIZE_PT));
   const [logoHeightInput, setLogoHeightInput] = useState(String(DEFAULT_LOGO_HEIGHT_MM));
+  const [backgroundUrl, setBackgroundUrl] = useState("");
+  const [backgroundName, setBackgroundName] = useState("");
+  const [backgroundOpacityInput, setBackgroundOpacityInput] = useState(String(DEFAULT_BACKGROUND_OPACITY));
   const [widthInput, setWidthInput] = useState(String(DEFAULT_SIZE.widthMm));
   const [heightInput, setHeightInput] = useState(String(DEFAULT_SIZE.heightMm));
   const [savedSize, setSavedSize] = useState(DEFAULT_SIZE);
@@ -159,11 +253,19 @@ export default function EquipmentQrSheetBuilder({
   const [previewIndex, setPreviewIndex] = useState(0);
   const [previewQrs, setPreviewQrs] = useState<Record<string, string>>({});
   const [mobilePreviewExpanded, setMobilePreviewExpanded] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
+  const [exporting, setExporting] = useState<"pdf" | "png" | null>(null);
   const [sizeNotice, setSizeNotice] = useState("");
   const [message, setMessage] = useState<
     { kind: "success" | "error"; text: string } | null
   >(null);
+  const backgroundObjectUrl = useRef("");
+
+  useEffect(
+    () => () => {
+      if (backgroundObjectUrl.current) URL.revokeObjectURL(backgroundObjectUrl.current);
+    },
+    []
+  );
 
   useEffect(() => {
     try {
@@ -175,6 +277,7 @@ export default function EquipmentQrSheetBuilder({
           labelHeightMm: stored.heightMm,
           includeName: true,
           includeLogo: Boolean(logoUrl),
+          logoPlacement: "ABOVE",
           textSizePt: DEFAULT_TEXT_SIZE_PT,
           logoHeightMm: DEFAULT_LOGO_HEIGHT_MM
         })
@@ -192,6 +295,7 @@ export default function EquipmentQrSheetBuilder({
   const labelHeightMm = Number(heightInput);
   const textSizePt = Number(textSizeInput);
   const logoHeightMm = Number(logoHeightInput);
+  const backgroundOpacity = Number(backgroundOpacityInput);
   const selectedEquipment = useMemo(
     () => equipment.filter((item) => selectedIds.has(item.id)),
     [equipment, selectedIds]
@@ -214,10 +318,11 @@ export default function EquipmentQrSheetBuilder({
         labelHeightMm,
         includeName,
         includeLogo: includeLogo && Boolean(logoUrl),
+        logoPlacement,
         textSizePt,
         logoHeightMm
       }),
-    [includeLogo, includeName, labelHeightMm, labelWidthMm, logoHeightMm, logoUrl, textSizePt]
+    [includeLogo, includeName, labelHeightMm, labelWidthMm, logoHeightMm, logoPlacement, logoUrl, textSizePt]
   );
   const totalPreviews = Math.max(1, selectedEquipment.length);
   const safePreviewIndex = Math.min(previewIndex, totalPreviews - 1);
@@ -253,6 +358,12 @@ export default function EquipmentQrSheetBuilder({
     if (previewIndex >= totalPreviews) setPreviewIndex(Math.max(0, totalPreviews - 1));
   }, [previewIndex, totalPreviews]);
 
+  useEffect(() => {
+    if (!includeLogo || logoPlacement !== "CENTER" || !layout) return;
+    if (logoHeightMm <= layout.logoHeightLimitMm) return;
+    setLogoHeightInput(String(Math.floor(layout.logoHeightLimitMm * 10) / 10));
+  }, [includeLogo, layout, logoHeightMm, logoPlacement]);
+
   function updateSelection(ids: string[], selected: boolean) {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -275,6 +386,37 @@ export default function EquipmentQrSheetBuilder({
     setMessage(null);
   }
 
+  async function chooseBackground(file: File | undefined) {
+    if (!file) return;
+    if (
+      !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
+      file.size > MAX_BACKGROUND_BYTES
+    ) {
+      setMessage({ kind: "error", text: t("backgroundUploadError") });
+      return;
+    }
+    const nextUrl = URL.createObjectURL(file);
+    try {
+      await loadImage(nextUrl);
+      if (backgroundObjectUrl.current) URL.revokeObjectURL(backgroundObjectUrl.current);
+      backgroundObjectUrl.current = nextUrl;
+      setBackgroundUrl(nextUrl);
+      setBackgroundName(file.name);
+      setMessage({ kind: "success", text: t("backgroundReady") });
+    } catch {
+      URL.revokeObjectURL(nextUrl);
+      setMessage({ kind: "error", text: t("backgroundUploadError") });
+    }
+  }
+
+  function removeBackground() {
+    if (backgroundObjectUrl.current) URL.revokeObjectURL(backgroundObjectUrl.current);
+    backgroundObjectUrl.current = "";
+    setBackgroundUrl("");
+    setBackgroundName("");
+    setMessage(null);
+  }
+
   async function downloadPdf() {
     if (!layout || selectedEquipment.length === 0) {
       setMessage({
@@ -283,12 +425,13 @@ export default function EquipmentQrSheetBuilder({
       });
       return;
     }
-    setIsExporting(true);
+    setExporting("pdf");
     setMessage(null);
     try {
-      const [{ jsPDF }, logo] = await Promise.all([
+      const [{ jsPDF }, logo, background] = await Promise.all([
         import("jspdf"),
-        includeLogo && logoUrl ? loadImage(logoUrl) : Promise.resolve(null)
+        includeLogo && logoUrl ? loadImage(logoUrl) : Promise.resolve(null),
+        backgroundUrl ? loadImage(backgroundUrl) : Promise.resolve(null)
       ]);
       const orientation = labelWidthMm > labelHeightMm ? "landscape" : "portrait";
       const document = new jsPDF({
@@ -312,7 +455,11 @@ export default function EquipmentQrSheetBuilder({
           heightMm: labelHeightMm,
           layout,
           includeName,
-          logo
+          logo,
+          logoPlacement,
+          qrRotation,
+          background,
+          backgroundOpacity
         });
         document.addImage(
           label.toDataURL("image/png"),
@@ -331,7 +478,56 @@ export default function EquipmentQrSheetBuilder({
     } catch {
       setMessage({ kind: "error", text: t("downloadError") });
     } finally {
-      setIsExporting(false);
+      setExporting(null);
+    }
+  }
+
+  async function downloadPng() {
+    if (!layout || selectedEquipment.length === 0) {
+      setMessage({
+        kind: "error",
+        text: layout ? t("selectBeforeDownload") : t("labelInvalid")
+      });
+      return;
+    }
+    setExporting("png");
+    setMessage(null);
+    try {
+      const [logo, background] = await Promise.all([
+        includeLogo && logoUrl ? loadImage(logoUrl) : Promise.resolve(null),
+        backgroundUrl ? loadImage(backgroundUrl) : Promise.resolve(null)
+      ]);
+      for (const item of selectedEquipment) {
+        const scanUrl = new URL(
+          `/${locale}/equipment/${encodeURIComponent(item.qrToken)}`,
+          window.location.origin
+        ).toString();
+        const label = await renderLabelCanvas({
+          item,
+          scanUrl,
+          widthMm: labelWidthMm,
+          heightMm: labelHeightMm,
+          layout,
+          includeName,
+          logo,
+          logoPlacement,
+          qrRotation,
+          background,
+          backgroundOpacity
+        });
+        triggerDownload(
+          await canvasBlob(label),
+          `${safeFileName(item.name)}-qr-label.png`
+        );
+      }
+      setMessage({
+        kind: "success",
+        text: t("pngDownloadReady", { count: selectedEquipment.length })
+      });
+    } catch {
+      setMessage({ kind: "error", text: t("pngDownloadError") });
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -347,6 +543,15 @@ export default function EquipmentQrSheetBuilder({
   const previewTextSizeCqw = layout
     ? ((layout.textSizePt * (25.4 / 72)) / labelWidthMm) * 100
     : 0;
+  const centerLogoBoxMm = layout
+    ? layout.logoHeightMm + CENTER_LOGO_BACKING_MM
+    : 0;
+  const centerLogoTop = layout
+    ? ((layout.paddingMm + layout.logoSlotMm + layout.qrSizeMm / 2) / labelHeightMm) * 100
+    : 0;
+  const centerLogoInnerRatio = centerLogoBoxMm > 0
+    ? (layout?.logoHeightMm || 0) / centerLogoBoxMm
+    : 0;
 
   function renderLabelPreview() {
     if (!layout) {
@@ -354,15 +559,56 @@ export default function EquipmentQrSheetBuilder({
     }
     return (
       <div className="relative mx-auto h-full max-h-full max-w-full overflow-hidden bg-white shadow-[0_0_0_1px_rgba(33,29,24,0.12),0_8px_24px_rgba(33,29,24,0.10)] [container-type:inline-size]" style={{ aspectRatio: `${labelWidthMm} / ${labelHeightMm}` }} aria-label={t("previewAria")}>
+        {backgroundUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={backgroundUrl}
+            alt=""
+            className="absolute inset-0 size-full object-cover"
+            style={{ opacity: Math.min(1, Math.max(0, backgroundOpacity / 100)) }}
+          />
+        )}
         {previewItem ? <>
-          {includeLogo && logoUrl && (
+          {includeLogo && logoUrl && logoPlacement === "ABOVE" && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt="" className="absolute left-1/2 max-w-[70%] -translate-x-1/2 object-contain" style={{ top: `${logoTop}%`, height: `${(layout.logoHeightMm / labelHeightMm) * 100}%` }} />
           )}
           {previewQrs[previewItem.id] ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={previewQrs[previewItem.id]} alt="" className="absolute left-1/2 -translate-x-1/2 object-contain [image-rendering:pixelated]" style={{ top: `${qrTop}%`, width: `${qrWidth}%`, height: `${qrHeight}%` }} />
+            <img
+              src={previewQrs[previewItem.id]}
+              alt=""
+              className="absolute left-1/2 object-contain transition-transform duration-150 motion-reduce:transition-none [image-rendering:pixelated]"
+              style={{
+                top: `${qrTop}%`,
+                width: `${qrWidth}%`,
+                height: `${qrHeight}%`,
+                transform: `translateX(-50%) rotate(${qrRotation}deg)`
+              }}
+            />
           ) : <div className="absolute left-1/2 -translate-x-1/2 bg-[#f0ede7]" style={{ top: `${qrTop}%`, width: `${qrWidth}%`, height: `${qrHeight}%` }} />}
+          {includeLogo && logoUrl && logoPlacement === "CENTER" && previewQrs[previewItem.id] && (
+            <span
+              aria-hidden="true"
+              className="absolute left-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center bg-white"
+              style={{
+                top: `${centerLogoTop}%`,
+                width: `${(centerLogoBoxMm / labelWidthMm) * 100}%`,
+                height: `${(centerLogoBoxMm / labelHeightMm) * 100}%`
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={logoUrl}
+                alt=""
+                className="object-contain"
+                style={{
+                  width: `${centerLogoInnerRatio * 100}%`,
+                  height: `${centerLogoInnerRatio * 100}%`
+                }}
+              />
+            </span>
+          )}
           {includeName && <span className="absolute left-[4%] right-[4%] flex items-center justify-center truncate text-center font-semibold leading-tight text-[#211d18]" style={{ top: `${nameTop}%`, height: `${(layout.nameSlotMm / labelHeightMm) * 100}%`, fontSize: `${previewTextSizeCqw}cqw` }}>{previewItem.name}</span>}
         </> : <span className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs font-semibold text-[#6f665b] sm:text-sm">{t("previewEmpty")}</span>}
       </div>
@@ -407,11 +653,98 @@ export default function EquipmentQrSheetBuilder({
                 </span>
               </label>
               <div className={`mt-3 border-t border-border pt-3 ${includeLogo && logoUrl ? "" : "opacity-50"}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <label htmlFor="qr-label-logo-size" className="text-xs font-semibold text-fg-muted">{t("logoSize")}</label>
-                  <output htmlFor="qr-label-logo-size" className="font-meta text-xs text-fg-subtle">{t("logoSizeValue", { size: logoHeightInput || "—" })}</output>
+                <fieldset disabled={!includeLogo || !logoUrl}>
+                  <legend className="text-xs font-semibold text-fg-muted">{t("logoPlacement")}</legend>
+                  <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-control p-1">
+                    {(["ABOVE", "CENTER"] as const).map((placement) => (
+                      <label
+                        key={placement}
+                        className={`flex min-h-10 cursor-pointer items-center justify-center rounded-md px-2 text-center text-xs font-semibold transition-[color,background-color] focus-within:ring-2 focus-within:ring-accent/45 ${
+                          logoPlacement === placement
+                            ? "bg-raised text-fg"
+                            : "text-fg-subtle hover:text-fg"
+                        } disabled:cursor-not-allowed`}
+                      >
+                        <input
+                          type="radio"
+                          name="logo-placement"
+                          value={placement}
+                          checked={logoPlacement === placement}
+                          onChange={() => setLogoPlacement(placement)}
+                          className="sr-only"
+                        />
+                        {placement === "ABOVE" ? t("logoPlacementAbove") : t("logoPlacementCenter")}
+                      </label>
+                    ))}
+                  </div>
+                  {logoPlacement === "CENTER" && (
+                    <p className="mt-2 text-xs leading-5 text-fg-subtle">{t("logoPlacementCenterHint")}</p>
+                  )}
+                </fieldset>
+                <div className="mt-3 border-t border-border pt-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <label htmlFor="qr-label-logo-size" className="text-xs font-semibold text-fg-muted">{t("logoSize")}</label>
+                    <output htmlFor="qr-label-logo-size" className="font-meta text-xs text-fg-subtle">{t("logoSizeValue", { size: logoHeightInput || "—" })}</output>
+                  </div>
+                  <input id="qr-label-logo-size" type="range" min={QR_LABEL_MIN_LOGO_HEIGHT_MM} max={layout?.logoHeightLimitMm || QR_LABEL_MAX_LOGO_HEIGHT_MM} step="0.5" value={logoHeightInput} disabled={!includeLogo || !logoUrl} onChange={(event) => setLogoHeightInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
                 </div>
-                <input id="qr-label-logo-size" type="range" min={QR_LABEL_MIN_LOGO_HEIGHT_MM} max={QR_LABEL_MAX_LOGO_HEIGHT_MM} step="1" value={logoHeightInput} disabled={!includeLogo || !logoUrl} onChange={(event) => setLogoHeightInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
+              </div>
+            </div>
+            <fieldset className="rounded-lg border border-border bg-raised p-3 transition-[border-color,background-color] hover:border-accent/40 sm:col-span-2">
+              <legend className="px-1 text-sm font-semibold text-fg">{t("qrRotation")}</legend>
+              <p className="mt-0.5 text-xs leading-5 text-fg-subtle">{t("qrRotationHint")}</p>
+              <div className="mt-3 grid grid-cols-4 gap-1 rounded-lg bg-control p-1">
+                {QR_ROTATIONS.map((rotation) => (
+                  <label
+                    key={rotation}
+                    className={`font-meta flex min-h-11 cursor-pointer items-center justify-center rounded-md px-2 text-xs font-semibold transition-[color,background-color] focus-within:ring-2 focus-within:ring-accent/45 ${
+                      qrRotation === rotation
+                        ? "bg-raised text-fg"
+                        : "text-fg-subtle hover:text-fg"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="qr-rotation"
+                      value={rotation}
+                      checked={qrRotation === rotation}
+                      onChange={() => setQrRotation(rotation)}
+                      className="sr-only"
+                    />
+                    {t("qrRotationValue", { degrees: rotation })}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <div className="rounded-lg border border-border bg-raised p-3 transition-[border-color,background-color] hover:border-accent/40 sm:col-span-2">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <span className="block text-sm font-semibold text-fg">{t("labelBackground")}</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{t("labelBackgroundHint")}</span>
+                  {backgroundName && <span className="font-meta mt-1 block truncate text-[0.6875rem] text-accent">{backgroundName}</span>}
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <label className={buttonClasses({ size: "compact", className: "cursor-pointer" })}>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="sr-only"
+                      onChange={(event) => {
+                        void chooseBackground(event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                    />
+                    {backgroundUrl ? t("replaceBackground") : t("uploadBackground")}
+                  </label>
+                  {backgroundUrl && <Button size="compact" variant="ghost" onClick={removeBackground}>{t("removeBackground")}</Button>}
+                </div>
+              </div>
+              <div className={`mt-3 border-t border-border pt-3 ${backgroundUrl ? "" : "opacity-50"}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="qr-label-background-opacity" className="text-xs font-semibold text-fg-muted">{t("backgroundOpacity")}</label>
+                  <output htmlFor="qr-label-background-opacity" className="font-meta text-xs text-fg-subtle">{t("backgroundOpacityValue", { opacity: backgroundOpacityInput || "—" })}</output>
+                </div>
+                <input id="qr-label-background-opacity" type="range" min="0" max="100" step="5" value={backgroundOpacityInput} disabled={!backgroundUrl} onChange={(event) => setBackgroundOpacityInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
               </div>
             </div>
           </div>
@@ -497,7 +830,10 @@ export default function EquipmentQrSheetBuilder({
           <Button size="compact" variant="ghost" disabled={safePreviewIndex >= totalPreviews - 1} onClick={() => setPreviewIndex((index) => Math.min(totalPreviews - 1, index + 1))}>{t("nextLabel")}</Button>
         </div>
         <div className="mt-3 border-t border-border pt-3 lg:mt-5 lg:pt-5">
-          <Button variant="primary" className="w-full" disabled={isExporting || !layout || selectedEquipment.length === 0} onClick={downloadPdf}>{isExporting ? t("preparingPdf") : t("downloadPdf", { count: selectedEquipment.length })}</Button>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button variant="primary" className="w-full" disabled={Boolean(exporting) || !layout || selectedEquipment.length === 0} onClick={downloadPdf}>{exporting === "pdf" ? t("preparingPdf") : t("downloadPdf", { count: selectedEquipment.length })}</Button>
+            <Button className="w-full" disabled={Boolean(exporting) || !layout || selectedEquipment.length === 0} onClick={downloadPng}>{exporting === "png" ? t("preparingPng") : t("downloadPng", { count: selectedEquipment.length })}</Button>
+          </div>
           <p className="mt-3 hidden text-center text-xs leading-5 text-fg-subtle lg:block">{t("printHint")}</p>
           <div aria-live="polite" className="mt-3 min-h-6">{message && <p className={`rounded-lg border px-3 py-2 text-sm ${message.kind === "success" ? "border-success-border bg-success-surface text-success" : "border-danger-border bg-danger-surface text-danger"}`}>{message.text}</p>}</div>
         </div>
@@ -530,7 +866,10 @@ export default function EquipmentQrSheetBuilder({
                 <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m9 18 6-6-6-6" /></svg>
               </Button>
             </div>
-            <Button variant="primary" size="compact" className="mt-1 w-full" disabled={isExporting || !layout || selectedEquipment.length === 0} onClick={downloadPdf}>{isExporting ? t("preparingPdf") : t("mobileDownloadPdf")}</Button>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              <Button variant="primary" size="compact" className="w-full" disabled={Boolean(exporting) || !layout || selectedEquipment.length === 0} onClick={downloadPdf}>{exporting === "pdf" ? t("preparingShort") : t("mobileDownloadPdf")}</Button>
+              <Button size="compact" className="w-full" disabled={Boolean(exporting) || !layout || selectedEquipment.length === 0} onClick={downloadPng}>{exporting === "png" ? t("preparingShort") : t("mobileDownloadPng")}</Button>
+            </div>
             <div aria-live="polite" className="mt-2">{message && <p className={`rounded-lg border px-2 py-1.5 text-xs ${message.kind === "success" ? "border-success-border bg-success-surface text-success" : "border-danger-border bg-danger-surface text-danger"}`}>{message.text}</p>}</div>
           </div>
         )}

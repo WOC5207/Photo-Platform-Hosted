@@ -13,6 +13,10 @@ import { siteImageUrl } from "@/lib/images";
 import { ownerBasePath, ownerName } from "@/lib/owner";
 import { getActiveNotificationsForUser } from "@/lib/platformNotifications";
 import PlatformNoticeBanner from "@/components/dashboard/PlatformNoticeBanner";
+import {
+  resolveDashboardThemeMode,
+  siteDualThemeStyle
+} from "@/lib/themeColor";
 import { logout } from "../../login/actions";
 
 /** Use the photographer's site title in the browser tab when configured. */
@@ -64,6 +68,25 @@ export default async function DashboardLayout({
   const logoUrl = siteImageUrl(settings.logo);
   const siteTitle = resolveSiteTitle(settings, locale, t("common.siteName"));
   const creditTerm = resolveCreditTerm(settings, locale, t("common.creditTerm"));
+  const dashboardThemeStyle =
+    resolveDashboardThemeMode(settings.dashboardThemeMode) === "MATCH_SITE"
+      ? siteDualThemeStyle(
+          {
+            backgroundColor: settings.backgroundColor,
+            surfaceColor: settings.surfaceColor,
+            fieldColor: settings.fieldColor,
+            textColor: settings.textColor,
+            themeColor: settings.themeColor
+          },
+          {
+            backgroundColor: settings.darkBackgroundColor,
+            surfaceColor: settings.darkSurfaceColor,
+            fieldColor: settings.darkFieldColor,
+            textColor: settings.darkTextColor,
+            themeColor: settings.darkThemeColor
+          }
+        )
+      : undefined;
   const navigation: ManagementNavItem[] = [
     {
       href: "/dashboard",
@@ -122,6 +145,7 @@ export default async function DashboardLayout({
       publicSiteHref={ownerBasePath(user.username)}
       isAdmin={user.role === "admin"}
       logoutAction={logout}
+      themeStyle={dashboardThemeStyle}
     >
       <PlatformNoticeBanner
         notifications={platformNotifications}

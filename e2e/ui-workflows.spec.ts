@@ -343,6 +343,54 @@ test.describe.serial("management workflows", () => {
     await page.getByRole("button", { name: "Save", exact: true }).click();
   });
 
+  test("dashboard appearance can match the public palette without theming platform admin", async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem("theme", "light"));
+    await page.goto("/en/dashboard/settings?section=appearance");
+
+    const platformMode = page.getByRole("radio", {
+      name: /Platform default/
+    });
+    const matchMode = page.getByRole("radio", {
+      name: /Match public site/
+    });
+    const originalMode = (await matchMode.isChecked())
+      ? "MATCH_SITE"
+      : "PLATFORM";
+
+    try {
+      await matchMode.check();
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(
+        page.getByRole("status").filter({ hasText: /^Saved$/ })
+      ).toBeVisible();
+      const dashboardShell = page.locator(".site-dual-theme").first();
+      await expect(dashboardShell).toBeVisible();
+      await expect
+        .poll(() =>
+          dashboardShell.evaluate((element) =>
+            getComputedStyle(element).getPropertyValue("--color-accent").trim()
+          )
+        )
+        .not.toBe("");
+
+      await page.goto("/en/admin");
+      await expect(page.locator(".site-dual-theme")).toHaveCount(0);
+    } finally {
+      await page.goto("/en/dashboard/settings?section=appearance");
+      if (originalMode === "PLATFORM") {
+        await platformMode.check();
+      } else {
+        await matchMode.check();
+      }
+      if (await page.getByRole("button", { name: "Save", exact: true }).isEnabled()) {
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+        await expect(
+          page.getByRole("status").filter({ hasText: /^Saved$/ })
+        ).toBeVisible();
+      }
+    }
+  });
+
   test("equipment QR labels and packing checklists work together", async ({ page, browser }) => {
     const suffix = Date.now();
     const categoryName = `E2E Cameras ${suffix}`;

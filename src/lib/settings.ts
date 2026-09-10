@@ -23,6 +23,7 @@ export interface SiteSettings {
   darkFieldColor: string;
   darkTextColor: string;
   darkThemeColor: string;
+  dashboardThemeMode: string;
   backgroundImage: string;
   logo: string;
   creditTermEn: string;
@@ -68,6 +69,7 @@ const DEFAULTS: Omit<SiteSettings, "id" | "ownerId"> = {
   darkFieldColor: "",
   darkTextColor: "",
   darkThemeColor: "",
+  dashboardThemeMode: "PLATFORM",
   backgroundImage: "",
   logo: "",
   creditTermEn: "",

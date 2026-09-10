@@ -69,6 +69,12 @@ export default function Dialog({
 
   if (!open) return null;
 
+  // Management workspaces provide a portal root inside their theme scope.
+  // Public pages and unthemed screens continue to portal directly to body.
+  const portalRoot =
+    document.querySelector<HTMLElement>("[data-dialog-portal-root]") ??
+    document.body;
+
   return createPortal(
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 ${overlayClassName}`}
@@ -87,6 +93,6 @@ export default function Dialog({
         {children}
       </div>
     </div>,
-    document.body
+    portalRoot
   );
 }

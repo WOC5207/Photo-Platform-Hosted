@@ -26,8 +26,10 @@ import {
   GENERATED_PALETTE_TEXT_CONTRAST,
   generateAccessibleSitePalette,
   normalizeThemeColor,
+  resolveDashboardThemeMode,
   sitePaletteStyle,
   siteThemeMinimumContrast,
+  type DashboardThemeMode,
   type SiteThemeColors,
   type SiteThemeMode
 } from "@/lib/themeColor";
@@ -178,6 +180,7 @@ export default function SiteSettingsForm({
     darkFieldColor: string;
     darkTextColor: string;
     darkThemeColor: string;
+    dashboardThemeMode: string;
     creditTermEn: string;
     creditTermZh: string;
     subjectTermEn: string;
@@ -238,6 +241,13 @@ export default function SiteSettingsForm({
   });
   const [activePaletteMode, setActivePaletteMode] =
     useState<SiteThemeMode>("light");
+  const [previewTarget, setPreviewTarget] = useState<"public" | "dashboard">(
+    "public"
+  );
+  const [dashboardThemeMode, setDashboardThemeMode] =
+    useState<DashboardThemeMode>(
+      resolveDashboardThemeMode(initial.dashboardThemeMode)
+    );
   const [paletteBeforeGeneration, setPaletteBeforeGeneration] = useState<
     Partial<Record<SiteThemeMode, PaletteGenerationSnapshot>>
   >({});
@@ -355,7 +365,14 @@ export default function SiteSettingsForm({
     activePaletteMode === "dark"
       ? DEFAULT_SITE_DARK_PALETTE
       : DEFAULT_SITE_PALETTE;
-  const palettePreview = effectiveSitePalette(palette, activePaletteMode);
+  const previewPalette =
+    previewTarget === "dashboard" && dashboardThemeMode === "PLATFORM"
+      ? paletteDefaults
+      : palette;
+  const palettePreview = effectiveSitePalette(
+    previewPalette,
+    activePaletteMode
+  );
   const paletteContrast = siteThemeMinimumContrast(
     palette,
     activePaletteMode
@@ -508,10 +525,41 @@ export default function SiteSettingsForm({
                 })}
               </div>
             </div>
+            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+              <p className="font-meta text-[0.6875rem] uppercase tracking-[0.1em] text-fg-subtle">
+                {t("previewTargetLabel")}
+              </p>
+              <div
+                role="group"
+                aria-label={t("previewTargetLabel")}
+                className="grid w-full grid-cols-2 rounded-lg border border-border bg-control p-1 sm:w-auto"
+              >
+                {(["public", "dashboard"] as const).map((target) => {
+                  const selected = previewTarget === target;
+                  return (
+                    <button
+                      key={target}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setPreviewTarget(target)}
+                      className={`min-h-10 rounded-md px-4 text-sm font-semibold transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                        selected
+                          ? "bg-raised text-fg shadow-[0_0_0_1px_var(--color-border)]"
+                          : "text-fg-subtle hover:text-fg"
+                      }`}
+                    >
+                      {target === "public"
+                        ? t("previewTargetPublic")
+                        : t("previewTargetDashboard")}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)] lg:items-start">
               <div
                 className="overflow-hidden rounded-xl border border-border-strong bg-page"
-                style={sitePaletteStyle(palette, activePaletteMode)}
+                style={sitePaletteStyle(previewPalette, activePaletteMode)}
                 aria-label={t("themeColorPreview")}
               >
                 <div className="flex items-center justify-between border-b border-border bg-page px-4 py-3">
@@ -523,23 +571,60 @@ export default function SiteSettingsForm({
                   </span>
                 </div>
                 <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_9rem] sm:p-5">
-                  <div className="rounded-xl border border-border bg-surface p-4">
-                    <p className="font-display text-xl font-semibold text-fg">
-                      {t("themePreviewTitle")}
-                    </p>
-                    <p className="mt-1 text-sm leading-relaxed text-fg-muted">
-                      {t("themePreviewBody")}
-                    </p>
-                    <label className="mt-4 block text-xs font-semibold text-fg-subtle">
-                      {t("themePreviewFieldLabel")}
-                      <span className="mt-1 block min-h-11 rounded-lg border border-border-strong bg-control px-3 py-2.5 text-sm font-normal text-fg">
-                        {t("themePreviewFieldValue")}
+                  {previewTarget === "public" ? (
+                    <div className="rounded-xl border border-border bg-surface p-4">
+                      <p className="font-display text-xl font-semibold text-fg">
+                        {t("themePreviewTitle")}
+                      </p>
+                      <p className="mt-1 text-sm leading-relaxed text-fg-muted">
+                        {t("themePreviewBody")}
+                      </p>
+                      <label className="mt-4 block text-xs font-semibold text-fg-subtle">
+                        {t("themePreviewFieldLabel")}
+                        <span className="mt-1 block min-h-11 rounded-lg border border-border-strong bg-control px-3 py-2.5 text-sm font-normal text-fg">
+                          {t("themePreviewFieldValue")}
+                        </span>
+                      </label>
+                      <span className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg">
+                        {t("themeColorPreviewAction")}
                       </span>
-                    </label>
-                    <span className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg">
-                      {t("themeColorPreviewAction")}
-                    </span>
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="grid min-h-52 overflow-hidden rounded-xl border border-border bg-surface sm:grid-cols-[7.5rem_minmax(0,1fr)]">
+                      <div className="border-b border-border bg-page p-3 sm:border-b-0 sm:border-r">
+                        <p className="font-meta text-[0.625rem] uppercase tracking-[0.12em] text-accent">
+                          01 / {t("dashboardPreviewIndex")}
+                        </p>
+                        <div className="mt-3 grid grid-cols-2 gap-1 sm:grid-cols-1">
+                          <span className="rounded-md bg-accent-surface px-2 py-1.5 text-xs font-semibold text-fg">
+                            {t("dashboardPreviewNavEvents")}
+                          </span>
+                          <span className="px-2 py-1.5 text-xs text-fg-subtle">
+                            {t("dashboardPreviewNavEquipment")}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-4">
+                        <p className="font-display text-xl font-semibold text-fg">
+                          {t("dashboardPreviewTitle")}
+                        </p>
+                        <p className="mt-1 text-sm leading-relaxed text-fg-muted">
+                          {t("dashboardPreviewBody")}
+                        </p>
+                        <div className="mt-4 rounded-lg border border-border bg-control p-3">
+                          <p className="text-xs font-semibold text-fg">
+                            {t("dashboardPreviewCardTitle")}
+                          </p>
+                          <p className="mt-1 font-meta text-[0.625rem] uppercase tracking-[0.08em] text-fg-subtle">
+                            {t("dashboardPreviewCardMeta")}
+                          </p>
+                        </div>
+                        <span className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-fg">
+                          {t("themeColorPreviewAction")}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">
                     {[
                       [t("paletteCanvasShort"), palettePreview.backgroundColor],
@@ -693,6 +778,56 @@ export default function SiteSettingsForm({
                   onChange={(value) => setPaletteColor("themeColor", value)}
                 />
               </div>
+            </div>
+            <div className="border-t border-border pt-5">
+              <SectionHeading
+                title={t("dashboardAppearanceTitle")}
+                description={t("dashboardAppearanceHint")}
+              />
+              <div
+                role="radiogroup"
+                aria-label={t("dashboardAppearanceTitle")}
+                className="mt-4 grid gap-3 sm:grid-cols-2"
+              >
+                {(["PLATFORM", "MATCH_SITE"] as const).map((mode) => {
+                  const selected = dashboardThemeMode === mode;
+                  return (
+                    <label
+                      key={mode}
+                      className={`relative flex min-h-24 cursor-pointer gap-3 rounded-xl border p-4 transition-[background-color,border-color,box-shadow] focus-within:ring-2 focus-within:ring-accent/40 ${
+                        selected
+                          ? "border-accent/45 bg-accent-surface"
+                          : "border-border bg-raised hover:border-border-strong"
+                      }`}
+                    >
+                      <input
+                        form={FORM_ID}
+                        type="radio"
+                        name="dashboardThemeMode"
+                        value={mode}
+                        checked={selected}
+                        onChange={() => setDashboardThemeMode(mode)}
+                        className="mt-0.5 h-5 w-5 shrink-0 accent-accent"
+                      />
+                      <span>
+                        <span className="block text-sm font-semibold text-fg">
+                          {mode === "PLATFORM"
+                            ? t("dashboardAppearancePlatform")
+                            : t("dashboardAppearanceMatch")}
+                        </span>
+                        <span className="mt-1 block text-xs leading-relaxed text-fg-subtle">
+                          {mode === "PLATFORM"
+                            ? t("dashboardAppearancePlatformHint")
+                            : t("dashboardAppearanceMatchHint")}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-fg-subtle">
+                {t("dashboardAppearanceBoundary")}
+              </p>
             </div>
             <IndependentWidget label={t("imageChangesSaveAutomatically")}>
               {backgroundImageSlot}

@@ -10,10 +10,14 @@ const LOGO_GAP_MM = 3;
 const NAME_VERTICAL_PADDING_MM = 3;
 const MIN_QR_SIZE_MM = 20;
 const MM_PER_POINT = 25.4 / 72;
+const CENTER_LOGO_MAX_QR_RATIO = 0.22;
+
+export type EquipmentQrLogoPlacement = "ABOVE" | "CENTER";
 
 export type EquipmentQrLabelLayout = {
   paddingMm: number;
   logoHeightMm: number;
+  logoHeightLimitMm: number;
   logoSlotMm: number;
   textSizePt: number;
   nameSlotMm: number;
@@ -25,6 +29,7 @@ export function calculateEquipmentQrLabelLayout({
   labelHeightMm,
   includeName,
   includeLogo,
+  logoPlacement,
   textSizePt,
   logoHeightMm
 }: {
@@ -32,6 +37,7 @@ export function calculateEquipmentQrLabelLayout({
   labelHeightMm: number;
   includeName: boolean;
   includeLogo: boolean;
+  logoPlacement: EquipmentQrLogoPlacement;
   textSizePt: number;
   logoHeightMm: number;
 }): EquipmentQrLabelLayout | null {
@@ -59,8 +65,10 @@ export function calculateEquipmentQrLabelLayout({
     return null;
   }
 
-  const resolvedLogoHeightMm = includeLogo ? logoHeightMm : 0;
-  const logoSlotMm = includeLogo ? resolvedLogoHeightMm + LOGO_GAP_MM : 0;
+  const requestedLogoHeightMm = includeLogo ? logoHeightMm : 0;
+  const logoSlotMm = includeLogo && logoPlacement === "ABOVE"
+    ? requestedLogoHeightMm + LOGO_GAP_MM
+    : 0;
   const resolvedTextSizePt = includeName ? textSizePt : 0;
   const nameSlotMm = includeName
     ? resolvedTextSizePt * MM_PER_POINT + NAME_VERTICAL_PADDING_MM
@@ -71,9 +79,19 @@ export function calculateEquipmentQrLabelLayout({
   );
 
   if (qrSizeMm < MIN_QR_SIZE_MM) return null;
+  const logoHeightLimitMm = includeLogo && logoPlacement === "CENTER"
+    ? Math.min(
+        QR_LABEL_MAX_LOGO_HEIGHT_MM,
+        Math.max(QR_LABEL_MIN_LOGO_HEIGHT_MM, qrSizeMm * CENTER_LOGO_MAX_QR_RATIO)
+      )
+    : QR_LABEL_MAX_LOGO_HEIGHT_MM;
+  const resolvedLogoHeightMm = includeLogo
+    ? Math.min(requestedLogoHeightMm, logoHeightLimitMm)
+    : 0;
   return {
     paddingMm: LABEL_PADDING_MM,
     logoHeightMm: resolvedLogoHeightMm,
+    logoHeightLimitMm,
     logoSlotMm,
     textSizePt: resolvedTextSizePt,
     nameSlotMm,

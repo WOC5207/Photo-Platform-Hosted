@@ -169,11 +169,13 @@ model EquipmentItem {
   notes        String            @default("")
   photoToken   String            @default("")
   qrToken      String            @unique @default(uuid())
+  sortOrder    Int               @default(0)
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
   checklistItems EquipmentChecklistItem[]
 
+  @@index([ownerId, sortOrder])
   @@index([ownerId, createdAt])
   @@index([categoryId])
 }
@@ -679,6 +681,9 @@ model SiteSettings {
   darkFieldColor                    String    @default("")
   darkTextColor                     String    @default("")
   darkThemeColor                    String    @default("")
+  // "PLATFORM" keeps the management workspace neutral; "MATCH_SITE" applies
+  // the public light/dark semantic palettes to this photographer's dashboard.
+  dashboardThemeMode                String    @default("PLATFORM")
   // Empty = no background image. Otherwise a token; file lives at
   // <PHOTOS_DIR>/_site/<token>.webp, served via /api/site/<token>.webp.
   backgroundImage                   String    @default("")

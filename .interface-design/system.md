@@ -57,8 +57,8 @@ colors remain semantic and must not compete with the primary accent.
 Each photographer may replace the safelight accent for their own public site.
 Derive the strong, surface, and contrast-foreground variants through
 `siteThemeStyle`; do not place a saved hex directly into individual
-components. The platform directory and management workspace keep the platform
-safelight identity.
+components. The platform directory and platform-administration workspace keep
+the platform safelight identity.
 
 Photographers may also build independent light and dark semantic palettes for
 the public site: canvas, panel, inset field, text, and buttons/accent. Keep
@@ -70,6 +70,32 @@ randomization. Empty values use that mode's contact-sheet defaults; missing
 surface/text values are derived through the theme-color helpers. Primary text
 must maintain at least 4.5:1 contrast against the canvas, panels, and fields,
 and button foreground remains automatic.
+
+### Photographer dashboard appearance
+
+The photographer dashboard offers two account-level appearance modes:
+
+- **Platform default** keeps the standard contact-sheet light and dark palettes.
+- **Match public site** applies the photographer's existing public light and
+  dark semantic palettes to the dashboard workspace.
+
+The choice changes color identity, not the dashboard's operational structure.
+Typography, spacing, radii, density, navigation hierarchy, and semantic status
+meaning remain platform-controlled. Success, warning, danger, maintenance, and
+equipment-condition colors are never replaced by photographer-selected accent
+colors. Public background photography does not enter the dashboard because
+dense controls require a stable canvas.
+
+Scope matched palettes to `/dashboard` only. Login, onboarding, the public
+directory, and `/admin` retain the platform palette. Theme mode remains the
+single document-level light/dark preference; dashboard appearance must not add
+a second light/dark switch. Theme-aware floating layers must inherit the active
+dashboard palette even when rendered through a portal.
+
+The appearance editor presents this as a restrained two-choice setting and
+lets the existing palette specimen switch between a public-site and dashboard
+preview. Default new and existing accounts to **Platform default**, so enabling
+dashboard branding is always deliberate.
 
 ## Depth and Surfaces
 
@@ -199,6 +225,20 @@ Use `SectionHeading` for repeated sections:
   overlay is a compact status.
 - Editing categories use native `<details>` sections to keep dense forms
   scannable.
+
+### Equipment inventory and QR labels
+
+- Equipment tiles use a photographer-defined persistent order. A quiet six-dot
+  drag handle is the desktop affordance; adjacent up/down controls provide the
+  same operation for touch and keyboard users, with live save feedback.
+- Category filtering preserves the full inventory order: moving visible items
+  changes only their positions among the hidden items, never ownership scope.
+- QR label artwork layers in this order: white label stock, optional cover-fit
+  background at the chosen opacity, QR code, optional logo, then equipment name.
+- QR rotation changes the code matrix in 90-degree steps while background,
+  equipment name, and logo remain upright for predictable print composition.
+- Keep PDF as the primary print path and PNG as a secondary export. PNG output
+  is one 300 DPI image per selected item and must match the live preview.
 
 ### Homepage infinite archive
 

@@ -1,6 +1,7 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import EquipmentQrCode from "@/components/equipment/EquipmentQrCode";
+import EquipmentSortableGrid from "@/components/equipment/EquipmentSortableGrid";
 import { buttonClasses } from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import { Link } from "@/i18n/navigation";
@@ -45,7 +46,16 @@ export default async function EquipmentPage({
   const selectedCategory = categories.find(
     (category) => category.id === requestedCategory
   );
-  const allEquipment = await prisma.equipmentItem.findMany({ where: { ownerId: user.id }, include: { category: true }, orderBy: [{ category: { name: "asc" } }, { name: "asc" }] });
+  const allEquipment = await prisma.equipmentItem.findMany({
+    where: { ownerId: user.id },
+    include: { category: true },
+    orderBy: [
+      { sortOrder: "asc" },
+      { category: { name: "asc" } },
+      { name: "asc" },
+      { createdAt: "asc" }
+    ]
+  });
   const equipment = selectedCategory
     ? allEquipment.filter((item) => item.categoryId === selectedCategory.id)
     : allEquipment;
@@ -154,14 +164,23 @@ export default async function EquipmentPage({
             {selectedCategory ? t("emptyCategory", { name: selectedCategory.name }) : t("emptyInventory")}
           </p>
         ) : (
-          <ul className="min-w-0 columns-1 gap-4 md:columns-2">
+          <EquipmentSortableGrid
+            itemIds={equipment.map((item) => item.id)}
+            allItemIds={allEquipment.map((item) => item.id)}
+            highlightedId={scanned?.id}
+            labels={{
+              drag: t("reorderDrag"),
+              moveEarlier: t("reorderEarlier"),
+              moveLater: t("reorderLater"),
+              saving: t("reorderSaving"),
+              saved: t("reorderSaved"),
+              error: t("reorderError")
+            }}
+          >
             {equipment.map((item) => (
-              <li
+              <article
                 key={item.id}
-                id={`equipment-${item.id}`}
-                className={`ui-panel mb-4 flex w-full min-w-0 break-inside-avoid flex-col gap-4 overflow-hidden p-5 ${
-                  scanned?.id === item.id ? "ring-2 ring-success" : ""
-                }`}
+                className="flex min-w-0 flex-col gap-4"
               >
                 {item.photoToken && <div className="ui-image-frame aspect-[4/3] overflow-hidden rounded-lg bg-control">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -216,9 +235,9 @@ export default async function EquipmentPage({
                     <ConfirmSubmit label={t("deleteEquipment")} confirmText={t("deleteEquipmentConfirm", { name: equipmentName(item) })} />
                   </form>
                 </div>
-              </li>
+              </article>
             ))}
-          </ul>
+          </EquipmentSortableGrid>
         )}
       </section>
 

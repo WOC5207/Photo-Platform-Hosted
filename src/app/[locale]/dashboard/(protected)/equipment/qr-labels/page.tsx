@@ -18,7 +18,12 @@ export default async function EquipmentQrLabelsPage() {
   const [items, settings] = await Promise.all([
     prisma.equipmentItem.findMany({
       where: { ownerId: user.id },
-      orderBy: [{ category: { name: "asc" } }, { brand: "asc" }, { model: "asc" }],
+      orderBy: [
+        { sortOrder: "asc" },
+        { category: { name: "asc" } },
+        { brand: "asc" },
+        { model: "asc" }
+      ],
       select: {
         id: true,
         name: true,
