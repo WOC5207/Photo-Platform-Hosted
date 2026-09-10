@@ -11,6 +11,7 @@ import { discardSiteImage } from "@/lib/siteImages";
 import { isValidTimeZone } from "@/lib/timeZone";
 import { acceptBookingPriceNotice } from "@/lib/bookingPriceNotice";
 import {
+  DASHBOARD_THEME_MODES,
   siteThemeMinimumContrast,
   THEME_COLOR_PATTERN
 } from "@/lib/themeColor";
@@ -65,7 +66,8 @@ const appearanceSchema = z.object({
   darkSurfaceColor: z.string().trim().regex(THEME_COLOR_PATTERN),
   darkFieldColor: z.string().trim().regex(THEME_COLOR_PATTERN),
   darkTextColor: z.string().trim().regex(THEME_COLOR_PATTERN),
-  darkThemeColor: z.string().trim().regex(THEME_COLOR_PATTERN)
+  darkThemeColor: z.string().trim().regex(THEME_COLOR_PATTERN),
+  dashboardThemeMode: z.enum(DASHBOARD_THEME_MODES)
 });
 
 const homepageSchema = z.object({
@@ -127,7 +129,8 @@ export async function updateSiteSettings(
       darkSurfaceColor: formData.get("darkSurfaceColor") ?? "",
       darkFieldColor: formData.get("darkFieldColor") ?? "",
       darkTextColor: formData.get("darkTextColor") ?? "",
-      darkThemeColor: formData.get("darkThemeColor") ?? ""
+      darkThemeColor: formData.get("darkThemeColor") ?? "",
+      dashboardThemeMode: formData.get("dashboardThemeMode") ?? "PLATFORM"
     });
     if (!parsed.success) return { error: "validation" };
     const lightContrast = siteThemeMinimumContrast(

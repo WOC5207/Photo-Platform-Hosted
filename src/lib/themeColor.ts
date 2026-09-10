@@ -23,6 +23,15 @@ export const DEFAULT_SITE_DARK_PALETTE = {
 
 export type SiteThemeMode = "light" | "dark";
 
+export const DASHBOARD_THEME_MODES = ["PLATFORM", "MATCH_SITE"] as const;
+export type DashboardThemeMode = (typeof DASHBOARD_THEME_MODES)[number];
+
+export function resolveDashboardThemeMode(
+  value?: string | null
+): DashboardThemeMode {
+  return value === "MATCH_SITE" ? "MATCH_SITE" : "PLATFORM";
+}
+
 export type SiteThemeColors = {
   backgroundColor: string;
   surfaceColor: string;

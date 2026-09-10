@@ -20,6 +20,7 @@ const equipmentSchema = z.object({
 });
 
 const categorySchema = z.string().trim().min(1).max(100);
+const equipmentOrderSchema = z.array(z.string().trim().min(1).max(100)).max(1000);
 
 async function ownerId(): Promise<string> {
   const locale = await getLocale();
@@ -53,19 +54,26 @@ export async function createEquipment(formData: FormData): Promise<{ id?: string
   });
   if (!category) return { error: "invalid" };
 
-  const created = await prisma.equipmentItem.create({
-    data: {
-      ownerId: owner,
-      name: equipmentName({ name: "", brand: parsed.data.brand, model: parsed.data.model }),
-      brand: parsed.data.brand,
-      model: parsed.data.model,
-      categoryId: category.id,
-      status: parsed.data.status,
-      statusNote: parsed.data.statusNote,
-      serialNumber: parsed.data.serialNumber,
-      notes: parsed.data.notes
-    },
-    select: { id: true }
+  const created = await prisma.$transaction(async (tx) => {
+    const latest = await tx.equipmentItem.aggregate({
+      where: { ownerId: owner },
+      _max: { sortOrder: true }
+    });
+    return tx.equipmentItem.create({
+      data: {
+        ownerId: owner,
+        name: equipmentName({ name: "", brand: parsed.data.brand, model: parsed.data.model }),
+        brand: parsed.data.brand,
+        model: parsed.data.model,
+        categoryId: category.id,
+        status: parsed.data.status,
+        statusNote: parsed.data.statusNote,
+        serialNumber: parsed.data.serialNumber,
+        notes: parsed.data.notes,
+        sortOrder: (latest._max.sortOrder ?? -1) + 1
+      },
+      select: { id: true }
+    });
   });
   refreshEquipment();
   return created;
@@ -162,4 +170,40 @@ export async function rotateEquipmentQr(formData: FormData): Promise<void> {
     data: { qrToken: randomUUID() }
   });
   refreshEquipment();
+}
+
+export async function reorderEquipment(
+  ids: string[]
+): Promise<{ success: true } | { error: "invalid" | "forbidden" | "update" }> {
+  const parsed = equipmentOrderSchema.safeParse(ids);
+  if (!parsed.success || new Set(parsed.data).size !== parsed.data.length) {
+    return { error: "invalid" };
+  }
+
+  const owner = await ownerId();
+  const owned = await prisma.equipmentItem.findMany({
+    where: { ownerId: owner },
+    select: { id: true }
+  });
+  if (
+    owned.length !== parsed.data.length ||
+    owned.some((item) => !parsed.data.includes(item.id))
+  ) {
+    return { error: "forbidden" };
+  }
+
+  try {
+    await prisma.$transaction(
+      parsed.data.map((id, sortOrder) =>
+        prisma.equipmentItem.updateMany({
+          where: { id, ownerId: owner },
+          data: { sortOrder }
+        })
+      )
+    );
+    refreshEquipment();
+    return { success: true };
+  } catch {
+    return { error: "update" };
+  }
 }

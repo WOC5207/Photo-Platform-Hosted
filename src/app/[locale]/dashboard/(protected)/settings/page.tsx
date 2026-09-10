@@ -107,6 +107,7 @@ export default async function SiteSettingsPage({
           darkFieldColor: settings.darkFieldColor,
           darkTextColor: settings.darkTextColor,
           darkThemeColor: settings.darkThemeColor,
+          dashboardThemeMode: settings.dashboardThemeMode,
           creditTermEn: settings.creditTermEn,
           creditTermZh: settings.creditTermZh,
           subjectTermEn: settings.subjectTermEn,

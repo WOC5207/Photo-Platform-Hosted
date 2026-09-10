@@ -5,6 +5,7 @@ import {
   useId,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode
 } from "react";
 import { useSearchParams } from "next/navigation";
@@ -63,6 +64,7 @@ interface ManagementShellProps {
   publicSiteHref: string;
   isAdmin: boolean;
   logoutAction: () => Promise<void>;
+  themeStyle?: CSSProperties;
 }
 
 function routeIsActive(pathname: string, item: ManagementNavItem): boolean {
@@ -474,7 +476,8 @@ export default function ManagementShell({
   logoUrl,
   publicSiteHref,
   isAdmin,
-  logoutAction
+  logoutAction,
+  themeStyle
 }: ManagementShellProps) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -547,7 +550,10 @@ export default function ManagementShell({
   };
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]">
+    <div
+      className={`${themeStyle ? "site-dual-theme " : ""}min-h-dvh bg-page text-fg lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]`}
+      style={themeStyle}
+    >
       <aside className="sticky top-0 hidden h-dvh flex-col border-r border-border bg-page p-4 lg:flex">
         <div className="px-2 py-2">
           <Brand logoUrl={logoUrl} siteTitle={siteTitle} href={workspaceHome} />
@@ -688,6 +694,7 @@ export default function ManagementShell({
         <main id="main-content" tabIndex={-1} inert={drawerOpen} className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-7 sm:py-9 lg:px-10 lg:py-10">
           {children}
         </main>
+        <div data-dialog-portal-root />
       </div>
     </div>
   );

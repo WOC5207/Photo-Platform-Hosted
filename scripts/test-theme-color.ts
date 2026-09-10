@@ -5,6 +5,7 @@ import {
   GENERATED_PALETTE_TEXT_CONTRAST,
   generateAccessibleSitePalette,
   normalizeThemeColor,
+  resolveDashboardThemeMode,
   siteThemeMinimumPhotoScrimContrast,
   siteThemeMinimumContrast,
   siteDualThemeStyle,
@@ -18,6 +19,10 @@ assert.equal(normalizeThemeColor("#AbC"), "#aabbcc");
 assert.equal(normalizeThemeColor("#12ef90"), "#12ef90");
 assert.equal(normalizeThemeColor("red"), null);
 assert.equal(normalizeThemeColor("#abcd"), null);
+assert.equal(resolveDashboardThemeMode("MATCH_SITE"), "MATCH_SITE");
+assert.equal(resolveDashboardThemeMode("PLATFORM"), "PLATFORM");
+assert.equal(resolveDashboardThemeMode("unexpected"), "PLATFORM");
+assert.equal(resolveDashboardThemeMode(null), "PLATFORM");
 
 assert.equal(themeColorForeground("#ffffff"), "#211d18");
 assert.equal(themeColorForeground("#000000"), "#fffefb");
