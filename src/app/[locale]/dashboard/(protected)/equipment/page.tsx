@@ -58,24 +58,40 @@ export default async function EquipmentPage({
       <PageHeader
         title={t("title")}
         description={t("description")}
-        action={(
-          <>
-            <Link href="/dashboard/equipment/contact" className={buttonClasses()}>{ts("contactTitle")}</Link>
-            <Link
-              href="/dashboard/equipment/manage"
-              className={buttonClasses()}
-            >
-              {t("manageCategories")}
-            </Link>
-            <Link
-              href="/dashboard/equipment/new"
-              className={buttonClasses({ variant: "primary" })}
-            >
-              {t("addEquipment")}
-            </Link>
-          </>
-        )}
       />
+
+      <nav
+        aria-label={t("equipmentActions")}
+        className="grid min-w-0 gap-2 sm:grid-cols-2 2xl:grid-cols-4"
+      >
+        <Link
+          href="/dashboard/equipment/qr-labels"
+          className={buttonClasses({ className: "min-w-0 whitespace-normal text-center" })}
+        >
+          {t("printQrLabels")}
+        </Link>
+        <Link
+          href="/dashboard/equipment/contact"
+          className={buttonClasses({ className: "min-w-0 whitespace-normal text-center" })}
+        >
+          {ts("contactTitle")}
+        </Link>
+        <Link
+          href="/dashboard/equipment/manage"
+          className={buttonClasses({ className: "min-w-0 whitespace-normal text-center" })}
+        >
+          {t("manageCategories")}
+        </Link>
+        <Link
+          href="/dashboard/equipment/new"
+          className={buttonClasses({
+            variant: "primary",
+            className: "min-w-0 whitespace-normal text-center"
+          })}
+        >
+          {t("addEquipment")}
+        </Link>
+      </nav>
 
       {scan && (
         <div
@@ -92,7 +108,7 @@ export default async function EquipmentPage({
         </div>
       )}
 
-      <nav aria-label={t("browseCategories")} className="flex flex-col gap-3">
+      <nav aria-label={t("browseCategories")} className="flex min-w-0 flex-col gap-3">
         <div>
           <h2 className="font-display text-xl font-semibold">{t("browseCategories")}</h2>
           <p className="mt-1 text-sm text-fg-subtle">{t("browseCategoriesHint")}</p>
@@ -128,22 +144,22 @@ export default async function EquipmentPage({
         </div>
       </nav>
 
-      <section className="flex flex-col gap-4">
-        <div>
+      <section className="flex min-w-0 flex-col gap-4">
+        <div className="min-w-0">
           <h2 className="font-display text-2xl font-semibold">{t("inventoryTitle")}</h2>
-          <p className="mt-1 text-sm text-fg-subtle">{t("inventoryHint")}</p>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-fg-subtle">{t("inventoryHint")}</p>
         </div>
         {equipment.length === 0 ? (
           <p className="ui-panel flex min-h-32 items-center justify-center p-6 text-center text-sm text-fg-subtle">
             {selectedCategory ? t("emptyCategory", { name: selectedCategory.name }) : t("emptyInventory")}
           </p>
         ) : (
-          <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <ul className="min-w-0 columns-1 gap-4 md:columns-2">
             {equipment.map((item) => (
               <li
                 key={item.id}
                 id={`equipment-${item.id}`}
-                className={`ui-panel flex flex-col gap-4 p-5 ${
+                className={`ui-panel mb-4 flex w-full min-w-0 break-inside-avoid flex-col gap-4 overflow-hidden p-5 ${
                   scanned?.id === item.id ? "ring-2 ring-success" : ""
                 }`}
               >
@@ -173,11 +189,11 @@ export default async function EquipmentPage({
                   </p>
                 )}
                 {item.notes && <p className="whitespace-pre-wrap text-sm text-fg-muted">{item.notes}</p>}
-                <details open={scanned?.id === item.id} className="group border-t border-border pt-3">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
+                <details open={scanned?.id === item.id} className="group min-w-0 border-t border-border pt-3">
+                  <summary className="inline-flex min-h-10 cursor-pointer list-none items-center rounded-sm text-sm font-semibold text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface">
                     {t("showQr")}
                   </summary>
-                  <div className="mt-3">
+                  <div className="mt-3 min-w-0">
                     <EquipmentQrCode name={equipmentName(item)} qrToken={item.qrToken} locale={locale} />
                   </div>
                 </details>

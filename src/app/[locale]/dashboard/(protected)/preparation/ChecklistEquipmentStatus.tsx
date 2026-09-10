@@ -1,4 +1,4 @@
-import type { EquipmentStatus } from "@prisma/client";
+import type { EquipmentChecklistState } from "@prisma/client";
 import QuickEquipmentStatusButton from "@/components/equipment/QuickEquipmentStatusButton";
 import { QUICK_EQUIPMENT_STATUSES } from "@/lib/equipment";
 import { setChecklistEquipmentStatus } from "./actions";
@@ -6,24 +6,24 @@ import { setChecklistEquipmentStatus } from "./actions";
 export default function ChecklistEquipmentStatus({
   checklistId,
   equipmentId,
-  status,
+  state,
   label,
   labels
 }: {
   checklistId: string;
   equipmentId: string;
-  status: EquipmentStatus;
+  state: EquipmentChecklistState;
   label: string;
   labels: {
     group: string;
-    signedOut: string;
-    inInventory: string;
+    atEvent: string;
+    returned: string;
     broken: string;
   };
 }) {
   const choiceLabels = {
-    SIGNED_OUT: labels.signedOut,
-    IN_INVENTORY: labels.inInventory,
+    SIGNED_OUT: labels.atEvent,
+    IN_INVENTORY: labels.returned,
     BROKEN: labels.broken
   } as const;
 
@@ -40,7 +40,11 @@ export default function ChecklistEquipmentStatus({
         <QuickEquipmentStatusButton
           key={choice}
           status={choice}
-          active={status === choice}
+          active={
+            (choice === "SIGNED_OUT" && state === "AT_EVENT") ||
+            (choice === "IN_INVENTORY" && state === "RETURNED") ||
+            (choice === "BROKEN" && state === "BROKEN")
+          }
           label={choiceLabels[choice]}
         />
       ))}

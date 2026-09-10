@@ -29,11 +29,17 @@ const STATUS_KEY = {
 } as const;
 
 const STATUS_CARD_CLASS = {
-  IN_INVENTORY: "border-success-border bg-success-surface",
-  SIGNED_OUT: "border-warning-border bg-warning-surface",
-  MAINTENANCE: "border-danger-border bg-danger-surface",
+  PLANNED: "border-border bg-control",
+  AT_EVENT: "border-warning-border bg-warning-surface",
+  RETURNED: "border-success-border bg-success-surface",
   BROKEN: "border-danger-border bg-danger-surface",
-  OTHER: "border-accent/30 bg-accent-surface"
+} as const;
+
+const EVENT_STATE_KEY = {
+  PLANNED: "eventStatePlanned",
+  AT_EVENT: "eventStateAtEvent",
+  RETURNED: "eventStateReturned",
+  BROKEN: "eventStateBroken"
 } as const;
 
 function formatShootDate(value: Date | null, locale: string): string {
@@ -86,6 +92,14 @@ export default async function EquipmentChecklistPage({
   if (event && event.ownerId !== user.id) notFound();
 
   const total = checklist.items.length;
+  const equipmentItems = checklist.items.filter((item) => item.equipmentId !== null);
+  const initialProgress = {
+    total: equipmentItems.length,
+    planned: equipmentItems.filter((item) => item.eventState === "PLANNED").length,
+    atEvent: equipmentItems.filter((item) => item.eventState === "AT_EVENT").length,
+    returned: equipmentItems.filter((item) => item.eventState === "RETURNED").length,
+    broken: equipmentItems.filter((item) => item.eventState === "BROKEN").length
+  };
   const backHref = event
     ? `/dashboard/preparation/equipment?event=${event.id}`
     : "/dashboard/preparation/equipment";
@@ -133,12 +147,27 @@ export default async function EquipmentChecklistPage({
         {checklist.notes && (
           <p className="max-w-3xl whitespace-pre-wrap text-sm text-fg-muted">{checklist.notes}</p>
         )}
+        {initialProgress.total > 0 && (
+          <dl className="grid grid-cols-2 border-t border-border pt-4 sm:grid-cols-4">
+            {([
+              ["eventStatePlanned", initialProgress.planned],
+              ["eventStateAtEvent", initialProgress.atEvent],
+              ["eventStateReturned", initialProgress.returned],
+              ["eventStateBroken", initialProgress.broken]
+            ] as const).map(([label, count], index) => (
+              <div key={label} className={`px-3 py-2 first:pl-0 ${index % 2 === 1 ? "border-l border-border" : ""} ${index > 0 ? "sm:border-l sm:border-border" : ""}`}>
+                <dt className="text-xs text-fg-subtle">{t(label)}</dt>
+                <dd className="mt-1 font-meta text-xl font-semibold tabular-nums">{count}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </section>
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="ui-panel flex min-w-0 flex-col gap-5 p-5 sm:p-6">
           <SectionHeading title={t("packingList")} description={t("packingListHint")} />
-          <EquipmentScanner checklistId={checklist.id} />
+          <EquipmentScanner checklistId={checklist.id} initialProgress={initialProgress} />
           {total === 0 ? (
             <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-fg-subtle">
               {t("emptyChecklistItems")}
@@ -148,12 +177,13 @@ export default async function EquipmentChecklistPage({
               {checklist.items.map((item) => {
                 const displayName = item.equipment ? equipmentName(item.equipment) : item.label;
                 const statusClass = item.equipment
-                  ? STATUS_CARD_CLASS[item.equipment.status]
+                  ? STATUS_CARD_CLASS[item.eventState]
                   : "border-border bg-control";
                 return (
                   <li
                     key={item.id}
                     data-equipment-status={item.equipment?.status}
+                    data-equipment-event-state={item.equipment ? item.eventState : undefined}
                     className={`rounded-xl border p-3 transition-[background-color,border-color] ${statusClass}`}
                   >
                     <div className="flex items-start gap-2">
@@ -182,7 +212,10 @@ export default async function EquipmentChecklistPage({
                     {item.equipment && (
                       <div className="mt-3 border-t border-border pt-3">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-fg-subtle">
-                          <span>{t("inventoryStatus")}: {t(STATUS_KEY[item.equipment.status])}</span>
+                          <span>
+                            <strong className="font-semibold text-fg-muted">{t("eventStatus")}: {t(EVENT_STATE_KEY[item.eventState])}</strong>
+                            <span className="ml-2">· {t("inventoryStatus")}: {t(STATUS_KEY[item.equipment.status])}</span>
+                          </span>
                           <Link href={`/dashboard/equipment/${item.equipment.id}`} className="font-semibold text-accent hover:underline">
                             {t("openInventoryItem")}
                           </Link>
@@ -190,12 +223,12 @@ export default async function EquipmentChecklistPage({
                         <ChecklistEquipmentStatus
                           checklistId={checklist.id}
                           equipmentId={item.equipment.id}
-                          status={item.equipment.status}
+                          state={item.eventState}
                           label={displayName}
                           labels={{
                             group: t("setInventoryStatus"),
-                            signedOut: t("quickStatusSignedOut"),
-                            inInventory: t("quickStatusInInventory"),
+                            atEvent: t("eventStateAtEvent"),
+                            returned: t("eventStateReturned"),
                             broken: t("quickStatusBroken")
                           }}
                         />
