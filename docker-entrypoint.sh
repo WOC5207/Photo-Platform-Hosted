@@ -20,7 +20,7 @@ case "${ADMIN_PASSWORD:-}" in
 esac
 
 echo "Applying database migrations..."
-node migration-node_modules/prisma/build/index.js migrate deploy
+node migration/node_modules/prisma/build/index.js migrate deploy
 
 echo "Starting server..."
 exec node server.js
