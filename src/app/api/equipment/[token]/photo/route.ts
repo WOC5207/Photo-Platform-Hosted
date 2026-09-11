@@ -1,22 +1,35 @@
-import { createReadStream, promises as fs } from "node:fs";
-import path from "node:path";
+import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { siteDir } from "@/lib/images";
+import { NextRequest, NextResponse } from "next/server";
+import { getEquipmentMediaMetadata } from "@/lib/publicMediaCache";
 
-export async function GET(_: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ token: string }> }
+) {
   const { token } = await params;
-  const item = await prisma.equipmentItem.findFirst({ where: { qrToken: token, owner: { status: "active" } }, select: { ownerId: true, photoToken: true } });
-  const missing = () => new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
-  if (!item || !/^equipment[a-z0-9]+$/.test(item.photoToken)) return missing();
-  const image = await prisma.siteImage.findFirst({ where: { token: item.photoToken, ownerId: item.ownerId, purpose: "equipment" }, select: { id: true } });
+  const missing = () =>
+    new NextResponse("Not found", {
+      status: 404,
+      headers: { "Cache-Control": "no-store" }
+    });
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(token)) {
+    return missing();
+  }
+  const image = await getEquipmentMediaMetadata(token);
   if (!image) return missing();
-  const file = path.join(siteDir(item.ownerId), `${item.photoToken}.webp`);
-  try {
-    const stat = await fs.stat(file);
-    return new NextResponse(Readable.toWeb(createReadStream(file)) as ReadableStream<Uint8Array>, { headers: {
-      "Content-Type": "image/webp", "Content-Length": String(stat.size), "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"
-    } });
-  } catch { return missing(); }
+  const headers = {
+    "Content-Type": "image/webp",
+    "Content-Length": String(image.size),
+    "Cache-Control": "public, max-age=10, must-revalidate",
+    ETag: image.etag,
+    "X-Content-Type-Options": "nosniff"
+  };
+  if (req.headers.get("if-none-match")?.split(/\s*,\s*/).includes(image.etag)) {
+    return new NextResponse(null, { status: 304, headers });
+  }
+  return new NextResponse(
+    Readable.toWeb(createReadStream(image.filePath)) as ReadableStream<Uint8Array>,
+    { headers }
+  );
 }

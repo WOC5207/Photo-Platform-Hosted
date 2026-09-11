@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { discardSiteImage } from "@/lib/siteImages";
 import { EQUIPMENT_STATUSES, equipmentName } from "@/lib/equipment";
+import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 
 const equipmentSchema = z.object({
   brand: z.string().trim().min(1).max(100),
@@ -28,6 +29,7 @@ async function ownerId(): Promise<string> {
 }
 
 function refreshEquipment(): void {
+  invalidatePublicMedia();
   revalidatePath("/", "layout");
 }
 

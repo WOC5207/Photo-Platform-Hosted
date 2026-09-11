@@ -33,6 +33,7 @@ import type {
   PhotoModerationStatus
 } from "@/lib/moderationPolicy";
 import { moderationAllowsPublicPhoto } from "@/lib/photoVisibility";
+import type { AdminPhotoValue } from "@/lib/adminPhotoPage";
 
 export interface AdminPhotoCredit {
   creditName: string;
@@ -55,18 +56,7 @@ export interface AdminPhotoExif {
   lensModel: string;
 }
 
-export interface AdminPhoto {
-  id: string;
-  thumbUrl: string;
-  credits: AdminPhotoCredit[];
-  comment: string;
-  isCover: boolean;
-  homeHighlight: boolean;
-  homeWeight: number;
-  moderationStatus: PhotoModerationStatus;
-  moderationCategories: ImageModerationCategory[];
-  exif: AdminPhotoExif;
-}
+export type AdminPhoto = AdminPhotoValue;
 
 const btnCls =
   "inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong bg-raised px-3 py-2 text-xs font-semibold text-fg-muted transition-[color,background-color,border-color] hover:border-accent/40 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-40 max-sm:min-h-11";
@@ -557,12 +547,16 @@ function BulkToolbar({
 }
 
 export default function PhotoManager({
-  photos,
+  photos: initialPhotos,
+  eventId,
+  nextCursor: initialNextCursor,
   creditProfiles,
   creditTerm,
   subjectTerm
 }: {
   photos: AdminPhoto[];
+  eventId: string;
+  nextCursor?: string | null;
   creditProfiles: CreditProfile[];
   creditTerm: string;
   subjectTerm: string;
@@ -571,6 +565,10 @@ export default function PhotoManager({
   const tc = useTranslations("common");
   const router = useRouter();
 
+  const [photos, setPhotos] = useState(initialPhotos);
+  const [nextCursor, setNextCursor] = useState(initialNextCursor ?? null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [filterName, setFilterName] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pollExpired, setPollExpired] = useState(false);
@@ -587,6 +585,39 @@ export default function PhotoManager({
     violence: t("moderationCategoryViolence"),
     "violence/graphic": t("moderationCategoryViolenceGraphic")
   };
+
+  useEffect(() => {
+    setPhotos((current) => {
+      const firstIds = new Set(initialPhotos.map((photo) => photo.id));
+      return [...initialPhotos, ...current.filter((photo) => !firstIds.has(photo.id))];
+    });
+  }, [initialPhotos]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setLoadError(false);
+    try {
+      const response = await fetch(
+        `/api/admin/events/${encodeURIComponent(eventId)}/photos?cursor=${encodeURIComponent(nextCursor)}`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) throw new Error("load failed");
+      const page = (await response.json()) as {
+        items: AdminPhoto[];
+        nextCursor: string | null;
+      };
+      setPhotos((current) => {
+        const ids = new Set(current.map((photo) => photo.id));
+        return [...current, ...page.items.filter((photo) => !ids.has(photo.id))];
+      });
+      setNextCursor(page.nextCursor);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     if (!moderationWorking) {
@@ -889,6 +920,14 @@ export default function PhotoManager({
           </li>
         ))}
       </ul>
+      {(nextCursor || loadError) && (
+        <div className="flex flex-col items-center gap-2 border-t border-border pt-4">
+          <button type="button" onClick={loadMore} disabled={loadingMore} className={btnCls}>
+            {loadingMore ? t("loadingMorePhotos") : loadError ? t("retryMorePhotos") : t("loadMorePhotos")}
+          </button>
+          {loadError && <p role="alert" className="text-sm text-danger">{t("loadMorePhotosError")}</p>}
+        </div>
+      )}
     </div>
   );
 }

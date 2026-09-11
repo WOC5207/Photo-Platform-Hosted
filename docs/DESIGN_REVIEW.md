@@ -35,3 +35,44 @@ This is a shared-system improvement and representative-page review, not a claim
 of exhaustive accessibility certification. The fresh local database has no
 published photographs or booking records, so populated content, every custom
 photographer palette, and every dialog workflow are not visually certified.
+
+## DS920 performance and full-site follow-up
+
+The September 2026 review keeps the contact-sheet direction and changes the
+information architecture rather than restyling it. Booking management now has
+Schedule, Overview and Advanced routes; the checklist leads with scanning and
+progress; secondary item-adding controls collapse on mobile; and Settings only
+shows its floating action surface while a save is relevant.
+
+Shared disclosure, action-bar, filter, pagination and equipment-status
+primitives own these patterns. Small accent metadata uses a separately derived
+contrast-safe token, and inline operational actions retain a 44px phone target.
+
+Performance work removes the NAS compilation requirement, trims the migration
+runtime, bounds public-media caching to a 30-second stale window, aggregates
+directory/home counts, paginates the event photo editor and large administrative
+lists, and adds hot-path indexes. `npm run benchmark:nas` is the repeatable
+10-concurrent-user LAN check; final browser and upload-memory measurements must
+still be captured on the physical DS920 before calling the targets certified.
+
+### Verified measurements
+
+- Local `linux/amd64` production image: **125,933,205 bytes (~120 MiB)**,
+  below the 600 MiB release gate.
+- Production build: **103 kB** shared first-load output; settings **135 kB**
+  and QR labels **130 kB**.
+- The build-budget script also measures representative normal and specialized
+  routes from the generated app manifest, rather than relying only on console
+  output.
+- Concurrency, tenant isolation, theme, security, image-processing, and
+  production build verification pass against the disposable PostgreSQL test
+  service.
+
+### Physical-NAS limitations
+
+The repository cannot certify DS920 LAN latency, RSS during a maximum-size
+upload, or real-disk `EXPLAIN ANALYZE` results from this development machine.
+`npm run benchmark:nas` measures first-pass and warm p95, error rate, and an
+optional ETag/304 media path. Run it on the deployed NAS with representative
+owner, gallery, booking, QR, and authenticated-dashboard environment values;
+record those results here before treating the hardware targets as achieved.

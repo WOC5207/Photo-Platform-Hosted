@@ -63,6 +63,7 @@ type SiteThemeProperties = CSSProperties & {
   "--color-border"?: string;
   "--color-border-strong"?: string;
   "--color-accent"?: string;
+  "--color-accent-text"?: string;
   "--color-accent-strong"?: string;
   "--color-accent-surface"?: string;
   "--color-accent-fg"?: string;
@@ -189,6 +190,19 @@ function bestAutomaticText(backgrounds: string[]): "#211d18" | "#fffefb" {
   return minimumContrast(dark, backgrounds) >= minimumContrast(light, backgrounds)
     ? dark
     : light;
+}
+
+function accessibleAccentText(
+  accent: string,
+  text: string,
+  backgrounds: string[]
+): string {
+  if (minimumContrast(accent, backgrounds) >= 4.5) return accent;
+  for (let textWeight = 0.1; textWeight <= 1; textWeight += 0.05) {
+    const candidate = mixHex(text, accent, textWeight);
+    if (minimumContrast(candidate, backgrounds) >= 4.5) return candidate;
+  }
+  return text;
 }
 
 function safeRandomUnit(random: () => number): number {
@@ -416,6 +430,11 @@ function effectivePaletteStyle(
     "--color-border-strong":
       `color-mix(in srgb, ${palette.textColor} 24%, transparent)`,
     "--color-accent": palette.themeColor,
+    "--color-accent-text": accessibleAccentText(
+      palette.themeColor,
+      palette.textColor,
+      [palette.backgroundColor, palette.surfaceColor, palette.fieldColor]
+    ),
     "--color-accent-strong":
       `color-mix(in srgb, ${palette.themeColor} 82%, ${palette.textColor})`,
     "--color-accent-surface":
@@ -470,6 +489,7 @@ export function siteThemeStyle(colors: SiteThemeColors): SiteThemeProperties {
 
   if (accent) {
     style["--color-accent"] = accent;
+    style["--color-accent-text"] = `color-mix(in srgb, ${accent} 45%, var(--color-fg))`;
     style["--color-accent-strong"] =
       `color-mix(in srgb, ${accent} 82%, var(--color-fg))`;
     style["--color-accent-surface"] =

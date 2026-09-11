@@ -8,6 +8,7 @@ import type {
   HomePhotoStreamPage,
   StreamEvent
 } from "@/lib/homePhotoStreamTypes";
+import { unstable_cache } from "next/cache";
 
 export const HOME_PHOTO_STREAM_PAGE_SIZE = 24;
 
@@ -105,4 +106,27 @@ export async function getHomePhotoStreamPage({
         ? pagePhotos[pagePhotos.length - 1].id
         : null
   };
+}
+
+export async function getPublicHomePhotoStreamPage(args: {
+  ownerId: string;
+  locale: string;
+  cursor?: string | null;
+  pageSize?: number;
+}): Promise<HomePhotoStreamPage> {
+  const take = Math.max(
+    1,
+    Math.min(args.pageSize ?? HOME_PHOTO_STREAM_PAGE_SIZE, 48)
+  );
+  return unstable_cache(
+    () => getHomePhotoStreamPage({ ...args, pageSize: take }),
+    [
+      "home-photo-stream",
+      args.ownerId,
+      args.locale,
+      args.cursor ?? "first",
+      String(take)
+    ],
+    { revalidate: 20, tags: ["public-content", `owner:${args.ownerId}`] }
+  )();
 }

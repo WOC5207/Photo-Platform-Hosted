@@ -116,6 +116,57 @@ export interface PlatformStorage {
   databaseBytes: number;
 }
 
+export interface AdminAccountRow extends PlatformAccountStorage {
+  role: string;
+  status: string;
+  createdAt: Date;
+  eventCount: number;
+}
+
+/** Lightweight account overview; intentionally excludes pg_database_size(). */
+export async function getAdminAccountRows({ skip = 0, take = 50 }: { skip?: number; take?: number } = {}): Promise<{ items: AdminAccountRow[]; total: number }> {
+  const [rows, total] = await Promise.all([prisma.$queryRaw<
+    {
+      id: string;
+      username: string;
+      displayName: string;
+      role: string;
+      status: string;
+      createdAt: Date;
+      usedBytes: bigint;
+      quotaBytes: bigint;
+      photoCount: number;
+      eventCount: number;
+      tierName: string | null;
+      tierId: string | null;
+      tierExpiresAt: Date | null;
+      expired: boolean;
+      overridden: boolean;
+    }[]
+  >`
+    SELECT
+      u.id, u.username, u."displayName", u.role, u.status, u."createdAt",
+      u."usedBytes", ${EFFECTIVE_QUOTA} AS "quotaBytes",
+      (SELECT t."name" FROM "Tier" t WHERE t.id = ${EFFECTIVE_TIER_ID}) AS "tierName",
+      u."tierId", u."tierExpiresAt",
+      (u."tierId" IS NOT NULL AND u."tierExpiresAt" IS NOT NULL
+        AND u."tierExpiresAt" <= now()) AS "expired",
+      (u."quotaBytes" IS NOT NULL) AS "overridden",
+      (SELECT COUNT(*)::int FROM "Event" e WHERE e."ownerId" = u.id) AS "eventCount",
+      (SELECT COUNT(*)::int FROM "Photo" p JOIN "Event" e ON e.id = p."eventId"
+        WHERE e."ownerId" = u.id AND p."pendingBatchId" IS NULL) AS "photoCount"
+    FROM "User" u
+    ORDER BY u."createdAt" ASC
+    OFFSET ${skip} LIMIT ${take}
+  `, prisma.user.count()]);
+  return { items: rows.map((row) => ({
+    ...row,
+    usedBytes: Number(row.usedBytes),
+    quotaBytes: Number(row.quotaBytes),
+    tierName: row.tierName ?? ""
+  })), total };
+}
+
 /**
  * Every account's usage, for the platform admin.
  *

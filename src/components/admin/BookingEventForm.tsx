@@ -38,6 +38,7 @@ export default function BookingEventForm({
   initial,
   submitLabel,
   showOpenToggle = true,
+  section = "full",
   cancelHref,
   timeZone,
   priceDisplay
@@ -49,6 +50,7 @@ export default function BookingEventForm({
   initial: BookingEventFormValues;
   submitLabel: string;
   showOpenToggle?: boolean;
+  section?: "full" | "overview" | "advanced";
   cancelHref: string;
   timeZone: string;
   priceDisplay?: {
@@ -106,6 +108,8 @@ export default function BookingEventForm({
   const priceNoticeAvailable = Boolean(
     priceDisplay?.notice.title.trim() && priceDisplay.notice.body.trim()
   );
+  const showOverviewFields = section !== "advanced";
+  const showAdvancedFields = section !== "overview";
 
   return (
     <form
@@ -119,6 +123,31 @@ export default function BookingEventForm({
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
       {initial.galleryEventId && <input type="hidden" name="galleryEventId" value={initial.galleryEventId} />}
 
+      {!showOverviewFields && (
+        <>
+          <input type="hidden" name="titleEn" value={initial.titleEn} />
+          <input type="hidden" name="titleZh" value={initial.titleZh} />
+          <input type="hidden" name="dates" value={JSON.stringify(initial.dates)} />
+          <input type="hidden" name="location" value={initial.location} />
+          <input type="hidden" name="descriptionEn" value={initial.descriptionEn} />
+          <input type="hidden" name="descriptionZh" value={initial.descriptionZh} />
+          {initial.open && <input type="hidden" name="open" value="on" />}
+        </>
+      )}
+      {!showAdvancedFields && (
+        <>
+          {initial.visitorEditsEnabled && (
+            <input type="hidden" name="visitorEditsEnabled" value="on" />
+          )}
+          <input
+            type="hidden"
+            name="visitorEditCutoffHours"
+            value={initial.visitorEditCutoffHours}
+          />
+        </>
+      )}
+
+      {showOverviewFields && <>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-fg-muted">{t("titleEn")}</span>
@@ -327,7 +356,9 @@ export default function BookingEventForm({
           )}
         </section>
       )}
+      </>}
 
+      {showAdvancedFields && (
       <section className="rounded-xl border border-border bg-surface p-4 sm:p-5">
         <div className="flex items-start gap-3">
           <input
@@ -371,8 +402,9 @@ export default function BookingEventForm({
           </span>
         </label>
       </section>
+      )}
 
-      {showOpenToggle && (
+      {showOverviewFields && showOpenToggle && (
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"

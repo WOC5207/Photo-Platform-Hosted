@@ -7,6 +7,7 @@ import { getLocale } from "next-intl/server";
 import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 import { requireAdmin } from "@/lib/auth";
 import {
   quarantineUserFiles,
@@ -54,6 +55,17 @@ export async function setUserStatus(formData: FormData): Promise<void> {
       }
     })
     .catch(() => {});
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
   revalidatePath("/", "layout");
 }
 

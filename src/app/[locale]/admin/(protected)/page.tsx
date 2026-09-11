@@ -1,11 +1,11 @@
 import { getLocale, getTranslations } from "next-intl/server";
-import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { ownerName } from "@/lib/owner";
 import { formatDate } from "@/lib/datetime";
-import { formatBytes, getPlatformStorage } from "@/lib/storage";
+import { formatBytes, getAdminAccountRows } from "@/lib/storage";
 import { Link } from "@/i18n/navigation";
 import PageHeader from "@/components/ui/PageHeader";
+import PaginationNav from "@/components/ui/PaginationNav";
 
 export const dynamic = "force-dynamic";
 
@@ -16,35 +16,16 @@ export const dynamic = "force-dynamic";
  * was indistinguishable from the nineteen you were not. Every control lives on
  * the account's own page now, one click through the name.
  */
-export default async function PlatformUsersPage() {
+export default async function PlatformUsersPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const locale = await getLocale();
   await requireAdmin(locale);
   const t = await getTranslations("platform");
   const ts = await getTranslations("adminStorage");
 
-  const [users, { accounts }] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        role: true,
-        status: true,
-        createdAt: true,
-        _count: { select: { events: true } }
-      }
-    }),
-    // Resolves each account's effective allowance (override / tier / expiry)
-    // through the same SQL the upload check uses, so this page cannot show a
-    // limit the uploader would not honour.
-    getPlatformStorage()
-  ]);
-
-  // getPlatformStorage sorts by usage; this page is ordered by join date. Key
-  // by id rather than zipping the two lists, which would silently pair the
-  // wrong rows together.
-  const storageById = new Map(accounts.map((a) => [a.id, a]));
+  const page = Math.max(1, Number.parseInt((await searchParams).page ?? "1", 10) || 1);
+  const accountPage = await getAdminAccountRows({ skip: (page - 1) * 50 });
+  const users = accountPage.items;
+  const storageById = new Map(users.map((account) => [account.id, account]));
 
   return (
     <div className="flex flex-col gap-8">
@@ -90,7 +71,7 @@ export default async function PlatformUsersPage() {
                 </div>
                 <div>
                   <dt className="text-xs text-fg-subtle">{t("colAlbums")}</dt>
-                  <dd className="mt-0.5 text-fg-muted">{u._count.events}</dd>
+                  <dd className="mt-0.5 text-fg-muted">{u.eventCount}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-fg-subtle">{t("colJoined")}</dt>
@@ -180,7 +161,7 @@ export default async function PlatformUsersPage() {
                         : t("statusSuspended")}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-fg-muted">{u._count.events}</td>
+                  <td className="px-4 py-3 text-fg-muted">{u.eventCount}</td>
                   <td className="px-4 py-3 text-fg-muted">
                     {formatDate(u.createdAt)}
                   </td>
@@ -225,6 +206,7 @@ export default async function PlatformUsersPage() {
           </tbody>
         </table>
       </div>
+      <PaginationNav page={page} totalPages={Math.max(1, Math.ceil(accountPage.total / 50))} path="/admin" labels={{ navigation: t("pagination"), previous: t("previousPage"), next: t("nextPage"), count: t("pageCount", { page, total: Math.max(1, Math.ceil(accountPage.total / 50)) }) }} />
     </div>
   );
 }

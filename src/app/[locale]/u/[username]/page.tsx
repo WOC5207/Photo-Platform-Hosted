@@ -6,9 +6,9 @@ import { photoUrls, siteImageUrl } from "@/lib/images";
 import { formatDate, formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import {
-  getSiteSettings,
-  getAnnouncements,
-  getPersonalLinks,
+  getPublicSiteSettings,
+  getPublicAnnouncements,
+  getPublicPersonalLinks,
   resolveHomeTitle,
   resolveHomeSubtitle,
   resolveCreditTerm,
@@ -30,7 +30,10 @@ import PersonalLinksList, {
 } from "@/components/PersonalLinksList";
 import { wallClockNow } from "@/lib/timeZone";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
-import { getHomePhotoStreamPage } from "@/lib/homePhotoStream";
+import { getPublicHomePhotoStreamPage } from "@/lib/homePhotoStream";
+import { getCurrentUser } from "@/lib/auth";
+import EmptyState from "@/components/ui/EmptyState";
+import { buttonClasses } from "@/components/ui/Button";
 
 // Reads site settings + published events from the DB at request time (the
 // DB isn't available during the Docker build), like the other public pages.
@@ -47,8 +50,9 @@ export default async function HomePage({
   const tg = await getTranslations("gallery");
   const locale = await getLocale();
   const owner = await resolveOwner(username);
+  const viewer = await getCurrentUser();
   const base = ownerBasePath(owner.username);
-  const settings = await getSiteSettings(owner.id);
+  const settings = await getPublicSiteSettings(owner.id);
 
   const heroTitle = resolveHomeTitle(settings, locale, t("title"));
   const heroSubtitle = resolveHomeSubtitle(settings, locale, t("subtitle"));
@@ -67,11 +71,9 @@ export default async function HomePage({
     bookingEvents,
     personalLinks,
     announcements,
-    photoCount,
-    albumCount,
-    creditedNames
+    siteStatsRow
   ] = await Promise.all([
-    getHomePhotoStreamPage({ ownerId: owner.id, locale }),
+    getPublicHomePhotoStreamPage({ ownerId: owner.id, locale }),
     prisma.event.findMany({
       where: {
         ownerId: owner.id,
@@ -118,36 +120,35 @@ export default async function HomePage({
           }
         })
       : Promise.resolve([]),
-    getPersonalLinks(owner.id),
-    getAnnouncements(owner.id),
-    prisma.photo.count({
-      where: {
-        ...publicPhotoWhere,
-        event: { ownerId: owner.id, published: true }
-      }
-    }),
-    prisma.event.count({
-      where: { ownerId: owner.id, published: true }
-    }),
-    prisma.photoCredit.findMany({
-      where: {
-        creditName: { not: "" },
-        photo: {
-          ...publicPhotoWhere,
-          event: { ownerId: owner.id, published: true }
-        }
-      },
-      distinct: ["creditName"],
-      select: { creditName: true }
-    })
+    getPublicPersonalLinks(owner.id),
+    getPublicAnnouncements(owner.id),
+    prisma.$queryRaw<
+      { photoCount: bigint; albumCount: bigint; creditCount: bigint }[]
+    >`
+      SELECT
+        (SELECT COUNT(*) FROM "Photo" p
+          INNER JOIN "Event" e ON e."id" = p."eventId"
+          WHERE e."ownerId" = ${owner.id} AND e."published" = true
+            AND p."pendingBatchId" IS NULL AND p."uploadState" = 'ready'
+            AND p."moderationStatus" IN ('not_required', 'approved')) AS "photoCount",
+        (SELECT COUNT(*) FROM "Event" e
+          WHERE e."ownerId" = ${owner.id} AND e."published" = true) AS "albumCount",
+        (SELECT COUNT(DISTINCT pc."creditName") FROM "PhotoCredit" pc
+          INNER JOIN "Photo" p ON p."id" = pc."photoId"
+          INNER JOIN "Event" e ON e."id" = p."eventId"
+          WHERE e."ownerId" = ${owner.id} AND e."published" = true
+            AND pc."creditName" <> '' AND p."pendingBatchId" IS NULL
+            AND p."uploadState" = 'ready'
+            AND p."moderationStatus" IN ('not_required', 'approved')) AS "creditCount"
+    `
   ]);
 
   // Counts remain complete while the photo stream transports large portfolios
   // in bounded pages instead of making the initial homepage response unbounded.
   const siteStats = {
-    photoCount,
-    albumCount,
-    creditCount: creditedNames.length
+    photoCount: Number(siteStatsRow[0]?.photoCount ?? 0),
+    albumCount: Number(siteStatsRow[0]?.albumCount ?? 0),
+    creditCount: Number(siteStatsRow[0]?.creditCount ?? 0)
   };
 
   // One calendar entry per future day of each open event, so a multi-day event
@@ -202,6 +203,10 @@ export default async function HomePage({
     body: pickText(locale, a.bodyEn, a.bodyZh),
     imageUrl: siteImageUrl(a.image)
   }));
+  const hasHighlights = highlightEvents.length > 0 || announcementItems.length > 0;
+  const hasStats = siteStats.photoCount > 0 || siteStats.albumCount > 0 || siteStats.creditCount > 0;
+  const hasSidebar = calendarSessions.length > 0 || hasStats || personalLinkItems.length > 0;
+  const isEmpty = streamEvents.length === 0 && !hasHighlights && !hasSidebar;
 
   return (
     <div className="flex flex-col gap-10 lg:gap-14">
@@ -209,7 +214,7 @@ export default async function HomePage({
         <div className="flex max-w-4xl flex-col items-start">
           <span
             aria-hidden="true"
-            className="font-meta mb-5 text-[0.6875rem] font-semibold tracking-[0.2em] text-accent"
+            className="font-meta mb-5 text-[0.6875rem] font-semibold tracking-[0.2em] text-accent-text"
           >
             01 / PORTFOLIO
           </span>
@@ -249,7 +254,7 @@ export default async function HomePage({
         />
       </div>
 
-      <HomeHighlightsPanel
+      {hasHighlights && <HomeHighlightsPanel
         basePath={base}
         events={highlightEvents}
         announcements={announcementItems}
@@ -259,9 +264,17 @@ export default async function HomePage({
           noAnnouncements: t("noAnnouncements"),
           viewGallery: t("viewGallery")
         }}
-      />
+      />}
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
+      {isEmpty && (
+        <EmptyState
+          title={t("emptyPortfolioTitle")}
+          description={viewer?.id === owner.id ? t("emptyPortfolioOwnerHint") : t("emptyPortfolioVisitorHint")}
+          action={viewer?.id === owner.id ? <Link href="/dashboard/events" className={buttonClasses({ variant: "primary" })}>{t("emptyPortfolioAction")}</Link> : undefined}
+        />
+      )}
+
+      {!isEmpty && <div className={`grid gap-8 ${hasSidebar ? "lg:grid-cols-[minmax(0,1fr)_21rem]" : ""} lg:items-start`}>
         {streamEvents.length > 0 && (
           <section className="flex flex-col gap-7 rounded-xl border border-border bg-surface/92 p-5 sm:p-7">
             <div className="flex items-center gap-3">
@@ -294,26 +307,26 @@ export default async function HomePage({
         <aside
           className={`flex flex-col gap-6 ${streamEvents.length === 0 ? "lg:col-span-2 lg:grid lg:grid-cols-3" : ""}`}
         >
-          {settings.bookingEnabled && (
+          {settings.bookingEnabled && calendarSessions.length > 0 && (
             <BookingCalendar
               basePath={base}
               sessions={calendarSessions}
               timeZone={settings.timeZone}
             />
           )}
-          <QuickStats
+          {hasStats && <QuickStats
             stats={siteStats}
             title={t("quickStatsTitle")}
             photosLabel={t("quickStatsPhotos")}
             albumsLabel={t("quickStatsAlbums")}
             creditsLabel={creditsLabel}
-          />
-          <PersonalLinksList
+          />}
+          {personalLinkItems.length > 0 && <PersonalLinksList
             items={personalLinkItems}
             title={t("personalLinksTitle")}
-          />
+          />}
         </aside>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
 } from "@/lib/images";
 import { MultipartUploadError, parseSingleImageMultipart } from "@/lib/multipartUpload";
 import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
+import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 
 // Per-kind processing + which settings column the token is stored in.
 const KINDS: Record<
@@ -110,6 +111,8 @@ export async function POST(req: NextRequest) {
   // Remove the file the token replaced, and stop counting its bytes (both
   // best-effort — a leftover is corrected by reconcile, not by failing here).
   if (previousToken) await discardSiteImage(user.id, previousToken);
+
+  invalidatePublicMedia([`site-image:${token}`]);
 
   return NextResponse.json({ token, url: siteImageUrl(token) });
   } finally {

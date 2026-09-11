@@ -7,6 +7,7 @@ import {
   type KeyboardEvent
 } from "react";
 import { Link } from "@/i18n/navigation";
+import PublicImage from "@/components/ui/PublicImage";
 
 export interface HighlightPhoto {
   id: string;
@@ -81,14 +82,12 @@ function FeaturedPhotoStream({
                 data-original-photo-id={photo.id}
                 className="group relative block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fg/60"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <PublicImage
                   src={photo.url}
                   alt={photo.caption || event.title}
                   width={photo.width}
                   height={photo.height}
-                  loading={index < 2 ? "eager" : "lazy"}
-                  decoding="async"
+                  priority={index < 2}
                   data-testid="featured-photo-image"
                   className="block h-full w-full object-contain"
                 />

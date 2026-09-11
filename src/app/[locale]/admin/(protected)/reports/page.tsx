@@ -5,18 +5,22 @@ import { photoUrls } from "@/lib/images";
 import { ownerName } from "@/lib/owner";
 import ModerationReviewImage from "@/components/admin/ModerationReviewImage";
 import { updateContentReport } from "./actions";
+import PaginationNav from "@/components/ui/PaginationNav";
 
 export const dynamic = "force-dynamic";
 
-export default async function ContentReportsPage() {
+export default async function ContentReportsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const locale = await getLocale();
   await requireAdmin(locale);
   const t = await getTranslations("adminReports");
 
-  const reports = await prisma.contentReport.findMany({
-    where: { status: { in: ["pending", "reviewing"] } },
+  const page = Math.max(1, Number.parseInt((await searchParams).page ?? "1", 10) || 1);
+  const where = { status: { in: ["pending", "reviewing"] } };
+  const [reports, reportCount] = await Promise.all([prisma.contentReport.findMany({
+    where,
     orderBy: [{ status: "asc" }, { createdAt: "asc" }],
-    take: 100,
+    skip: (page - 1) * 50,
+    take: 50,
     select: {
       id: true,
       reason: true,
@@ -43,7 +47,7 @@ export default async function ContentReportsPage() {
         },
       },
     },
-  });
+  }), prisma.contentReport.count({ where })]);
 
   const dateFormatter = new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
@@ -181,6 +185,7 @@ export default async function ContentReportsPage() {
           })}
         </ul>
       )}
+      <PaginationNav page={page} totalPages={Math.max(1, Math.ceil(reportCount / 50))} path="/admin/reports" labels={{ navigation: t("pagination"), previous: t("previousPage"), next: t("nextPage"), count: t("pageCount", { page, total: Math.max(1, Math.ceil(reportCount / 50)) }) }} />
     </div>
   );
 }

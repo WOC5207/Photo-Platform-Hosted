@@ -27,12 +27,14 @@ export default function EquipmentSortableGrid({
   allItemIds,
   highlightedId,
   labels,
+  reorderEnabled = true,
   children
 }: {
   itemIds: string[];
   allItemIds: string[];
   highlightedId?: string;
   labels: Labels;
+  reorderEnabled?: boolean;
   children: ReactNode;
 }) {
   const initialChildren = Children.toArray(children);
@@ -84,27 +86,28 @@ export default function EquipmentSortableGrid({
 
   return (
     <>
-      <div aria-live="polite" className="min-h-5 text-right text-xs font-semibold text-fg-subtle">
+      {reorderEnabled && <div aria-live="polite" className="min-h-5 text-right text-xs font-semibold text-fg-subtle">
         {status === "saving" ? labels.saving : status === "saved" ? labels.saved : status === "error" ? labels.error : ""}
-      </div>
+      </div>}
       <ul className="min-w-0 columns-1 gap-4 md:columns-2">
         {order.map((id, index) => (
           <li
             key={id}
             id={`equipment-${id}`}
             onDragOver={(event) => {
+              if (!reorderEnabled) return;
               if (!draggedId || status === "saving") return;
               event.preventDefault();
               setOverId(id);
             }}
-            onDrop={(event) => drop(event, id)}
+            onDrop={(event) => reorderEnabled && drop(event, id)}
             className={`ui-panel mb-4 w-full min-w-0 break-inside-avoid overflow-hidden p-5 transition-[border-color,opacity,transform] ${
               highlightedId === id ? "ring-2 ring-success" : ""
             } ${overId === id && draggedId !== id ? "border-accent -translate-y-0.5" : ""} ${
               draggedId === id ? "opacity-60" : ""
             }`}
           >
-            <div className="mb-4 flex min-h-10 items-center justify-between gap-2 border-b border-border pb-3">
+            {reorderEnabled && <div className="mb-4 flex min-h-10 items-center justify-between gap-2 border-b border-border pb-3">
               <button
                 type="button"
                 draggable={status !== "saving"}
@@ -129,7 +132,7 @@ export default function EquipmentSortableGrid({
                 <button type="button" disabled={index === 0 || status === "saving"} onClick={() => shift(id, -1)} className="inline-flex size-10 items-center justify-center rounded-lg text-fg-subtle hover:bg-control hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:opacity-30 max-sm:size-11" aria-label={labels.moveEarlier} title={labels.moveEarlier}><svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m7 14 5-5 5 5"/></svg></button>
                 <button type="button" disabled={index === order.length - 1 || status === "saving"} onClick={() => shift(id, 1)} className="inline-flex size-10 items-center justify-center rounded-lg text-fg-subtle hover:bg-control hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:opacity-30 max-sm:size-11" aria-label={labels.moveLater} title={labels.moveLater}><svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m7 10 5 5 5-5"/></svg></button>
               </div>
-            </div>
+            </div>}
             {childrenById.get(id)}
           </li>
         ))}

@@ -1,0 +1,52 @@
+name: NAS production image
+
+on:
+  workflow_run:
+    workflows: ["Security and UX verification"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/woc5207/photo-platform-hosted
+          tags: |
+            type=raw,value=sha-${{ env.RELEASE_SHA }}
+            type=raw,value=stable
+      - name: Verify runtime image size
+        shell: bash
+        run: |
+          docker buildx build --platform linux/amd64 --load -t photo-platform:size-check .
+          bytes=$(docker image inspect photo-platform:size-check --format '{{.Size}}')
+          echo "Runtime image: $((bytes / 1024 / 1024)) MB"
+          test "$bytes" -le 629145600
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true

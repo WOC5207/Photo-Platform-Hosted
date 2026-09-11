@@ -1,4 +1,5 @@
 import { getLocale, getTranslations } from "next-intl/server";
+import type { Prisma } from "@prisma/client";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import EquipmentQrCode from "@/components/equipment/EquipmentQrCode";
 import EquipmentSortableGrid from "@/components/equipment/EquipmentSortableGrid";
@@ -8,6 +9,9 @@ import { Link } from "@/i18n/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { equipmentName, equipmentPhotoUrl } from "@/lib/equipment";
+import { EQUIPMENT_STATUSES } from "@/lib/equipment";
+import FilterToolbar from "@/components/ui/FilterToolbar";
+import { controlClasses } from "@/components/ui/Field";
 import { deleteEquipment, rotateEquipmentQr } from "./actions";
 
 const STATUS_KEY = {
@@ -29,9 +33,9 @@ const STATUS_CLASS = {
 export default async function EquipmentPage({
   searchParams
 }: {
-  searchParams: Promise<{ scan?: string; category?: string }>;
+  searchParams: Promise<{ scan?: string; category?: string; q?: string; status?: string; page?: string; mode?: string }>;
 }) {
-  const [{ scan, category: requestedCategory }, locale, t] = await Promise.all([
+  const [{ scan, category: requestedCategory, q = "", status, page: requestedPage, mode }, locale, t] = await Promise.all([
     searchParams,
     getLocale(),
     getTranslations("equipment")
@@ -46,22 +50,51 @@ export default async function EquipmentPage({
   const selectedCategory = categories.find(
     (category) => category.id === requestedCategory
   );
+  const selectedStatus = EQUIPMENT_STATUSES.find((value) => value === status);
+  const reorderMode = mode === "reorder";
+  const page = Math.max(1, Number.parseInt(requestedPage ?? "1", 10) || 1);
+  const where: Prisma.EquipmentItemWhereInput = {
+    ownerId: user.id,
+    ...(selectedCategory ? { categoryId: selectedCategory.id } : {}),
+    ...(selectedStatus ? { status: selectedStatus } : {}),
+    ...(q.trim()
+      ? {
+          OR: ["name", "brand", "model", "serialNumber"].map((field) => ({
+            [field]: { contains: q.trim(), mode: "insensitive" }
+          }))
+        }
+      : {})
+  };
+  const [total, allItemRows] = await Promise.all([
+    prisma.equipmentItem.count({ where }),
+    reorderMode
+      ? prisma.equipmentItem.findMany({ where: { ownerId: user.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true } })
+      : Promise.resolve([])
+  ]);
   const allEquipment = await prisma.equipmentItem.findMany({
-    where: { ownerId: user.id },
+    where,
     include: { category: true },
     orderBy: [
       { sortOrder: "asc" },
       { category: { name: "asc" } },
       { name: "asc" },
       { createdAt: "asc" }
-    ]
+    ],
+    ...(reorderMode ? {} : { skip: (page - 1) * 50, take: 50 })
   });
-  const equipment = selectedCategory
-    ? allEquipment.filter((item) => item.categoryId === selectedCategory.id)
-    : allEquipment;
+  const equipment = allEquipment;
   const scanned = scan
-    ? allEquipment.find((item) => item.qrToken === scan)
+    ? await prisma.equipmentItem.findFirst({ where: { ownerId: user.id, qrToken: scan }, include: { category: true } })
     : null;
+  const maxPage = Math.max(1, Math.ceil(total / 50));
+  const pageHref = (nextPage: number) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (selectedCategory) params.set("category", selectedCategory.id);
+    if (selectedStatus) params.set("status", selectedStatus);
+    params.set("page", String(nextPage));
+    return `/dashboard/equipment?${params.toString()}`;
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -134,7 +167,9 @@ export default async function EquipmentPage({
             }`}
           >
             {t("allCategories")}
-            <span className="text-xs opacity-75">{allEquipment.length}</span>
+            <span className="text-xs opacity-75">
+              {categories.reduce((sum, item) => sum + item._count.items, 0)}
+            </span>
           </Link>
           {categories.map((category) => (
             <Link
@@ -155,10 +190,32 @@ export default async function EquipmentPage({
       </nav>
 
       <section className="flex min-w-0 flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h2 className="font-display text-2xl font-semibold">{t("inventoryTitle")}</h2>
           <p className="mt-1 max-w-4xl text-sm leading-6 text-fg-subtle">{t("inventoryHint")}</p>
         </div>
+        <Link href={reorderMode ? "/dashboard/equipment" : "/dashboard/equipment?mode=reorder"} className={buttonClasses({ variant: reorderMode ? "primary" : "secondary", size: "compact" })}>
+          {reorderMode ? t("finishReorder") : t("reorderMode")}
+        </Link>
+        </div>
+        {!reorderMode && <form method="get">
+          <FilterToolbar label={t("results")} count={total}>
+            <label className="text-sm font-semibold text-fg-muted">
+              {t("searchEquipment")}
+              <input name="q" defaultValue={q} className={`${controlClasses} mt-1 w-full`} placeholder={t("searchEquipmentPlaceholder")} />
+            </label>
+            <label className="text-sm font-semibold text-fg-muted">
+              {t("filterStatus")}
+              <select name="status" defaultValue={selectedStatus ?? ""} className={`${controlClasses} mt-1 w-full`}>
+                <option value="">{t("allStatuses")}</option>
+                {EQUIPMENT_STATUSES.map((value) => <option key={value} value={value}>{t(STATUS_KEY[value])}</option>)}
+              </select>
+            </label>
+            {selectedCategory && <input type="hidden" name="category" value={selectedCategory.id} />}
+            <button type="submit" className={buttonClasses({ variant: "primary", size: "compact", className: "sm:col-span-2 sm:justify-self-start" })}>{t("applyFilters")}</button>
+          </FilterToolbar>
+        </form>}
         {equipment.length === 0 ? (
           <p className="ui-panel flex min-h-32 items-center justify-center p-6 text-center text-sm text-fg-subtle">
             {selectedCategory ? t("emptyCategory", { name: selectedCategory.name }) : t("emptyInventory")}
@@ -166,7 +223,8 @@ export default async function EquipmentPage({
         ) : (
           <EquipmentSortableGrid
             itemIds={equipment.map((item) => item.id)}
-            allItemIds={allEquipment.map((item) => item.id)}
+            allItemIds={reorderMode ? allItemRows.map((item) => item.id) : equipment.map((item) => item.id)}
+            reorderEnabled={reorderMode}
             highlightedId={scanned?.id}
             labels={{
               drag: t("reorderDrag"),
@@ -238,6 +296,13 @@ export default async function EquipmentPage({
               </article>
             ))}
           </EquipmentSortableGrid>
+        )}
+        {!reorderMode && maxPage > 1 && (
+          <nav aria-label={t("pagination")} className="flex items-center justify-between gap-3 border-t border-border pt-4">
+            {page > 1 ? <Link href={pageHref(page - 1)} className={buttonClasses({ size: "compact" })}>{t("previousPage")}</Link> : <span />}
+            <span className="font-meta text-xs text-fg-subtle">{t("pageCount", { page, total: maxPage })}</span>
+            {page < maxPage ? <Link href={pageHref(page + 1)} className={buttonClasses({ size: "compact" })}>{t("nextPage")}</Link> : <span />}
+          </nav>
         )}
       </section>
 

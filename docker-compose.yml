@@ -18,9 +18,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    mem_limit: ${DB_MEMORY_LIMIT:-768m}
 
   app:
-    build: .
+    image: ${PHOTO_PLATFORM_IMAGE:-ghcr.io/woc5207/photo-platform-hosted:stable}
     container_name: photo-platform
     restart: unless-stopped
     depends_on:
@@ -39,6 +40,10 @@ services:
       # mappings below instead. `db` is the service name above.
       DATABASE_URL: "postgresql://photo:${POSTGRES_PASSWORD}@db:5432/photo?schema=public&connection_limit=10"
       PHOTOS_DIR: "/data/photos"
+      NODE_OPTIONS: "--max-old-space-size=${NODE_MAX_OLD_SPACE_MB:-768}"
+      MALLOC_ARENA_MAX: "2"
+      IMAGE_PROCESSING_CONCURRENCY: "${IMAGE_PROCESSING_CONCURRENCY:-1}"
+    mem_limit: ${APP_MEMORY_LIMIT:-1536m}
     volumes:
       # Left side = folder on the NAS (created automatically next to this
       # compose file). Point these at shared-folder paths if you prefer,

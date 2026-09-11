@@ -6,6 +6,7 @@ import EventWorkspaceHeader from "@/components/events/EventWorkspaceHeader";
 import { buttonClasses } from "@/components/ui/Button";
 import { controlClasses } from "@/components/ui/Field";
 import SectionHeading from "@/components/ui/SectionHeading";
+import DisclosureSection from "@/components/ui/DisclosureSection";
 import { Link } from "@/i18n/navigation";
 import { requireUser } from "@/lib/auth";
 import { pickText } from "@/lib/content";
@@ -100,10 +101,6 @@ export default async function EquipmentChecklistPage({
     returned: equipmentItems.filter((item) => item.eventState === "RETURNED").length,
     broken: equipmentItems.filter((item) => item.eventState === "BROKEN").length
   };
-  const backHref = event
-    ? `/dashboard/preparation/equipment?event=${event.id}`
-    : "/dashboard/preparation/equipment";
-
   return (
     <div className="flex flex-col gap-8">
       {event ? (
@@ -121,9 +118,9 @@ export default async function EquipmentChecklistPage({
         <PreparationHeader active="equipment" />
       )}
 
-      <Link href={backHref} className={buttonClasses({ variant: "ghost", className: "self-start" })}>
-        {t("backToChecklists")}
-      </Link>
+      <section className="ui-panel p-4 sm:p-5">
+        <EquipmentScanner checklistId={checklist.id} initialProgress={initialProgress} />
+      </section>
 
       <section className="ui-panel flex flex-col gap-5 p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -167,7 +164,6 @@ export default async function EquipmentChecklistPage({
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="ui-panel flex min-w-0 flex-col gap-5 p-5 sm:p-6">
           <SectionHeading title={t("packingList")} description={t("packingListHint")} />
-          <EquipmentScanner checklistId={checklist.id} initialProgress={initialProgress} />
           {total === 0 ? (
             <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-fg-subtle">
               {t("emptyChecklistItems")}
@@ -216,7 +212,7 @@ export default async function EquipmentChecklistPage({
                             <strong className="font-semibold text-fg-muted">{t("eventStatus")}: {t(EVENT_STATE_KEY[item.eventState])}</strong>
                             <span className="ml-2">· {t("inventoryStatus")}: {t(STATUS_KEY[item.equipment.status])}</span>
                           </span>
-                          <Link href={`/dashboard/equipment/${item.equipment.id}`} className="font-semibold text-accent hover:underline">
+                          <Link href={`/dashboard/equipment/${item.equipment.id}`} className="inline-flex min-h-11 items-center font-semibold text-accent hover:underline">
                             {t("openInventoryItem")}
                           </Link>
                         </div>
@@ -242,7 +238,13 @@ export default async function EquipmentChecklistPage({
 
         </section>
 
-        <aside className="ui-panel flex flex-col gap-5 p-5 sm:p-6 lg:sticky lg:top-6">
+        <aside className="lg:sticky lg:top-6">
+          <DisclosureSection
+            title={t("addItems")}
+            description={t("addItemsHint")}
+            desktopOpen
+          >
+          <div className="flex flex-col gap-5">
           <EquipmentPicker
             checklistId={checklist.id}
             equipment={allEquipment.map((item) => ({
@@ -280,6 +282,8 @@ export default async function EquipmentChecklistPage({
               confirmText={t("deleteChecklistConfirm", { name: checklist.name })}
             />
           </form>
+          </div>
+          </DisclosureSection>
         </aside>
       </div>
     </div>

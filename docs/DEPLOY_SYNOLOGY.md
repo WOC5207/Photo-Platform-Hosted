@@ -18,7 +18,7 @@ compatible ARM64 build, and this hasn't been tested on one.
 1. [Prerequisites](#1-prerequisites)
 2. [Get the code onto the NAS](#2-get-the-code-onto-the-nas)
 3. [Configure the environment](#3-configure-the-environment)
-4. [Build and run in Container Manager](#4-build-and-run-in-container-manager)
+4. [Pull and run in Container Manager](#4-build-and-run-in-container-manager)
 5. [First run](#5-first-run)
 6. [Connect a domain](#6-connect-a-domain)
 7. [Enable email notifications (optional)](#7-enable-email-notifications-optional)
@@ -33,9 +33,8 @@ compatible ARM64 build, and this hasn't been tested on one.
 
 - A Synology NAS running **DSM 7.2 or later**, with the **Container Manager**
   package installed (Package Center → search "Container Manager" → Install).
-- At least ~2 GB of free RAM during the first build (the build step compiles
-  the Next.js app). 4 GB+ total NAS RAM is comfortable; on smaller models see
-  the "build on a PC instead" note in [step 4](#4-build-and-run-in-container-manager).
+- Enough free memory to run the containers. The defaults reserve 1.5 GB for
+  the app and 768 MB for PostgreSQL; compilation happens in CI, not on the NAS.
 - Admin access to DSM (Control Panel).
 - Optional but recommended for the domain section: a domain name you own
   (from any registrar — Namecheap, Cloudflare, GoDaddy, etc.) or a free
@@ -133,24 +132,24 @@ string. Keep `ADMIN_PASSWORD` unique and at most 72 UTF-8 bytes.
 
 ---
 
-## 4. Build and run in Container Manager
+## 4. Pull and run in Container Manager
 
 1. Open **Container Manager → Project → Create**.
 2. **Project name**: `photo-platform`.
    **Path**: the folder from step 2 (e.g. `/volume1/docker/photo-platform`).
    Container Manager will auto-detect `docker-compose.yml`.
-3. Click through the wizard and **Build**. The first build downloads the
-   Node.js base images and compiles the app — expect **5–15 minutes** on a
-   DS920+. Subsequent rebuilds (after updates) are faster since most layers
-   are cached.
-4. Two containers start: `photo-platform-db` (Postgres) and `photo-platform`
+3. Set `PHOTO_PLATFORM_IMAGE` to `stable` or, preferably, an immutable
+   `sha-<commit>` release tag.
+4. Run the project. Container Manager pulls the prebuilt x86-64 image and does
+   not compile the application on the NAS.
+5. Two containers start: `photo-platform-db` (Postgres) and `photo-platform`
    (the app). The app listens on **port 3000** inside the container, which
    `docker-compose.yml` maps only to **127.0.0.1:3000** on the NAS for DSM's
    reverse proxy; the database publishes no port at all and is reachable only
    from the app. The app waits
    for the database to report healthy, then applies migrations automatically
    before serving.
-5. The `data/photos` and `data/pg` folders (created automatically next to the
+6. The `data/photos` and `data/pg` folders (created automatically next to the
    compose file) are your persistent volumes — the containers themselves can
    be destroyed and recreated freely without losing data.
 
@@ -158,19 +157,16 @@ string. Keep `ADMIN_PASSWORD` unique and at most 72 UTF-8 bytes.
    > refuses to initialise into a non-empty directory, and the error does not
    > point at the cause.
 
-**If the build fails, or the NAS struggles (low RAM, build gets killed):**
-build the image on a regular PC with Docker installed instead, then import
-it:
+To build privately on a regular PC, use the source-build override:
 
 ```
-docker build --platform linux/amd64 -t photo-platform:latest .
-docker save photo-platform:latest -o photo-platform.tar
+docker compose -f docker-compose.yml -f docker-compose.build.yml build app
+docker save photo-platform:local -o photo-platform.tar
 ```
 
-Copy `photo-platform.tar` to the NAS, then in Container Manager: **Image →
-Add → From file**, select the tar. Then edit `docker-compose.yml` to replace
-`build: .` with `image: photo-platform:latest`, and create the project as in
-step 1 above (it will use the imported image instead of building).
+Copy the tar to the NAS and import it in Container Manager. Set
+`PHOTO_PLATFORM_IMAGE=photo-platform:local` in `.env`; the Compose file does
+not need to be edited.
 
 ---
 
@@ -335,10 +331,9 @@ This is the piece that maps `https://photos.yourstudio.com` (public, port
 1. Edit `.env` and set `APP_BASE_URL="https://photos.yourstudio.com"` (your
    actual domain, matching exactly what you configured above — same scheme,
    no trailing slash).
-2. In Container Manager, select the `photo-platform` project → **Action →
-   Build/Recreate** so the container picks up the new environment variable.
-   (This just recreates the container with the new `.env` values — your data
-   in `data/photos` and `data/pg` is untouched.)
+2. Recreate the app container so it reads the new environment value. Over SSH,
+   run `docker compose up -d --force-recreate app` in the project folder. This
+   does not rebuild the image and leaves `data/photos` and `data/pg` untouched.
 
 ### 6.8 Test it
 
@@ -443,11 +438,10 @@ SMTP_FROM="Pinhaoshe <no-reply@pinhaoshe.ca>"
 
 ### 7.3 Apply it
 
-In Container Manager, select the `photo-platform` project → **Action →
-Build/Recreate**. This matters: `.env` is read by `env_file` **when the
-container is created**, so a plain restart won't pick up new SMTP values —
-recreating the container will. Your data in `data/photos` and `data/pg` is
-untouched.
+Recreate the app with `docker compose up -d --force-recreate app`. This
+matters: `.env` is read by `env_file` **when the container is created**, so a
+plain restart won't pick up new SMTP values. Your data in `data/photos` and
+`data/pg` is untouched.
 
 ### 7.4 Test it
 
@@ -503,21 +497,23 @@ again — but see the warning above about when that is safe to take.
 
 ## 9. Updating the app
 
-1. Replace the project files with the new version — **keep `.env` and
-   `data/`**, don't overwrite or delete either.
-   - File Station: upload the new files over the old ones (skip `.env` and
-     `data/` in the upload).
-   - Git: `git pull` inside the project folder over SSH.
-2. In Container Manager: project → **Action → Build/Recreate**.
-3. Database migrations run automatically at container startup (see
+1. Back up `data/photos` and `data/pg`.
+2. Change `PHOTO_PLATFORM_IMAGE` to the new immutable `sha-<commit>` tag.
+3. Pull the image and recreate the project in Container Manager.
+4. Database migrations run automatically at container startup (see
    `docker-entrypoint.sh`) — no manual migration step needed.
+
+To roll back application code, restore the database backup when the release
+included a migration, set `PHOTO_PLATFORM_IMAGE` to the previous SHA tag, and
+recreate the project. Never delete the data directories as part of rollback.
 
 ---
 
 ## 10. Troubleshooting
 
-**Build fails or hangs on the NAS.** Usually low RAM. Build on a PC instead
-and import the image — see the note at the end of [step 4](#4-build-and-run-in-container-manager).
+**Image pull fails.** Confirm the tag exists and authenticate the NAS to GHCR
+if the package is private. As a fallback, build on a PC and import the image —
+see [step 4](#4-build-and-run-in-container-manager).
 
 **Container Manager shows the project running, but the HTTPS domain doesn't
 load.** Check the container's logs (Container Manager → Container →

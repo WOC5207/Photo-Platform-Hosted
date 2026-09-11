@@ -22,6 +22,7 @@
   --color-border: var(--color-border);
   --color-border-strong: var(--color-border-strong);
   --color-accent: var(--color-accent);
+  --color-accent-text: var(--color-accent-text);
   --color-accent-strong: var(--color-accent-strong);
   --color-accent-surface: var(--color-accent-surface);
   --color-accent-fg: var(--color-accent-fg);
@@ -73,6 +74,7 @@
   --color-border-strong: rgb(48 39 30 / 20%);
   --color-control-border: #8e8272;
   --color-accent: var(--safelight);
+  --color-accent-text: var(--safelight-deep);
   --color-accent-strong: var(--safelight-deep);
   --color-accent-surface: rgb(164 79 37 / 11%);
   --color-accent-fg: #fffefb;
@@ -115,6 +117,7 @@
     --color-border-strong: rgb(255 246 232 / 16%);
     --color-control-border: #817566;
     --color-accent: var(--darkroom-safelight);
+    --color-accent-text: var(--darkroom-safelight);
     --color-accent-strong: #ffc097;
     --color-accent-surface: rgb(226 154 104 / 12%);
     --color-accent-fg: #211d18;
@@ -157,6 +160,7 @@
   --color-border-strong: rgb(255 246 232 / 16%);
   --color-control-border: #817566;
   --color-accent: var(--darkroom-safelight);
+  --color-accent-text: var(--darkroom-safelight);
   --color-accent-strong: #ffc097;
   --color-accent-surface: rgb(226 154 104 / 12%);
   --color-accent-fg: #211d18;
@@ -191,6 +195,7 @@
   --color-border: var(--site-light-color-border);
   --color-border-strong: var(--site-light-color-border-strong);
   --color-accent: var(--site-light-color-accent);
+  --color-accent-text: var(--site-light-color-accent-text);
   --color-accent-strong: var(--site-light-color-accent-strong);
   --color-accent-surface: var(--site-light-color-accent-surface);
   --color-accent-fg: var(--site-light-color-accent-fg);
@@ -209,6 +214,7 @@
   --color-border: var(--site-dark-color-border);
   --color-border-strong: var(--site-dark-color-border-strong);
   --color-accent: var(--site-dark-color-accent);
+  --color-accent-text: var(--site-dark-color-accent-text);
   --color-accent-strong: var(--site-dark-color-accent-strong);
   --color-accent-surface: var(--site-dark-color-accent-surface);
   --color-accent-fg: var(--site-dark-color-accent-fg);
@@ -228,6 +234,7 @@
     --color-border: var(--site-dark-color-border);
     --color-border-strong: var(--site-dark-color-border-strong);
     --color-accent: var(--site-dark-color-accent);
+    --color-accent-text: var(--site-dark-color-accent-text);
     --color-accent-strong: var(--site-dark-color-accent-strong);
     --color-accent-surface: var(--site-dark-color-accent-surface);
     --color-accent-fg: var(--site-dark-color-accent-fg);
