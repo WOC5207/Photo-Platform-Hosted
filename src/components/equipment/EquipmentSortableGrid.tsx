@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, type DragEvent, type ReactNode, useMemo, useState } from "react";
+import { Children, type DragEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { reorderEquipment } from "@/app/[locale]/dashboard/(protected)/equipment/actions";
 
 type Labels = {
@@ -46,6 +46,24 @@ export default function EquipmentSortableGrid({
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const orderMatchesItems =
+    order.length === itemIds.length && order.every((id) => childrenById.has(id));
+  const visibleOrder = orderMatchesItems ? order : itemIds;
+
+  // App Router category/filter navigation preserves this client component.
+  // Reconcile its local ordering state with the newly filtered server result;
+  // otherwise stale IDs render as empty contact-sheet tiles.
+  useEffect(() => {
+    setOrder((current) =>
+      current.length === itemIds.length &&
+      current.every((id, index) => id === itemIds[index])
+        ? current
+        : itemIds
+    );
+    setDraggedId(null);
+    setOverId(null);
+    setStatus("idle");
+  }, [itemIds]);
 
   async function persist(nextVisible: string[], previous: string[]) {
     setOrder(nextVisible);
@@ -66,19 +84,19 @@ export default function EquipmentSortableGrid({
 
   function shift(id: string, delta: number) {
     if (status === "saving") return;
-    const from = order.indexOf(id);
+    const from = visibleOrder.indexOf(id);
     const to = from + delta;
-    if (from < 0 || to < 0 || to >= order.length) return;
-    const next = [...order];
+    if (from < 0 || to < 0 || to >= visibleOrder.length) return;
+    const next = [...visibleOrder];
     [next[from], next[to]] = [next[to], next[from]];
-    void persist(next, order);
+    void persist(next, visibleOrder);
   }
 
   function drop(event: DragEvent<HTMLElement>, targetId: string) {
     event.preventDefault();
     if (!draggedId || status === "saving") return;
-    const previous = order;
-    const next = moveItem(order, draggedId, targetId);
+    const previous = visibleOrder;
+    const next = moveItem(visibleOrder, draggedId, targetId);
     setDraggedId(null);
     setOverId(null);
     if (next !== previous) void persist(next, previous);
@@ -89,8 +107,8 @@ export default function EquipmentSortableGrid({
       {reorderEnabled && <div aria-live="polite" className="min-h-5 text-right text-xs font-semibold text-fg-subtle">
         {status === "saving" ? labels.saving : status === "saved" ? labels.saved : status === "error" ? labels.error : ""}
       </div>}
-      <ul className="min-w-0 columns-1 gap-4 md:columns-2">
-        {order.map((id, index) => (
+      <ul data-equipment-grid className="min-w-0 columns-1 gap-4 md:columns-2">
+        {visibleOrder.map((id, index) => (
           <li
             key={id}
             id={`equipment-${id}`}
@@ -130,7 +148,7 @@ export default function EquipmentSortableGrid({
               </button>
               <div className="flex gap-1">
                 <button type="button" disabled={index === 0 || status === "saving"} onClick={() => shift(id, -1)} className="inline-flex size-10 items-center justify-center rounded-lg text-fg-subtle hover:bg-control hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:opacity-30 max-sm:size-11" aria-label={labels.moveEarlier} title={labels.moveEarlier}><svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m7 14 5-5 5 5"/></svg></button>
-                <button type="button" disabled={index === order.length - 1 || status === "saving"} onClick={() => shift(id, 1)} className="inline-flex size-10 items-center justify-center rounded-lg text-fg-subtle hover:bg-control hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:opacity-30 max-sm:size-11" aria-label={labels.moveLater} title={labels.moveLater}><svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m7 10 5 5 5-5"/></svg></button>
+                <button type="button" disabled={index === visibleOrder.length - 1 || status === "saving"} onClick={() => shift(id, 1)} className="inline-flex size-10 items-center justify-center rounded-lg text-fg-subtle hover:bg-control hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:opacity-30 max-sm:size-11" aria-label={labels.moveLater} title={labels.moveLater}><svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m7 10 5 5 5-5"/></svg></button>
               </div>
             </div>}
             {childrenById.get(id)}
