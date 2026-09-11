@@ -437,6 +437,7 @@ test.describe.serial("management workflows", () => {
     await expect(categoryLink).toBeVisible();
     await categoryLink.click();
     await expect(page).toHaveURL(/category=/);
+    await expect(page.locator("[data-equipment-grid] > li")).toHaveCount(1);
     const inventoryCard = page.locator("li").filter({
       has: page.getByRole("heading", { name: equipmentName, exact: true })
     });
