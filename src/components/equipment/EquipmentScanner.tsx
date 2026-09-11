@@ -309,33 +309,34 @@ export default function EquipmentScanner({
                 <Button variant="primary" disabled={busy} onClick={start}>{t("start")}</Button>
               </div>
             )}
-            {running && (
-              <div className="absolute inset-x-3 bottom-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-page/90 p-2 backdrop-blur-sm">
-                <span className="px-2 text-xs font-semibold text-fg-muted">{busy ? t("working") : t("cameraRunning")}</span>
-                <div className="flex flex-wrap gap-2">
-                  {cameras.length > 1 && (
-                    <select
-                      aria-label={t("camera")}
-                      className={controlClasses}
-                      onChange={async (event) => {
-                        try {
-                          await scanner.current?.setCamera(event.target.value);
-                        } catch {
-                          stopCamera();
-                          setFeedback({ key: ++feedbackKey.current, kind: "error", message: t("cameraError") });
-                        }
-                      }}
-                      defaultValue=""
-                    >
-                      <option value="" disabled>{t("camera")}</option>
-                      {cameras.map((camera) => <option key={camera.id} value={camera.id}>{camera.label || camera.id}</option>)}
-                    </select>
-                  )}
-                  <Button size="compact" disabled={busy} onClick={stopCamera}>{t("stop")}</Button>
-                </div>
-              </div>
-            )}
           </div>
+
+          {running && (
+            <div className="mx-auto flex w-full max-w-xl flex-col gap-3 rounded-xl border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="px-1 text-xs font-semibold text-fg-muted">{busy ? t("working") : t("cameraRunning")}</span>
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                {cameras.length > 1 && (
+                  <select
+                    aria-label={t("camera")}
+                    className={`${controlClasses} min-w-0 sm:w-auto`}
+                    onChange={async (event) => {
+                      try {
+                        await scanner.current?.setCamera(event.target.value);
+                      } catch {
+                        stopCamera();
+                        setFeedback({ key: ++feedbackKey.current, kind: "error", message: t("cameraError") });
+                      }
+                    }}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>{t("camera")}</option>
+                    {cameras.map((camera) => <option key={camera.id} value={camera.id}>{camera.label || camera.id}</option>)}
+                  </select>
+                )}
+                <Button size="compact" className="w-full sm:w-auto" disabled={busy} onClick={stopCamera}>{t("stop")}</Button>
+              </div>
+            </div>
+          )}
 
           {feedback && (
             <div
