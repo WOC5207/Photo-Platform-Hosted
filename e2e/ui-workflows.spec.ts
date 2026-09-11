@@ -202,7 +202,7 @@ test.describe("locale and theme compatibility", () => {
 
     const backgroundSection = page
       .getByRole("heading", { name: "Background image", exact: true })
-      .locator("..");
+      .locator("xpath=ancestor::details[1]");
     const image = await sharp({
       create: {
         width: 24,
@@ -295,7 +295,7 @@ test.describe("locale and theme compatibility", () => {
       ).toHaveCount(0);
       await expect(
         page.getByRole("button", { name: "Save", exact: true })
-      ).toBeDisabled();
+      ).toHaveCount(0);
     }
   });
 });
@@ -1258,14 +1258,21 @@ test.describe.serial("management workflows", () => {
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await page.waitForURL(/\/dashboard\/bookings\/(?!new$)[^/]+$/);
 
-    // The availability section is now tabbed — one tab per selected day.
-    const dayTabs = page.getByRole("tablist").getByRole("tab");
-    await expect(dayTabs).toHaveCount(2);
-
     // Opening for public booking is still blocked until there are slots.
+    const managementTabs = page.getByRole("navigation", {
+      name: "Booking management sections"
+    });
+    await managementTabs.getByRole("link", { name: "Overview" }).click();
     await page.getByRole("checkbox", { name: "Open for public booking" }).check();
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("alert").filter({ hasText: "No time slots yet" })).toBeVisible();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await managementTabs.getByRole("link", { name: "Schedule" }).click();
+    await page.waitForURL(/section=schedule/);
+    // The availability section is tabbed — one tab per selected day.
+    const dayTabs = page.getByRole("tablist").getByRole("tab");
+    await expect(dayTabs).toHaveCount(2);
 
     // Add a slot under each day tab. Only the active day's adder is mounted.
     await page.getByLabel("First slot time").fill("10:00");
@@ -1291,6 +1298,10 @@ test.describe.serial("management workflows", () => {
       // open toggle is an uncontrolled checkbox, and racing it against the
       // slot-add revalidation can submit a stale (unchecked) value.
       await page.reload();
+      await page
+        .getByRole("navigation", { name: "Booking management sections" })
+        .getByRole("link", { name: "Overview" })
+        .click();
       const openCheckbox = page.getByRole("checkbox", {
         name: "Open for public booking"
       });
@@ -1417,6 +1428,11 @@ test.describe.serial("management workflows", () => {
 
     try {
       await page.goto(`/en/dashboard/bookings/${event.id}`);
+      await page
+        .getByRole("navigation", { name: "Booking management sections" })
+        .getByRole("link", { name: "Advanced" })
+        .click();
+      await page.waitForURL(/section=advanced/);
       await page
         .getByRole("checkbox", { name: "Allow visitors to edit their booking" })
         .check();
@@ -1607,6 +1623,11 @@ test.describe.serial("management workflows", () => {
       // Split the second day back out into a new event with its own link. The
       // day toggle is a visually-hidden checkbox behind a styled pill label, so
       // force the check past the label's pointer interception.
+      await page
+        .getByRole("navigation", { name: "Booking management sections" })
+        .getByRole("link", { name: "Advanced" })
+        .click();
+      await page.waitForURL(/section=advanced/);
       await page.getByRole("checkbox", { name: /12/ }).check({ force: true });
       page.once("dialog", (dialog) => dialog.accept());
       await page.getByRole("button", { name: /Split off/ }).click();

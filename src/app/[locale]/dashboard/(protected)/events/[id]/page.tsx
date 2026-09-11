@@ -4,8 +4,6 @@ import { notFound } from "next/navigation";
 import { getTranslations, getLocale } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { photoUrls } from "@/lib/images";
-import { formatShutterSpeedInput } from "@/lib/exif";
 import { ownerBasePath } from "@/lib/owner";
 import {
   getCreditProfiles,
@@ -18,10 +16,7 @@ import EventForm from "@/components/admin/EventForm";
 import PhotoManager, { type AdminPhoto } from "@/components/admin/PhotoManager";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import { deleteEvent, updateEvent } from "../actions";
-import {
-  warningCategoriesFromReasons,
-  type PhotoModerationStatus
-} from "@/lib/moderationPolicy";
+import { getAdminPhotoPage } from "@/lib/adminPhotoPage";
 
 export default async function EditEventPage({
   params
@@ -42,20 +37,7 @@ export default async function EditEventPage({
     where: { id, ownerId: user.id },
     include: {
       bookingEvent: { where: { ownerId: user.id }, select: { id: true } },
-      photos: {
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        include: {
-          credits: {
-            orderBy: { sortOrder: "asc" },
-            include: { socialLinks: { orderBy: { sortOrder: "asc" } } }
-          },
-          moderationScans: {
-            orderBy: { createdAt: "desc" },
-            take: 1,
-            select: { triggerReasons: true }
-          }
-        }
-      }
+      _count: { select: { photos: { where: { pendingBatchId: { not: null } } } } }
     }
   });
   if (!event) notFound();
@@ -65,43 +47,9 @@ export default async function EditEventPage({
     socialLinks: c.socialLinks.map((s) => ({ platform: s.platform, url: s.url }))
   }));
 
-  const pendingCount = event.photos.filter(
-    (photo) => photo.pendingBatchId !== null
-  ).length;
-
-  const photos: AdminPhoto[] = event.photos
-    .filter((photo) => photo.pendingBatchId === null)
-    .map((p) => ({
-      id: p.id,
-      thumbUrl: photoUrls(event.id, p.id).thumb,
-      credits: p.credits.map((c) => ({
-        creditName: c.creditName,
-        subject: c.subject,
-        socialLinks: c.socialLinks.map((s) => ({
-          platform: s.platform,
-          url: s.url
-        }))
-      })),
-      comment: p.comment,
-      isCover: event.coverPhotoId === p.id,
-      homeHighlight: p.homeHighlight,
-      homeWeight: p.homeWeight,
-      moderationStatus: p.moderationStatus as PhotoModerationStatus,
-      moderationCategories: warningCategoriesFromReasons(
-        p.moderationScans[0]?.triggerReasons
-      ),
-      exif: {
-        focalLengthMm: p.exifFocalLengthMm?.toString() ?? "",
-        aperture: p.exifAperture?.toString() ?? "",
-        exposureTime: formatShutterSpeedInput(p.exifExposureTime),
-        iso: p.exifIso?.toString() ?? "",
-        takenAt: p.exifTakenAt
-          ? p.exifTakenAt.toISOString().slice(0, 10)
-          : "",
-        cameraModel: p.exifCameraModel ?? "",
-        lensModel: p.exifLensModel ?? ""
-      }
-    }));
+  const pendingCount = event._count.photos;
+  const photoPage = await getAdminPhotoPage({ eventId: event.id, ownerId: user.id });
+  const photos: AdminPhoto[] = photoPage?.items ?? [];
 
   return (
     <div className="flex flex-col gap-8">
@@ -143,6 +91,8 @@ export default async function EditEventPage({
         </div>
         <PhotoManager
           photos={photos}
+          eventId={event.id}
+          nextCursor={photoPage?.nextCursor}
           creditProfiles={creditProfiles}
           creditTerm={creditTerm}
           subjectTerm={subjectTerm}

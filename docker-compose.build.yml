@@ -1,0 +1,6 @@
+services:
+  app:
+    image: photo-platform:local
+    build:
+      context: .
+      target: runner

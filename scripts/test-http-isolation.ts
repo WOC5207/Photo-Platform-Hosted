@@ -54,10 +54,29 @@ globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   return nativeFetch(input, init);
 }) as typeof fetch;
 let failures = 0;
+const mediaCacheTtlMs = Math.max(
+  1,
+  Number.parseInt(process.env.PUBLIC_MEDIA_METADATA_TTL_SECONDS ?? "20", 10) || 20
+) * 1000;
 
 function report(name: string, ok: boolean, detail: string) {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      ${detail}`);
   if (!ok) failures++;
+}
+
+async function fetchUntilStatus(
+  url: string,
+  status: number,
+  init?: RequestInit
+): Promise<Response> {
+  const deadline = Date.now() + mediaCacheTtlMs + 2_000;
+  let response = await fetch(url, init);
+  while (response.status !== status && Date.now() < deadline) {
+    await response.arrayBuffer();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    response = await fetch(url, init);
+  }
+  return response;
 }
 
 async function cookieFor(user: User): Promise<string> {
@@ -235,6 +254,10 @@ async function main() {
     where: { id: aliceEvent.id },
     data: { published: true }
   });
+  // This suite changes the database directly, bypassing the application's tag
+  // invalidation. Wait for the configured metadata TTL; production mutations
+  // invalidate immediately, while out-of-band changes honor the stale bound.
+  await new Promise((resolve) => setTimeout(resolve, mediaCacheTtlMs + 100));
   await prisma.user.update({ where: { id: bob.id }, data: { role: "admin" } });
   const pendingVariants = ["med.webp", "full.webp", "orig.jpg"];
   const pendingStatuses: string[] = [];
@@ -547,7 +570,7 @@ async function main() {
     data: { published: true }
   });
   const [publishedRendition, publishedOriginal] = await Promise.all([
-    fetch(`${BASE}/api/images/${aliceEvent.id}/${photoId}-med.webp`),
+    fetchUntilStatus(`${BASE}/api/images/${aliceEvent.id}/${photoId}-med.webp`, 200),
     fetch(`${BASE}/api/images/${aliceEvent.id}/${photoId}-orig.jpg`, {
       headers: { cookie: aliceCookie }
     })
@@ -563,7 +586,7 @@ async function main() {
     "GET /api/images: a published rendition is public but revalidates authorization",
     publishedRendition.status === 200 &&
       publishedRendition.headers.get("cache-control") ===
-        "public, max-age=0, must-revalidate" &&
+        "public, max-age=10, must-revalidate" &&
       Boolean(publishedEtag) &&
       revalidatedRendition.status === 304 &&
       publishedRendition.headers.get("x-content-type-options") === "nosniff" &&
@@ -639,7 +662,7 @@ async function main() {
     "setup: Alice's site image serves with authorization revalidation while active",
     siteImageBefore.status === 200 &&
       siteImageBefore.headers.get("cache-control") ===
-        "public, max-age=0, must-revalidate" &&
+        "public, max-age=10, must-revalidate" &&
       Boolean(siteImageEtag) &&
       siteImageRevalidated.status === 304,
     `HTTP ${siteImageBefore.status} (want 200) — the suspension check below is vacuous if this 404s`
@@ -663,14 +686,17 @@ async function main() {
     `site=${suspendedSite.status} (want 404), dashboard=${suspendedDash.status} (want redirect) — cookie still valid`
   );
 
+  await new Promise((resolve) => setTimeout(resolve, mediaCacheTtlMs + 100));
+
   // Suspension is the tool for taking content down, so the content is the part
   // that has to actually go. The page 404ing is not enough: these URLs are
   // public and already shared, so even a conditional ETag request must recheck
   // the account before the route can return a response.
   // Only the webp: renditions are always webp, so a -med.jpg URL 404s on a
   // missing file whether or not suspension works, and would pass either way.
-  const suspendedPhoto = await fetch(
+  const suspendedPhoto = await fetchUntilStatus(
     `${BASE}/api/images/${aliceEvent.id}/${photoId}-med.webp`,
+    404,
     { headers: publishedEtag ? { "if-none-match": publishedEtag } : undefined }
   );
   report(
@@ -680,9 +706,11 @@ async function main() {
       `the orig nor the unpublished branch covers it`
   );
 
-  const suspendedSiteImage = await fetch(`${BASE}/api/site/${siteImageToken}.webp`, {
-    headers: siteImageEtag ? { "if-none-match": siteImageEtag } : undefined
-  });
+  const suspendedSiteImage = await fetchUntilStatus(
+    `${BASE}/api/site/${siteImageToken}.webp`,
+    404,
+    { headers: siteImageEtag ? { "if-none-match": siteImageEtag } : undefined }
+  );
   report(
     "suspension: a site image stops serving from /api/site",
     suspendedSiteImage.status === 404,

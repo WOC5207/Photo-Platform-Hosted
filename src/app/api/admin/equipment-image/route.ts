@@ -12,6 +12,7 @@ import { adjustReservation, releaseBytes, reserveBytes } from "@/lib/quota";
 import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
 import { discardSiteImage } from "@/lib/siteImages";
 import { equipmentPhotoUrl } from "@/lib/equipment";
+import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 
 const IMAGE_OPTIONS = {
   prefix: "equipment",
@@ -84,6 +85,7 @@ export async function POST(req: NextRequest) {
 
     await adjustReservation(user.id, reserved, stored.bytes);
     if (previousToken) await discardSiteImage(user.id, previousToken);
+    invalidatePublicMedia();
     return NextResponse.json({ token: stored.token, url: equipmentPhotoUrl(stored.token) });
   } finally {
     await upload.cleanup();

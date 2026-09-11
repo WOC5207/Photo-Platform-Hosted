@@ -1,7 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { ownerName } from "@/lib/owner";
-import { getSiteSettings } from "@/lib/settings";
 import { photoUrls, siteImageUrl } from "@/lib/images";
 import { Link } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
@@ -9,7 +8,6 @@ import ThemeToggle from "@/components/ThemeToggle";
 import DirectorySearch from "@/components/DirectorySearch";
 import EmptyState from "@/components/ui/EmptyState";
 import { buttonClasses } from "@/components/ui/Button";
-import { publicPhotoWhere } from "@/lib/photoVisibility";
 
 // Lists live accounts — never prerender.
 export const dynamic = "force-dynamic";
@@ -25,68 +23,66 @@ export default async function DirectoryPage() {
   const t = await getTranslations("directory");
   const tc = await getTranslations("common");
 
-  const owners = await prisma.user.findMany({
-    where: {
-      status: "active",
-      // Only accounts with something to show. A photographer who has not
-      // published yet gets a working site at their URL but no directory card,
-      // rather than a card leading to an empty page.
-      events: {
-        some: {
-          published: true,
-          photos: { some: publicPhotoWhere }
-        }
-      }
-    },
-    orderBy: { createdAt: "asc" },
-    select: {
-      id: true,
-      username: true,
-      displayName: true,
-      events: {
-        where: { published: true },
-        orderBy: [{ dateStart: "desc" }, { createdAt: "desc" }],
-        select: {
-          id: true,
-          coverPhoto: {
-            where: publicPhotoWhere,
-            select: { id: true }
-          },
-          _count: {
-            select: { photos: { where: publicPhotoWhere } }
-          },
-          photos: {
-            where: publicPhotoWhere,
-            orderBy: { sortOrder: "asc" },
-            take: 1,
-            select: { id: true }
-          }
-        }
-      }
-    }
-  });
+  type DirectoryRow = {
+    id: string;
+    username: string;
+    displayName: string;
+    logo: string | null;
+    albumCount: bigint;
+    photoCount: bigint;
+    thumbEventId: string | null;
+    thumbPhotoId: string | null;
+  };
+  const owners = await prisma.$queryRaw<DirectoryRow[]>`
+    SELECT
+      u."id",
+      u."username",
+      u."displayName",
+      s."logo",
+      (SELECT COUNT(*) FROM "Event" e
+        WHERE e."ownerId" = u."id" AND e."published" = true) AS "albumCount",
+      (SELECT COUNT(*) FROM "Photo" p
+        INNER JOIN "Event" e ON e."id" = p."eventId"
+        WHERE e."ownerId" = u."id" AND e."published" = true
+          AND p."pendingBatchId" IS NULL AND p."uploadState" = 'ready'
+          AND p."moderationStatus" IN ('not_required', 'approved')) AS "photoCount",
+      thumb."eventId" AS "thumbEventId",
+      thumb."photoId" AS "thumbPhotoId"
+    FROM "User" u
+    LEFT JOIN "SiteSettings" s ON s."ownerId" = u."id"
+    LEFT JOIN LATERAL (
+      SELECT e."id" AS "eventId", p."id" AS "photoId"
+      FROM "Event" e
+      INNER JOIN LATERAL (
+        SELECT candidate."id"
+        FROM "Photo" candidate
+        WHERE candidate."eventId" = e."id"
+          AND candidate."pendingBatchId" IS NULL
+          AND candidate."uploadState" = 'ready'
+          AND candidate."moderationStatus" IN ('not_required', 'approved')
+        ORDER BY (candidate."id" = e."coverPhotoId") DESC,
+          candidate."sortOrder" ASC, candidate."createdAt" ASC
+        LIMIT 1
+      ) p ON true
+      WHERE e."ownerId" = u."id" AND e."published" = true
+      ORDER BY e."dateStart" DESC NULLS LAST, e."createdAt" DESC
+      LIMIT 1
+    ) thumb ON true
+    WHERE u."status" = 'active' AND thumb."photoId" IS NOT NULL
+    ORDER BY u."createdAt" ASC
+  `;
 
-  const cards = await Promise.all(
-    owners.map(async (o) => {
-      const settings = await getSiteSettings(o.id);
-      // First published album with a picture, for the card thumbnail.
-      const withPhoto = o.events.find(
-        (e) => e.coverPhoto?.id ?? e.photos[0]?.id
-      );
-      const photoId = withPhoto
-        ? (withPhoto.coverPhoto?.id ?? withPhoto.photos[0]?.id)
-        : null;
-      return {
-        username: o.username,
-        name: ownerName(o),
-        logoUrl: siteImageUrl(settings.logo),
-        thumbUrl:
-          withPhoto && photoId ? photoUrls(withPhoto.id, photoId).med : "",
-        albumCount: o.events.length,
-        photoCount: o.events.reduce((n, e) => n + e._count.photos, 0)
-      };
-    })
-  );
+  const cards = owners.map((owner) => ({
+    username: owner.username,
+    name: ownerName(owner),
+    logoUrl: siteImageUrl(owner.logo ?? ""),
+    thumbUrl:
+      owner.thumbEventId && owner.thumbPhotoId
+        ? photoUrls(owner.thumbEventId, owner.thumbPhotoId).med
+        : "",
+    albumCount: Number(owner.albumCount),
+    photoCount: Number(owner.photoCount)
+  }));
 
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-10 px-4 py-7 sm:px-7 sm:py-10 lg:py-14">

@@ -21,17 +21,24 @@ import CopyButton from "@/components/admin/CopyButton";
 import BookingStatusButton from "@/components/admin/BookingStatusButton";
 import LotteryEnabledToggle from "@/components/admin/LotteryEnabledToggle";
 import { Link } from "@/i18n/navigation";
+import Tabs from "@/components/ui/Tabs";
 import {
   deleteBookingEvent,
   deleteSlot,
   updateBookingEvent
 } from "../actions";
 export default async function EditBookingEventPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ id: string; locale: string }>;
+  searchParams: Promise<{ section?: string }>;
 }) {
   const { id, locale } = await params;
+  const requestedSection = (await searchParams).section;
+  const activeSection = requestedSection === "overview" || requestedSection === "advanced"
+    ? requestedSection
+    : "schedule";
   const user = await requireUser(locale);
   const t = await getTranslations("adminBookings");
   const tp = await getTranslations("preparation");
@@ -67,11 +74,37 @@ export default async function EditBookingEventPage({
     event.days.length > 1 &&
     !event.slotsInitialized &&
     event.days.every((day) => day.slots.length === 0);
+  const formInitial = {
+    id: event.id,
+    titleEn: event.titleEn,
+    titleZh: event.titleZh,
+    dates: event.days.map((day) => formatDate(day.date)),
+    location: event.location,
+    descriptionEn: event.descriptionEn,
+    descriptionZh: event.descriptionZh,
+    visitorEditsEnabled: event.visitorEditsEnabled,
+    visitorEditCutoffHours: event.visitorEditCutoffHours,
+    open: event.open
+  };
 
   return (
     <div className="flex flex-col gap-8">
       <EventWorkspaceHeader title={pickText(locale, (event.galleryEvent ?? event).titleEn, (event.galleryEvent ?? event).titleZh)} galleryId={event.galleryEvent?.id} bookingId={event.id} active="bookings" />
 
+      <Tabs
+        active={activeSection}
+        label={t("managementSections")}
+        reloadDocument
+        items={[
+          { id: "schedule", label: t("sectionSchedule"), href: `/dashboard/bookings/${event.id}?section=schedule` },
+          { id: "overview", label: t("sectionOverview"), href: `/dashboard/bookings/${event.id}?section=overview` },
+          { id: "advanced", label: t("sectionAdvanced"), href: `/dashboard/bookings/${event.id}?section=advanced` }
+        ]}
+      />
+
+      <div key={activeSection} className="contents">
+
+      {activeSection === "overview" && <>
       {!settings.bookingEnabled && (
         <p
           role="status"
@@ -108,21 +141,34 @@ export default async function EditBookingEventPage({
         submitLabel={tc("save")}
         cancelHref="/dashboard/events"
         timeZone={settings.timeZone}
-        initial={{
-          id: event.id,
-          titleEn: event.titleEn,
-          titleZh: event.titleZh,
-          dates: event.days.map((day) => formatDate(day.date)),
-          location: event.location,
-          descriptionEn: event.descriptionEn,
-          descriptionZh: event.descriptionZh,
-          visitorEditsEnabled: event.visitorEditsEnabled,
-          visitorEditCutoffHours: event.visitorEditCutoffHours,
-          open: event.open
-        }}
+        section="overview"
+        initial={formInitial}
       />
+      </>}
 
-      {showLotteryManagement && (
+      {activeSection === "advanced" && !settings.lotteryEnabled && showLotteryManagement && (
+        <p
+          role="status"
+          className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-fg-subtle"
+        >
+          <strong className="font-semibold text-fg-muted">{t("offPublicly")}.</strong>{" "}
+          {ts("groupLotteryHint")}
+        </p>
+      )}
+
+      {activeSection === "advanced" && (
+        <BookingEventForm
+          action={updateBookingEvent}
+          submitLabel={tc("save")}
+          cancelHref="/dashboard/events"
+          timeZone={settings.timeZone}
+          showOpenToggle={false}
+          section="advanced"
+          initial={formInitial}
+        />
+      )}
+
+      {activeSection === "advanced" && showLotteryManagement && (
         <section className="rounded-xl border border-border bg-surface p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -148,7 +194,7 @@ export default async function EditBookingEventPage({
         </section>
       )}
 
-      <section className="flex flex-col gap-4 border-t border-border pt-6">
+      {activeSection === "schedule" && <section className="flex flex-col gap-4 border-t border-border pt-6">
         <h2 className="text-lg font-semibold">{t("slots")}</h2>
 
         <BookingDayTabs
@@ -271,11 +317,11 @@ export default async function EditBookingEventPage({
             })
           )}
         />
-      </section>
+      </section>}
 
-      <Link href={"/dashboard/preparation/slots?event=" + event.id} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent underline underline-offset-4">{tp("openPreparation")}</Link>
+      {activeSection === "schedule" && <Link href={"/dashboard/preparation/slots?event=" + event.id} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent underline underline-offset-4">{tp("openPreparation")}</Link>}
 
-      {event.days.length >= 2 && (
+      {activeSection === "advanced" && event.days.length >= 2 && (
         <BookingEventSplit
           eventId={event.id}
           days={event.days.map((day) => ({
@@ -285,7 +331,7 @@ export default async function EditBookingEventPage({
         />
       )}
 
-      <section className="rounded-xl border border-danger-border bg-danger-surface/40 p-5">
+      {activeSection === "advanced" && <section className="rounded-xl border border-danger-border bg-danger-surface/40 p-5">
         <h2 className="text-lg font-semibold text-danger-strong">{tc("dangerZone")}</h2>
         <p className="mt-1 text-sm text-fg-subtle">{t("confirmDeleteEvent")}</p>
         {event.galleryEvent && <p className="mt-2 text-sm text-fg-muted">{tw("bookingDeleteHint")}</p>}
@@ -296,7 +342,8 @@ export default async function EditBookingEventPage({
             confirmText={t("confirmDeleteEvent")}
           />
         </form>
-      </section>
+      </section>}
+      </div>
     </div>
   );
 }

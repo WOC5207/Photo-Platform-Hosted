@@ -99,6 +99,10 @@
     "legacyBooking": "已有预约活动",
     "legacyBookingHint": "原有预约和链接均已保留。打开活动可添加关联的草稿相册。",
     "openEvent": "打开活动",
+    "pagination": "活动分页",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "pageCount": "第 {page} / {total} 页",
     "galleryDeleteHint": "仅删除相册及照片，关联的预约页面和器材清单会保留。",
     "bookingDeleteHint": "将删除预约日程、预约记录和每日清单，关联的相册和照片会保留。"
   },
@@ -183,6 +187,10 @@
     "label": "语言"
   },
   "home": {
+    "emptyPortfolioTitle": "作品集仍在准备中",
+    "emptyPortfolioOwnerHint": "创建并发布第一个相册，即可向访客展示此页面。",
+    "emptyPortfolioVisitorHint": "这位摄影师尚未发布相册。",
+    "emptyPortfolioAction": "创建相册",
     "title": "摄影作品集",
     "subtitle": "每一次拍摄，都被认真记录。",
     "browseGallery": "浏览作品集",
@@ -251,6 +259,18 @@
     "platformHealth": "平台运行状况"
   },
   "equipment": {
+    "searchEquipment": "搜索库存",
+    "searchEquipmentPlaceholder": "名称、品牌、型号或序列号",
+    "filterStatus": "状态",
+    "allStatuses": "全部状态",
+    "applyFilters": "应用筛选",
+    "results": "结果",
+    "reorderMode": "调整器材顺序",
+    "finishReorder": "完成排序",
+    "pagination": "库存分页",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "pageCount": "第 {page} / {total} 页",
     "title": "器材",
     "description": "通过照片和可扫描二维码，管理相机、镜头及配件的身份、状态与去向。",
     "manageInventory": "管理分类",
@@ -388,6 +408,8 @@
     "removeItem": "从清单移除 {name}",
     "chooseEquipment": "选择器材",
     "customItem": "自定义提醒",
+    "addItems": "添加项目",
+    "addItemsHint": "从库存选择器材，或添加一次性提醒。",
     "add": "添加",
     "deleteChecklist": "删除清单",
     "deleteChecklistConfirm": "删除清单“{name}”？器材库不会受到影响。"
@@ -481,6 +503,10 @@
     "pngDownloadError": "无法生成 PNG 标签。请检查画面素材或重试。"
   },
   "adminEvents": {
+    "loadMorePhotos": "加载更多照片",
+    "loadingMorePhotos": "正在加载照片…",
+    "retryMorePhotos": "重试加载",
+    "loadMorePhotosError": "无法加载更多照片。",
     "listDescription": "整理拍摄活动、精选照片，将作品发布到你的摄影网站。",
     "emptyTitle": "从第一组作品开始",
     "emptyDescription": "为一次拍摄创建相册，添加照片与署名，整理完成后再公开分享。",
@@ -950,6 +976,10 @@
     "next": "下一张"
   },
   "adminBookings": {
+    "managementSections": "预约管理分区",
+    "sectionSchedule": "时间表",
+    "sectionOverview": "概览",
+    "sectionAdvanced": "高级",
     "listDescription": "安排拍摄场次，在同一处管理访客预约。",
     "emptyTitle": "为下一次拍摄做好安排",
     "emptyDescription": "创建预约活动，先确定日期和地点，再添加可供访客选择的拍摄时段。",
@@ -1294,6 +1324,10 @@
     "login": "摄影师登录"
   },
   "platform": {
+    "pagination": "账户分页",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "pageCount": "第 {page} / {total} 页",
     "usersTitle": "账号",
     "usersSubtitle": "本平台上的所有账号。",
     "invitesTitle": "邀请",
@@ -1491,6 +1525,10 @@
     "photoDetailsPage": "第 {page} 页，共 {total} 页"
   },
   "adminReports": {
+    "pagination": "举报分页",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "pageCount": "第 {page} / {total} 页",
     "navTitle": "访客举报",
     "title": "访客照片举报",
     "description": "处理从小程序提交的照片举报。举报身份仅用于防滥用控制，不会在此页面显示。",

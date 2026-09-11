@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import SiteChrome from "@/components/SiteChrome";
-import { findOwner, resolveOwner } from "@/lib/owner";
-import { getSiteSettings, resolveSiteTitle } from "@/lib/settings";
+import { findPublicOwner, resolveOwner } from "@/lib/owner";
+import { getPublicSiteSettings, resolveSiteTitle } from "@/lib/settings";
 
 // Resolves the owner from the request path — never prerender.
 export const dynamic = "force-dynamic";
@@ -14,11 +14,11 @@ export async function generateMetadata({
   params: Promise<{ locale: string; username: string }>;
 }): Promise<Metadata> {
   const { locale, username } = await params;
-  const owner = await findOwner(username);
+  const owner = await findPublicOwner(username);
   if (!owner) return {};
 
   const t = await getTranslations({ locale, namespace: "common" });
-  const settings = await getSiteSettings(owner.id);
+  const settings = await getPublicSiteSettings(owner.id);
   return {
     title: resolveSiteTitle(settings, locale, t("siteName"))
   };

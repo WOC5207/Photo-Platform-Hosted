@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -912,6 +913,8 @@ export async function PATCH(req: NextRequest) {
     if (photo.moderationStatus === "queued") enqueueModeration(photo.id);
   }
 
+  invalidatePublicMedia();
+  invalidatePublicMedia();
   revalidatePath("/", "layout");
   return NextResponse.json({
     ids: photoIds,

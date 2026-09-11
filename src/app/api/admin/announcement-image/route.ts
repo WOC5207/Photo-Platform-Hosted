@@ -11,6 +11,7 @@ import { adjustReservation, releaseBytes, reserveBytes } from "@/lib/quota";
 import { discardSiteImage } from "@/lib/siteImages";
 import { MultipartUploadError, parseSingleImageMultipart } from "@/lib/multipartUpload";
 import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
+import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 
 const IMAGE_OPTIONS = {
   prefix: "ann",
@@ -92,6 +93,8 @@ export async function POST(req: NextRequest) {
 
   // Retire the image this one replaced (file, row and its bytes).
   if (existing.image) await discardSiteImage(user.id, existing.image);
+
+  invalidatePublicMedia([`site-image:${token}`]);
 
   return NextResponse.json({ token, url: siteImageUrl(token) });
   } finally {

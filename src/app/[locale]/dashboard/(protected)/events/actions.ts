@@ -18,6 +18,7 @@ import { deleteEventFiles, deletePhotoFiles } from "@/lib/images";
 import { deleteOwnedPhotoRowsAndRelease } from "@/lib/quota";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
 import { parseShutterSpeed } from "@/lib/exif";
+import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 import { slugify, uniqueEventSlug } from "@/lib/slug";
 import { redirect } from "next/navigation";
 
@@ -121,6 +122,17 @@ export async function updateEvent(
     }
   });
 
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
   revalidatePath("/", "layout");
   return { ok: true };
 }

@@ -3,6 +3,7 @@ import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { pickText } from "@/lib/content";
 import { safeExternalHttpUrl } from "@/lib/externalUrl";
+import { unstable_cache } from "next/cache";
 
 export interface SiteSettings {
   id: string;
@@ -114,6 +115,17 @@ export const getSiteSettings = cache(
   }
 );
 
+/** Cross-request cache for public rendering. Internal actions and standalone
+ * tests use getSiteSettings so they always read directly and do not depend on
+ * Next's incremental-cache request context. */
+export async function getPublicSiteSettings(ownerId: string): Promise<SiteSettings> {
+  return unstable_cache(
+    () => getSiteSettings(ownerId),
+    ["site-settings", ownerId],
+    { revalidate: 20, tags: ["public-content", `owner:${ownerId}`] }
+  )();
+}
+
 /**
  * Resolve the site's brand title for a locale, falling back to the other
  * language and finally to the caller-supplied default (the i18n siteName).
@@ -218,21 +230,37 @@ export function resolveContactQrToken(settings: SiteSettings, locale: string): s
 /** One owner's links to their other sites/profiles. */
 export const getPersonalLinks = cache(async (ownerId: string) => {
   const links = await prisma.personalLink.findMany({
-    where: { ownerId },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
-  });
+      where: { ownerId },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
+    });
   return links
     .map((link) => ({ ...link, url: safeExternalHttpUrl(link.url) }))
     .filter((link) => link.url !== "");
 });
 
+export async function getPublicPersonalLinks(ownerId: string) {
+  return unstable_cache(
+    () => getPersonalLinks(ownerId),
+    ["personal-links", ownerId],
+    { revalidate: 20, tags: ["public-content", `owner:${ownerId}`] }
+  )();
+}
+
 /** One owner's notices, shown in their homepage panel's Announcements tab. */
 export const getAnnouncements = cache(async (ownerId: string) => {
   return prisma.announcement.findMany({
-    where: { ownerId },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
-  });
+      where: { ownerId },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
+    });
 });
+
+export async function getPublicAnnouncements(ownerId: string) {
+  return unstable_cache(
+    () => getAnnouncements(ownerId),
+    ["announcements", ownerId],
+    { revalidate: 20, tags: ["public-content", `owner:${ownerId}`] }
+  )();
+}
 
 /**
  * One owner's remembered credited-person social-link profiles (see

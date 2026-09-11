@@ -10,6 +10,7 @@ import { redirect } from "next/navigation";
 import { discardSiteImage } from "@/lib/siteImages";
 import { isValidTimeZone } from "@/lib/timeZone";
 import { acceptBookingPriceNotice } from "@/lib/bookingPriceNotice";
+import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 import {
   DASHBOARD_THEME_MODES,
   siteThemeMinimumContrast,
@@ -238,6 +239,17 @@ export async function updateSiteSettings(
     }
   }
 
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
   revalidatePath("/", "layout");
   return { ok: true };
 }

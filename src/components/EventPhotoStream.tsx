@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@/i18n/navigation";
 import PhotoCreditOverlay from "@/components/PhotoCreditOverlay";
+import PublicImage from "@/components/ui/PublicImage";
 import { homePhotoWeightScale } from "@/lib/homePhotoWeight";
 import type {
   HomePhotoStreamPage,
@@ -153,8 +154,7 @@ export default function EventPhotoStream({
                     aria-label={linkLabel}
                     className="group relative block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
+                    <PublicImage
                       src={photo.url}
                       alt={photo.alt || fallbackLabel}
                       loading="lazy"

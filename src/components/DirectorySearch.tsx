@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { Input } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
+import PublicImage from "@/components/ui/PublicImage";
 
 export interface DirectoryOwner {
   username: string;
@@ -63,12 +64,10 @@ export default function DirectorySearch({ owners }: { owners: DirectoryOwner[] }
               >
                 <div className="aspect-[3/2] w-full overflow-hidden bg-fg/5">
                   {o.thumbUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <PublicImage
                       src={o.thumbUrl}
                       alt=""
-                      loading={index < 3 ? "eager" : "lazy"}
-                      decoding="async"
+                      priority={index < 3}
                       className="ui-image-frame h-full w-full object-cover transition-transform duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover:scale-[1.025]"
                     />
                   )}
@@ -78,10 +77,11 @@ export default function DirectorySearch({ owners }: { owners: DirectoryOwner[] }
                     {String(index + 1).padStart(2, "0")}
                   </span>
                   {o.logoUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <PublicImage
                       src={o.logoUrl}
                       alt=""
+                      width={36}
+                      height={36}
                       className="ui-image-frame h-9 w-9 shrink-0 rounded-md object-cover"
                     />
                   )}

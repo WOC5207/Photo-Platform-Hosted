@@ -13,6 +13,8 @@ import Button from "@/components/ui/Button";
 import SectionHeading from "@/components/ui/SectionHeading";
 import StatusMessage from "@/components/ui/StatusMessage";
 import Tabs from "@/components/ui/Tabs";
+import FormActionBar from "@/components/ui/FormActionBar";
+import DisclosureSection from "@/components/ui/DisclosureSection";
 import {
   updateSiteSettings,
   type SiteSettingsSection,
@@ -54,17 +56,18 @@ type PaletteGenerationSnapshot = {
 function Group({
   title,
   hint,
+  defaultOpen = true,
   children
 }: {
   title: string;
   hint: string;
+  defaultOpen?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-5 rounded-xl border border-border bg-surface p-4 sm:p-6">
-      <SectionHeading title={title} description={hint} />
-      {children}
-    </section>
+    <DisclosureSection title={title} description={hint} defaultOpen={defaultOpen}>
+      <div className="flex flex-col gap-5">{children}</div>
+    </DisclosureSection>
   );
 }
 
@@ -1251,8 +1254,8 @@ export default function SiteSettingsForm({
 
       {activeSection === "profile" && profileSlot}
 
-      {activeSection !== "profile" && (
-      <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-page/95 p-3 shadow-lg backdrop-blur-xl sm:sticky sm:bottom-4 sm:z-10">
+      {activeSection !== "profile" && (dirty || pending || state.error || state.ok) && (
+      <FormActionBar>
         <Button
           type="submit"
           form={FORM_ID}
@@ -1286,7 +1289,7 @@ export default function SiteSettingsForm({
             {tc("saved")}
           </StatusMessage>
         )}
-      </div>
+      </FormActionBar>
       )}
     </div>
   );

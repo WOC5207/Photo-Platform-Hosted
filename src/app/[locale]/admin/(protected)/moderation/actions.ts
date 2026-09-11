@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { prisma } from "@/lib/db";
+import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
 import {
@@ -88,6 +89,11 @@ export async function saveModerationSettings(
     });
   });
 
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
+  invalidatePublicMedia();
   revalidatePath("/", "layout");
   return { ok: true };
 }

@@ -11,22 +11,27 @@ import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import RegistrationNoticeForm from "@/components/admin/RegistrationNoticeForm";
 import BookingPriceNoticeForm from "@/components/admin/BookingPriceNoticeForm";
 import { revokeInvite } from "../actions";
+import PaginationNav from "@/components/ui/PaginationNav";
 
 export const dynamic = "force-dynamic";
 
-export default async function PlatformInvitesPage() {
+export default async function PlatformInvitesPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const locale = await getLocale();
   await requireAdmin(locale);
   const t = await getTranslations("platform");
   const tc = await getTranslations("common");
 
-  const [invites, platformSettings] = await Promise.all([
+  const page = Math.max(1, Number.parseInt((await searchParams).page ?? "1", 10) || 1);
+  const [invites, inviteCount, platformSettings] = await Promise.all([
     prisma.invite.findMany({
       orderBy: { createdAt: "desc" },
+      skip: (page - 1) * 50,
+      take: 50,
       include: {
         redeemedBy: { select: { username: true, displayName: true } }
       }
     }),
+    prisma.invite.count(),
     getPlatformSettings()
   ]);
 
@@ -146,6 +151,7 @@ export default async function PlatformInvitesPage() {
           })}
         </ul>
       )}
+      <PaginationNav page={page} totalPages={Math.max(1, Math.ceil(inviteCount / 50))} path="/admin/invites" labels={{ navigation: t("pagination"), previous: t("previousPage"), next: t("nextPage"), count: t("pageCount", { page, total: Math.max(1, Math.ceil(inviteCount / 50)) }) }} />
     </div>
   );
 }

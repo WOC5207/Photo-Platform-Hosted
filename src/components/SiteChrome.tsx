@@ -9,7 +9,7 @@ import ScrollBlurBackground from "@/components/ScrollBlurBackground";
 import ContactUsButton from "@/components/ContactUsButton";
 import { getCurrentUser } from "@/lib/auth";
 import {
-  getSiteSettings,
+  getPublicSiteSettings,
   resolveContactQrToken,
   resolveContactTitle,
   resolveContactUrl,
@@ -39,7 +39,7 @@ export default async function SiteChrome({
   const t = await getTranslations();
   const locale = await getLocale();
   const [settings, currentUser] = await Promise.all([
-    getSiteSettings(owner.id),
+    getPublicSiteSettings(owner.id),
     getCurrentUser()
   ]);
   const base = ownerBasePath(owner.username);

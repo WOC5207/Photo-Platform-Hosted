@@ -163,14 +163,16 @@ characters in the database connection string.
 > the DB copy wins. Replace the placeholder password from **Account → Profile
 > & security** immediately after the first login.
 
-### 3. Build and start with Container Manager
+### 3. Pull and start with Container Manager
 
 1. Open **Container Manager** → **Project** → **Create**.
 2. Project name: `photo-platform`. Path: the folder from step 1
    (`/volume1/docker/photo-platform`). It will detect `docker-compose.yml`.
-3. Click through and **Build**. The first build downloads images and compiles
-   the app — expect **5–15 minutes** on a DS920+. Later rebuilds are faster.
-4. Two containers start: `photo-platform-db` (Postgres) and `photo-platform`
+3. Confirm `PHOTO_PLATFORM_IMAGE` in `.env`. Use `stable` for the latest
+   verified release or pin `sha-<commit>` for reproducible deployment.
+4. Click through and **Run/Build**. Container Manager pulls the prebuilt
+   `linux/amd64` image; it does not compile Next.js on the NAS.
+5. Two containers start: `photo-platform-db` (Postgres) and `photo-platform`
    (the app, on **port 3000**). The app waits for the database to report
    healthy, then applies migrations automatically before serving.
 
@@ -185,18 +187,16 @@ Both are created on first start. The containers themselves are disposable.
 > refuses to initialise into a directory that is not empty, and the error it
 > gives does not point at the cause.
 
-**If the build fails or the NAS struggles** (low RAM): build the image on a PC
-with Docker instead:
+For local development or a private PC-built image, opt into source building:
 
 ```
-docker build --platform linux/amd64 -t photo-platform:latest .
-docker save photo-platform:latest -o photo-platform.tar
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+docker save photo-platform:local -o photo-platform.tar
 ```
 
 Upload `photo-platform.tar` via Container Manager → **Image** → **Add → From
-file**, then in `docker-compose.yml` replace `build: .` with
-`image: photo-platform:latest` and create the project as above. (Only the `app`
-service needs this; Postgres pulls its own official image.)
+file**, set `PHOTO_PLATFORM_IMAGE=photo-platform:local`, and recreate the
+project. The main Compose file never needs to be edited.
 
 ### 4. First run
 
@@ -248,8 +248,8 @@ public URL (`APP_BASE_URL`).
 2. Make sure the hostname has a valid certificate
    (**Control Panel → Security → Certificate**).
 3. Set `APP_BASE_URL` in `.env` to `https://photos.example.com`, then in
-   Container Manager select the project → **Action → Build/Recreate** so the
-   new value is picked up.
+   recreate the app container so the new value is picked up. Over SSH, run
+   `docker compose up -d --force-recreate app` from the project folder.
 
 Only port 3000 is published on NAS loopback for DSM's reverse proxy, and only
 the app publishes it — the database is reachable only from the app, over the
@@ -288,9 +288,10 @@ Restoring = putting both folders back and starting the project (or restoring
 
 ### 8. Updating the app
 
-Replace the project files (keep `.env` and `data/`!), then Container Manager →
-project → **Action → Build/Recreate**. Database migrations run automatically at
-container startup.
+Update the Compose files (keep `.env` and `data/`), pin the desired image tag,
+then run `docker compose pull app` followed by `docker compose up -d app`.
+Database migrations run automatically at container startup; no NAS compilation
+is required.
 
 ---
 

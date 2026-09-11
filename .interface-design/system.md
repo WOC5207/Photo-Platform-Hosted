@@ -177,6 +177,42 @@ Use `SectionHeading` for repeated sections:
 - 22px editorial semibold title.
 - Optional restrained supporting copy.
 
+### Disclosure sections
+
+Use `DisclosureSection` for advanced, secondary, and infrequently changed
+controls. The summary remains a native keyboard-operable disclosure with a
+44px mobile target, a concise title, and optional live metadata. Primary task
+controls must not be hidden behind it: schedule management, checklist progress,
+and QR scanning remain immediately visible. On wide workbenches a disclosure
+may stay open while collapsing by default on mobile.
+
+### Form action bar
+
+Use `FormActionBar` for long settings forms. It appears only while the form is
+dirty, pending, successful, or failed, inherits the active dashboard palette,
+and respects mobile safe-area insets. Do not reserve permanent page height for
+an idle save bar or allow it to cover the final field.
+
+### Filtered and paginated data
+
+- Use `FilterToolbar` for search and compact category/status controls.
+- Normal management browsing is bounded to 50 rows; photo-management batches
+  use 48 thumbnails so the first usable contact sheet remains light.
+- Preserve selected IDs across loaded photo pages.
+- Use `PaginationNav` for server-rendered lists and maintain active filters in
+  its links.
+- Full inventory loads are reserved for an explicit reorder mode. Normal
+  inventory browsing must not hydrate drag-and-drop behavior.
+- Wide layouts may use tables and mobile layouts cards, but both must expose
+  the same labels, status, actions, and pagination semantics.
+
+### Status segmented control
+
+Use `StatusSegmentedControl` for the checklist's In use, In inventory, and
+Broken operations. It owns pending/disabled behavior, semantic colors,
+accessible announcements, and 44px touch targets. Quick status updates must
+preserve private notes and remain owner-scoped on every write.
+
 ### Buttons
 
 - Default height: 44px; compact height: 40px (44px on narrow screens).
@@ -312,6 +348,25 @@ Use `SectionHeading` for repeated sections:
   and error states.
 - Visitor-hidden moderation content must remain private regardless of visual
   treatment.
+- Decorative accents and small accent-colored text are independent. Use
+  `accent-text` for text below 18px; it is derived to maintain at least 4.5:1
+  contrast on the page, raised, and inset-control surfaces.
+
+## Performance Budgets
+
+- Shared first-load JavaScript: at most 105 KB gzip.
+- Normal dashboard routes: at most 125 KB first-load JavaScript.
+- Specialized settings and QR workbenches: at most 140 KB first-load
+  JavaScript; QR rendering/export libraries load only after selection or an
+  export request.
+- Public media metadata may be cached on the server for 20 seconds and in the
+  browser for 10 seconds. Private originals and authenticated media stay
+  `private, no-store`.
+- Public image frames reserve dimensions/aspect ratio and use lazy loading and
+  asynchronous decoding unless they are the single above-the-fold priority
+  image.
+- The DS920+ production path pulls an immutable `linux/amd64` image; source
+  builds are a troubleshooting/development override rather than the default.
 
 ## Guardrails
 

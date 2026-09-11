@@ -2,7 +2,6 @@
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import QRCode from "qrcode";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import { controlClasses, Field, Input } from "@/components/ui/Field";
 import { Link } from "@/i18n/navigation";
@@ -39,6 +38,16 @@ const CENTER_LOGO_BACKING_MM = 1.2;
 const PX_PER_MM = 300 / 25.4;
 const DEFAULT_BACKGROUND_OPACITY = 30;
 const MAX_BACKGROUND_BYTES = 12 * 1024 * 1024;
+
+async function createQrDataUrl(value: string, width: number): Promise<string> {
+  const { default: QRCode } = await import("qrcode");
+  return QRCode.toDataURL(value, {
+    errorCorrectionLevel: "H",
+    margin: 1,
+    width,
+    color: { dark: "#111111", light: "#ffffff" }
+  });
+}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -138,12 +147,10 @@ async function renderLabelCanvas({
     cursorY += layout.logoSlotMm * PX_PER_MM;
   }
 
-  const qrDataUrl = await QRCode.toDataURL(scanUrl, {
-    errorCorrectionLevel: "H",
-    margin: 1,
-    width: Math.max(600, Math.round(layout.qrSizeMm * PX_PER_MM)),
-    color: { dark: "#111111", light: "#ffffff" }
-  });
+  const qrDataUrl = await createQrDataUrl(
+    scanUrl,
+    Math.max(600, Math.round(layout.qrSizeMm * PX_PER_MM))
+  );
   const qrImage = await loadImage(qrDataUrl);
   const qrSize = layout.qrSizeMm * PX_PER_MM;
   context.imageSmoothingEnabled = false;
@@ -426,12 +433,7 @@ export default function EquipmentQrSheetBuilder({
       `/${locale}/equipment/${encodeURIComponent(previewItem.qrToken)}`,
       window.location.origin
     ).toString();
-    QRCode.toDataURL(scanUrl, {
-      errorCorrectionLevel: "H",
-      margin: 1,
-      width: 360,
-      color: { dark: "#111111", light: "#ffffff" }
-    })
+    createQrDataUrl(scanUrl, 360)
       .then((dataUrl) => {
         if (active) setPreviewQrs((current) => ({ ...current, [previewItem.id]: dataUrl }));
       })

@@ -11,6 +11,15 @@ COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN npm ci
 
+# A separate, production-only dependency tree keeps the Prisma migration CLI
+# available at startup without copying the application's entire build toolchain
+# into the final image.
+FROM node:22-alpine AS migrate-deps
+WORKDIR /migrate
+RUN npm install -g npm@11
+COPY docker/runtime-migrations/package.json docker/runtime-migrations/package-lock.json ./
+RUN npm ci --omit=dev
+
 # ---- Stage 2: build ---------------------------------------------------
 FROM node:22-alpine AS builder
 WORKDIR /app
@@ -22,11 +31,11 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     NEXT_STANDALONE=1
 # Dummy values so the build never needs the real .env; all real config is
 # injected at runtime by docker-compose.
-ENV DATABASE_URL="file:/tmp/build.db" \
+RUN DATABASE_URL="file:/tmp/build.db" \
     PHOTOS_DIR="/tmp/photos" \
     SESSION_SECRET="build-time-placeholder-secret-not-used" \
-    APP_BASE_URL="http://localhost:3000"
-RUN npx prisma generate && npm run build
+    APP_BASE_URL="http://localhost:3000" \
+    npx prisma generate && npm run build
 
 # ---- Stage 3: runtime -------------------------------------------------
 FROM node:22-alpine AS runner
@@ -34,7 +43,9 @@ WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
-    PORT=3000
+    PORT=3000 \
+    NODE_OPTIONS="--max-old-space-size=768" \
+    MALLOC_ARENA_MAX=2
 
 # Standalone server + static assets
 # (no COPY for /app/public — this project has no Next.js public/ folder;
@@ -43,16 +54,11 @@ ENV NODE_ENV=production \
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Prisma schema/migrations + CLI (for `migrate deploy` on startup). The full
-# node_modules (not just prisma/@prisma/.prisma) is needed because the
-# Prisma CLI's own transitive dependencies shift between versions (e.g.
-# 6.16+ added @prisma/config, which pulls in "effect") — hand-picking
-# folders here breaks again every time Prisma adds one. The Next.js server
-# itself doesn't need this (its trimmed deps already came in via
-# .next/standalone above); this only exists for the CLI the entrypoint
-# script runs at container start.
+# Prisma schema/migrations + its isolated CLI dependency tree for `migrate
+# deploy` on startup. The standalone server already contains its own traced
+# runtime dependencies.
 COPY --from=builder /app/prisma ./prisma
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=migrate-deps /migrate/node_modules ./migration-node_modules
 
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 # Strip any stray \r (e.g. from a Windows-side edit) so the shebang always
@@ -61,4 +67,6 @@ COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN sed -i 's/\r$//' ./docker-entrypoint.sh && chmod +x ./docker-entrypoint.sh
 
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/api/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 ENTRYPOINT ["./docker-entrypoint.sh"]

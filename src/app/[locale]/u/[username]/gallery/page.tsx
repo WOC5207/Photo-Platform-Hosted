@@ -6,6 +6,7 @@ import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
+import PublicImage from "@/components/ui/PublicImage";
 
 export const dynamic = "force-dynamic";
 
@@ -60,11 +61,11 @@ export default async function GalleryPage({
                   className="group flex h-full flex-col gap-3"
                 >
                   {cover ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <PublicImage
                       src={photoUrls(event.id, cover.id).med}
                       alt={pickText(locale, event.titleEn, event.titleZh)}
-                      loading="lazy"
+                      width={cover.width}
+                      height={cover.height}
                       className="ui-image-frame aspect-[4/3] w-full rounded-lg object-cover transition-opacity group-hover:opacity-90"
                     />
                   ) : (

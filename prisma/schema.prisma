@@ -357,6 +357,7 @@ model Event {
 
   @@unique([ownerId, slug])
   @@index([ownerId])
+  @@index([ownerId, published, dateStart, createdAt])
 }
 
 model Photo {
@@ -449,6 +450,7 @@ model Photo {
   contentReports          ContentReport[]
 
   @@index([eventId, pendingBatchId])
+  @@index([eventId, pendingBatchId, sortOrder, createdAt, id])
   @@index([moderationStatus, moderationNextRetryAt])
 }
 
@@ -516,6 +518,8 @@ model PhotoCredit {
   subject     String       @default("")
   sortOrder   Int          @default(0)
   socialLinks SocialLink[]
+
+  @@index([photoId, sortOrder])
 }
 
 // A credited person's social-media profile link, shown as a button on the
@@ -528,6 +532,8 @@ model SocialLink {
   platform  String
   url       String
   sortOrder Int         @default(0)
+
+  @@index([creditId, sortOrder])
 }
 
 // A remembered social-media profile for a credited person, looked up by
@@ -603,6 +609,7 @@ model BookingEvent {
   updatedAt              DateTime     @updatedAt
 
   @@index([ownerId])
+  @@index([ownerId, open, date, createdAt])
 }
 
 // One calendar day of a BookingEvent. Availability (TimeSlots) hangs off a day,
@@ -645,6 +652,9 @@ model TimeSlot {
   descriptionEn  String       @default("")
   descriptionZh  String       @default("")
   bookings       Booking[]
+
+  @@index([bookingDayId, startTime, id])
+  @@index([bookingEventId, startTime, id])
 }
 
 // One row per user, holding everything they can customise about their own
@@ -882,6 +892,7 @@ model Booking {
   lotteryEntry     LotteryEntry?
 
   @@index([wechatIdentityId])
+  @@index([timeSlotId, status, createdAt])
 }
 
 // A prize draw ("抽奖") tied to one booking event. Entrants either come from
@@ -955,6 +966,8 @@ model LotteryPrize {
   quantity  Int            @default(1)
   weight    Int            @default(1)
   sortOrder Int            @default(0)
+
+  @@index([drawId, sortOrder])
   winners   LotteryEntry[]
   createdAt DateTime       @default(now())
 }

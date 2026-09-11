@@ -99,6 +99,10 @@
     "legacyBooking": "Existing booking event",
     "legacyBookingHint": "Your original bookings and links are preserved. Open the event to add a linked draft gallery.",
     "openEvent": "Open event",
+    "pagination": "Event pages",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "pageCount": "Page {page} of {total}",
     "galleryDeleteHint": "This removes only the gallery and its photos. The linked booking page and equipment checklists are kept.",
     "bookingDeleteHint": "This removes the booking schedule, reservations and daily checklists. The linked gallery and its photos are kept."
   },
@@ -183,6 +187,10 @@
     "label": "Language"
   },
   "home": {
+    "emptyPortfolioTitle": "The contact sheet is still being prepared",
+    "emptyPortfolioOwnerHint": "Create and publish your first gallery to make this page ready for visitors.",
+    "emptyPortfolioVisitorHint": "This photographer has not published a gallery yet.",
+    "emptyPortfolioAction": "Create a gallery",
     "title": "Photography portfolio",
     "subtitle": "Every shoot, beautifully captured.",
     "browseGallery": "Browse the gallery",
@@ -251,6 +259,18 @@
     "platformHealth": "Platform health"
   },
   "equipment": {
+    "searchEquipment": "Search inventory",
+    "searchEquipmentPlaceholder": "Name, brand, model or serial number",
+    "filterStatus": "Status",
+    "allStatuses": "All statuses",
+    "applyFilters": "Apply filters",
+    "results": "Results",
+    "reorderMode": "Reorder equipment",
+    "finishReorder": "Finish reordering",
+    "pagination": "Inventory pages",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "pageCount": "Page {page} / {total}",
     "title": "Equipment",
     "description": "Track the identity, condition and location of cameras, lenses and accessories with photos and scannable QR labels.",
     "manageInventory": "Manage categories",
@@ -388,6 +408,8 @@
     "removeItem": "Remove {name} from checklist",
     "chooseEquipment": "Choose equipment",
     "customItem": "Custom reminder",
+    "addItems": "Add items",
+    "addItemsHint": "Pick equipment from inventory or add a one-off reminder.",
     "add": "Add",
     "deleteChecklist": "Delete checklist",
     "deleteChecklistConfirm": "Delete the checklist {name}? Your equipment inventory will not be changed."
@@ -481,6 +503,10 @@
     "pngDownloadError": "The PNG label could not be generated. Check the artwork or try again."
   },
   "adminEvents": {
+    "loadMorePhotos": "Load more photos",
+    "loadingMorePhotos": "Loading photos…",
+    "retryMorePhotos": "Retry loading",
+    "loadMorePhotosError": "More photos could not be loaded.",
     "listDescription": "Organize your shoots, curate photographs, and publish your work.",
     "emptyTitle": "Your first shoot starts here",
     "emptyDescription": "Create an album to bring a shoot together. Add photographs and credits, then publish when you’re ready to share.",
@@ -950,6 +976,10 @@
     "next": "Next"
   },
   "adminBookings": {
+    "managementSections": "Booking management sections",
+    "sectionSchedule": "Schedule",
+    "sectionOverview": "Overview",
+    "sectionAdvanced": "Advanced",
     "listDescription": "Plan your sessions and manage reservations in one place.",
     "emptyTitle": "Make room for your next shoot",
     "emptyDescription": "Create a booking event for your next session. Start with the dates and location, then set the time slots visitors can reserve.",
@@ -1294,6 +1324,10 @@
     "login": "Log in"
   },
   "platform": {
+    "pagination": "Account pages",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "pageCount": "Page {page} / {total}",
     "usersTitle": "Accounts",
     "usersSubtitle": "Everyone with an account on this platform.",
     "invitesTitle": "Invites",
@@ -1491,6 +1525,10 @@
     "photoDetailsPage": "Page {page} of {total}"
   },
   "adminReports": {
+    "pagination": "Report pages",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "pageCount": "Page {page} / {total}",
     "navTitle": "Visitor reports",
     "title": "Visitor photo reports",
     "description": "Review reports submitted from the Mini Program. Reporter identities are retained only for abuse controls and are never displayed here.",

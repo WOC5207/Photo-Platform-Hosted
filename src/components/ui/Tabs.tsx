@@ -1,3 +1,5 @@
+"use client";
+
 import { Link } from "@/i18n/navigation";
 
 export interface TabItem {
@@ -9,11 +11,13 @@ export interface TabItem {
 export default function Tabs({
   items,
   active,
-  label
+  label,
+  reloadDocument = false
 }: {
   items: TabItem[];
   active: string;
   label: string;
+  reloadDocument?: boolean;
 }) {
   return (
     <nav
@@ -27,6 +31,11 @@ export default function Tabs({
             key={item.id}
             href={item.href}
             scroll={false}
+            onClick={reloadDocument ? (event) => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              window.location.assign(event.currentTarget.href);
+            } : undefined}
             aria-current={selected ? "page" : undefined}
             className={`relative inline-flex min-h-11 shrink-0 items-center px-3 py-2 text-sm font-semibold transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
               selected
