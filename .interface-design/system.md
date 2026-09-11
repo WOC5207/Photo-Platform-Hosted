@@ -234,9 +234,8 @@ Use `SectionHeading` for repeated sections:
 - Category filtering preserves the full inventory order: moving visible items
   changes only their positions among the hidden items, never ownership scope.
 - QR label artwork layers in this order: white label stock, optional cover-fit
-  background at the chosen opacity, QR code, optional logo, then equipment name.
-- QR rotation changes the code matrix in 90-degree steps while background,
-  equipment name, and logo remain upright for predictable print composition.
+  background at the chosen opacity, QR code, optional logo, then equipment name
+  and short UID metadata when enabled.
 - Keep PDF as the primary print path and PNG as a secondary export. PNG output
   is one 300 DPI image per selected item and must match the live preview.
 

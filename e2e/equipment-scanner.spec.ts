@@ -111,6 +111,13 @@ test("scanner resolves images, adds items, updates inventory and protects owners
     await page.goto(`/en/dashboard/preparation/equipment/${checklist.id}`);
     await page.getByRole("button", { name: "Scan equipment QR", exact: true }).click();
     const panel = page.getByRole("region", { name: "Scan equipment QR" });
+    const cameraPreview = panel.locator("video");
+    await expect(cameraPreview).toBeAttached();
+    await expect(cameraPreview).not.toHaveCSS("display", "none");
+    await expect.poll(() => cameraPreview.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.width > 0 && bounds.height > 0;
+    })).toBe(true);
     await page.evaluate(() => {
       navigator.mediaDevices.getUserMedia = async () => { throw new DOMException("Denied", "NotAllowedError"); };
     });
@@ -119,14 +126,25 @@ test("scanner resolves images, adds items, updates inventory and protects owners
     await page.evaluate(() => {
       const canvas = document.createElement("canvas");
       canvas.width = 400; canvas.height = 300;
-      const stream = canvas.captureStream(5);
       setInterval(() => { canvas.getContext("2d")!.fillRect(0, 0, 400, 300); }, 100);
-      (window as unknown as { testStream: MediaStream }).testStream = stream;
-      navigator.mediaDevices.getUserMedia = async () => stream;
+      let previewStream: MediaStream | null = null;
+      navigator.mediaDevices.getUserMedia = async () => {
+        const stream = canvas.captureStream(5);
+        if (!previewStream) {
+          previewStream = stream;
+          (window as unknown as { testStream: MediaStream }).testStream = stream;
+        }
+        return stream;
+      };
       navigator.mediaDevices.enumerateDevices = async () => [];
     });
     await panel.getByRole("button", { name: "Start camera", exact: true }).click();
     await expect(panel.getByRole("button", { name: "Stop camera", exact: true })).toBeVisible();
+    await expect.poll(() => cameraPreview.evaluate((element) => {
+      const preview = element as HTMLVideoElement;
+      const stream = preview.srcObject as MediaStream | null;
+      return !preview.paused && Boolean(stream?.getVideoTracks().some((track) => track.readyState === "live"));
+    })).toBe(true);
     await page.getByRole("button", { name: "Close scanner", exact: true }).click();
     await expect.poll(() => page.evaluate(() => (window as unknown as { testStream: MediaStream }).testStream.getTracks().every(t => t.readyState === "ended"))).toBe(true);
     await page.getByRole("button", { name: "Scan equipment QR", exact: true }).click();

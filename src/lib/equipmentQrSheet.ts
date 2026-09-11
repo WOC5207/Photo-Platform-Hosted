@@ -8,6 +8,8 @@ export const QR_LABEL_MAX_LOGO_HEIGHT_MM = 24;
 const LABEL_PADDING_MM = 4;
 const LOGO_GAP_MM = 3;
 const NAME_VERTICAL_PADDING_MM = 3;
+const UID_TEXT_SIZE_PT = 7;
+const UID_VERTICAL_PADDING_MM = 2;
 const MIN_QR_SIZE_MM = 20;
 const MM_PER_POINT = 25.4 / 72;
 const CENTER_LOGO_MAX_QR_RATIO = 0.22;
@@ -21,6 +23,8 @@ export type EquipmentQrLabelLayout = {
   logoSlotMm: number;
   textSizePt: number;
   nameSlotMm: number;
+  uidTextSizePt: number;
+  uidSlotMm: number;
   qrSizeMm: number;
 };
 
@@ -28,6 +32,7 @@ export function calculateEquipmentQrLabelLayout({
   labelWidthMm,
   labelHeightMm,
   includeName,
+  includeUid,
   includeLogo,
   logoPlacement,
   textSizePt,
@@ -36,6 +41,7 @@ export function calculateEquipmentQrLabelLayout({
   labelWidthMm: number;
   labelHeightMm: number;
   includeName: boolean;
+  includeUid: boolean;
   includeLogo: boolean;
   logoPlacement: EquipmentQrLogoPlacement;
   textSizePt: number;
@@ -73,9 +79,13 @@ export function calculateEquipmentQrLabelLayout({
   const nameSlotMm = includeName
     ? resolvedTextSizePt * MM_PER_POINT + NAME_VERTICAL_PADDING_MM
     : 0;
+  const uidTextSizePt = includeUid ? UID_TEXT_SIZE_PT : 0;
+  const uidSlotMm = includeUid
+    ? uidTextSizePt * MM_PER_POINT + UID_VERTICAL_PADDING_MM
+    : 0;
   const qrSizeMm = Math.min(
     labelWidthMm - LABEL_PADDING_MM * 2,
-    labelHeightMm - LABEL_PADDING_MM * 2 - logoSlotMm - nameSlotMm
+    labelHeightMm - LABEL_PADDING_MM * 2 - logoSlotMm - nameSlotMm - uidSlotMm
   );
 
   if (qrSizeMm < MIN_QR_SIZE_MM) return null;
@@ -95,6 +105,8 @@ export function calculateEquipmentQrLabelLayout({
     logoSlotMm,
     textSizePt: resolvedTextSizePt,
     nameSlotMm,
+    uidTextSizePt,
+    uidSlotMm,
     qrSizeMm
   };
 }
