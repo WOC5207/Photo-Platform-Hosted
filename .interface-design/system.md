@@ -236,8 +236,21 @@ Use `SectionHeading` for repeated sections:
 - QR label artwork layers in this order: white label stock, optional cover-fit
   background at the chosen opacity, QR code, optional logo, then equipment name
   and short UID metadata when enabled.
+- Equipment name and UID share one text-size control. One millimetre-based
+  element-spacing control governs active logo-to-QR, QR-to-text, and
+  name-to-UID gaps in preview and exported artwork.
+- Whole-label print rotation uses four explicit quarter-turn positions. Preview,
+  PDF, and PNG rotate the complete composition together; 90° and 270° swap the
+  output dimensions instead of cropping or reflowing the artwork.
+- QR label printing starts with equipment selection. Label content, spacing,
+  background, physical size, and print rotation use native disclosure groups
+  with live metadata summaries so the left workbench stays compact beside the
+  sticky preview.
 - Keep PDF as the primary print path and PNG as a secondary export. PNG output
   is one 300 DPI image per selected item and must match the live preview.
+- In the mobile checklist scanner, the live camera image remains unobstructed.
+  Camera selection, running status, and the stop action sit in a separate
+  full-width control footer below the viewfinder with 44px touch targets.
 
 ### Homepage infinite archive
 

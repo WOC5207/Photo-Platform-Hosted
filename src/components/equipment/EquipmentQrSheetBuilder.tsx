@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import QRCode from "qrcode";
 import Button, { buttonClasses } from "@/components/ui/Button";
@@ -8,10 +8,12 @@ import { controlClasses, Field, Input } from "@/components/ui/Field";
 import { Link } from "@/i18n/navigation";
 import {
   calculateEquipmentQrLabelLayout,
+  QR_LABEL_MAX_ELEMENT_GAP_MM,
   QR_LABEL_MAX_LOGO_HEIGHT_MM,
   QR_LABEL_MAX_SIZE_MM,
   QR_LABEL_MAX_TEXT_SIZE_PT,
   QR_LABEL_MIN_LOGO_HEIGHT_MM,
+  QR_LABEL_MIN_ELEMENT_GAP_MM,
   QR_LABEL_MIN_SIZE_MM,
   QR_LABEL_MIN_TEXT_SIZE_PT,
   type EquipmentQrLabelLayout,
@@ -26,11 +28,13 @@ export type EquipmentQrLabelItem = {
 };
 
 type SavedSize = { widthMm: number; heightMm: number };
+type LabelRotation = 0 | 90 | 180 | 270;
 
 const STORAGE_KEY = "photo-platform:equipment-qr-label-size:v2";
 const DEFAULT_SIZE: SavedSize = { widthMm: 50, heightMm: 70 };
 const DEFAULT_TEXT_SIZE_PT = 10;
 const DEFAULT_LOGO_HEIGHT_MM = 7;
+const DEFAULT_ELEMENT_GAP_MM = 3;
 const CENTER_LOGO_BACKING_MM = 1.2;
 const PX_PER_MM = 300 / 25.4;
 const DEFAULT_BACKGROUND_OPACITY = 30;
@@ -169,6 +173,7 @@ async function renderLabelCanvas({
     context.drawImage(logo, logoX, logoY, logoWidth, logoHeight);
   }
   cursorY += qrSize;
+  cursorY += layout.textBlockGapMm * PX_PER_MM;
 
   if (includeName) {
     const fontSize = layout.textSizePt * (300 / 72);
@@ -186,6 +191,7 @@ async function renderLabelCanvas({
   }
 
   if (includeUid) {
+    cursorY += layout.nameUidGapMm * PX_PER_MM;
     const fontSize = layout.uidTextSizePt * (300 / 72);
     context.imageSmoothingEnabled = true;
     context.fillStyle = "#514a41";
@@ -208,6 +214,33 @@ function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
       "image/png"
     );
   });
+}
+
+function rotateLabelCanvas(
+  source: HTMLCanvasElement,
+  rotation: LabelRotation
+): HTMLCanvasElement {
+  if (rotation === 0) return source;
+
+  const rotated = document.createElement("canvas");
+  const swapsDimensions = rotation === 90 || rotation === 270;
+  rotated.width = swapsDimensions ? source.height : source.width;
+  rotated.height = swapsDimensions ? source.width : source.height;
+  const context = rotated.getContext("2d");
+  if (!context) throw new Error("Canvas is unavailable");
+
+  if (rotation === 90) {
+    context.translate(rotated.width, 0);
+    context.rotate(Math.PI / 2);
+  } else if (rotation === 180) {
+    context.translate(rotated.width, rotated.height);
+    context.rotate(Math.PI);
+  } else {
+    context.translate(0, rotated.height);
+    context.rotate(-Math.PI / 2);
+  }
+  context.drawImage(source, 0, 0);
+  return rotated;
 }
 
 function safeFileName(value: string): string {
@@ -236,6 +269,37 @@ function isSavedSize(value: unknown): value is SavedSize {
   return typeof candidate.widthMm === "number" && typeof candidate.heightMm === "number";
 }
 
+function CollapsibleSetupSection({
+  title,
+  meta,
+  defaultOpen = false,
+  children
+}: {
+  title: string;
+  meta?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <details
+      className="group rounded-xl border border-border bg-raised"
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+    >
+      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-3 py-2.5 transition-colors hover:bg-accent-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0 flex-1 text-sm font-semibold text-fg">{title}</span>
+        {meta && <span className="font-meta shrink-0 text-[0.6875rem] text-fg-subtle">{meta}</span>}
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4 shrink-0 text-fg-muted transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="m7 10 5 5 5-5" />
+        </svg>
+      </summary>
+      <div className="border-t border-border p-3 sm:p-4">{children}</div>
+    </details>
+  );
+}
+
 export default function EquipmentQrSheetBuilder({
   equipment,
   categories,
@@ -254,11 +318,13 @@ export default function EquipmentQrSheetBuilder({
   const [logoPlacement, setLogoPlacement] = useState<EquipmentQrLogoPlacement>("ABOVE");
   const [textSizeInput, setTextSizeInput] = useState(String(DEFAULT_TEXT_SIZE_PT));
   const [logoHeightInput, setLogoHeightInput] = useState(String(DEFAULT_LOGO_HEIGHT_MM));
+  const [elementGapInput, setElementGapInput] = useState(String(DEFAULT_ELEMENT_GAP_MM));
   const [backgroundUrl, setBackgroundUrl] = useState("");
   const [backgroundName, setBackgroundName] = useState("");
   const [backgroundOpacityInput, setBackgroundOpacityInput] = useState(String(DEFAULT_BACKGROUND_OPACITY));
   const [widthInput, setWidthInput] = useState(String(DEFAULT_SIZE.widthMm));
   const [heightInput, setHeightInput] = useState(String(DEFAULT_SIZE.heightMm));
+  const [labelRotation, setLabelRotation] = useState<LabelRotation>(0);
   const [savedSize, setSavedSize] = useState(DEFAULT_SIZE);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
@@ -293,7 +359,8 @@ export default function EquipmentQrSheetBuilder({
           includeLogo: Boolean(logoUrl),
           logoPlacement: "ABOVE",
           textSizePt: DEFAULT_TEXT_SIZE_PT,
-          logoHeightMm: DEFAULT_LOGO_HEIGHT_MM
+          logoHeightMm: DEFAULT_LOGO_HEIGHT_MM,
+          elementGapMm: DEFAULT_ELEMENT_GAP_MM
         })
       ) {
         setWidthInput(String(stored.widthMm));
@@ -309,7 +376,13 @@ export default function EquipmentQrSheetBuilder({
   const labelHeightMm = Number(heightInput);
   const textSizePt = Number(textSizeInput);
   const logoHeightMm = Number(logoHeightInput);
+  const elementGapMm = Number(elementGapInput);
   const backgroundOpacity = Number(backgroundOpacityInput);
+  const rotationSwapsDimensions = labelRotation === 90 || labelRotation === 270;
+  const outputWidthMm = rotationSwapsDimensions ? labelHeightMm : labelWidthMm;
+  const outputHeightMm = rotationSwapsDimensions ? labelWidthMm : labelHeightMm;
+  const outputWidthInput = rotationSwapsDimensions ? heightInput : widthInput;
+  const outputHeightInput = rotationSwapsDimensions ? widthInput : heightInput;
   const selectedEquipment = useMemo(
     () => equipment.filter((item) => selectedIds.has(item.id)),
     [equipment, selectedIds]
@@ -335,9 +408,10 @@ export default function EquipmentQrSheetBuilder({
         includeLogo: includeLogo && Boolean(logoUrl),
         logoPlacement,
         textSizePt,
-        logoHeightMm
+        logoHeightMm,
+        elementGapMm
       }),
-    [includeLogo, includeName, includeUid, labelHeightMm, labelWidthMm, logoHeightMm, logoPlacement, logoUrl, textSizePt]
+    [elementGapMm, includeLogo, includeName, includeUid, labelHeightMm, labelWidthMm, logoHeightMm, logoPlacement, logoUrl, textSizePt]
   );
   const totalPreviews = Math.max(1, selectedEquipment.length);
   const safePreviewIndex = Math.min(previewIndex, totalPreviews - 1);
@@ -448,22 +522,22 @@ export default function EquipmentQrSheetBuilder({
         includeLogo && logoUrl ? loadImage(logoUrl) : Promise.resolve(null),
         backgroundUrl ? loadImage(backgroundUrl) : Promise.resolve(null)
       ]);
-      const orientation = labelWidthMm > labelHeightMm ? "landscape" : "portrait";
+      const orientation = outputWidthMm > outputHeightMm ? "landscape" : "portrait";
       const document = new jsPDF({
         unit: "mm",
-        format: [labelWidthMm, labelHeightMm],
+        format: [outputWidthMm, outputHeightMm],
         orientation,
         compress: true
       });
 
       for (let index = 0; index < selectedEquipment.length; index += 1) {
         const item = selectedEquipment[index];
-        if (index > 0) document.addPage([labelWidthMm, labelHeightMm], orientation);
+        if (index > 0) document.addPage([outputWidthMm, outputHeightMm], orientation);
         const scanUrl = new URL(
           `/${locale}/equipment/${encodeURIComponent(item.qrToken)}`,
           window.location.origin
         ).toString();
-        const label = await renderLabelCanvas({
+        const label = rotateLabelCanvas(await renderLabelCanvas({
           item,
           scanUrl,
           widthMm: labelWidthMm,
@@ -475,14 +549,14 @@ export default function EquipmentQrSheetBuilder({
           logoPlacement,
           background,
           backgroundOpacity
-        });
+        }), labelRotation);
         document.addImage(
           label.toDataURL("image/png"),
           "PNG",
           0,
           0,
-          labelWidthMm,
-          labelHeightMm,
+          outputWidthMm,
+          outputHeightMm,
           undefined,
           "FAST"
         );
@@ -517,7 +591,7 @@ export default function EquipmentQrSheetBuilder({
           `/${locale}/equipment/${encodeURIComponent(item.qrToken)}`,
           window.location.origin
         ).toString();
-        const label = await renderLabelCanvas({
+        const label = rotateLabelCanvas(await renderLabelCanvas({
           item,
           scanUrl,
           widthMm: labelWidthMm,
@@ -529,7 +603,7 @@ export default function EquipmentQrSheetBuilder({
           logoPlacement,
           background,
           backgroundOpacity
-        });
+        }), labelRotation);
         triggerDownload(
           await canvasBlob(label),
           `${safeFileName(item.name)}-qr-label.png`
@@ -553,10 +627,10 @@ export default function EquipmentQrSheetBuilder({
   const qrWidth = layout ? (layout.qrSizeMm / labelWidthMm) * 100 : 0;
   const qrHeight = layout ? (layout.qrSizeMm / labelHeightMm) * 100 : 0;
   const nameTop = layout
-    ? ((layout.paddingMm + layout.logoSlotMm + layout.qrSizeMm) / labelHeightMm) * 100
+    ? ((layout.paddingMm + layout.logoSlotMm + layout.qrSizeMm + layout.textBlockGapMm) / labelHeightMm) * 100
     : 0;
   const uidTop = layout
-    ? ((layout.paddingMm + layout.logoSlotMm + layout.qrSizeMm + layout.nameSlotMm) / labelHeightMm) * 100
+    ? ((layout.paddingMm + layout.logoSlotMm + layout.qrSizeMm + layout.textBlockGapMm + layout.nameSlotMm + layout.nameUidGapMm) / labelHeightMm) * 100
     : 0;
   const previewTextSizeCqw = layout
     ? ((layout.textSizePt * (25.4 / 72)) / labelWidthMm) * 100
@@ -579,8 +653,20 @@ export default function EquipmentQrSheetBuilder({
       return <div className="flex h-full items-center justify-center p-4 text-center text-sm text-fg-subtle">{t("labelInvalid")}</div>;
     }
     return (
-      <div className="relative mx-auto h-full max-h-full max-w-full overflow-hidden bg-white shadow-[0_0_0_1px_rgba(33,29,24,0.12),0_8px_24px_rgba(33,29,24,0.10)] [container-type:inline-size]" style={{ aspectRatio: `${labelWidthMm} / ${labelHeightMm}` }} aria-label={t("previewAria")}>
-        {backgroundUrl && (
+      <div
+        className="relative mx-auto h-full max-h-full max-w-full overflow-hidden shadow-[0_0_0_1px_rgba(33,29,24,0.12),0_8px_24px_rgba(33,29,24,0.10)]"
+        style={{ aspectRatio: `${outputWidthMm} / ${outputHeightMm}` }}
+        aria-label={t("previewAria")}
+      >
+        <div
+          className="absolute left-1/2 top-1/2 overflow-hidden bg-white [container-type:inline-size]"
+          style={{
+            width: `${(labelWidthMm / outputWidthMm) * 100}%`,
+            height: `${(labelHeightMm / outputHeightMm) * 100}%`,
+            transform: `translate(-50%, -50%) rotate(${labelRotation}deg)`
+          }}
+        >
+          {backgroundUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={backgroundUrl}
@@ -588,8 +674,8 @@ export default function EquipmentQrSheetBuilder({
             className="absolute inset-0 size-full object-cover"
             style={{ opacity: Math.min(1, Math.max(0, backgroundOpacity / 100)) }}
           />
-        )}
-        {previewItem ? <>
+          )}
+          {previewItem ? <>
           {includeLogo && logoUrl && logoPlacement === "ABOVE" && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt="" className="absolute left-1/2 max-w-[70%] -translate-x-1/2 object-contain" style={{ top: `${logoTop}%`, height: `${(layout.logoHeightMm / labelHeightMm) * 100}%` }} />
@@ -622,7 +708,8 @@ export default function EquipmentQrSheetBuilder({
           )}
           {includeName && <span className="absolute left-[4%] right-[4%] flex items-center justify-center truncate text-center font-semibold leading-tight text-[#211d18]" style={{ top: `${nameTop}%`, height: `${(layout.nameSlotMm / labelHeightMm) * 100}%`, fontSize: `${previewTextSizeCqw}cqw` }}>{previewItem.name}</span>}
           {includeUid && <span className="absolute left-[4%] right-[4%] flex items-center justify-center truncate text-center font-meta font-medium leading-tight text-[#514a41]" style={{ top: `${uidTop}%`, height: `${(layout.uidSlotMm / labelHeightMm) * 100}%`, fontSize: `${previewUidTextSizeCqw}cqw` }}>{equipmentUid(previewItem)}</span>}
-        </> : <span className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs font-semibold text-[#6f665b] sm:text-sm">{t("previewEmpty")}</span>}
+          </> : <span className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs font-semibold text-[#6f665b] sm:text-sm">{t("previewEmpty")}</span>}
+        </div>
       </div>
     );
   }
@@ -633,148 +720,6 @@ export default function EquipmentQrSheetBuilder({
         <section className="ui-panel p-5 sm:p-6">
           <div className="flex items-start gap-3">
             <span className="font-meta mt-1 text-[0.6875rem] font-semibold tracking-[0.16em] text-accent">01</span>
-            <div>
-              <h2 className="font-display text-[1.375rem] font-semibold tracking-[-0.02em] text-fg">{t("setupTitle")}</h2>
-              <p className="ui-pretty mt-1 text-sm leading-6 text-fg-subtle">{t("setupHint")}</p>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-border bg-raised p-3 transition-[border-color,background-color] hover:border-accent/40">
-              <label className="flex min-h-12 cursor-pointer items-start gap-3">
-                <input type="checkbox" checked={includeName} onChange={(event) => setIncludeName(event.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]" />
-                <span>
-                  <span className="block text-sm font-semibold text-fg">{t("includeName")}</span>
-                  <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{t("includeNameHint")}</span>
-                </span>
-              </label>
-              <div className={`mt-3 border-t border-border pt-3 ${includeName ? "" : "opacity-50"}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <label htmlFor="qr-label-text-size" className="text-xs font-semibold text-fg-muted">{t("textSize")}</label>
-                  <output htmlFor="qr-label-text-size" className="font-meta text-xs text-fg-subtle">{t("textSizeValue", { size: textSizeInput || "—" })}</output>
-                </div>
-                <input id="qr-label-text-size" type="range" min={QR_LABEL_MIN_TEXT_SIZE_PT} max={QR_LABEL_MAX_TEXT_SIZE_PT} step="1" value={textSizeInput} disabled={!includeName} onChange={(event) => setTextSizeInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
-              </div>
-              <label className="mt-3 flex min-h-12 cursor-pointer items-start gap-3 border-t border-border pt-3">
-                <input type="checkbox" checked={includeUid} onChange={(event) => setIncludeUid(event.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]" />
-                <span>
-                  <span className="block text-sm font-semibold text-fg">{t("includeUid")}</span>
-                  <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{t("includeUidHint")}</span>
-                </span>
-              </label>
-            </div>
-            <div className={`rounded-lg border border-border bg-raised p-3 transition-[border-color,background-color] ${logoUrl ? "hover:border-accent/40" : "opacity-60"}`}>
-              <label className={`flex min-h-12 items-start gap-3 ${logoUrl ? "cursor-pointer" : "cursor-not-allowed"}`}>
-                <input type="checkbox" checked={includeLogo} disabled={!logoUrl} onChange={(event) => setIncludeLogo(event.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]" />
-                <span>
-                  <span className="block text-sm font-semibold text-fg">{t("includeLogo")}</span>
-                  <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{logoUrl ? t("includeLogoHint") : t("logoMissing")}</span>
-                </span>
-              </label>
-              <div className={`mt-3 border-t border-border pt-3 ${includeLogo && logoUrl ? "" : "opacity-50"}`}>
-                <fieldset disabled={!includeLogo || !logoUrl}>
-                  <legend className="text-xs font-semibold text-fg-muted">{t("logoPlacement")}</legend>
-                  <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-control p-1">
-                    {(["ABOVE", "CENTER"] as const).map((placement) => (
-                      <label
-                        key={placement}
-                        className={`flex min-h-10 cursor-pointer items-center justify-center rounded-md px-2 text-center text-xs font-semibold transition-[color,background-color] focus-within:ring-2 focus-within:ring-accent/45 ${
-                          logoPlacement === placement
-                            ? "bg-raised text-fg"
-                            : "text-fg-subtle hover:text-fg"
-                        } disabled:cursor-not-allowed`}
-                      >
-                        <input
-                          type="radio"
-                          name="logo-placement"
-                          value={placement}
-                          checked={logoPlacement === placement}
-                          onChange={() => setLogoPlacement(placement)}
-                          className="sr-only"
-                        />
-                        {placement === "ABOVE" ? t("logoPlacementAbove") : t("logoPlacementCenter")}
-                      </label>
-                    ))}
-                  </div>
-                  {logoPlacement === "CENTER" && (
-                    <p className="mt-2 text-xs leading-5 text-fg-subtle">{t("logoPlacementCenterHint")}</p>
-                  )}
-                </fieldset>
-                <div className="mt-3 border-t border-border pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <label htmlFor="qr-label-logo-size" className="text-xs font-semibold text-fg-muted">{t("logoSize")}</label>
-                    <output htmlFor="qr-label-logo-size" className="font-meta text-xs text-fg-subtle">{t("logoSizeValue", { size: logoHeightInput || "—" })}</output>
-                  </div>
-                  <input id="qr-label-logo-size" type="range" min={QR_LABEL_MIN_LOGO_HEIGHT_MM} max={layout?.logoHeightLimitMm || QR_LABEL_MAX_LOGO_HEIGHT_MM} step="0.5" value={logoHeightInput} disabled={!includeLogo || !logoUrl} onChange={(event) => setLogoHeightInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
-                </div>
-              </div>
-            </div>
-            <div className="rounded-lg border border-border bg-raised p-3 transition-[border-color,background-color] hover:border-accent/40 sm:col-span-2">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <span className="block text-sm font-semibold text-fg">{t("labelBackground")}</span>
-                  <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{t("labelBackgroundHint")}</span>
-                  {backgroundName && <span className="font-meta mt-1 block truncate text-[0.6875rem] text-accent">{backgroundName}</span>}
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <label className={buttonClasses({ size: "compact", className: "cursor-pointer" })}>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="sr-only"
-                      onChange={(event) => {
-                        void chooseBackground(event.target.files?.[0]);
-                        event.target.value = "";
-                      }}
-                    />
-                    {backgroundUrl ? t("replaceBackground") : t("uploadBackground")}
-                  </label>
-                  {backgroundUrl && <Button size="compact" variant="ghost" onClick={removeBackground}>{t("removeBackground")}</Button>}
-                </div>
-              </div>
-              <div className={`mt-3 border-t border-border pt-3 ${backgroundUrl ? "" : "opacity-50"}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <label htmlFor="qr-label-background-opacity" className="text-xs font-semibold text-fg-muted">{t("backgroundOpacity")}</label>
-                  <output htmlFor="qr-label-background-opacity" className="font-meta text-xs text-fg-subtle">{t("backgroundOpacityValue", { opacity: backgroundOpacityInput || "—" })}</output>
-                </div>
-                <input id="qr-label-background-opacity" type="range" min="0" max="100" step="5" value={backgroundOpacityInput} disabled={!backgroundUrl} onChange={(event) => setBackgroundOpacityInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
-              </div>
-            </div>
-          </div>
-          {!logoUrl && <Link href="/dashboard/settings" className="mt-3 inline-flex min-h-10 items-center text-sm font-semibold text-accent hover:text-accent-strong">{t("openSiteSettings")}</Link>}
-
-          <div className="mt-6 border-t border-border pt-5">
-            <h3 className="text-sm font-semibold text-fg">{t("labelSize")}</h3>
-            <p className="mt-1 text-xs leading-5 text-fg-subtle">{t("labelSizeHint")}</p>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="grid min-w-0 flex-1 grid-cols-[1fr_auto_1fr] items-end gap-2">
-                <Field label={t("labelWidth")} htmlFor="qr-label-width">
-                  <Input id="qr-label-width" type="number" inputMode="decimal" min={QR_LABEL_MIN_SIZE_MM} max={QR_LABEL_MAX_SIZE_MM} step="0.1" value={widthInput} onChange={(event) => { setWidthInput(event.target.value); setSizeNotice(""); }} />
-                </Field>
-                <Button size="compact" className="mb-0.5 size-11 px-0" aria-label={t("swapDimensions")} title={t("swapDimensions")} onClick={() => { setWidthInput(heightInput); setHeightInput(widthInput); setSizeNotice(""); }}>
-                  <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m7 7 3-3m-3 3 3 3M7 7h10M17 17l-3-3m3 3-3 3m3-3H7" /></svg>
-                </Button>
-                <Field label={t("labelHeight")} htmlFor="qr-label-height">
-                  <Input id="qr-label-height" type="number" inputMode="decimal" min={QR_LABEL_MIN_SIZE_MM} max={QR_LABEL_MAX_SIZE_MM} step="0.1" value={heightInput} onChange={(event) => { setHeightInput(event.target.value); setSizeNotice(""); }} />
-                </Field>
-              </div>
-              <Button variant={sizeChanged ? "primary" : "secondary"} onClick={saveSize} disabled={!layout} className="sm:shrink-0">{t("saveSize")}</Button>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="font-meta text-xs text-fg-muted">
-                {t("savedSize", { width: savedSize.widthMm, height: savedSize.heightMm })}
-                {sizeChanged && <span className="text-warning"> · {t("unsavedSize")}</span>}
-              </p>
-              {layout && <p className="font-meta text-xs text-fg-subtle">{t("qrSize", { size: Math.round(layout.qrSizeMm * 10) / 10 })}</p>}
-            </div>
-            <div aria-live="polite" className="mt-2 min-h-5">{sizeNotice && <p className="text-sm font-semibold text-success">{sizeNotice}</p>}</div>
-            {!layout && <p className="mt-2 rounded-lg border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger" role="alert">{t("labelInvalid")}</p>}
-          </div>
-        </section>
-
-        <section className="ui-panel p-5 sm:p-6">
-          <div className="flex items-start gap-3">
-            <span className="font-meta mt-1 text-[0.6875rem] font-semibold tracking-[0.16em] text-accent">02</span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="font-display text-[1.375rem] font-semibold tracking-[-0.02em] text-fg">{t("selectTitle")}</h2>
@@ -804,13 +749,145 @@ export default function EquipmentQrSheetBuilder({
             </ul>
           )}
         </section>
+
+        <section className="ui-panel p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <span className="font-meta mt-1 text-[0.6875rem] font-semibold tracking-[0.16em] text-accent">02</span>
+            <div>
+              <h2 className="font-display text-[1.375rem] font-semibold tracking-[-0.02em] text-fg">{t("setupTitle")}</h2>
+              <p className="ui-pretty mt-1 text-sm leading-6 text-fg-subtle">{t("setupHint")}</p>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3">
+            <CollapsibleSetupSection
+              title={t("labelContent")}
+              meta={t("enabledOptions", { count: Number(includeName) + Number(includeUid) + Number(includeLogo && Boolean(logoUrl)) })}
+              defaultOpen
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <label className="flex min-h-12 cursor-pointer items-start gap-3">
+                    <input type="checkbox" checked={includeName} onChange={(event) => setIncludeName(event.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]" />
+                    <span>
+                      <span className="block text-sm font-semibold text-fg">{t("includeName")}</span>
+                      <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{t("includeNameHint")}</span>
+                    </span>
+                  </label>
+                  <div className={`mt-3 border-t border-border pt-3 ${includeName || includeUid ? "" : "opacity-50"}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <label htmlFor="qr-label-text-size" className="text-xs font-semibold text-fg-muted">{t("textSize")}</label>
+                      <output htmlFor="qr-label-text-size" className="font-meta text-xs text-fg-subtle">{t("textSizeValue", { size: textSizeInput || "—" })}</output>
+                    </div>
+                    <input id="qr-label-text-size" type="range" min={QR_LABEL_MIN_TEXT_SIZE_PT} max={QR_LABEL_MAX_TEXT_SIZE_PT} step="1" value={textSizeInput} disabled={!includeName && !includeUid} onChange={(event) => setTextSizeInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
+                    <p className="mt-1 text-xs leading-5 text-fg-subtle">{t("textSizeHint")}</p>
+                  </div>
+                  <label className="mt-3 flex min-h-12 cursor-pointer items-start gap-3 border-t border-border pt-3">
+                    <input type="checkbox" checked={includeUid} onChange={(event) => setIncludeUid(event.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]" />
+                    <span>
+                      <span className="block text-sm font-semibold text-fg">{t("includeUid")}</span>
+                      <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{t("includeUidHint")}</span>
+                    </span>
+                  </label>
+                </div>
+                <div className={`rounded-lg border border-border bg-surface p-3 ${logoUrl ? "" : "opacity-60"}`}>
+                  <label className={`flex min-h-12 items-start gap-3 ${logoUrl ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                    <input type="checkbox" checked={includeLogo} disabled={!logoUrl} onChange={(event) => setIncludeLogo(event.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]" />
+                    <span>
+                      <span className="block text-sm font-semibold text-fg">{t("includeLogo")}</span>
+                      <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{logoUrl ? t("includeLogoHint") : t("logoMissing")}</span>
+                    </span>
+                  </label>
+                  <div className={`mt-3 border-t border-border pt-3 ${includeLogo && logoUrl ? "" : "opacity-50"}`}>
+                    <fieldset disabled={!includeLogo || !logoUrl}>
+                      <legend className="text-xs font-semibold text-fg-muted">{t("logoPlacement")}</legend>
+                      <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-control p-1">
+                        {(["ABOVE", "CENTER"] as const).map((placement) => (
+                          <label key={placement} className={`flex min-h-10 cursor-pointer items-center justify-center rounded-md px-2 text-center text-xs font-semibold transition-[color,background-color] focus-within:ring-2 focus-within:ring-accent/45 ${logoPlacement === placement ? "bg-raised text-fg" : "text-fg-subtle hover:text-fg"}`}>
+                            <input type="radio" name="logo-placement" value={placement} checked={logoPlacement === placement} onChange={() => setLogoPlacement(placement)} className="sr-only" />
+                            {placement === "ABOVE" ? t("logoPlacementAbove") : t("logoPlacementCenter")}
+                          </label>
+                        ))}
+                      </div>
+                      {logoPlacement === "CENTER" && <p className="mt-2 text-xs leading-5 text-fg-subtle">{t("logoPlacementCenterHint")}</p>}
+                    </fieldset>
+                    <div className="mt-3 border-t border-border pt-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <label htmlFor="qr-label-logo-size" className="text-xs font-semibold text-fg-muted">{t("logoSize")}</label>
+                        <output htmlFor="qr-label-logo-size" className="font-meta text-xs text-fg-subtle">{t("logoSizeValue", { size: logoHeightInput || "—" })}</output>
+                      </div>
+                      <input id="qr-label-logo-size" type="range" min={QR_LABEL_MIN_LOGO_HEIGHT_MM} max={layout?.logoHeightLimitMm || QR_LABEL_MAX_LOGO_HEIGHT_MM} step="0.5" value={logoHeightInput} disabled={!includeLogo || !logoUrl} onChange={(event) => setLogoHeightInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {!logoUrl && <Link href="/dashboard/settings" className="mt-3 inline-flex min-h-10 items-center text-sm font-semibold text-accent hover:text-accent-strong">{t("openSiteSettings")}</Link>}
+            </CollapsibleSetupSection>
+
+            <CollapsibleSetupSection title={t("elementGap")} meta={t("elementGapValue", { size: elementGapInput || "—" })}>
+              <p className="text-xs leading-5 text-fg-subtle">{t("elementGapHint")}</p>
+              <input id="qr-label-element-gap" aria-label={t("elementGap")} type="range" min={QR_LABEL_MIN_ELEMENT_GAP_MM} max={QR_LABEL_MAX_ELEMENT_GAP_MM} step="0.5" value={elementGapInput} onChange={(event) => setElementGapInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)]" />
+            </CollapsibleSetupSection>
+
+            <CollapsibleSetupSection title={t("labelBackground")} meta={backgroundName || t("backgroundNone")}>
+              <p className="text-xs leading-5 text-fg-subtle">{t("labelBackgroundHint")}</p>
+              {backgroundName && <span className="font-meta mt-1 block truncate text-[0.6875rem] text-accent">{backgroundName}</span>}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label className={buttonClasses({ size: "compact", className: "cursor-pointer" })}>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { void chooseBackground(event.target.files?.[0]); event.target.value = ""; }} />
+                  {backgroundUrl ? t("replaceBackground") : t("uploadBackground")}
+                </label>
+                {backgroundUrl && <Button size="compact" variant="ghost" onClick={removeBackground}>{t("removeBackground")}</Button>}
+              </div>
+              <div className={`mt-3 border-t border-border pt-3 ${backgroundUrl ? "" : "opacity-50"}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="qr-label-background-opacity" className="text-xs font-semibold text-fg-muted">{t("backgroundOpacity")}</label>
+                  <output htmlFor="qr-label-background-opacity" className="font-meta text-xs text-fg-subtle">{t("backgroundOpacityValue", { opacity: backgroundOpacityInput || "—" })}</output>
+                </div>
+                <input id="qr-label-background-opacity" type="range" min="0" max="100" step="5" value={backgroundOpacityInput} disabled={!backgroundUrl} onChange={(event) => setBackgroundOpacityInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
+              </div>
+            </CollapsibleSetupSection>
+
+            <CollapsibleSetupSection title={t("labelSize")} meta={`${widthInput || "—"} × ${heightInput || "—"} MM`}>
+              <p className="text-xs leading-5 text-fg-subtle">{t("labelSizeHint")}</p>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="grid min-w-0 flex-1 grid-cols-[1fr_auto_1fr] items-end gap-2">
+                  <Field label={t("labelWidth")} htmlFor="qr-label-width"><Input id="qr-label-width" type="number" inputMode="decimal" min={QR_LABEL_MIN_SIZE_MM} max={QR_LABEL_MAX_SIZE_MM} step="0.1" value={widthInput} onChange={(event) => { setWidthInput(event.target.value); setSizeNotice(""); }} /></Field>
+                  <Button size="compact" className="mb-0.5 size-11 px-0" aria-label={t("swapDimensions")} title={t("swapDimensions")} onClick={() => { setWidthInput(heightInput); setHeightInput(widthInput); setSizeNotice(""); }}><svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m7 7 3-3m-3 3 3 3M7 7h10M17 17l-3-3m3 3-3 3m3-3H7" /></svg></Button>
+                  <Field label={t("labelHeight")} htmlFor="qr-label-height"><Input id="qr-label-height" type="number" inputMode="decimal" min={QR_LABEL_MIN_SIZE_MM} max={QR_LABEL_MAX_SIZE_MM} step="0.1" value={heightInput} onChange={(event) => { setHeightInput(event.target.value); setSizeNotice(""); }} /></Field>
+                </div>
+                <Button variant={sizeChanged ? "primary" : "secondary"} onClick={saveSize} disabled={!layout} className="sm:shrink-0">{t("saveSize")}</Button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="font-meta text-xs text-fg-muted">{t("savedSize", { width: savedSize.widthMm, height: savedSize.heightMm })}{sizeChanged && <span className="text-warning"> · {t("unsavedSize")}</span>}</p>
+                {layout && <p className="font-meta text-xs text-fg-subtle">{t("qrSize", { size: Math.round(layout.qrSizeMm * 10) / 10 })}</p>}
+              </div>
+              <div aria-live="polite" className="mt-2 min-h-5">{sizeNotice && <p className="text-sm font-semibold text-success">{sizeNotice}</p>}</div>
+              {!layout && <p className="mt-2 rounded-lg border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger" role="alert">{t("labelInvalid")}</p>}
+            </CollapsibleSetupSection>
+
+            <CollapsibleSetupSection title={t("printRotation")} meta={`${labelRotation}°`}>
+              <p className="text-xs leading-5 text-fg-subtle">{t("printRotationHint")}</p>
+              <div className="mt-3 grid grid-cols-4 gap-1 rounded-lg bg-control p-1">
+                {([0, 90, 180, 270] as LabelRotation[]).map((rotation) => (
+                  <label key={rotation} className={`flex min-h-11 cursor-pointer items-center justify-center rounded-md px-2 text-center font-meta text-xs font-semibold tabular-nums transition-[color,background-color] focus-within:ring-2 focus-within:ring-accent/45 ${labelRotation === rotation ? "bg-raised text-fg" : "text-fg-subtle hover:text-fg"}`}>
+                    <input type="radio" name="label-rotation" value={rotation} checked={labelRotation === rotation} onChange={() => setLabelRotation(rotation)} className="sr-only" />
+                    {rotation}°
+                  </label>
+                ))}
+              </div>
+              <p className="font-meta mt-2 text-xs text-fg-muted">{t("printOutputSize", { width: outputWidthInput || "—", height: outputHeightInput || "—" })}</p>
+            </CollapsibleSetupSection>
+          </div>
+        </section>
+
       </div>
 
       <aside className="ui-panel-raised hidden min-w-0 self-start p-6 lg:sticky lg:top-6 lg:block">
         <div className="flex items-start gap-3">
           <span className="font-meta mt-1 text-[0.6875rem] font-semibold tracking-[0.16em] text-accent">03</span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-display text-lg font-semibold tracking-[-0.02em] text-fg lg:text-[1.375rem]">{t("previewTitle")}</h2><span className="font-meta text-[0.6875rem] text-fg-subtle">{widthInput || "—"} × {heightInput || "—"} MM</span></div>
+            <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-display text-lg font-semibold tracking-[-0.02em] text-fg lg:text-[1.375rem]">{t("previewTitle")}</h2><span className="font-meta text-[0.6875rem] text-fg-subtle">{outputWidthInput || "—"} × {outputHeightInput || "—"} MM · {labelRotation}°</span></div>
             <p className="ui-pretty mt-1 hidden text-sm leading-6 text-fg-subtle lg:block">{t("previewHint")}</p>
           </div>
         </div>
@@ -839,7 +916,7 @@ export default function EquipmentQrSheetBuilder({
               <span className="font-meta text-[0.625rem] font-semibold tracking-[0.16em] text-accent">03</span>
               <h2 className="truncate text-sm font-semibold text-fg">{t("previewTitle")}</h2>
             </div>
-            <p className="font-meta mt-0.5 text-[0.625rem] text-fg-subtle">{widthInput || "—"} × {heightInput || "—"} MM</p>
+            <p className="font-meta mt-0.5 text-[0.625rem] text-fg-subtle">{outputWidthInput || "—"} × {outputHeightInput || "—"} MM · {labelRotation}°</p>
           </div>
           <Button size="compact" variant="ghost" className="size-11 shrink-0 px-0" aria-label={mobilePreviewExpanded ? t("collapsePreview") : t("expandPreview")} title={mobilePreviewExpanded ? t("collapsePreview") : t("expandPreview")} aria-expanded={mobilePreviewExpanded} onClick={() => setMobilePreviewExpanded((expanded) => !expanded)}>
             <svg aria-hidden="true" viewBox="0 0 24 24" className={`size-4 transition-transform duration-150 motion-reduce:transition-none ${mobilePreviewExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m7 10 5 5 5-5" /></svg>
