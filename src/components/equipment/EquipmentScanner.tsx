@@ -171,8 +171,15 @@ export default function EquipmentScanner({
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error("camera");
       const { default: Scanner } = await import("qr-scanner");
       if (generation.current !== requestGeneration || !video.current) return;
+      const preview = video.current;
+      preview.muted = true;
+      preview.defaultMuted = true;
+      preview.autoplay = true;
+      preview.setAttribute("playsinline", "");
+      // Older iOS WebKit versions still consult the prefixed attribute.
+      preview.setAttribute("webkit-playsinline", "");
       const instance = new Scanner(
-        video.current,
+        preview,
         (result) => { void processCode(result.data); },
         { preferredCamera: "environment", returnDetailedScanResult: true, highlightScanRegion: true }
       );
@@ -287,10 +294,17 @@ export default function EquipmentScanner({
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl bg-page">
-            <video ref={video} muted playsInline className={`max-h-[28rem] min-h-64 w-full object-cover ${running ? "" : "hidden"}`} />
+          <div className="relative mx-auto aspect-[4/3] w-full max-w-xl overflow-hidden rounded-xl border border-border bg-page">
+            <video
+              ref={video}
+              autoPlay
+              muted
+              playsInline
+              aria-hidden="true"
+              className="absolute inset-0 h-full w-full bg-black object-cover"
+            />
             {!running && (
-              <div className="flex min-h-52 flex-col items-center justify-center gap-3 p-6 text-center">
+              <div className="relative z-10 flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
                 <p className="max-w-md text-sm text-fg-muted">{t("cameraReady")}</p>
                 <Button variant="primary" disabled={busy} onClick={start}>{t("start")}</Button>
               </div>

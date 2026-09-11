@@ -26,7 +26,6 @@ export type EquipmentQrLabelItem = {
 };
 
 type SavedSize = { widthMm: number; heightMm: number };
-type EquipmentQrRotation = 0 | 90 | 180 | 270;
 
 const STORAGE_KEY = "photo-platform:equipment-qr-label-size:v2";
 const DEFAULT_SIZE: SavedSize = { widthMm: 50, heightMm: 70 };
@@ -36,7 +35,6 @@ const CENTER_LOGO_BACKING_MM = 1.2;
 const PX_PER_MM = 300 / 25.4;
 const DEFAULT_BACKGROUND_OPACITY = 30;
 const MAX_BACKGROUND_BYTES = 12 * 1024 * 1024;
-const QR_ROTATIONS: EquipmentQrRotation[] = [0, 90, 180, 270];
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -60,6 +58,10 @@ function fittedText(
   return `${value}…`;
 }
 
+function equipmentUid(item: EquipmentQrLabelItem): string {
+  return item.qrToken.slice(0, 8).toUpperCase();
+}
+
 async function renderLabelCanvas({
   item,
   scanUrl,
@@ -67,9 +69,9 @@ async function renderLabelCanvas({
   heightMm,
   layout,
   includeName,
+  includeUid,
   logo,
   logoPlacement,
-  qrRotation,
   background,
   backgroundOpacity
 }: {
@@ -79,9 +81,9 @@ async function renderLabelCanvas({
   heightMm: number;
   layout: EquipmentQrLabelLayout;
   includeName: boolean;
+  includeUid: boolean;
   logo: HTMLImageElement | null;
   logoPlacement: EquipmentQrLogoPlacement;
-  qrRotation: EquipmentQrRotation;
   background: HTMLImageElement | null;
   backgroundOpacity: number;
 }): Promise<HTMLCanvasElement> {
@@ -143,11 +145,7 @@ async function renderLabelCanvas({
   context.imageSmoothingEnabled = false;
   const qrX = (canvas.width - qrSize) / 2;
   const qrY = cursorY;
-  context.save();
-  context.translate(qrX + qrSize / 2, qrY + qrSize / 2);
-  context.rotate((qrRotation * Math.PI) / 180);
-  context.drawImage(qrImage, -qrSize / 2, -qrSize / 2, qrSize, qrSize);
-  context.restore();
+  context.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
   if (logo && logoPlacement === "CENTER") {
     const maxLogoSize = layout.logoHeightMm * PX_PER_MM;
@@ -183,6 +181,21 @@ async function renderLabelCanvas({
       fittedText(context, item.name, canvas.width - 8 * PX_PER_MM),
       canvas.width / 2,
       cursorY + (layout.nameSlotMm * PX_PER_MM) / 2
+    );
+    cursorY += layout.nameSlotMm * PX_PER_MM;
+  }
+
+  if (includeUid) {
+    const fontSize = layout.uidTextSizePt * (300 / 72);
+    context.imageSmoothingEnabled = true;
+    context.fillStyle = "#514a41";
+    context.font = `500 ${fontSize}px "SFMono-Regular", Consolas, "Liberation Mono", monospace`;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(
+      equipmentUid(item),
+      canvas.width / 2,
+      cursorY + (layout.uidSlotMm * PX_PER_MM) / 2
     );
   }
   return canvas;
@@ -236,9 +249,9 @@ export default function EquipmentQrSheetBuilder({
 }) {
   const t = useTranslations("equipmentQrPrint");
   const [includeName, setIncludeName] = useState(true);
+  const [includeUid, setIncludeUid] = useState(false);
   const [includeLogo, setIncludeLogo] = useState(Boolean(logoUrl));
   const [logoPlacement, setLogoPlacement] = useState<EquipmentQrLogoPlacement>("ABOVE");
-  const [qrRotation, setQrRotation] = useState<EquipmentQrRotation>(0);
   const [textSizeInput, setTextSizeInput] = useState(String(DEFAULT_TEXT_SIZE_PT));
   const [logoHeightInput, setLogoHeightInput] = useState(String(DEFAULT_LOGO_HEIGHT_MM));
   const [backgroundUrl, setBackgroundUrl] = useState("");
@@ -276,6 +289,7 @@ export default function EquipmentQrSheetBuilder({
           labelWidthMm: stored.widthMm,
           labelHeightMm: stored.heightMm,
           includeName: true,
+          includeUid: false,
           includeLogo: Boolean(logoUrl),
           logoPlacement: "ABOVE",
           textSizePt: DEFAULT_TEXT_SIZE_PT,
@@ -317,12 +331,13 @@ export default function EquipmentQrSheetBuilder({
         labelWidthMm,
         labelHeightMm,
         includeName,
+        includeUid,
         includeLogo: includeLogo && Boolean(logoUrl),
         logoPlacement,
         textSizePt,
         logoHeightMm
       }),
-    [includeLogo, includeName, labelHeightMm, labelWidthMm, logoHeightMm, logoPlacement, logoUrl, textSizePt]
+    [includeLogo, includeName, includeUid, labelHeightMm, labelWidthMm, logoHeightMm, logoPlacement, logoUrl, textSizePt]
   );
   const totalPreviews = Math.max(1, selectedEquipment.length);
   const safePreviewIndex = Math.min(previewIndex, totalPreviews - 1);
@@ -455,9 +470,9 @@ export default function EquipmentQrSheetBuilder({
           heightMm: labelHeightMm,
           layout,
           includeName,
+          includeUid,
           logo,
           logoPlacement,
-          qrRotation,
           background,
           backgroundOpacity
         });
@@ -509,9 +524,9 @@ export default function EquipmentQrSheetBuilder({
           heightMm: labelHeightMm,
           layout,
           includeName,
+          includeUid,
           logo,
           logoPlacement,
-          qrRotation,
           background,
           backgroundOpacity
         });
@@ -540,8 +555,14 @@ export default function EquipmentQrSheetBuilder({
   const nameTop = layout
     ? ((layout.paddingMm + layout.logoSlotMm + layout.qrSizeMm) / labelHeightMm) * 100
     : 0;
+  const uidTop = layout
+    ? ((layout.paddingMm + layout.logoSlotMm + layout.qrSizeMm + layout.nameSlotMm) / labelHeightMm) * 100
+    : 0;
   const previewTextSizeCqw = layout
     ? ((layout.textSizePt * (25.4 / 72)) / labelWidthMm) * 100
+    : 0;
+  const previewUidTextSizeCqw = layout
+    ? ((layout.uidTextSizePt * (25.4 / 72)) / labelWidthMm) * 100
     : 0;
   const centerLogoBoxMm = layout
     ? layout.logoHeightMm + CENTER_LOGO_BACKING_MM
@@ -575,17 +596,7 @@ export default function EquipmentQrSheetBuilder({
           )}
           {previewQrs[previewItem.id] ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={previewQrs[previewItem.id]}
-              alt=""
-              className="absolute left-1/2 object-contain transition-transform duration-150 motion-reduce:transition-none [image-rendering:pixelated]"
-              style={{
-                top: `${qrTop}%`,
-                width: `${qrWidth}%`,
-                height: `${qrHeight}%`,
-                transform: `translateX(-50%) rotate(${qrRotation}deg)`
-              }}
-            />
+            <img src={previewQrs[previewItem.id]} alt="" className="absolute left-1/2 -translate-x-1/2 object-contain [image-rendering:pixelated]" style={{ top: `${qrTop}%`, width: `${qrWidth}%`, height: `${qrHeight}%` }} />
           ) : <div className="absolute left-1/2 -translate-x-1/2 bg-[#f0ede7]" style={{ top: `${qrTop}%`, width: `${qrWidth}%`, height: `${qrHeight}%` }} />}
           {includeLogo && logoUrl && logoPlacement === "CENTER" && previewQrs[previewItem.id] && (
             <span
@@ -610,6 +621,7 @@ export default function EquipmentQrSheetBuilder({
             </span>
           )}
           {includeName && <span className="absolute left-[4%] right-[4%] flex items-center justify-center truncate text-center font-semibold leading-tight text-[#211d18]" style={{ top: `${nameTop}%`, height: `${(layout.nameSlotMm / labelHeightMm) * 100}%`, fontSize: `${previewTextSizeCqw}cqw` }}>{previewItem.name}</span>}
+          {includeUid && <span className="absolute left-[4%] right-[4%] flex items-center justify-center truncate text-center font-meta font-medium leading-tight text-[#514a41]" style={{ top: `${uidTop}%`, height: `${(layout.uidSlotMm / labelHeightMm) * 100}%`, fontSize: `${previewUidTextSizeCqw}cqw` }}>{equipmentUid(previewItem)}</span>}
         </> : <span className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs font-semibold text-[#6f665b] sm:text-sm">{t("previewEmpty")}</span>}
       </div>
     );
@@ -643,6 +655,13 @@ export default function EquipmentQrSheetBuilder({
                 </div>
                 <input id="qr-label-text-size" type="range" min={QR_LABEL_MIN_TEXT_SIZE_PT} max={QR_LABEL_MAX_TEXT_SIZE_PT} step="1" value={textSizeInput} disabled={!includeName} onChange={(event) => setTextSizeInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
               </div>
+              <label className="mt-3 flex min-h-12 cursor-pointer items-start gap-3 border-t border-border pt-3">
+                <input type="checkbox" checked={includeUid} onChange={(event) => setIncludeUid(event.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]" />
+                <span>
+                  <span className="block text-sm font-semibold text-fg">{t("includeUid")}</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{t("includeUidHint")}</span>
+                </span>
+              </label>
             </div>
             <div className={`rounded-lg border border-border bg-raised p-3 transition-[border-color,background-color] ${logoUrl ? "hover:border-accent/40" : "opacity-60"}`}>
               <label className={`flex min-h-12 items-start gap-3 ${logoUrl ? "cursor-pointer" : "cursor-not-allowed"}`}>
@@ -690,32 +709,6 @@ export default function EquipmentQrSheetBuilder({
                 </div>
               </div>
             </div>
-            <fieldset className="rounded-lg border border-border bg-raised p-3 transition-[border-color,background-color] hover:border-accent/40 sm:col-span-2">
-              <legend className="px-1 text-sm font-semibold text-fg">{t("qrRotation")}</legend>
-              <p className="mt-0.5 text-xs leading-5 text-fg-subtle">{t("qrRotationHint")}</p>
-              <div className="mt-3 grid grid-cols-4 gap-1 rounded-lg bg-control p-1">
-                {QR_ROTATIONS.map((rotation) => (
-                  <label
-                    key={rotation}
-                    className={`font-meta flex min-h-11 cursor-pointer items-center justify-center rounded-md px-2 text-xs font-semibold transition-[color,background-color] focus-within:ring-2 focus-within:ring-accent/45 ${
-                      qrRotation === rotation
-                        ? "bg-raised text-fg"
-                        : "text-fg-subtle hover:text-fg"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="qr-rotation"
-                      value={rotation}
-                      checked={qrRotation === rotation}
-                      onChange={() => setQrRotation(rotation)}
-                      className="sr-only"
-                    />
-                    {t("qrRotationValue", { degrees: rotation })}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
             <div className="rounded-lg border border-border bg-raised p-3 transition-[border-color,background-color] hover:border-accent/40 sm:col-span-2">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
@@ -806,7 +799,7 @@ export default function EquipmentQrSheetBuilder({
             <ul className="mt-5 max-h-[28rem] divide-y divide-border overflow-y-auto border-y border-border">
               {filteredEquipment.map((item, index) => {
                 const checked = selectedIds.has(item.id);
-                return <li key={item.id}><label className={`flex min-h-14 cursor-pointer items-center gap-3 px-2 py-2 transition-colors hover:bg-accent-surface ${checked ? "bg-accent-surface" : ""}`}><input type="checkbox" checked={checked} onChange={(event) => updateSelection([item.id], event.target.checked)} className="size-5 shrink-0 accent-[var(--color-accent)]" /><span className="font-meta w-7 shrink-0 text-[0.6875rem] text-fg-faint">{String(index + 1).padStart(2, "0")}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-fg">{item.name}</span><span className="mt-0.5 block truncate text-xs text-fg-subtle">{item.category}</span></span><span className="font-meta hidden text-[0.625rem] text-fg-faint sm:block">{item.qrToken.slice(0, 8).toUpperCase()}</span></label></li>;
+                return <li key={item.id}><label className={`flex min-h-14 cursor-pointer items-center gap-3 px-2 py-2 transition-colors hover:bg-accent-surface ${checked ? "bg-accent-surface" : ""}`}><input type="checkbox" checked={checked} onChange={(event) => updateSelection([item.id], event.target.checked)} className="size-5 shrink-0 accent-[var(--color-accent)]" /><span className="font-meta w-7 shrink-0 text-[0.6875rem] text-fg-faint">{String(index + 1).padStart(2, "0")}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-fg">{item.name}</span><span className="mt-0.5 block truncate text-xs text-fg-subtle">{item.category}</span></span><span className="font-meta hidden text-[0.625rem] text-fg-faint sm:block">{equipmentUid(item)}</span></label></li>;
               })}
             </ul>
           )}
