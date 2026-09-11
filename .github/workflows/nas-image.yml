@@ -40,6 +40,8 @@ jobs:
           bytes=$(docker image inspect photo-platform:size-check --format '{{.Size}}')
           echo "Runtime image: $((bytes / 1024 / 1024)) MB"
           test "$bytes" -le 629145600
+          docker run --rm --entrypoint node photo-platform:size-check \
+            /app/migration/node_modules/prisma/build/index.js --version
       - uses: docker/build-push-action@v6
         with:
           context: .

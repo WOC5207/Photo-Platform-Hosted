@@ -58,7 +58,7 @@ COPY --from=builder /app/.next/static ./.next/static
 # deploy` on startup. The standalone server already contains its own traced
 # runtime dependencies.
 COPY --from=builder /app/prisma ./prisma
-COPY --from=migrate-deps /migrate/node_modules ./migration-node_modules
+COPY --from=migrate-deps /migrate/node_modules ./migration/node_modules
 
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 # Strip any stray \r (e.g. from a Windows-side edit) so the shebang always
