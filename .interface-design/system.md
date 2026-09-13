@@ -323,6 +323,12 @@ preserve private notes and remain owner-scoped on every write.
 - Snapshot slot geometry and immutable asset URLs into versioned local drafts.
   Published admin layout changes must not silently alter a visitor's saved
   composition.
+- The compact phone and tablet editor starts the canvas zoom at 60%; desktop
+  starts at 100%. The user may change either value with the shared zoom control.
+- Mobile text creation stays inside the Text sheet and immediately exposes the
+  selected layer's content, typography, alignment, and geometry controls. Layer
+  selection must preserve the open sheet so editing never requires reopening a
+  panel after every selection.
 - Admin slot editing uses direct manipulation for position plus numeric fields
   for precise x/y/width/height entry. Keep save/error feedback adjacent, and do
   not introduce continuous animations or decorative overlays.
