@@ -101,6 +101,7 @@ export default async function DirectoryPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
+          <Link href="/cosplan" className={buttonClasses({ variant: "primary" })}>{t("cosplan")}</Link>
           <LanguageSwitcher />
           <ThemeToggle label={tc("toggleTheme")} />
           {/* The only way in for a photographer arriving at the root: every

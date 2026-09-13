@@ -29,7 +29,8 @@ export type ManagementIcon =
   | "tiers"
   | "health"
   | "moderation"
-  | "notifications";
+  | "notifications"
+  | "cosplan";
 
 export interface ManagementNavItem {
   href: string;
@@ -169,6 +170,12 @@ function NavigationIcon({ name }: { name: ManagementIcon }) {
       <>
         <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
         <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+      </>
+    ),
+    cosplan: (
+      <>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="m5 17 4.5-5 3.5 3 2.5-2.5L19 17M8 8h.01" />
       </>
     )
   };

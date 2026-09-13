@@ -22,6 +22,7 @@ invites the rest — they get a site without ever touching Docker.
 | URL | What it is |
 |---|---|
 | `/` | Directory of every photographer hosted here |
+| `/cosplan` | Public, browser-local Cosplan poster creator using platform backgrounds |
 | `/u/<username>` | One photographer's public site — home, gallery, albums, booking |
 | `/dashboard` | "My site" — every account manages their own content here |
 | `/admin` | Platform administration: accounts, invites, storage plans and platform health. Admin only. |
@@ -65,6 +66,9 @@ there is no privileged site.
   publicly does not hide existing management data from its owner.
 - **Bilingual everywhere**: locale-prefixed URLs (`/zh/...`, `/en/...`),
   language switcher, per-language content fields with fallback.
+- **Public Cosplan poster creator**: administrators publish platform-owned
+  backgrounds; visitors combine character images and text in a browser-local
+  canvas and export a full-resolution PNG. See **[docs/COSPLAN.md](docs/COSPLAN.md)**.
 - **Every account brands its own site**, no code changes: title, homepage
   headline/subtitle, background, logo, and the vocabulary used for photo credits
   (e.g. "Credit"/"Subject" vs "Cosplayer"/"Character") are all per account, from
