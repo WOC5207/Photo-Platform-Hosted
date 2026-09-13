@@ -332,6 +332,39 @@ model PlatformSettings {
   updatedAt                               DateTime @updatedAt
 }
 
+// Platform-owned poster backgrounds available to every public visitor.
+model CosplanTemplate {
+  id          String   @id @default(cuid())
+  titleEn     String
+  titleZh     String
+  assetToken  String
+  foregroundToken String?
+  slots       Json?
+  layoutVersion Int      @default(1)
+  width       Int
+  height      Int
+  published   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  assets      CosplanTemplateAsset[]
+
+  @@index([published, sortOrder, createdAt])
+}
+
+// Replaced assets remain addressable so a browser-local draft keeps its exact
+// background instead of silently changing when an administrator uploads a new version.
+model CosplanTemplateAsset {
+  id         String           @id @default(cuid())
+  templateId String
+  template   CosplanTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  token      String           @unique
+  bytes      Int
+  createdAt  DateTime         @default(now())
+
+  @@index([templateId, createdAt])
+}
+
 // A gallery event = one photo album (a con, a shoot, etc.)
 model Event {
   bookingEvent  BookingEvent?

@@ -26,7 +26,8 @@ const routeBudgets = [
   { label: "Dashboard", route: "/[locale]/dashboard/(protected)/page", limitKb: 125 },
   { label: "Bookings", route: "/[locale]/dashboard/(protected)/bookings/page", limitKb: 125 },
   { label: "Settings", route: "/[locale]/dashboard/(protected)/settings/page", limitKb: 140 },
-  { label: "QR labels", route: "/[locale]/dashboard/(protected)/equipment/qr-labels/page", limitKb: 140 }
+  { label: "QR labels", route: "/[locale]/dashboard/(protected)/equipment/qr-labels/page", limitKb: 140 },
+  { label: "Cosplan", route: "/[locale]/(directory)/cosplan/page", limitKb: 140 }
 ];
 
 for (const budget of routeBudgets) {

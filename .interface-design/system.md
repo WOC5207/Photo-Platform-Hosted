@@ -308,6 +308,36 @@ preserve private notes and remain owner-scoped on every write.
 - Do not create continuous movement, repeat photographs to fill space, or
   replace the contact sheet with generic equal-sized cards.
 
+### Cosplan poster slots
+
+- Keep the poster canvas as the dominant focal point. Slot controls use compact
+  indexed markers and the existing warm sheet/control surfaces rather than a
+  second visual language.
+- Character insertion is a two-step task: choose or upload a character, then
+  choose a bilingual named slot. Slot buttons retain 44px touch targets and the
+  pending character remains explicit until placed or cancelled.
+- Render poster content in semantic strata: full background, clipped character
+  images, foreground artwork/borders, text, then editor-only transform chrome.
+  Layer reordering may reorder within image or text strata but must never move
+  a character over a printed border or text underneath the foreground.
+- Snapshot slot geometry and immutable asset URLs into versioned local drafts.
+  Published admin layout changes must not silently alter a visitor's saved
+  composition.
+- Admin slot editing uses direct manipulation for position plus numeric fields
+  for precise x/y/width/height entry. Keep save/error feedback adjacent, and do
+  not introduce continuous animations or decorative overlays.
+- Automatic white-space detection is a review workflow: a single quiet action
+  reveals numbered dashed candidates on the poster, recommended/review labels
+  in a bounded list, and explicit add or destructive replace actions. Advanced
+  sensitivity and inset controls live in a native disclosure and never update
+  continuously.
+- The admin slot proof is the focal surface: it occupies the open right column
+  and remains sticky on desktop. On phone and tablet it becomes a compact,
+  collapsible bottom-right proof so coordinate and detection controls remain
+  reachable without losing the poster. Irregular detected slots retain their
+  polygon contour through proofing, foreground generation, visitor clipping,
+  saved drafts, and export; manual slots remain rectangles.
+
 ### Upload wizard
 
 - The current step uses the safelight accent and an active rail.

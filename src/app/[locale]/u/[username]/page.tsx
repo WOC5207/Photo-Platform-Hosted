@@ -48,6 +48,7 @@ export default async function HomePage({
   const t = await getTranslations("home");
   const tc = await getTranslations("common");
   const tg = await getTranslations("gallery");
+  const tn = await getTranslations("nav");
   const locale = await getLocale();
   const owner = await resolveOwner(username);
   const viewer = await getCurrentUser();
@@ -227,18 +228,22 @@ export default async function HomePage({
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link
               href={`${base}/gallery`}
-              className="inline-flex min-h-11 items-center rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg transition-[background-color,transform] hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+              className={buttonClasses({ variant: "primary", className: "px-5" })}
             >
               {t("browseGallery")}
             </Link>
             {settings.bookingEnabled && (
               <Link
                 href={`${base}/booking`}
-                className="inline-flex min-h-11 items-center rounded-lg border border-border-strong bg-raised px-5 py-2.5 text-sm font-semibold text-fg-muted transition hover:border-accent/30 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                className={buttonClasses({ variant: "secondary", className: "px-5" })}
               >
                 {t("bookingButton")}
               </Link>
             )}
+            <Link href="/" className={buttonClasses({ variant: "ghost" })}>
+              <span aria-hidden="true">←</span>
+              {tn("directory")}
+            </Link>
           </div>
         </div>
 
