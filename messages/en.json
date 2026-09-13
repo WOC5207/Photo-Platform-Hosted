@@ -1707,6 +1707,7 @@
     "previous": "Previous",
     "next": "Next",
     "textHint": "Add multiline notes, character names, dates, or meeting details.",
+    "liveTextHint": "Changes appear on the poster as you type.",
     "addText": "Add text",
     "image": "Image",
     "text": "Text",
@@ -1732,6 +1733,9 @@
     "source": "View source",
     "rightsNotice": "Bangumi links identify the source. Availability of an image does not grant permission to reproduce it; only use artwork you have the right to use.",
     "selectLayer": "Select an element on the poster or in the layer list to edit it.",
+    "selectTextLayer": "Add text or choose a text layer to edit it here.",
+    "positionAndLayer": "Position and layer",
+    "editSelectedLayer": "Edit selected image",
     "export": "Export",
     "exportHint": "Download a {width} × {height} px PNG. Export happens in your browser.",
     "chooseFirst": "Choose a background before exporting.",
@@ -1756,6 +1760,7 @@
     "tools": "Tools",
     "background": "Background",
     "character": "Character",
+    "collapseTools": "Collapse tools",
     "close": "Close"
   },
   "account": {

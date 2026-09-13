@@ -325,10 +325,17 @@ preserve private notes and remain owner-scoped on every write.
   composition.
 - The compact phone and tablet editor starts the canvas zoom at 60%; desktop
   starts at 100%. The user may change either value with the shared zoom control.
-- Mobile text creation stays inside the Text sheet and immediately exposes the
-  selected layer's content, typography, alignment, and geometry controls. Layer
-  selection must preserve the open sheet so editing never requires reopening a
-  panel after every selection.
+- The compact editor uses one persistent, non-modal bottom workbench instead of
+  stacked full-screen sheets. Its five tool tabs remain reachable while a panel
+  is open; the active tab toggles the panel closed. Panel content is capped below
+  half the dynamic viewport so the poster remains visible and updates retain
+  spatial context, including when the mobile keyboard is present.
+- Mobile text editing exposes content, font, color, size, alignment, and weight
+  first. Position, rotation, layer order, duplication, and deletion live in one
+  native advanced disclosure. Selecting a text layer from the layer list opens
+  the text controls directly, without a close-and-reopen loop. Opening those
+  controls does not summon the keyboard until the visitor deliberately touches
+  the content field, preserving the largest useful poster preview.
 - Admin slot editing uses direct manipulation for position plus numeric fields
   for precise x/y/width/height entry. Keep save/error feedback adjacent, and do
   not introduce continuous animations or decorative overlays.
