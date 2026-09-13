@@ -1707,6 +1707,7 @@
     "previous": "上一页",
     "next": "下一页",
     "textHint": "添加多行备注、角色名、日期或集合信息。",
+    "liveTextHint": "输入时，修改会实时显示在海报上。",
     "addText": "添加文字",
     "image": "图片",
     "text": "文字",
@@ -1732,6 +1733,9 @@
     "source": "查看来源",
     "rightsNotice": "Bangumi 链接用于标示来源。图片可访问并不代表已获得复制许可，请只使用你有权使用的素材。",
     "selectLayer": "在海报或图层列表中选择一个元素进行编辑。",
+    "selectTextLayer": "添加文字，或选择一个文字图层在这里修改。",
+    "positionAndLayer": "位置与图层",
+    "editSelectedLayer": "编辑所选图片",
     "export": "导出",
     "exportHint": "下载 {width} × {height} 像素的 PNG。导出完全在浏览器中完成。",
     "chooseFirst": "请先选择一个背景。",
@@ -1756,6 +1760,7 @@
     "tools": "工具",
     "background": "背景",
     "character": "角色",
+    "collapseTools": "收起工具",
     "close": "关闭"
   },
   "account": {
