@@ -6,6 +6,26 @@ and the copper accent remain the visual foundation.
 
 ## Findings and changes
 
+### Cosplan inline mobile text editing (September 2026)
+
+The long text form is replaced with Edit text / Format / More controls. Typing
+uses a stable native textarea over a temporary upright Konva view of the poster.
+VisualViewport dimensions reserve room for Cancel and Done above the keyboard;
+the normal zoom, coordinates, rotation, and export stage remain unchanged.
+One completed edit creates one undo entry; cancellation restores the starting
+composition, and autosave preserves interrupted typing. The compact workbench
+is inaccessible during typing, preventing accidental composition operations.
+
+Validation: the standalone `npm run test:cosplan:mobile` harness uses the real
+editor without a database. Run `npm run build` first for its stylesheet, and
+install Chrome (or configure the harness channel) before running it. English and
+Chinese browser checks at 320, 375, and 768px cover input identity, simulated IME,
+Cancel, undo, rotated text, draft recovery, and full-resolution PNG dimensions.
+English/light and Chinese/dark screenshots cover the reduced viewport layout.
+These checks simulate viewport reduction, not a physical keyboard. Real iPhone
+Safari and Android Chrome keyboard, candidate-selection, and orientation checks
+remain unverified; no connected mobile device was available.
+
 | Finding | Implemented change |
 | --- | --- |
 | Empty booking and album screens provided little direction | Shared first-use panel with a clear action and three numbered workflow steps, in English and Chinese |
