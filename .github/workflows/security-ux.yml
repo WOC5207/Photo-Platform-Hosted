@@ -70,6 +70,8 @@ jobs:
       - run: npm run test:images
       - run: npm run test:email
       - run: npm run test:theme
+      - run: npm run test:sharing-posters
+      - run: npm run test:cosplan
       - run: npm run test:concurrency
       - run: npm run test:isolation
       - run: npm run test:quota
@@ -78,6 +80,7 @@ jobs:
       - run: npm run test:bookingorg
       - run: npm run build
       - run: npm run test:build-budget
+      - run: npm run test:cosplan:mobile
       - run: npx playwright install --with-deps chromium
       - name: HTTP isolation and browser coverage
         shell: bash

@@ -104,6 +104,7 @@ model User {
   equipmentCategories EquipmentCategory[]
   equipmentItems      EquipmentItem[]
   equipmentChecklists EquipmentChecklist[]
+  sharingPosters      SharingPoster[]
 
   invitesIssued Invite[] @relation("InviteIssuer")
   invite        Invite?  @relation("InviteRedeemer")
@@ -485,6 +486,22 @@ model Photo {
   @@index([eventId, pendingBatchId])
   @@index([eventId, pendingBatchId, sortOrder, createdAt, id])
   @@index([moderationStatus, moderationNextRetryAt])
+}
+
+// A photographer-owned, browser-rendered sharing poster. Source photographs
+// remain in their galleries; the JSON stores only the versioned composition
+// and metadata snapshot needed to reopen the project on another device.
+model SharingPoster {
+  id          String   @id @default(cuid())
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String
+  composition Json
+  revision    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ownerId, updatedAt, id])
 }
 
 // Immutable record of one successful provider response. Failed attempts live

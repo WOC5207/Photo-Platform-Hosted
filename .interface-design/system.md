@@ -354,6 +354,21 @@ preserve private notes and remain owner-scoped on every write.
   polygon contour through proofing, foreground generation, visitor clipping,
   saved drafts, and export; manual slots remain rectangles.
 
+### Gallery sharing posters
+
+- Treat the weighted photograph mosaic as a digital contact sheet and the
+  editor's focal surface. Desktop keeps it sticky beside the controls; compact
+  layouts keep it above one persistent Photos / Layout / Credits workbench.
+- Preserve selection as an indexed horizontal proof strip across gallery
+  filters and pages. Weight, crop focus, and ordering stay immediately attached
+  to the selected photograph rather than moving into modal dialogs.
+- The complete poster ratio includes its required credit footer. Cosplayer CN
+  and photographer are visually primary; camera, lens, event, date, and location
+  are opt-in metadata snapshots that never overwrite edits without confirmation.
+- Use one deterministic layout and canvas renderer for preview and export.
+  Export preparation is explicit so the later Download or native Share action
+  can run from a fresh user gesture on mobile.
+
 ### Upload wizard
 
 - The current step uses the safelight accent and an active rail.

@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode
 } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import {
   bulkDeletePhotos,
@@ -438,6 +438,7 @@ function BulkToolbar({
   onFilterChange,
   visibleIds,
   selected,
+  posterIneligibleCount,
   onSelectAllVisible,
   onClearSelection
 }: {
@@ -448,10 +449,15 @@ function BulkToolbar({
   onFilterChange: (name: string) => void;
   visibleIds: string[];
   selected: Set<string>;
+  posterIneligibleCount: number;
   onSelectAllVisible: () => void;
   onClearSelection: () => void;
 }) {
   const t = useTranslations("adminEvents");
+  const locale = useLocale();
+  const router = useRouter();
+  const [posterPending, setPosterPending] = useState(false);
+  const [posterError, setPosterError] = useState(false);
   const selectedIds = Array.from(selected);
 
   return (
@@ -497,6 +503,37 @@ function BulkToolbar({
 
       {selected.size > 0 && (
         <div className="flex flex-wrap items-end gap-3 border-t border-border-strong/40 pt-3">
+          <div className="w-full rounded-lg border border-border bg-surface p-3 sm:w-auto">
+            <p className="text-sm font-semibold text-fg">{t("sharingPosterAction")}</p>
+            <p className="mt-1 text-xs text-fg-subtle">{selected.size > 9 ? t("sharingPosterTooMany", { count: selected.size }) : posterIneligibleCount > 0 ? t("sharingPosterIneligible", { count: posterIneligibleCount }) : t("sharingPosterHint")}</p>
+            <button
+              type="button"
+              disabled={posterPending || selected.size > 9 || posterIneligibleCount > 0}
+              onClick={async () => {
+                setPosterPending(true);
+                setPosterError(false);
+                try {
+                  const response = await fetch("/api/dashboard/sharing-posters", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ locale, photoIds: selectedIds })
+                  });
+                  if (!response.ok) throw new Error("create_failed");
+                  const project = (await response.json()) as { id: string };
+                  onClearSelection();
+                  router.push(`/dashboard/sharing-posters/${project.id}`);
+                } catch {
+                  setPosterError(true);
+                } finally {
+                  setPosterPending(false);
+                }
+              }}
+              className={`${btnCls} mt-3 border-transparent bg-accent text-accent-fg hover:bg-accent-strong`}
+            >
+              {posterPending ? t("sharingPosterCreating") : t("sharingPosterCreate")}
+            </button>
+            {posterError && <p role="alert" className="mt-2 text-xs text-danger">{t("sharingPosterError")}</p>}
+          </div>
           <form
             action={bulkSetPhotoCredit}
             onSubmit={onClearSelection}
@@ -721,6 +758,10 @@ export default function PhotoManager({
         onFilterChange={handleFilterChange}
         visibleIds={visible.map(({ photo }) => photo.id)}
         selected={selected}
+        posterIneligibleCount={Array.from(selected).filter((id) => {
+          const photo = photos.find((candidate) => candidate.id === id);
+          return !photo || !moderationAllowsPublicPhoto(photo.moderationStatus);
+        }).length}
         onSelectAllVisible={selectAllVisible}
         onClearSelection={clearSelection}
       />

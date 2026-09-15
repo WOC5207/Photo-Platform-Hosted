@@ -23,6 +23,11 @@ export default async function AdminDashboardPage() {
       title: t("equipment"),
       hint: t("equipmentCardHint")
     },
+    {
+      href: "/dashboard/sharing-posters",
+      title: t("sharingPosters"),
+      hint: t("sharingPostersCardHint")
+    },
     ...(settings.creditProfilesEnabled
       ? [
           {
