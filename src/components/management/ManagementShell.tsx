@@ -501,7 +501,6 @@ export default function ManagementShell({
   const drawerRef = useRef<HTMLDivElement>(null);
   const restoreMenuFocus = useRef(false);
   const drawerId = useId();
-  const workspaceHome = workspace === "platform" ? "/admin" : "/dashboard";
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -571,7 +570,7 @@ export default function ManagementShell({
     >
       <aside className="sticky top-0 hidden h-dvh flex-col border-r border-border bg-page p-4 lg:flex">
         <div className="px-2 py-2">
-          <Brand logoUrl={logoUrl} siteTitle={siteTitle} href={workspaceHome} />
+          <Brand logoUrl={logoUrl} siteTitle={siteTitle} href={publicSiteHref} />
         </div>
         {isAdmin && (
           <div className="mt-4">
@@ -626,7 +625,7 @@ export default function ManagementShell({
             <Brand
               logoUrl={logoUrl}
               siteTitle={siteTitle}
-              href={workspaceHome}
+              href={publicSiteHref}
               compact
             />
           </div>
@@ -660,7 +659,7 @@ export default function ManagementShell({
                 <Brand
                   logoUrl={logoUrl}
                   siteTitle={siteTitle}
-                  href={workspaceHome}
+                  href={publicSiteHref}
                 />
                 <button
                   ref={closeButtonRef}
