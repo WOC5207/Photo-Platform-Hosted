@@ -330,12 +330,15 @@ preserve private notes and remain owner-scoped on every write.
   is open; the active tab toggles the panel closed. Panel content is capped below
   half the dynamic viewport so the poster remains visible and updates retain
   spatial context, including when the mobile keyboard is present.
-- Mobile text editing exposes content, font, color, size, alignment, and weight
-  first. Position, rotation, layer order, duplication, and deletion live in one
-  native advanced disclosure. Selecting a text layer from the layer list opens
-  the text controls directly, without a close-and-reopen loop. Opening those
-  controls does not summon the keyboard until the visitor deliberately touches
-  the content field, preserving the largest useful poster preview.
+- Mobile text selection exposes Edit text, Format, and More in a compact toolbar.
+  Edit text and double-tap start a native inline textarea over an upright view of
+  the poster; Add text starts with a placeholder. Keyboard space uses the visual
+  viewport, with 44px Cancel/Done actions and at least 16px input text. The view
+  transform never changes saved geometry, the user's zoom, or PNG output.
+- Treat typing as one undo transaction. Cancel restores the prior composition;
+  in-progress drafts retain typed content. Preserve the textarea and Chinese IME
+  composition through keyboard resizes. Format exposes typography only; More
+  exposes placement and layer actions without scrolling through typography.
 - Admin slot editing uses direct manipulation for position plus numeric fields
   for precise x/y/width/height entry. Keep save/error feedback adjacent, and do
   not introduce continuous animations or decorative overlays.
