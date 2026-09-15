@@ -1,12 +1,13 @@
 # ---- Stage 1: install dependencies -----------------------------------
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
-# node:22-alpine ships an npm whose `ci` is overly strict about unsatisfied
+# node:26-alpine bundles npm 11, which is what this lockfile needs. Older
+# images shipped npm 10, whose `ci` is overly strict about unsatisfied
 # *optional* peer dependencies (e.g. @swc/core's optional peer on
 # @swc/helpers, which next-intl pulls in but next itself pins to a version
-# that doesn't satisfy it) and fails the install over something npm's own
-# resolver considers fine. Newer npm handles this correctly.
-RUN npm install -g npm@11
+# that doesn't satisfy it) and failed the install over something npm's own
+# resolver considers fine. That needed an explicit `npm install -g npm@11`
+# step here; on Node 26 it is unnecessary.
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN npm ci
@@ -14,14 +15,13 @@ RUN npm ci
 # A separate, production-only dependency tree keeps the Prisma migration CLI
 # available at startup without copying the application's entire build toolchain
 # into the final image.
-FROM node:22-alpine AS migrate-deps
+FROM node:26-alpine AS migrate-deps
 WORKDIR /migrate
-RUN npm install -g npm@11
 COPY docker/runtime-migrations/package.json docker/runtime-migrations/package-lock.json ./
 RUN npm ci --omit=dev
 
 # ---- Stage 2: build ---------------------------------------------------
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -38,7 +38,7 @@ RUN DATABASE_URL="file:/tmp/build.db" \
     npx prisma generate && npm run build
 
 # ---- Stage 3: runtime -------------------------------------------------
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

@@ -4,6 +4,21 @@
 
 ### Security and reliability
 
+- Photo EXIF is now read from bytes the application opens and closes itself
+  rather than by handing exifr a file path. exifr leaked the file handle it
+  opened, which Node 26 treats as a fatal error during garbage collection, and
+  its path reader fails outright there. Shooting data (camera, lens, ISO,
+  aperture, focal length, capture time) would otherwise have gone silently
+  missing on every upload, with the server crashing when the handle was
+  collected. Only the head of the file is read, so memory stays bounded on
+  large originals.
+- The Docker image and CI now run on Node.js 26 instead of Node.js 22. Node 22
+  entered maintenance in October 2025 and reaches end of life in April 2027;
+  Node 26 becomes Active LTS in October 2026 and is supported until April 2029.
+  The Alpine base is unchanged, so the runtime image gains no new kernel or
+  libc requirement on Synology hardware. Node 26 also bundles npm 11, so the
+  explicit `npm install -g npm@11` step the older images needed is gone from
+  both build stages and from CI.
 - Photo uploads larger than 10 MB no longer fail with a generic "Upload
   failed" error. API routes are excluded from the middleware matcher again, so
   Next.js no longer clones the multipart body for middleware and silently

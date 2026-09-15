@@ -301,7 +301,7 @@ is required.
 
 ## Local development
 
-Requirements: Node.js 22+, and Docker for the database.
+Requirements: Node.js 26+, and Docker for the database.
 
 ```
 npm install

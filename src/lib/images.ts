@@ -146,6 +146,34 @@ export interface PhotoExif {
   lensModel: string | null;
 }
 
+// exifr's own file-path reader opens a FileHandle it never closes. Node used to
+// tolerate that with a deprecation warning; Node 26 makes collecting an open
+// FileHandle a fatal ERR_INVALID_STATE, and its path reader additionally fails
+// outright there ("The \"options\" argument must be of type object"). exifr is
+// unmaintained (7.1.3, last published 2022), so we read the bytes ourselves and
+// hand it a Buffer, which every supported Node version parses identically.
+//
+// EXIF and XMP live at the head of the file, so a bounded read keeps memory
+// predictable on NAS hardware even for a 100 MB original; 64 KB already covers
+// a camera JPEG. Files smaller than the cap are read whole, so nothing changes
+// for them. A larger file whose metadata sits past the cap simply yields the
+// same all-null result the contract below already allows.
+const EXIF_SCAN_BYTES = 4 * 1024 * 1024;
+
+async function readExifScanBuffer(input: ImageInput): Promise<Buffer> {
+  if (typeof input !== "string") return input;
+  const handle = await fs.open(input, "r");
+  try {
+    const { size } = await handle.stat();
+    const length = Math.min(size, EXIF_SCAN_BYTES);
+    const buffer = Buffer.allocUnsafe(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, 0);
+    return bytesRead === length ? buffer : buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
 /**
  * Read the shooting EXIF from the as-uploaded buffer, before any of our own
  * processing strips it. Best-effort: missing/unparseable EXIF just means
@@ -161,19 +189,21 @@ async function extractExif(input: ImageInput): Promise<PhotoExif> {
     cameraModel: null,
     lensModel: null
   };
-  const tags = await exifr
-    .parse(input, {
-      pick: [
-        "FocalLength",
-        "FNumber",
-        "ExposureTime",
-        "ISO",
-        "DateTimeOriginal",
-        "Make",
-        "Model",
-        "LensModel"
-      ]
-    })
+  const tags = await readExifScanBuffer(input)
+    .then((buffer) =>
+      exifr.parse(buffer, {
+        pick: [
+          "FocalLength",
+          "FNumber",
+          "ExposureTime",
+          "ISO",
+          "DateTimeOriginal",
+          "Make",
+          "Model",
+          "LensModel"
+        ]
+      })
+    )
     .catch(() => null);
   if (!tags) return empty;
 
