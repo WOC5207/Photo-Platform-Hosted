@@ -39,7 +39,7 @@ export default function LanguageSwitcher() {
   const href = `${pathname}${suffix}`;
 
   return (
-    <span role="group" aria-label={t("label")} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border-strong bg-control p-1 text-sm">
+    <span role="group" aria-label={t("label")} className="inline-flex h-11 shrink-0 items-center gap-1 rounded-lg border border-border-strong bg-control p-0.5 text-sm">
       {routing.locales.map((locale) => (
           <Link
             key={locale}
@@ -48,7 +48,7 @@ export default function LanguageSwitcher() {
             lang={locale === "zh" ? "zh-Hans" : "en"}
             aria-label={locale === "zh" ? "中文" : "English"}
             aria-current={locale === current ? "page" : undefined}
-            className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md px-2 transition-colors ${
+            className={`inline-flex h-full min-w-11 items-center justify-center rounded-md px-2 transition-colors ${
               locale === current
                 ? "bg-raised font-semibold text-fg"
                 : "text-fg-subtle hover:bg-raised hover:text-fg"
