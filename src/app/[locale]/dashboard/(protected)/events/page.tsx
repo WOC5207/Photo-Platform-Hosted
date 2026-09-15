@@ -62,7 +62,7 @@ export default async function AdminEventsPage({
     /> : <ul className="grid gap-4 lg:grid-cols-2">
       {events.map((event, index) => <li key={event.id} className="ui-panel flex min-w-0 flex-col gap-5 p-5 sm:p-6">
         <header className="flex items-start gap-4">
-          {event.coverPhoto && <img src={photoUrls(event.id, event.coverPhoto.id).thumb} alt="" loading="lazy" className="ui-image-frame h-20 w-20 shrink-0 rounded-lg object-cover" />}
+          {event.coverPhoto && <img src={photoUrls(event.id, event.coverPhoto.id).thumb} alt="" loading="lazy" className="ui-image-frame h-20 w-20 shrink-0 rounded-lg bg-control object-contain" />}
           <div className="min-w-0 flex-1">
             <p className="font-meta mb-2 text-xs tabular-nums text-accent">{String(skip + index + 1).padStart(2, "0")} · {formatDateRange(event.dateStart, event.dateEnd) || t("noDate")}</p>
             <h2 className="break-words font-display text-2xl font-semibold"><Link href={"/dashboard/events/" + event.id} className="underline-offset-4 hover:underline">{pickText(locale, event.titleEn, event.titleZh)}</Link></h2>
