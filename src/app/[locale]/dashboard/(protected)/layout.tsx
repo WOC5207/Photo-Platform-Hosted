@@ -106,6 +106,11 @@ export default async function DashboardLayout({
       icon: "equipment"
     },
     {
+      href: "/dashboard/sharing-posters",
+      label: t("admin.sharingPosters"),
+      icon: "posters"
+    },
+    {
       href: "/dashboard/credits",
       label: t("admin.credits", { term: creditTerm }),
       icon: "credits"
