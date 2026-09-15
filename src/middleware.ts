@@ -39,13 +39,18 @@ export default function middleware(req: NextRequest) {
     );
     return NextResponse.redirect(target, 308);
   }
-  if (req.nextUrl.pathname.startsWith("/api/")) {
-    return NextResponse.next();
-  }
   return intlMiddleware(req);
 }
 
 export const config = {
-  // Skip API routes, Next internals, and files with an extension
-  matcher: ["/api/:path*", "/((?!_next|.*\\..*).*)"]
+  // Skip API routes, Next internals, and files with an extension.
+  //
+  // API routes must stay out of the matcher. Whenever middleware runs, Next.js
+  // clones the request body for it and caps that clone at
+  // `experimental.middlewareClientMaxBodySize` (10 MB by default); the route
+  // handler then receives a truncated body. With /api matched, every photo
+  // upload above 10 MB failed with a generic bad-request error even though
+  // `UPLOAD_MAX_MB` allows 100 MB. Left unmatched, uploads stream straight to
+  // the handler's bounded temporary file instead of being buffered by Next.js.
+  matcher: ["/((?!api|_next|.*\\..*).*)"]
 };
