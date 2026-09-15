@@ -1,6 +1,8 @@
 "use client";
 
 import Konva from "konva";
+import { flushSync } from "react-dom";
+import InlineTextEditor from "./InlineTextEditor";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Group, Image as KonvaImage, Layer, Rect, Stage, Text, Transformer } from "react-konva";
 import { useLocale, useTranslations } from "next-intl";
@@ -179,12 +181,13 @@ function CanvasImage({ layer, selected, onSelect, onChange }: {
   </>;
 }
 
-function CanvasText({ layer, onSelect, onChange }: {
+function CanvasText({ layer, onSelect, onChange, onEdit }: {
   layer: CosplanTextLayer;
+  onEdit?: () => void;
   onSelect: () => void;
   onChange: (patch: Partial<CosplanTextLayer>) => void;
 }) {
-  return <Text id={`cosplan-${layer.id}`} text={layer.text} x={layer.x} y={layer.y} width={layer.width} rotation={layer.rotation} fontSize={layer.fontSize} fill={layer.fill} align={layer.align} fontStyle={layer.bold ? "bold" : "normal"} fontFamily={layer.fontFamily} lineHeight={1.15} draggable onClick={onSelect} onTap={onSelect} onDragEnd={(event) => onChange({ x: event.target.x(), y: event.target.y() })} onTransformEnd={(event) => {
+  return <Text id={`cosplan-${layer.id}`} text={layer.text} x={layer.x} y={layer.y} width={layer.width} rotation={layer.rotation} fontSize={layer.fontSize} fill={layer.fill} align={layer.align} fontStyle={layer.bold ? "bold" : "normal"} fontFamily={layer.fontFamily} lineHeight={1.15} onDblClick={onEdit} onDblTap={onEdit} draggable onClick={onSelect} onTap={onSelect} onDragEnd={(event) => onChange({ x: event.target.x(), y: event.target.y() })} onTransformEnd={(event) => {
     const node = event.target;
     const scaleX = node.scaleX();
     const scaleY = node.scaleY();
@@ -216,6 +219,9 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
   const [importingId, setImportingId] = useState<number | null>(null);
   const [pendingCharacter, setPendingCharacter] = useState<PendingCharacter | null>(null);
   const [mobilePanel, setMobilePanel] = useState<"background" | "character" | "text" | "layers" | "export" | null>(null);
+  const [textSession, setTextSession] = useState<{ layer: CosplanTextLayer; before: CosplanComposition; value: string; isNew: boolean } | null>(null);
+  const sessionRef = useRef(textSession);
+  const [textMore, setTextMore] = useState(false);
   const [zoom, setZoom] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches ? 0.6 : 1
   );
@@ -241,20 +247,20 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
   useEffect(() => {
     if (!composition) return;
     const timer = window.setTimeout(() => {
-      const stored = structuredClone(composition);
+      const stored = structuredClone(textSession ? { ...composition, layers: composition.layers.map((layer) => layer.id === textSession.layer.id ? { ...layer, text: textSession.value } : layer) } : composition);
       for (const layer of stored.layers) if (layer.type === "image" && layer.blob) layer.src = "";
       writeDraft(stored).then(() => setDraftStatus("saved")).catch(() => setDraftStatus("error"));
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [composition]);
+  }, [composition, textSession]);
   useEffect(() => {
     const transformer = transformerRef.current;
     const stage = stageRef.current;
-    if (!transformer || !stage || !selectedId) { transformer?.nodes([]); transformer?.getLayer()?.batchDraw(); return; }
+    if (!transformer || !stage || !selectedId || textSession) { transformer?.nodes([]); transformer?.getLayer()?.batchDraw(); return; }
     const node = stage.findOne(`#cosplan-${selectedId}`);
     transformer.nodes(node ? [node] : []);
     transformer.getLayer()?.batchDraw();
-  }, [selectedId, composition?.layers]);
+  }, [selectedId, composition?.layers, textSession]);
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!selectedId || !composition || /INPUT|TEXTAREA|SELECT/.test((event.target as HTMLElement)?.tagName)) return;
@@ -423,9 +429,51 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
     }
   }
 
+  function beginTextEdit(layer: CosplanTextLayer, isNew = false) {
+    if (!composition || !window.matchMedia("(max-width: 1023px)").matches) return;
+    const session = { layer, before: composition, value: isNew ? "" : layer.text, isNew };
+    sessionRef.current = session;
+    flushSync(() => {
+      if (isNew) setComposition({ ...composition, layers: [...composition.layers, { ...layer, text: "" }] });
+      setSelectedId(layer.id);
+      setMobilePanel(null);
+      setTextSession(session);
+    });
+  }
+
+  function finishTextEdit(save: boolean) {
+    const session = sessionRef.current;
+    if (!session) return;
+    const keep = save && (!session.isNew || session.value.trim().length > 0);
+    const next = keep ? {
+      ...session.before,
+      layers: session.isNew
+        ? [...session.before.layers, { ...session.layer, text: session.value }]
+        : session.before.layers.map((layer) => layer.id === session.layer.id ? { ...layer, text: session.value } : layer),
+      updatedAt: Date.now()
+    } : session.before;
+    if (keep && (session.isNew || session.value !== session.layer.text)) {
+      setPast((items) => [...items.slice(-49), session.before]);
+      setFuture([]);
+    }
+    sessionRef.current = null;
+    flushSync(() => {
+      setComposition(next);
+      setTextSession(null);
+      setSelectedId(session.isNew && !keep ? null : session.layer.id);
+      setTextMore(false);
+      setMobilePanel("text");
+    });
+    // Replace any in-progress autosave promptly on cancellation.
+    const stored = structuredClone(next);
+    for (const layer of stored.layers) if (layer.type === "image" && layer.blob) layer.src = "";
+    void writeDraft(stored).then(() => setDraftStatus("saved")).catch(() => setDraftStatus("error"));
+  }
+
   function addText() {
     if (!composition || textCount >= TEXT_LIMIT) return;
     const layer: CosplanTextLayer = { id: crypto.randomUUID(), type: "text", name: t("textLayer"), text: t("newText"), x: composition.width * 0.12, y: composition.height * 0.1, width: composition.width * 0.76, rotation: 0, fontSize: Math.max(28, composition.width * 0.045), fill: "#ffffff", align: "center", bold: true, fontFamily: "Arial" };
+    if (window.matchMedia("(max-width: 1023px)").matches) { beginTextEdit(layer, true); return; }
     apply({ ...composition, layers: [...composition.layers, layer] }); setSelectedId(layer.id);
   }
 
@@ -619,7 +667,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
         <p className="min-w-0 truncate text-sm font-semibold">{selected.name}</p>
         <span className="font-meta text-[0.625rem] tracking-[0.12em] text-accent-text">{t("text").toUpperCase()}</span>
       </div>
-      <label className="text-sm font-semibold text-fg-muted">{t("content")}<textarea value={selected.text} onChange={(event) => updateLayer(selected.id, { text: event.target.value })} className={`${controlClasses} mt-1 min-h-20 resize-y`} /></label>
+      {!textMore && <>
       <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-3">
         <label className="text-sm font-semibold text-fg-muted">{t("font")}<select value={selected.fontFamily} onChange={(event) => updateLayer(selected.id, { fontFamily: event.target.value })} className={`${controlClasses} mt-1`}>{FONT_OPTIONS.map((font) => <option key={font}>{font}</option>)}</select></label>
         <label className="text-sm font-semibold text-fg-muted">{t("color")}<input type="color" value={selected.fill} onChange={(event) => updateLayer(selected.id, { fill: event.target.value })} className={`${controlClasses} mt-1 p-1`} /></label>
@@ -632,7 +680,8 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
         <label className="text-sm font-semibold text-fg-muted">{t("alignment")}<select value={selected.align} onChange={(event) => updateLayer(selected.id, { align: event.target.value as CosplanTextLayer["align"] })} className={`${controlClasses} mt-1`}><option value="left">{t("alignLeft")}</option><option value="center">{t("alignCenter")}</option><option value="right">{t("alignRight")}</option></select></label>
         <label className="mt-6 flex min-h-11 items-center gap-2 rounded-lg border border-border bg-control px-3 text-sm font-semibold"><input type="checkbox" checked={selected.bold} onChange={(event) => updateLayer(selected.id, { bold: event.target.checked })} />{t("bold")}</label>
       </div>
-      <details className="group rounded-lg border border-border bg-raised">
+      </>}
+      <details open={textMore} onToggle={(event) => setTextMore(event.currentTarget.open)} className="group rounded-lg border border-border bg-raised">
         <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45">{t("positionAndLayer")}<span aria-hidden="true" className="transition group-open:rotate-180">⌄</span></summary>
         <div className="grid gap-3 border-t border-border p-3">
           <div className="grid grid-cols-2 gap-3">{(["x", "y", "width", "rotation"] as const).map((field) => <label key={field} className="text-sm font-semibold capitalize text-fg-muted">{field}<input type="number" value={Math.round(selected[field])} onChange={(event) => updateLayer(selected.id, { [field]: numberValue(event.target.value, selected[field]) })} className={`${controlClasses} mt-1`} /></label>)}</div>
@@ -646,10 +695,15 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
 
   const panelContent: Record<NonNullable<typeof mobilePanel>, ReactNode> = { background: backgroundTools, character: characterTools, text: mobileTextTools, layers: <div className="flex flex-col gap-4">{layerTools}{selected?.type === "image" && <details className="group rounded-lg border border-border bg-surface"><summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45">{t("editSelectedLayer")}<span aria-hidden="true" className="transition group-open:rotate-180">⌄</span></summary><div className="border-t border-border p-3">{inspector}</div></details>}</div>, export: exportTools };
 
-  return <CanvasLayoutContext.Provider value={{ slots, foreground, width: composition?.width ?? 0, height: composition?.height ?? 0 }}><div className="relative pb-20 lg:pb-0">
+  return <CanvasLayoutContext.Provider value={{ slots, foreground, width: composition?.width ?? 0, height: composition?.height ?? 0 }}><div inert={textSession ? true : undefined} className="relative pb-20 lg:pb-0">
     {draftAvailable && !composition && <div className="ui-panel-raised mb-5 flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-display text-xl font-semibold">{t("restoreTitle")}</h2><p className="mt-1 text-sm text-fg-subtle">{t("restoreHint", { title: draftAvailable.templateTitle })}</p></div><div className="flex gap-2"><Button onClick={() => void startNew()}>{t("startNew")}</Button><Button variant="primary" onClick={() => void restore()}>{t("restore")}</Button></div></div>}
-    {!composition ? <section className="grid gap-5"><div><p className="font-meta text-[0.6875rem] tracking-[0.16em] text-accent-text">01 / {String(templates.length).padStart(2, "0")}</p><h2 className="font-display mt-2 text-2xl font-semibold">{t("chooseBackground")}</h2><p className="mt-1 text-sm text-fg-subtle">{t("chooseBackgroundHint")}</p></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{templates.map((template, index) => <button key={template.id} type="button" onClick={() => chooseTemplate(template)} className="group overflow-hidden rounded-xl border border-border bg-surface text-left transition hover:-translate-y-0.5 hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"><span className="relative block aspect-[4/5] overflow-hidden bg-control"><img src={template.imageUrl} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" /><span className="font-meta absolute left-3 top-3 rounded-md bg-black/65 px-2 py-1 text-[0.6875rem] text-white">{String(index + 1).padStart(2, "0")}</span></span><span className="block p-4"><span className="font-display block text-lg font-semibold">{template.title}</span><span className="font-meta mt-1 block text-[0.6875rem] text-fg-subtle">{template.width} × {template.height} PX</span></span></button>)}</div></section> : <div className="grid min-w-0 gap-5 lg:grid-cols-[19rem_minmax(0,1fr)_19rem]"><aside className="ui-panel hidden self-start p-4 lg:sticky lg:top-4 lg:flex lg:max-h-[calc(100dvh-2rem)] lg:flex-col lg:gap-6 lg:overflow-y-auto">{backgroundTools}<div className="border-t border-border pt-5">{characterTools}</div><div className="border-t border-border pt-5">{textTools}</div></aside><section className="min-w-0"><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><p className="font-meta text-[0.6875rem] text-accent-text">{composition.templateTitle}</p><p className="text-xs text-fg-subtle">{composition.width} × {composition.height} PX</p></div><div className="flex items-center gap-2"><Button size="compact" onClick={undo} disabled={!past.length}>{t("undo")}</Button><Button size="compact" onClick={redo} disabled={!future.length}>{t("redo")}</Button><Button size="compact" onClick={() => void startNew()}>{t("startNew")}</Button></div></div><div ref={containerRef} role="region" aria-label={t("canvasLabel")} tabIndex={0} className="ui-panel flex min-h-[50dvh] min-w-0 items-start justify-center overflow-auto p-4"><Stage ref={stageRef} width={composition.width * displayScale} height={composition.height * displayScale} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === "background") setSelectedId(null); }} onTouchStart={(event) => { if (event.target === event.target.getStage() || event.target.name() === "background") setSelectedId(null); }}><Layer scaleX={displayScale} scaleY={displayScale}><Rect name="background" width={composition.width} height={composition.height} fill="#fff" /><KonvaImage name="background" image={background ?? undefined} width={composition.width} height={composition.height} />{composition.layers.map((layer) => layer.type === "image" ? <CanvasImage key={layer.id} layer={layer} selected={selectedId === layer.id} onSelect={() => setSelectedId(layer.id)} onChange={(patch) => updateLayer(layer.id, patch)} /> : <CanvasText key={layer.id} layer={layer} onSelect={() => setSelectedId(layer.id)} onChange={(patch) => updateLayer(layer.id, patch)} />)}<Transformer ref={transformerRef} rotateEnabled enabledAnchors={selected?.type === "text" ? ["middle-left", "middle-right", "top-left", "top-right", "bottom-left", "bottom-right"] : undefined} keepRatio={selected?.type === "image"} borderStroke="#a44f25" anchorStroke="#a44f25" anchorFill="#fff" anchorSize={Math.max(8, 12 / displayScale)} /></Layer></Stage></div><label className="mt-3 flex items-center gap-3 text-xs font-semibold text-fg-muted">{t("zoom")}<input type="range" min="0.5" max="2" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} className="min-w-0 flex-1 accent-[var(--color-accent)]" /><span className="font-meta w-12 text-right">{Math.round(zoom * 100)}%</span></label></section><aside className="ui-panel hidden self-start p-4 lg:sticky lg:top-4 lg:flex lg:max-h-[calc(100dvh-2rem)] lg:flex-col lg:gap-6 lg:overflow-y-auto">{layerTools}<div className="border-t border-border pt-5">{inspector}</div><div className="border-t border-border pt-5">{exportTools}</div></aside></div>}
-    {composition && <section aria-label={t("tools")} className="fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 z-40 flex w-[calc(100%-1rem)] max-w-2xl -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border-strong bg-raised/95 shadow-[0_16px_48px_rgb(0_0_0/0.24)] backdrop-blur-xl lg:hidden">
+    {!composition ? <section className="grid gap-5"><div><p className="font-meta text-[0.6875rem] tracking-[0.16em] text-accent-text">01 / {String(templates.length).padStart(2, "0")}</p><h2 className="font-display mt-2 text-2xl font-semibold">{t("chooseBackground")}</h2><p className="mt-1 text-sm text-fg-subtle">{t("chooseBackgroundHint")}</p></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{templates.map((template, index) => <button key={template.id} type="button" onClick={() => chooseTemplate(template)} className="group overflow-hidden rounded-xl border border-border bg-surface text-left transition hover:-translate-y-0.5 hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"><span className="relative block aspect-[4/5] overflow-hidden bg-control"><img src={template.imageUrl} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" /><span className="font-meta absolute left-3 top-3 rounded-md bg-black/65 px-2 py-1 text-[0.6875rem] text-white">{String(index + 1).padStart(2, "0")}</span></span><span className="block p-4"><span className="font-display block text-lg font-semibold">{template.title}</span><span className="font-meta mt-1 block text-[0.6875rem] text-fg-subtle">{template.width} × {template.height} PX</span></span></button>)}</div></section> : <div className="grid min-w-0 gap-5 lg:grid-cols-[19rem_minmax(0,1fr)_19rem]"><aside className="ui-panel hidden self-start p-4 lg:sticky lg:top-4 lg:flex lg:max-h-[calc(100dvh-2rem)] lg:flex-col lg:gap-6 lg:overflow-y-auto">{backgroundTools}<div className="border-t border-border pt-5">{characterTools}</div><div className="border-t border-border pt-5">{textTools}</div></aside><section className="min-w-0"><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><p className="font-meta text-[0.6875rem] text-accent-text">{composition.templateTitle}</p><p className="text-xs text-fg-subtle">{composition.width} × {composition.height} PX</p></div><div className="flex items-center gap-2"><Button size="compact" onClick={undo} disabled={!past.length}>{t("undo")}</Button><Button size="compact" onClick={redo} disabled={!future.length}>{t("redo")}</Button><Button size="compact" onClick={() => void startNew()}>{t("startNew")}</Button></div></div><div ref={containerRef} role="region" aria-label={t("canvasLabel")} tabIndex={0} className="ui-panel flex min-h-[50dvh] min-w-0 items-start justify-center overflow-auto p-4"><Stage ref={stageRef} width={composition.width * displayScale} height={composition.height * displayScale} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === "background") setSelectedId(null); }} onTouchStart={(event) => { if (event.target === event.target.getStage() || event.target.name() === "background") setSelectedId(null); }}><Layer scaleX={displayScale} scaleY={displayScale}><Rect name="background" width={composition.width} height={composition.height} fill="#fff" /><KonvaImage name="background" image={background ?? undefined} width={composition.width} height={composition.height} />{composition.layers.map((layer) => layer.type === "image" ? <CanvasImage key={layer.id} layer={layer} selected={selectedId === layer.id} onSelect={() => setSelectedId(layer.id)} onChange={(patch) => updateLayer(layer.id, patch)} /> : <CanvasText key={layer.id} layer={layer} onEdit={() => beginTextEdit(layer)} onSelect={() => setSelectedId(layer.id)} onChange={(patch) => updateLayer(layer.id, patch)} />)}<Transformer ref={transformerRef} rotateEnabled enabledAnchors={selected?.type === "text" ? ["middle-left", "middle-right", "top-left", "top-right", "bottom-left", "bottom-right"] : undefined} keepRatio={selected?.type === "image"} borderStroke="#a44f25" anchorStroke="#a44f25" anchorFill="#fff" anchorSize={Math.max(8, 12 / displayScale)} /></Layer></Stage></div><label className="mt-3 flex items-center gap-3 text-xs font-semibold text-fg-muted">{t("zoom")}<input type="range" min="0.5" max="2" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} className="min-w-0 flex-1 accent-[var(--color-accent)]" /><span className="font-meta w-12 text-right">{Math.round(zoom * 100)}%</span></label></section><aside className="ui-panel hidden self-start p-4 lg:sticky lg:top-4 lg:flex lg:max-h-[calc(100dvh-2rem)] lg:flex-col lg:gap-6 lg:overflow-y-auto">{layerTools}<div className="border-t border-border pt-5">{inspector}</div><div className="border-t border-border pt-5">{exportTools}</div></aside></div>}
+    {composition && !textSession && <section aria-label={t("tools")} className="fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 z-40 flex w-[calc(100%-1rem)] max-w-2xl -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border-strong bg-raised/95 shadow-[0_16px_48px_rgb(0_0_0/0.24)] backdrop-blur-xl lg:hidden">
+      {selected?.type === "text" && <div className="grid grid-cols-3 gap-2 border-b border-border p-2">
+        <Button size="compact" onClick={() => beginTextEdit(selected)}>{t("editText")}</Button>
+        <Button size="compact" onClick={() => { setTextMore(false); setMobilePanel("text"); }}>{t("formatText")}</Button>
+        <Button size="compact" onClick={() => { setTextMore(true); setMobilePanel("text"); }}>{t("moreText")}</Button>
+      </div>}
       {mobilePanel && <div id="cosplan-mobile-tool-panel" className="max-h-[46dvh] min-h-0 overflow-y-auto overscroll-contain px-4 pb-4">
         <div className="sticky top-0 z-10 -mx-4 mb-3 flex min-h-11 items-center justify-center border-b border-border bg-raised/95 px-4 backdrop-blur-xl">
           <span aria-hidden="true" className="h-1 w-10 rounded-full bg-border-strong" />
@@ -662,5 +716,18 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
         return <button key={panel} type="button" onClick={() => setMobilePanel((current) => current === panel ? null : panel)} aria-expanded={active} aria-controls={active ? "cosplan-mobile-tool-panel" : undefined} className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-[0.6875rem] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${active ? "bg-accent-surface text-accent-text" : "text-fg-muted hover:bg-accent-surface"}`}><span aria-hidden="true" className="text-base">{panel === "background" ? "▧" : panel === "character" ? "+" : panel === "text" ? "T" : panel === "layers" ? "≡" : "↓"}</span><span className="truncate">{t(panel)}</span></button>;
       })}</nav>
     </section>}
+    {textSession && composition && <InlineTextEditor layer={textSession.layer} value={textSession.value}
+      onChange={(value) => {
+        const session = sessionRef.current;
+        if (!session) return;
+        sessionRef.current = { ...session, value };
+        setTextSession(sessionRef.current);
+      }} onFinish={finishTextEdit}>
+      <Rect width={composition.width} height={composition.height} fill="#fff" />
+      <KonvaImage image={background ?? undefined} width={composition.width} height={composition.height} />
+      {composition.layers.filter((layer) => layer.id !== textSession.layer.id).map((layer) => layer.type === "image"
+        ? <CanvasImage key={layer.id} layer={layer} selected={false} onSelect={() => {}} onChange={() => {}} />
+        : <CanvasText key={layer.id} layer={layer} onSelect={() => {}} onChange={() => {}} />)}
+    </InlineTextEditor>}
   </div></CanvasLayoutContext.Provider>;
 }
