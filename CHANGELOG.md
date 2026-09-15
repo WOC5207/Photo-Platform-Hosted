@@ -55,8 +55,10 @@
 - Clicking the logo or site title in the management sidebar opens the
   photographer's public page rather than the dashboard home the navigation
   already pointed at.
-- Gallery cover previews show the whole photo. A non-square cover used to lose
-  its edges to a square crop, so a portrait frame appeared cut off.
+- Photo previews show the whole photo, both the cover thumbnails on the gallery
+  list and the cards inside a gallery. They were cropped to a fixed box before,
+  so a portrait frame lost its edges; a tall photo showed barely a third of
+  itself on the gallery cards.
 - Pending uploads can be cancelled individually or in bulk, and destructive
   removal confirms the affected files and storage. Settings warn before dirty
   navigation, while language changes retain the active section and URL suffix.
