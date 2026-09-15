@@ -7,7 +7,11 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { discardSiteImage } from "@/lib/siteImages";
-import { EQUIPMENT_STATUSES, equipmentName } from "@/lib/equipment";
+import {
+  EQUIPMENT_STATUSES,
+  QUICK_EQUIPMENT_STATUSES,
+  equipmentName
+} from "@/lib/equipment";
 import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 
 const equipmentSchema = z.object({
@@ -110,6 +114,24 @@ export async function updateEquipment(formData: FormData): Promise<void> {
       serialNumber: parsed.data.serialNumber,
       notes: parsed.data.notes
     }
+  });
+  refreshEquipment();
+}
+
+/**
+ * Flip an item between the three everyday states straight from the inventory
+ * list. Deliberately touches only `status`: `statusNote` explains a situation
+ * the owner wrote by hand, so it survives until they edit it themselves, which
+ * matches how the QR page's owner controls behave.
+ */
+export async function setEquipmentStatus(formData: FormData): Promise<void> {
+  const id = text(formData, "id");
+  const parsed = z.enum(QUICK_EQUIPMENT_STATUSES).safeParse(text(formData, "status"));
+  if (!id || !parsed.success) return;
+  const owner = await ownerId();
+  await prisma.equipmentItem.updateMany({
+    where: { id, ownerId: owner },
+    data: { status: parsed.data }
   });
   refreshEquipment();
 }

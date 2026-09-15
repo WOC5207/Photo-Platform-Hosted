@@ -43,6 +43,20 @@
 
 ### User experience
 
+- Equipment status can be changed straight from the inventory list. The three
+  everyday states are now a control on each card instead of a read-only badge,
+  so moving an item between in-inventory, signed-out and broken no longer means
+  opening the editor. Status notes, maintenance and other are unchanged and
+  still live in the editor.
+- The public header no longer mixes control heights. The language switcher
+  stood taller than everything beside it; every control is now the same height
+  and a full touch target. The header and mobile menu also link back to the
+  platform root, which an owner's site previously had no way to reach.
+- Clicking the logo or site title in the management sidebar opens the
+  photographer's public page rather than the dashboard home the navigation
+  already pointed at.
+- Gallery cover previews show the whole photo. A non-square cover used to lose
+  its edges to a square crop, so a portrait frame appeared cut off.
 - Pending uploads can be cancelled individually or in bulk, and destructive
   removal confirms the affected files and storage. Settings warn before dirty
   navigation, while language changes retain the active section and URL suffix.

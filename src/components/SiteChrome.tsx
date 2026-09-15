@@ -108,15 +108,21 @@ export default async function SiteChrome({
           </Link>
           <nav aria-label={t("nav.menu")} className="hidden items-center gap-2 text-sm xl:flex">
             <Link
+              href="/"
+              className="inline-flex min-h-11 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
+            >
+              {t("nav.directory")}
+            </Link>
+            <Link
               href={`${base}/gallery`}
-              className="inline-flex min-h-10 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
+              className="inline-flex min-h-11 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
             >
               {t("nav.gallery")}
             </Link>
             {settings.bookingEnabled && (
               <Link
                 href={`${base}/booking`}
-                className="inline-flex min-h-10 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
+                className="inline-flex min-h-11 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
               >
                 {t("nav.booking")}
               </Link>
@@ -129,12 +135,12 @@ export default async function SiteChrome({
                 url={contactUrl}
                 qrUrl={contactQrUrl}
                 labels={contactLabels}
-                className="inline-flex min-h-10 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
+                className="inline-flex min-h-11 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
               />
             )}
             <Link
               href={accountHref}
-              className="inline-flex min-h-10 items-center rounded-lg border border-border-strong bg-raised px-3 font-semibold text-fg-muted transition hover:border-accent/30 hover:text-fg"
+              className="inline-flex min-h-11 items-center rounded-lg border border-border-strong bg-raised px-3 font-semibold text-fg-muted transition hover:border-accent/30 hover:text-fg"
             >
               {accountLabel}
             </Link>
@@ -142,6 +148,7 @@ export default async function SiteChrome({
           <MobileNav
             basePath={base}
             labels={{
+              directory: t("nav.directory"),
               gallery: t("nav.gallery"),
               booking: t("nav.booking"),
               account: accountLabel,
