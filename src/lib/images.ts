@@ -3,7 +3,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import sharp from "sharp";
-import exifr from "exifr";
+import exifReader from "exif-reader";
 import { config } from "./config";
 
 // Keep each libvips operation modest; the application-level semaphore below
@@ -146,13 +146,35 @@ export interface PhotoExif {
   lensModel: string | null;
 }
 
-/**
- * Read the shooting EXIF from the as-uploaded buffer, before any of our own
- * processing strips it. Best-effort: missing/unparseable EXIF just means
- * every field comes back null (e.g. screenshots, graphics, edited exports).
- */
-async function extractExif(input: ImageInput): Promise<PhotoExif> {
-  const empty: PhotoExif = {
+// sharp already decodes the container and hands back the raw EXIF payload, so
+// the common formats need no second read of the file. exif-reader parses that
+// payload. It replaced exifr, which was last published in 2022, returned
+// nothing at all for WebP, and leaked the file handle it opened when given a
+// path — which Node 26 treats as a fatal error during garbage collection.
+//
+// libvips exposes no EXIF payload for TIFF, so that one format still needs the
+// bytes read here. A TIFF file and an EXIF payload share the same header, so
+// the same parser reads a TIFF directly. That read is bounded because an
+// original may be 100 MB and this runs on NAS hardware; metadata sitting past
+// the cap simply yields the all-null result the contract below already allows.
+const EXIF_SCAN_BYTES = 4 * 1024 * 1024;
+
+async function readExifScanBuffer(input: ImageInput): Promise<Buffer> {
+  if (typeof input !== "string") return input;
+  const handle = await fs.open(input, "r");
+  try {
+    const { size } = await handle.stat();
+    const length = Math.min(size, EXIF_SCAN_BYTES);
+    const buffer = Buffer.allocUnsafe(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, 0);
+    return bytesRead === length ? buffer : buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+function emptyExif(): PhotoExif {
+  return {
     focalLengthMm: null,
     aperture: null,
     exposureTime: null,
@@ -161,24 +183,46 @@ async function extractExif(input: ImageInput): Promise<PhotoExif> {
     cameraModel: null,
     lensModel: null
   };
-  const tags = await exifr
-    .parse(input, {
-      pick: [
-        "FocalLength",
-        "FNumber",
-        "ExposureTime",
-        "ISO",
-        "DateTimeOriginal",
-        "Make",
-        "Model",
-        "LensModel"
-      ]
-    })
-    .catch(() => null);
-  if (!tags) return empty;
+}
 
-  const make = typeof tags.Make === "string" ? tags.Make.trim() : "";
-  const model = typeof tags.Model === "string" ? tags.Model.trim() : "";
+/** Some writers store a single-valued tag as a one-element array. */
+function finiteNumber(value: unknown): number | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return typeof candidate === "number" && Number.isFinite(candidate)
+    ? candidate
+    : null;
+}
+
+function trimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/**
+ * Read the shooting EXIF from the as-uploaded image, before any of our own
+ * processing strips it. `embedded` is the EXIF payload sharp already returned
+ * from the metadata() call each caller makes. Best-effort: missing or
+ * unparseable EXIF just means every field comes back null (e.g. screenshots,
+ * graphics, edited exports).
+ */
+async function extractExif(
+  input: ImageInput,
+  embedded: Buffer | undefined
+): Promise<PhotoExif> {
+  const payload =
+    embedded ?? (await readExifScanBuffer(input).catch(() => undefined));
+  if (!payload) return emptyExif();
+
+  let tags;
+  try {
+    tags = exifReader(payload);
+  } catch {
+    return emptyExif();
+  }
+  const image = tags.Image ?? {};
+  const photo = tags.Photo ?? {};
+
+  const make = trimmedString(image.Make);
+  const model = trimmedString(image.Model);
   // Many bodies repeat the make as a prefix of the model (e.g. "Canon" /
   // "Canon EOS R5"); avoid showing it twice.
   const cameraModel =
@@ -186,15 +230,23 @@ async function extractExif(input: ImageInput): Promise<PhotoExif> {
       ? model || null
       : [make, model].filter(Boolean).join(" ") || null;
 
+  // ISOSpeedRatings is the EXIF 2.2 name; 2.3 renamed it to
+  // PhotographicSensitivity, and files in the wild use either.
+  const iso = finiteNumber(
+    photo.ISOSpeedRatings ?? photo.PhotographicSensitivity
+  );
+  const lensModel = trimmedString(photo.LensModel);
+
   return {
-    focalLengthMm: typeof tags.FocalLength === "number" ? tags.FocalLength : null,
-    aperture: typeof tags.FNumber === "number" ? tags.FNumber : null,
-    exposureTime:
-      typeof tags.ExposureTime === "number" ? tags.ExposureTime : null,
-    iso: typeof tags.ISO === "number" ? tags.ISO : null,
-    takenAt: tags.DateTimeOriginal instanceof Date ? tags.DateTimeOriginal : null,
+    focalLengthMm: finiteNumber(photo.FocalLength),
+    aperture: finiteNumber(photo.FNumber),
+    exposureTime: finiteNumber(photo.ExposureTime),
+    // The column is an integer; ISO is whole in practice but not by format.
+    iso: iso === null ? null : Math.round(iso),
+    takenAt:
+      photo.DateTimeOriginal instanceof Date ? photo.DateTimeOriginal : null,
     cameraModel,
-    lensModel: typeof tags.LensModel === "string" ? tags.LensModel.trim() || null : null
+    lensModel: lensModel || null
   };
 }
 
@@ -329,7 +381,7 @@ export async function storePendingSource(
   const swapped = (meta.orientation ?? 1) >= 5;
   const width = swapped ? meta.height : meta.width;
   const height = swapped ? meta.width : meta.height;
-  const exif = await extractExif(input);
+  const exif = await extractExif(input, meta.exif);
   const sourceFilename = `${photoId}-source.${ext}`;
   const sourcePath = path.join(dir, sourceFilename);
 
@@ -500,7 +552,7 @@ export async function processAndStorePhoto(
   const swapped = (meta.orientation ?? 1) >= 5;
   const width = swapped ? meta.height : meta.width;
   const height = swapped ? meta.width : meta.height;
-  const exif = await extractExif(input);
+  const exif = await extractExif(input, meta.exif);
 
   await writeRenditions(input, dir, photoId);
 

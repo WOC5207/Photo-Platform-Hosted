@@ -4,6 +4,24 @@
 
 ### Security and reliability
 
+- WebP uploads now record their shooting data. exifr returned nothing at all
+  for WebP, so the camera, lens, ISO, aperture, focal length and capture time
+  of every WebP photo were silently discarded.
+- Photo EXIF is now parsed with exif-reader from the payload sharp already
+  returns, replacing exifr. exifr was last published in 2022, and it leaked the
+  file handle it opened when given a path, which Node 26 treats as a fatal
+  error during garbage collection; its path reader also fails outright there,
+  so shooting data would have gone missing on every upload while the server
+  crashed when the handle was collected. Reusing sharp's payload also removes a
+  second read of the file for JPEG, PNG and WebP. TIFF carries no such payload,
+  so it is still read from disk, bounded, and parsed directly.
+- The Docker image and CI now run on Node.js 26 instead of Node.js 22. Node 22
+  entered maintenance in October 2025 and reaches end of life in April 2027;
+  Node 26 becomes Active LTS in October 2026 and is supported until April 2029.
+  The Alpine base is unchanged, so the runtime image gains no new kernel or
+  libc requirement on Synology hardware. Node 26 also bundles npm 11, so the
+  explicit `npm install -g npm@11` step the older images needed is gone from
+  both build stages and from CI.
 - Photo uploads larger than 10 MB no longer fail with a generic "Upload
   failed" error. API routes are excluded from the middleware matcher again, so
   Next.js no longer clones the multipart body for middleware and silently
