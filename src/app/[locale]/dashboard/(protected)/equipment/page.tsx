@@ -9,10 +9,12 @@ import { Link } from "@/i18n/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { equipmentName, equipmentPhotoUrl } from "@/lib/equipment";
-import { EQUIPMENT_STATUSES } from "@/lib/equipment";
+import { EQUIPMENT_STATUSES, QUICK_EQUIPMENT_STATUSES } from "@/lib/equipment";
+import QuickEquipmentStatusButton from "@/components/equipment/QuickEquipmentStatusButton";
+import StatusSegmentedControl from "@/components/equipment/StatusSegmentedControl";
 import FilterToolbar from "@/components/ui/FilterToolbar";
 import { controlClasses } from "@/components/ui/Field";
-import { deleteEquipment, rotateEquipmentQr } from "./actions";
+import { deleteEquipment, rotateEquipmentQr, setEquipmentStatus } from "./actions";
 
 const STATUS_KEY = {
   IN_INVENTORY: "statusInInventory",
@@ -259,6 +261,26 @@ export default async function EquipmentPage({
                   <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_CLASS[item.status]}`}>{t(STATUS_KEY[item.status])}</span>
                   {item.statusNote && <span className="min-w-0 flex-1 text-sm text-fg-muted">{item.statusNote}</span>}
                 </div>
+                <StatusSegmentedControl label={`${t("setInventoryStatus")}: ${equipmentName(item)}`}>
+                  {QUICK_EQUIPMENT_STATUSES.map((choice) => (
+                    // One form per choice, with the status as a hidden
+                    // field rather than on the submit button. These cards are
+                    // handed to EquipmentSortableGrid, a client component, and
+                    // a server-rendered form that crosses that boundary loses
+                    // the submitter's own name/value when it posts. The
+                    // preparation checklist uses one shared form safely because
+                    // nothing wraps it in a client component.
+                    <form key={choice} action={setEquipmentStatus} className="flex flex-1">
+                      <input type="hidden" name="id" value={item.id} />
+                      <input type="hidden" name="status" value={choice} />
+                      <QuickEquipmentStatusButton
+                        status={choice}
+                        active={item.status === choice}
+                        label={t(STATUS_KEY[choice])}
+                      />
+                    </form>
+                  ))}
+                </StatusSegmentedControl>
                 {item.serialNumber && (
                   <p className="text-sm text-fg-muted">
                     <span className="text-fg-subtle">{t("serialShort")}: </span>
