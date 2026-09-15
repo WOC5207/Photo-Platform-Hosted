@@ -787,13 +787,19 @@ export default function PhotoManager({
               </label>
             </div>
 
+            {/*
+              Fit rather than fill: these cards are how the owner identifies a
+              photo, and a 4:3 box cropping a portrait frame hides exactly the
+              part they are looking for. The surrounding box already carries the
+              surface colour, so the unfilled space reads as a frame.
+            */}
             <div className="ui-image-frame relative overflow-hidden rounded-lg bg-control">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={photo.thumbUrl}
                 alt=""
                 loading="lazy"
-                className="aspect-[4/3] w-full object-cover"
+                className="aspect-[4/3] w-full object-contain"
               />
               {photo.isCover && (
                 <span className="absolute left-2 top-2 rounded-md bg-white/90 px-2 py-0.5 text-xs font-semibold text-neutral-900">
