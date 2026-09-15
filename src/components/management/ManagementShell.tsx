@@ -18,6 +18,7 @@ export type ManagementWorkspace = "site" | "platform";
 export type ManagementIcon =
   | "overview"
   | "gallery"
+  | "posters"
   | "bookings"
   | "equipment"
   | "preparation"
@@ -95,6 +96,13 @@ function NavigationIcon({ name }: { name: ManagementIcon }) {
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <circle cx="8.5" cy="9" r="1.5" />
         <path d="m4 17 5-5 4 4 2-2 5 5" />
+      </>
+    ),
+    posters: (
+      <>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="m6 16 4-4 3 3 2-2 3 3M7 8h.01" />
+        <path d="M16 7h3M17.5 5.5v3" />
       </>
     ),
     bookings: (

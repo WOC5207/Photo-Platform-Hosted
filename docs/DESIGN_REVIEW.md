@@ -76,3 +76,24 @@ upload, or real-disk `EXPLAIN ANALYZE` results from this development machine.
 optional ETag/304 media path. Run it on the deployed NAS with representative
 owner, gallery, booking, QR, and authenticated-dashboard environment values;
 record those results here before treating the hardware targets as achieved.
+# Gallery sharing poster editor — September 2026
+
+The sharing-poster workflow extends the contact-sheet system with an indexed
+selection tray and a weighted mosaic proof. The poster stays dominant: sticky
+beside controls on desktop and above the compact workbench on smaller screens.
+Photos, Layout, and Credits are peers rather than nested wizard steps, reducing
+backtracking while comparing crops against the finished frame.
+
+The editor reuses the existing surface, button, field, focus, and 44px target
+patterns. Required creator credits lead the footer; optional EXIF/event details
+remain quiet and explicitly enabled. Project saving is ambient but visible, and
+conflicts become a deliberate Reload / Save as copy choice. Export is split into
+preparation and a fresh Download/Share action to preserve mobile share-sheet
+activation requirements.
+
+Verified by the feature unit suite: 1–9-photo deterministic partitions remain
+within bounds without overlap; visual weight changes area; normalized crop
+focal points reach both image edges; duplicate photo IDs and output sizes above
+12 megapixels are rejected or bounded. Full browser and physical-device share
+sheet checks remain deployment acceptance tests because they depend on stored
+gallery media and the host browser.
