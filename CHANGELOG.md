@@ -4,6 +4,12 @@
 
 ### Security and reliability
 
+- Photo uploads larger than 10 MB no longer fail with a generic "Upload
+  failed" error. API routes are excluded from the middleware matcher again, so
+  Next.js no longer clones the multipart body for middleware and silently
+  truncates it at its 10 MB `middlewareClientMaxBodySize` default before it
+  reaches the upload handler. Uploads stream to the bounded temporary file up
+  to `UPLOAD_MAX_MB` as documented.
 - Public lottery authorization now uses a separate encrypted visitor session;
   entrant identities, contact details, and recovery tokens are no longer sent
   to other visitors. Recovery requires the matching token and submitted contact
