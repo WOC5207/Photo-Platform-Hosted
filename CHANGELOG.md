@@ -4,14 +4,17 @@
 
 ### Security and reliability
 
-- Photo EXIF is now read from bytes the application opens and closes itself
-  rather than by handing exifr a file path. exifr leaked the file handle it
-  opened, which Node 26 treats as a fatal error during garbage collection, and
-  its path reader fails outright there. Shooting data (camera, lens, ISO,
-  aperture, focal length, capture time) would otherwise have gone silently
-  missing on every upload, with the server crashing when the handle was
-  collected. Only the head of the file is read, so memory stays bounded on
-  large originals.
+- WebP uploads now record their shooting data. exifr returned nothing at all
+  for WebP, so the camera, lens, ISO, aperture, focal length and capture time
+  of every WebP photo were silently discarded.
+- Photo EXIF is now parsed with exif-reader from the payload sharp already
+  returns, replacing exifr. exifr was last published in 2022, and it leaked the
+  file handle it opened when given a path, which Node 26 treats as a fatal
+  error during garbage collection; its path reader also fails outright there,
+  so shooting data would have gone missing on every upload while the server
+  crashed when the handle was collected. Reusing sharp's payload also removes a
+  second read of the file for JPEG, PNG and WebP. TIFF carries no such payload,
+  so it is still read from disk, bounded, and parsed directly.
 - The Docker image and CI now run on Node.js 26 instead of Node.js 22. Node 22
   entered maintenance in October 2025 and reaches end of life in April 2027;
   Node 26 becomes Active LTS in October 2026 and is supported until April 2029.
