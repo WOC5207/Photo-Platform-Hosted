@@ -70,6 +70,7 @@ jobs:
       - run: npm run test:images
       - run: npm run test:email
       - run: npm run test:theme
+      - run: npm run test:sharing-posters
       - run: npm run test:concurrency
       - run: npm run test:isolation
       - run: npm run test:quota
