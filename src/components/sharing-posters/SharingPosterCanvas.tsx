@@ -10,14 +10,19 @@ import {
   renderSharingPoster,
   type SharingPosterRenderResult
 } from "@/lib/sharingPosterCanvas";
-import type { PosterLayoutRect } from "@/lib/sharingPosterLayout";
+import {
+  cropRectToAnchor,
+  resolvePosterCrop,
+  type PosterLayoutRect,
+  type PosterRect
+} from "@/lib/sharingPosterLayout";
 
 export default function SharingPosterCanvas({
   composition,
   photos,
   selectedPhotoId,
   onSelectPhoto,
-  onFocalChange,
+  onCropChange,
   onRenderMetrics,
   ariaLabel,
   unavailableLabel
@@ -26,7 +31,7 @@ export default function SharingPosterCanvas({
   photos: SharingPosterResolvedPhoto[];
   selectedPhotoId: string | null;
   onSelectPhoto: (id: string | null) => void;
-  onFocalChange: (id: string, focalX: number, focalY: number) => void;
+  onCropChange: (id: string, crop: { mode: "manual"; x: number; y: number }) => void;
   onRenderMetrics: (result: SharingPosterRenderResult) => void;
   ariaLabel: string;
   unavailableLabel: string;
@@ -39,9 +44,12 @@ export default function SharingPosterCanvas({
     id: string;
     x: number;
     y: number;
-    focalX: number;
-    focalY: number;
-    rect: PosterLayoutRect;
+    /** The crop showing when the drag began, in image pixels. */
+    startCrop: PosterRect;
+    /** Image pixels per canvas pixel, so content follows the pointer 1:1. */
+    scale: number;
+    naturalWidth: number;
+    naturalHeight: number;
   } | null>(null);
   const [images, setImages] = useState<Map<string, HTMLImageElement>>(new Map());
   const height = Math.max(
@@ -58,7 +66,11 @@ export default function SharingPosterCanvas({
           id: photo.photoId,
           weight: photo.composition.weight,
           width: photo.source?.width,
-          height: photo.source?.height
+          height: photo.source?.height,
+          // The crop mode and, for auto crops, the subject shape the frames;
+          // a manual anchor does not, so dragging never re-solves the mosaic.
+          mode: photo.composition.crop?.mode ?? "legacy",
+          subject: photo.composition.crop?.mode === "auto" ? photo.source?.subject ?? null : null
         }))
       }),
     [composition.ratio, composition.style, composition.credits, photos]
@@ -83,7 +95,8 @@ export default function SharingPosterCanvas({
       selectedPhotoId,
       selectionColor: getComputedStyle(canvas).getPropertyValue("--accent").trim() || "#a44f25",
       rectangles: cached,
-      unavailableLabel
+      unavailableLabel,
+      subjectMarkerPhotoId: selectedPhotoId
     });
     rectanglesRef.current = result.rectangles;
     cacheRef.current = { key: layoutKey, rectangles: result.rectangles };
@@ -112,16 +125,26 @@ export default function SharingPosterCanvas({
     onSelectPhoto(rect?.id ?? null);
     if (!rect) return;
     const photo = photos.find((candidate) => candidate.photoId === rect.id);
-    if (!photo) return;
+    const image = images.get(rect.id);
+    if (!photo?.source || !image?.complete || image.naturalWidth === 0) return;
+    const startCrop = resolvePosterCrop(
+      photo.composition,
+      photo.source.subject,
+      image.naturalWidth,
+      image.naturalHeight,
+      rect.width,
+      rect.height
+    );
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
       pointerId: event.pointerId,
       id: rect.id,
       x: p.x,
       y: p.y,
-      focalX: photo.composition.focalX,
-      focalY: photo.composition.focalY,
-      rect
+      startCrop,
+      scale: startCrop.width / rect.width,
+      naturalWidth: image.naturalWidth,
+      naturalHeight: image.naturalHeight
     };
   }
 
@@ -129,9 +152,17 @@ export default function SharingPosterCanvas({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const p = point(event);
-    const focalX = Math.min(1, Math.max(0, drag.focalX - (p.x - drag.x) / drag.rect.width));
-    const focalY = Math.min(1, Math.max(0, drag.focalY - (p.y - drag.y) / drag.rect.height));
-    onFocalChange(drag.id, focalX, focalY);
+    // Moving the pointer moves the image under the frame by the same distance.
+    const x = Math.min(
+      Math.max(drag.startCrop.x - (p.x - drag.x) * drag.scale, 0),
+      Math.max(0, drag.naturalWidth - drag.startCrop.width)
+    );
+    const y = Math.min(
+      Math.max(drag.startCrop.y - (p.y - drag.y) * drag.scale, 0),
+      Math.max(0, drag.naturalHeight - drag.startCrop.height)
+    );
+    const anchor = cropRectToAnchor({ ...drag.startCrop, x, y }, drag.naturalWidth, drag.naturalHeight);
+    onCropChange(drag.id, { mode: "manual", x: anchor.x, y: anchor.y });
   }
 
   function endDrag(event: React.PointerEvent<HTMLCanvasElement>) {

@@ -129,6 +129,9 @@ export const config = {
     return value ? validatedSecret("ADMIN_PASSWORD", value, 12) : "";
   },
   stripOriginalExif: () => process.env.STRIP_ORIGINAL_EXIF === "true",
+  /** Boot-time subject-detection backfill; on unless set to "false" or "0". */
+  subjectDetectionSweep: () =>
+    !["false", "0"].includes((process.env.SUBJECT_DETECTION_SWEEP ?? "").trim().toLowerCase()),
   uploadMaxBytes: () =>
     Math.floor(positiveMb("UPLOAD_MAX_MB", DEFAULT_UPLOAD_MAX_MB) * 1024 * 1024),
   pendingMaxBytes: () =>

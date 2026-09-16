@@ -13,12 +13,18 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { sweepPendingCompression } = await import("./lib/compressionWorker");
     const { sweepPendingModeration } = await import("./lib/moderationWorker");
+    const { sweepPhotoSubjects } = await import("./lib/subjectDetectionWorker");
     // Don't block startup on the sweep; let it run in the background.
     void sweepPendingCompression().catch((err) =>
       console.error("Pending compression sweep failed:", err)
     );
     void sweepPendingModeration().catch((err) =>
       console.error("Pending moderation sweep failed:", err)
+    );
+    // Backfills subject positions for photos that predate detection; it waits
+    // for the compression burst to pass and works one photo at a time.
+    void sweepPhotoSubjects().catch((err) =>
+      console.error("Subject detection sweep failed:", err)
     );
   }
 }

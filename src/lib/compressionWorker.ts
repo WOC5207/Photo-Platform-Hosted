@@ -161,6 +161,13 @@ export async function runCompressionJob(photoId: string): Promise<void> {
                "renditionBytes" = ${result.renditionBytes},
                "sourceBytes" = ${result.sourceBytes},
                bytes = ${newBytes},
+               "subjectX" = ${result.subject.subject?.x ?? null},
+               "subjectY" = ${result.subject.subject?.y ?? null},
+               "subjectBoxX" = ${result.subject.subject?.box.x ?? null},
+               "subjectBoxY" = ${result.subject.subject?.box.y ?? null},
+               "subjectBoxWidth" = ${result.subject.subject?.box.width ?? null},
+               "subjectBoxHeight" = ${result.subject.subject?.box.height ?? null},
+               "subjectVersion" = ${result.subject.version},
                "compressionClaimedAt" = NULL,
                "compressionFailed" = false
          WHERE id = ${photoId} AND "uploadState" = 'processing'

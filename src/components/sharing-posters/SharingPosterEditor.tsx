@@ -16,6 +16,7 @@ import {
   type SharingPosterResolvedPhoto
 } from "@/lib/sharingPoster";
 import type { SharingPosterRenderResult } from "@/lib/sharingPosterCanvas";
+import { legacyFocalToAnchor } from "@/lib/sharingPosterLayout";
 
 const SharingPosterCanvas = dynamic(
   () => import("@/components/sharing-posters/SharingPosterCanvas"),
@@ -119,6 +120,43 @@ export default function SharingPosterEditor({
     }
   }, [prepared]);
 
+  // While any photo that follows its subject is still waiting for the server
+  // to detect one, re-read the project's photo sources now and then. Only the
+  // sources are merged, never the composition, so nothing the owner is editing
+  // can be overwritten. Bounded, and it stops as soon as nothing is pending.
+  const awaitingSubject = photos.some(
+    (photo) => photo.composition.crop?.mode === "auto" && photo.source?.subjectState === "pending"
+  );
+  useEffect(() => {
+    if (!awaitingSubject) return;
+    let cancelled = false;
+    let attempts = 0;
+    const timer = window.setInterval(async () => {
+      attempts += 1;
+      if (attempts > 12) {
+        window.clearInterval(timer);
+        return;
+      }
+      try {
+        const response = await fetch(`/api/dashboard/sharing-posters/${encodeURIComponent(project.id)}?locale=${locale}`, { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+        const data = (await response.json()) as { photos: SharingPosterResolvedPhoto[] };
+        if (cancelled) return;
+        setSourceMap((current) => {
+          const next = new Map(current);
+          for (const photo of data.photos) if (photo.source) next.set(photo.photoId, photo.source);
+          return next;
+        });
+      } catch {
+        // A failed poll just waits for the next one.
+      }
+    }, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [awaitingSubject, project.id, locale]);
+
   useEffect(() => {
     if (currentSignature === lastSavedRef.current) return;
     if (saveState === "conflict" || saveState === "error" || savingRef.current) return;
@@ -180,6 +218,39 @@ export default function SharingPosterEditor({
     }));
   }
 
+  /** What the two focus inputs edit: the manual anchor, or the legacy focal fractions. */
+  function cropValue(photo: SharingPosterResolvedPhoto): { x: number; y: number } {
+    const crop = photo.composition.crop;
+    if (crop?.mode === "manual") return { x: crop.x, y: crop.y };
+    return { x: photo.composition.focalX, y: photo.composition.focalY };
+  }
+
+  function setCropAxis(photo: SharingPosterResolvedPhoto, axis: "x" | "y", value: number) {
+    const clamped = Math.min(1, Math.max(0, value));
+    updatePhoto(photo.photoId, (entry) =>
+      entry.crop?.mode === "manual"
+        ? { ...entry, crop: { ...entry.crop, [axis]: clamped } }
+        : { ...entry, [axis === "x" ? "focalX" : "focalY"]: clamped }
+    );
+  }
+
+  function setCropMode(photo: SharingPosterResolvedPhoto, mode: "auto" | "manual") {
+    if (mode === "auto") {
+      updatePhoto(photo.photoId, (entry) => ({ ...entry, crop: { mode: "auto" } }));
+      return;
+    }
+    // Manual starts from whatever is showing now, so nothing jumps.
+    const source = photo.source;
+    const rect = metrics.rectangles.find((candidate) => candidate.id === photo.photoId);
+    let anchor = { x: 0.5, y: 0.5 };
+    if (photo.composition.crop?.mode === "auto") {
+      if (source?.subject) anchor = { x: source.subject.x, y: source.subject.y };
+    } else if (!photo.composition.crop && source && rect) {
+      anchor = legacyFocalToAnchor(source.width, source.height, rect.width, rect.height, photo.composition.focalX, photo.composition.focalY);
+    }
+    updatePhoto(photo.photoId, (entry) => ({ ...entry, crop: { mode: "manual", x: anchor.x, y: anchor.y } }));
+  }
+
   function syncMetadata(nextPhotos: SharingPosterResolvedPhoto[]) {
     if (metadataEditedRef.current) return;
     const available = nextPhotos.flatMap((photo) => (photo.source ? [photo.source] : []));
@@ -196,7 +267,7 @@ export default function SharingPosterEditor({
 
   function addPhoto(source: SharingPosterPhotoValue) {
     if (composition.photos.some((photo) => photo.photoId === source.id) || composition.photos.length >= 9) return;
-    const entry = { photoId: source.id, weight: source.homeWeight, focalX: 0.5, focalY: 0.5 };
+    const entry = { photoId: source.id, weight: source.homeWeight, focalX: 0.5, focalY: 0.5, crop: { mode: "auto" as const } };
     setSourceMap((current) => new Map(current).set(source.id, source));
     const nextResolved = [...photos, { photoId: source.id, composition: entry, source }];
     setComposition((current) => ({ ...current, photos: [...current.photos, entry] }));
@@ -364,7 +435,7 @@ export default function SharingPosterEditor({
             photos={photos}
             selectedPhotoId={selectedPhotoId}
             onSelectPhoto={setSelectedPhotoId}
-            onFocalChange={(id, focalX, focalY) => updatePhoto(id, (photo) => ({ ...photo, focalX, focalY }))}
+            onCropChange={(id, crop) => updatePhoto(id, (photo) => ({ ...photo, crop }))}
             onRenderMetrics={handleMetrics}
             ariaLabel={t("previewAria")}
             unavailableLabel={t("unavailable")}
@@ -384,11 +455,26 @@ export default function SharingPosterEditor({
                   <span className="flex justify-between"><span>{t("visualWeight")}</span><span className="font-meta">{selectedPhoto.composition.weight}</span></span>
                   <input type="range" min="1" max="5" step="1" value={selectedPhoto.composition.weight} onChange={(event) => updatePhoto(selectedPhoto.photoId, (photo) => ({ ...photo, weight: Number(event.target.value) }))} className="min-h-11 accent-accent" />
                 </label>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("cropHorizontal")}<input type="number" min="0" max="100" value={Math.round(selectedPhoto.composition.focalX * 100)} onChange={(event) => updatePhoto(selectedPhoto.photoId, (photo) => ({ ...photo, focalX: Math.min(1, Math.max(0, Number(event.target.value) / 100)) }))} className={fieldClasses} /></label>
-                  <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("cropVertical")}<input type="number" min="0" max="100" value={Math.round(selectedPhoto.composition.focalY * 100)} onChange={(event) => updatePhoto(selectedPhoto.photoId, (photo) => ({ ...photo, focalY: Math.min(1, Math.max(0, Number(event.target.value) / 100)) }))} className={fieldClasses} /></label>
+                <div className="mt-4 grid gap-2">
+                  <span className="text-sm font-semibold text-fg-muted">{t("cropMode")}</span>
+                  <div role="group" aria-label={t("cropMode")} className="grid grid-cols-2 gap-2">
+                    {(["auto", "manual"] as const).map((mode) => {
+                      const active = (selectedPhoto.composition.crop?.mode ?? "manual") === mode;
+                      return <button key={mode} type="button" aria-pressed={active} onClick={() => setCropMode(selectedPhoto, mode)} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${active ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t(mode === "auto" ? "cropModeAuto" : "cropModeManual")}</button>;
+                    })}
+                  </div>
                 </div>
-                <p className="mt-2 text-xs text-fg-subtle">{t("cropHint")}</p>
+                {selectedPhoto.composition.crop?.mode === "auto" ? (
+                  <p className="mt-2 text-xs text-fg-subtle" aria-live="polite">{t(selectedPhoto.source?.subjectState === "detected" ? "subjectDetected" : selectedPhoto.source?.subjectState === "none" ? "subjectNone" : "subjectDetecting")}</p>
+                ) : (
+                  <>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("cropHorizontal")}<input type="number" min="0" max="100" value={Math.round(cropValue(selectedPhoto).x * 100)} onChange={(event) => setCropAxis(selectedPhoto, "x", Number(event.target.value) / 100)} className={fieldClasses} /></label>
+                      <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("cropVertical")}<input type="number" min="0" max="100" value={Math.round(cropValue(selectedPhoto).y * 100)} onChange={(event) => setCropAxis(selectedPhoto, "y", Number(event.target.value) / 100)} className={fieldClasses} /></label>
+                    </div>
+                    <p className="mt-2 text-xs text-fg-subtle">{t("cropHint")}</p>
+                  </>
+                )}
               </div>
             )}
             <div className="mt-5"><SharingPosterPhotoPicker locale={locale} events={events} photos={photos} onAdd={addPhoto} onRemove={removePhoto} onMove={movePhoto} onSelect={setSelectedPhotoId} /></div>

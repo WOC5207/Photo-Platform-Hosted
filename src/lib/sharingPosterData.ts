@@ -13,6 +13,8 @@ import type {
   SharingPosterResolvedPhoto
 } from "@/lib/sharingPoster";
 import { sharingPosterMetadataFromPhotos } from "@/lib/sharingPoster";
+import { photoNeedsSubject } from "@/lib/subjectDetection";
+import { requestPhotoSubjects } from "@/lib/subjectDetectionWorker";
 
 const photoSelect = {
   id: true,
@@ -24,6 +26,13 @@ const photoSelect = {
   createdAt: true,
   exifCameraModel: true,
   exifLensModel: true,
+  subjectX: true,
+  subjectY: true,
+  subjectBoxX: true,
+  subjectBoxY: true,
+  subjectBoxWidth: true,
+  subjectBoxHeight: true,
+  subjectVersion: true,
   event: {
     select: {
       ownerId: true,
@@ -59,8 +68,37 @@ function serializePhoto(row: PhotoRow, locale: string): SharingPosterPhotoValue 
     fullUrl: urls.full,
     creditNames: row.credits.map(({ creditName }) => creditName.trim()).filter(Boolean),
     cameraModel: row.exifCameraModel?.trim() ?? "",
-    lensModel: row.exifLensModel?.trim() ?? ""
+    lensModel: row.exifLensModel?.trim() ?? "",
+    ...serializeSubject(row)
   };
+}
+
+function serializeSubject(
+  row: Pick<PhotoRow, "subjectX" | "subjectY" | "subjectBoxX" | "subjectBoxY" | "subjectBoxWidth" | "subjectBoxHeight" | "subjectVersion">
+): Pick<SharingPosterPhotoValue, "subjectState" | "subject"> {
+  if (photoNeedsSubject(row)) return { subjectState: "pending", subject: null };
+  if (row.subjectX === null || row.subjectY === null) return { subjectState: "none", subject: null };
+  const hasBox =
+    row.subjectBoxX !== null &&
+    row.subjectBoxY !== null &&
+    row.subjectBoxWidth !== null &&
+    row.subjectBoxHeight !== null;
+  return {
+    subjectState: "detected",
+    subject: {
+      x: row.subjectX,
+      y: row.subjectY,
+      box: hasBox
+        ? { x: row.subjectBoxX!, y: row.subjectBoxY!, width: row.subjectBoxWidth!, height: row.subjectBoxHeight! }
+        : null
+    }
+  };
+}
+
+/** Ask the background worker for any rows still lacking a subject; never awaited. */
+function nudgeSubjectDetection(rows: Pick<PhotoRow, "id" | "subjectVersion">[]): void {
+  const missing = rows.filter((row) => photoNeedsSubject(row)).map((row) => row.id);
+  if (missing.length > 0) requestPhotoSubjects(missing);
 }
 
 function eligiblePhotoWhere(ownerId: string): Prisma.PhotoWhereInput {
@@ -82,6 +120,7 @@ export async function resolveSharingPosterPhotos(
         select: photoSelect
       })
     : [];
+  nudgeSubjectDetection(rows);
   const byId = new Map(rows.map((row) => [row.id, serializePhoto(row, locale)]));
   return composition.photos.map((photo) => ({
     photoId: photo.photoId,
@@ -100,6 +139,7 @@ export async function getSharingPosterPhotosByIds(
     where: { id: { in: photoIds }, ...eligiblePhotoWhere(ownerId) },
     select: photoSelect
   });
+  nudgeSubjectDetection(rows);
   const byId = new Map(rows.map((row) => [row.id, serializePhoto(row, locale)]));
   return photoIds.flatMap((id) => {
     const photo = byId.get(id);
@@ -227,6 +267,7 @@ export async function getSharingPosterPickerPage({
   ]);
   const pageRows = rows.slice(0, take);
   const last = pageRows.at(-1);
+  nudgeSubjectDetection(pageRows);
   return {
     items: pageRows.map((row) => serializePhoto(row, locale)),
     nextCursor:
