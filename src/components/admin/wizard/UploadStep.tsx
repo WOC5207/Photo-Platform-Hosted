@@ -54,6 +54,7 @@ export default function UploadStep({
     <div className="flex flex-col gap-3">
       <div
         id="wizard-upload-action"
+        data-tour="upload-picker"
         tabIndex={-1}
         className="grid scroll-mt-24 gap-3 rounded-xl border border-dashed border-accent/40 bg-accent-surface/40 p-5 outline-none transition data-[guidance-active=true]:ring-2 data-[guidance-active=true]:ring-accent/70 data-[guidance-active=true]:ring-offset-4 data-[guidance-active=true]:ring-offset-page sm:justify-items-start"
       >

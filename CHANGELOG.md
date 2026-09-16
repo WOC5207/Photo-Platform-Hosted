@@ -43,6 +43,14 @@
 
 ### User experience
 
+- New accounts get a step-by-step on-screen tutorial on their first visit to
+  the dashboard, after the setup wizard: nine coach marks lead from the
+  Overview to the Events list, through naming an event, picking its days and
+  creating it, into the gallery and the photo upload wizard. Each step
+  highlights the real control and either advances with Next or waits for the
+  user to press it. It can be skipped at any point and replayed from the
+  Overview page; completion is stored on the account so it does not return on
+  another device. Accounts that already existed are treated as done.
 - Equipment status can be changed straight from the inventory list. The three
   everyday states are now a control on each card instead of a read-only badge,
   so moving an item between in-inventory, signed-out and broken no longer means

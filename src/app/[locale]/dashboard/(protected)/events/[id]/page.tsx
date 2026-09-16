@@ -82,6 +82,7 @@ export default async function EditEventPage({
           <h2 className="text-lg font-semibold">{t("photos")}</h2>
           <Link
             href={`/dashboard/events/${event.id}/photos`}
+            data-tour="add-photos"
             className="inline-flex min-h-10 items-center justify-center rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 max-sm:min-h-11"
           >
             {pendingCount > 0

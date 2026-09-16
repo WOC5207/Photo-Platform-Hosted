@@ -3,10 +3,12 @@ import { requireUser } from "@/lib/auth";
 import { Link } from "@/i18n/navigation";
 import { getSiteSettings, resolveCreditTerm } from "@/lib/settings";
 import PageHeader from "@/components/ui/PageHeader";
+import { restartOnboardingTour } from "./tourActions";
 
 export default async function AdminDashboardPage() {
   const t = await getTranslations("admin");
   const tc = await getTranslations("common");
+  const tt = await getTranslations("tour");
   const tw = await getTranslations("eventWorkspace");
   const locale = await getLocale();
   const user = await requireUser(locale);
@@ -60,6 +62,7 @@ export default async function AdminDashboardPage() {
           >
           <Link
             href={destination.href}
+            data-tour={destination.href === "/dashboard/events" ? "events-card" : undefined}
             className={`group flex h-full items-start justify-between gap-5 rounded-xl border border-border bg-surface p-5 transition-[border-color,background-color,transform] duration-150 hover:border-accent/30 hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
               index === 0 ? "min-h-40 sm:p-7" : "min-h-32"
             }`}
@@ -93,6 +96,16 @@ export default async function AdminDashboardPage() {
           </li>
         ))}
       </ol>
+      {user.tourCompletedAt !== null && (
+        <form action={restartOnboardingTour}>
+          <button
+            type="submit"
+            className="inline-flex min-h-11 items-center text-xs text-fg-subtle underline underline-offset-4 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          >
+            {tt("replay")}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

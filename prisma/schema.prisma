@@ -91,6 +91,12 @@ model User {
 
   createdAt DateTime @default(now())
 
+  // When this account finished or skipped the guided first-login tutorial
+  // (create an event, add photos). NULL = still to be shown; the dashboard
+  // layout mounts the tour until it is set. Accounts from before the tour
+  // existed were marked done by its migration.
+  tourCompletedAt DateTime?
+
   // Everything this account owns. Cascade means deleting a User removes all of
   // it in one statement — but NOT their files on disk, which must be removed
   // first and separately (see the storage phase).

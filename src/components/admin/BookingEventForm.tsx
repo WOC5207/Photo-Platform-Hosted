@@ -148,7 +148,7 @@ export default function BookingEventForm({
       )}
 
       {showOverviewFields && <>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div data-tour="event-title" className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-fg-muted">{t("titleEn")}</span>
           <input
@@ -442,7 +442,12 @@ export default function BookingEventForm({
       )}
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
-        <Button type="submit" variant="primary" disabled={pending}>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={pending}
+          data-tour={initial.id ? undefined : "event-create"}
+        >
           {submitLabel}
         </Button>
         <Link href={cancelHref} className={buttonClasses({ variant: "ghost" })}>
