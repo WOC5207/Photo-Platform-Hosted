@@ -19,6 +19,37 @@ rendered entirely in the browser and are never written to the NAS.
 - Preview and export both call `renderSharingPoster`; editor selection outlines
   are the only preview-only drawing.
 
+## Footer spacing
+
+`style.textGapPercent` is the gap between the bottom of the photo area and the
+first credits line, as a percentage of poster width, adjustable from 0 to 8.
+When it is set, the footer's bottom inset equals the outer margin so the credits
+sit symmetrically inside the poster. Projects saved before the field existed
+have no value and keep the spacing they were saved with (the footer padding was
+derived from the margin and font size, and the gap was that padding plus the
+margin); the Layout tab shows that legacy-equivalent value until the owner
+moves the slider, which writes the field. `sharingPosterFooterGeometry` in
+`src/lib/sharingPosterCanvas.ts` is the single, canvas-free source of this
+arithmetic and is covered by `npm run test:sharing-posters`.
+
+## Background
+
+`style.background` is `{ mode: "solid" }` (the default, and what a project
+without the field renders as) or `{ mode: "glass", blurPercent, tintOpacity }`.
+Glass follows the site's blurred backdrop: each frame's outermost pixels are
+stretched out to the canvas edges (`glassEdgeStrips` in
+`src/lib/sharingPosterGlass.ts` tiles the space around a frame exactly), the
+layer is blurred, and the background colour is laid over it at `tintOpacity`,
+so the existing colour picker doubles as the tint and works for light and dark
+looks alike. Frames get a faint one-pixel line in the footer text colour so
+their edges still read against the glass.
+
+All heavy work happens on a working layer about 240 px wide; the blur is a
+downsample/upsample pyramid rather than `context.filter`, so one code path
+serves every browser and a 12 MP export costs a single extra `drawImage`.
+Browsers resample slightly differently, so the glass can differ marginally
+between them, but preview and export always match within a session.
+
 ## Credits and metadata
 
 Cosplayer CN and photographer are always rendered. CN is initially deduplicated

@@ -16,6 +16,29 @@ export const sharingPosterPhotoSchema = z.object({
   focalY: z.number().min(0).max(1)
 });
 
+/**
+ * Poster background. "solid" is the original flat fill. "glass" stretches each
+ * frame's edge pixels outward, blurs the result and lays the background colour
+ * over it at `tintOpacity`, mirroring the site's blurred backdrop.
+ */
+export const sharingPosterBackgroundSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("solid") }),
+  z.object({
+    mode: z.literal("glass"),
+    /** Blur radius as a percentage of poster width. */
+    blurPercent: z.number().min(0.5).max(8),
+    /** How strongly `backgroundColor` tints the blurred layer. */
+    tintOpacity: z.number().min(0).max(0.9)
+  })
+]);
+export type SharingPosterBackground = z.infer<typeof sharingPosterBackgroundSchema>;
+
+/** Values applied when an owner switches a poster to the glass background. */
+export const SHARING_POSTER_GLASS_DEFAULTS = {
+  blurPercent: 3,
+  tintOpacity: 0.55
+} as const;
+
 export const sharingPosterCompositionSchema = z.object({
   version: z.literal(1),
   outputLocale: z.enum(["en", "zh"]),
@@ -28,7 +51,14 @@ export const sharingPosterCompositionSchema = z.object({
     gapPercent: z.number().min(0).max(5),
     backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-    footerTextPercent: z.number().min(1).max(4)
+    footerTextPercent: z.number().min(1).max(4),
+    // Both optional: a poster saved before they existed must still validate
+    // (a failed parse replaces the whole poster with a default), and the
+    // renderer reproduces the previous fixed spacing and solid fill when they
+    // are absent.
+    /** Gap between the photo area and the credits, as a percentage of width. */
+    textGapPercent: z.number().min(0).max(8).optional(),
+    background: sharingPosterBackgroundSchema.optional()
   }),
   photos: z
     .array(sharingPosterPhotoSchema)
@@ -130,7 +160,9 @@ export function defaultSharingPosterComposition(
       gapPercent: 0.65,
       backgroundColor: "#ffffff",
       textColor: "#211d18",
-      footerTextPercent: 1.8
+      footerTextPercent: 1.8,
+      textGapPercent: 2.5,
+      background: { mode: "solid" }
     },
     photos: photoIds
       .filter(({ id }) => id && !seen.has(id) && seen.add(id))
@@ -160,6 +192,23 @@ export function defaultSharingPosterComposition(
     },
     export: { format: "jpeg", longestEdge: SHARING_POSTER_DEFAULT_LONG_EDGE }
   };
+}
+
+/**
+ * The frame-to-text gap a poster saved before `textGapPercent` existed
+ * effectively used: the outer margin plus the footer's implicit padding, which
+ * was derived from the margin and the font size. Display-only (it ignores the
+ * 11 px font floor); the renderer reproduces the exact legacy geometry when
+ * the field is absent.
+ */
+export function legacyTextGapPercent(style: {
+  marginPercent: number;
+  footerTextPercent: number;
+}): number {
+  return (
+    style.marginPercent +
+    Math.max(style.marginPercent * 0.8, style.footerTextPercent * 0.8)
+  );
 }
 
 export function parseSharingPosterComposition(

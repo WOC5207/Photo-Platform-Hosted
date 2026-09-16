@@ -3,13 +3,75 @@ import { sharingPosterCreditLines } from "@/lib/sharingPoster";
 import {
   calculateSharingPosterLayout,
   coverCropSource,
-  type PosterLayoutRect
+  type PosterLayoutRect,
+  type PosterRect
 } from "@/lib/sharingPosterLayout";
+import { paintGlassBackground, withAlpha } from "@/lib/sharingPosterGlass";
 
 export interface SharingPosterRenderResult {
   rectangles: PosterLayoutRect[];
   footerTooTall: boolean;
   wrappedLineCount: number;
+}
+
+export interface SharingPosterFooterGeometry {
+  margin: number;
+  fontSize: number;
+  lineHeight: number;
+  photoArea: PosterRect;
+  /** Top of the first credits line. */
+  textY: number;
+  footerTooTall: boolean;
+}
+
+/**
+ * Split the canvas into the photo area and the credits footer. Pure, so the
+ * spacing can be tested without a canvas.
+ *
+ * A poster saved before `textGapPercent` existed reproduces its previous
+ * spacing exactly: the footer's padding was derived from the margin and the
+ * font size, and the gap between the frames and the text was that padding plus
+ * the outer margin, which could not be lowered independently. With the field
+ * present the gap is what the owner set, and the footer's bottom inset equals
+ * the outer margin so the credits sit symmetrically inside the poster.
+ */
+export function sharingPosterFooterGeometry(input: {
+  width: number;
+  height: number;
+  lineCount: number;
+  marginPercent: number;
+  footerTextPercent: number;
+  textGapPercent?: number;
+}): SharingPosterFooterGeometry {
+  const { width, height, lineCount } = input;
+  const margin = (width * input.marginPercent) / 100;
+  const fontSize = Math.max(11, (width * input.footerTextPercent) / 100);
+  const lineHeight = fontSize * 1.38;
+  let photoHeight: number;
+  let textY: number;
+  if (input.textGapPercent === undefined) {
+    const footerPadding = Math.max(margin * 0.8, fontSize * 0.8);
+    const footerHeight = lineCount * lineHeight + footerPadding * 2;
+    photoHeight = height - footerHeight - margin * 2;
+    textY = height - footerHeight + footerPadding;
+  } else {
+    const textGap = (width * input.textGapPercent) / 100;
+    photoHeight = height - margin - textGap - lineCount * lineHeight - margin;
+    textY = margin + photoHeight + textGap;
+  }
+  return {
+    margin,
+    fontSize,
+    lineHeight,
+    photoArea: {
+      x: margin,
+      y: margin,
+      width: Math.max(1, width - margin * 2),
+      height: Math.max(1, photoHeight)
+    },
+    textY,
+    footerTooTall: photoHeight < Math.max(height * 0.22, fontSize * 4)
+  };
 }
 
 function wrapLine(
@@ -53,29 +115,26 @@ export function renderSharingPoster(
     unavailableLabel?: string;
   } = {}
 ): SharingPosterRenderResult {
-  const margin = (width * composition.style.marginPercent) / 100;
-  const gap = (width * composition.style.gapPercent) / 100;
-  const fontSize = Math.max(11, (width * composition.style.footerTextPercent) / 100);
-  const lineHeight = fontSize * 1.38;
+  const { style } = composition;
+  const margin = (width * style.marginPercent) / 100;
+  const gap = (width * style.gapPercent) / 100;
+  const fontSize = Math.max(11, (width * style.footerTextPercent) / 100);
   const textWidth = Math.max(1, width - margin * 2);
 
   context.save();
-  context.fillStyle = composition.style.backgroundColor;
-  context.fillRect(0, 0, width, height);
   context.font = `600 ${fontSize}px "Avenir Next", "Segoe UI", "Microsoft YaHei", sans-serif`;
   context.textBaseline = "top";
   const lines = sharingPosterCreditLines(composition).flatMap((line) =>
     wrapLine(context, line, textWidth)
   );
-  const footerPadding = Math.max(margin * 0.8, fontSize * 0.8);
-  const footerHeight = lines.length * lineHeight + footerPadding * 2;
-  const photoHeight = height - footerHeight - margin * 2;
-  const photoArea = {
-    x: margin,
-    y: margin,
-    width: Math.max(1, width - margin * 2),
-    height: Math.max(1, photoHeight)
-  };
+  const geometry = sharingPosterFooterGeometry({
+    width,
+    height,
+    lineCount: lines.length,
+    marginPercent: style.marginPercent,
+    footerTextPercent: style.footerTextPercent,
+    textGapPercent: style.textGapPercent
+  });
   const layoutItems = photos.map((photo) => ({
     id: photo.photoId,
     width: photo.source?.width ?? 1,
@@ -83,24 +142,49 @@ export function renderSharingPoster(
     weight: photo.composition.weight
   }));
   const rectangles =
-    options.rectangles ?? calculateSharingPosterLayout(layoutItems, photoArea, gap);
+    options.rectangles ?? calculateSharingPosterLayout(layoutItems, geometry.photoArea, gap);
 
+  // Resolve every frame's crop up front: the glass background continues
+  // exactly what each frame shows, so both must use the same window.
+  const crops = new Map<string, PosterRect>();
   for (const rect of rectangles) {
     const resolved = photos.find((photo) => photo.photoId === rect.id);
     const image = images.get(rect.id);
+    if (resolved?.source && image?.complete && image.naturalWidth > 0) {
+      crops.set(
+        rect.id,
+        coverCropSource(
+          image.naturalWidth,
+          image.naturalHeight,
+          rect.width,
+          rect.height,
+          resolved.composition.focalX,
+          resolved.composition.focalY
+        )
+      );
+    }
+  }
+
+  const glass =
+    style.background?.mode === "glass" &&
+    paintGlassBackground(context, width, height, rectangles, crops, images, {
+      colour: style.backgroundColor,
+      blurPercent: style.background.blurPercent,
+      tintOpacity: style.background.tintOpacity
+    });
+  if (!glass) {
+    context.fillStyle = style.backgroundColor;
+    context.fillRect(0, 0, width, height);
+  }
+
+  for (const rect of rectangles) {
+    const image = images.get(rect.id);
+    const crop = crops.get(rect.id);
     context.save();
     context.beginPath();
     context.rect(rect.x, rect.y, rect.width, rect.height);
     context.clip();
-    if (resolved?.source && image?.complete && image.naturalWidth > 0) {
-      const crop = coverCropSource(
-        image.naturalWidth,
-        image.naturalHeight,
-        rect.width,
-        rect.height,
-        resolved.composition.focalX,
-        resolved.composition.focalY
-      );
+    if (image && crop) {
       context.drawImage(
         image,
         crop.x,
@@ -120,6 +204,15 @@ export function renderSharingPoster(
       context.fillText(options.unavailableLabel ?? "Image unavailable", rect.x + gap + 4, rect.y + gap + 4);
     }
     context.restore();
+    if (glass) {
+      // Glass hides the frame boundary, so lift each frame with the same faint
+      // inset line the site uses on image frames.
+      context.save();
+      context.strokeStyle = withAlpha(style.textColor, 0.12);
+      context.lineWidth = Math.max(1, width / 900);
+      context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+      context.restore();
+    }
     if (options.selectedPhotoId === rect.id) {
       context.save();
       context.strokeStyle = options.selectionColor ?? "#a44f25";
@@ -129,17 +222,17 @@ export function renderSharingPoster(
     }
   }
 
-  context.fillStyle = composition.style.textColor;
+  context.fillStyle = style.textColor;
   context.font = `600 ${fontSize}px "Avenir Next", "Segoe UI", "Microsoft YaHei", sans-serif`;
-  let textY = height - footerHeight + footerPadding;
+  let textY = geometry.textY;
   for (const line of lines) {
     context.fillText(line, margin, textY);
-    textY += lineHeight;
+    textY += geometry.lineHeight;
   }
   context.restore();
   return {
     rectangles,
-    footerTooTall: photoHeight < Math.max(height * 0.22, fontSize * 4),
+    footerTooTall: geometry.footerTooTall,
     wrappedLineCount: lines.length
   };
 }
