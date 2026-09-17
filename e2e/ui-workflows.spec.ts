@@ -1078,19 +1078,28 @@ test.describe.serial("management workflows", () => {
       await expect(tour).toContainText("Name the event");
       await expect(tour.getByRole("button", { name: "Back" })).toHaveCount(0);
 
-      // Same-page steps advance without navigating and can go back.
+      // An empty form cannot be walked past: Next waits for the title.
+      await expect(tour.getByRole("button", { name: "Next" })).toBeDisabled();
+      await expect(tour).toContainText("Enter a title in at least one language to continue.");
       await page.getByLabel("Title (English)").fill(title);
+      await expect(tour.getByRole("button", { name: "Next" })).toBeEnabled();
+
+      // Same-page steps advance without navigating and can go back.
       await tour.getByRole("button", { name: "Next" }).click();
       await expect(tour).toContainText("Pick the shoot days");
+      await expect(tour.getByRole("button", { name: "Next" })).toBeDisabled();
+      await expect(tour).toContainText("Select at least one day to continue.");
       await tour.getByRole("button", { name: "Back" }).click();
       await expect(tour).toContainText("Name the event");
       await expect(page.getByLabel("Title (English)")).toHaveValue(title);
+      await expect(tour.getByRole("button", { name: "Next" })).toBeEnabled();
       await tour.getByRole("button", { name: "Next" }).click();
       const next = new Date();
       next.setMonth(next.getMonth() + 1, 15);
       const day = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-15`;
       await page.getByRole("button", { name: "Next month" }).click();
       await page.getByRole("button", { name: day, exact: true }).click();
+      await expect(tour.getByRole("button", { name: "Next" })).toBeEnabled();
       await tour.getByRole("button", { name: "Next" }).click();
 
       // The submit step cannot be pressed by the tour; only the form advances it.

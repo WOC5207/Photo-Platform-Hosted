@@ -16,6 +16,7 @@ import { buttonClasses } from "@/components/ui/Button";
 import {
   TOUR_STEPS,
   resolveTourStep,
+  tourRequirementMet,
   tourStepHasBack
 } from "@/lib/onboardingTour";
 
@@ -109,6 +110,7 @@ export default function OnboardingTour({
   const wasActive = useRef(active);
   const titleId = useId();
   const bodyId = useId();
+  const hintId = useId();
 
   useEffect(() => {
     setIndex(readStoredStep(storageKey));
@@ -273,6 +275,45 @@ export default function OnboardingTour({
     return () => window.cancelAnimationFrame(frame);
   }, [popoverVisible, step]);
 
+  // A step that asks for something keeps Next disabled until the page has it,
+  // so nobody arrives at Create with no title or no day and finds it refuses
+  // them. Re-read on a frame after each event: the day picker writes its hidden
+  // field on the render that follows the click, as React does for typed values.
+  const requirement = step?.requires ?? null;
+  const [requirementMet, setRequirementMet] = useState(true);
+  useEffect(() => {
+    if (!showing || !requirement) {
+      setRequirementMet(true);
+      return;
+    }
+    let frame = 0;
+    const evaluate = () => {
+      frame = 0;
+      const fields = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+        requirement.selector
+      );
+      setRequirementMet(
+        tourRequirementMet(requirement, Array.from(fields, (field) => field.value))
+      );
+    };
+    const schedule = () => {
+      if (frame === 0) frame = window.requestAnimationFrame(evaluate);
+    };
+    evaluate();
+    document.addEventListener("input", schedule, true);
+    document.addEventListener("change", schedule, true);
+    document.addEventListener("click", schedule, true);
+    // Catches a value no event reached, such as autofill or a restored form.
+    const interval = window.setInterval(evaluate, 300);
+    return () => {
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+      document.removeEventListener("input", schedule, true);
+      document.removeEventListener("change", schedule, true);
+      document.removeEventListener("click", schedule, true);
+      window.clearInterval(interval);
+    };
+  }, [showing, requirement, pathname]);
+
   const finish = useCallback(() => {
     setDone(true);
     writeStoredStep(storageKey, null);
@@ -322,7 +363,10 @@ export default function OnboardingTour({
     popoverStyle = { top, left, width: "min(22rem, calc(100vw - 2rem))" };
   }
 
+  const blocked = requirement !== null && !requirementMet;
+
   const onPrimary = () => {
+    if (blocked) return;
     if (step.advance === "next") setIndex(stepIndex + 1);
     else if (step.advance === "click") target.click();
     else if (step.advance === "finish") finish();
@@ -372,6 +416,11 @@ export default function OnboardingTour({
         {step.advance === "manual" && (
           <p className="text-xs font-medium text-fg-subtle">{t("clickToContinue")}</p>
         )}
+        {blocked && (
+          <p id={hintId} role="status" className="text-xs font-medium text-fg-subtle">
+            {t(`steps.${step.id}.blocked`)}
+          </p>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <button
             type="button"
@@ -394,6 +443,8 @@ export default function OnboardingTour({
               <button
                 type="button"
                 onClick={onPrimary}
+                disabled={blocked}
+                aria-describedby={blocked ? hintId : undefined}
                 className={buttonClasses({ variant: "primary", size: "compact" })}
               >
                 {step.advance === "finish" ? t("finish") : t("next")}

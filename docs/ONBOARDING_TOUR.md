@@ -27,8 +27,8 @@ site, then the tour shows how to use it.
 | --- | --- | --- | --- |
 | 1 | Overview | Events card | Next follows the link, or click the card |
 | 2 | Events | New event | Next follows the link, or click the button |
-| 3 | New event | Title fields | Next |
-| 4 | New event | Day picker | Next |
+| 3 | New event | Title fields | Next, once a title is filled in |
+| 4 | New event | Day picker | Next, once a day is selected |
 | 5 | New event | Create | Pressing Create (the tour never submits a form) |
 | 6 | Booking page | Gallery tab | Next follows the link, or click the tab |
 | 7 | Gallery | Add photos | Next follows the link, or click the button |
@@ -44,6 +44,13 @@ publish) and that the gallery's Published box makes it public.
   (locale prefix already removed), a `data-tour` selector and how the step
   advances. Same-page steps share the same pattern object, which is also what
   enables Back within a page.
+- A step may declare a `requires`: the title step wants non-blank text in
+  either title field, the day step wants a non-empty selection, which the day
+  picker publishes to the form as a hidden JSON array. Until the page has it,
+  Next is disabled and the popover says what is missing. Without this the tour
+  would lead someone to Create with an empty form, which the form then refuses.
+  The check re-reads the fields a frame after every input, change and click,
+  with a slow interval behind it for values no event reaches.
 - Pages mark their controls with `data-tour` attributes: `events-card`,
   `new-event`, `event-title`, `event-dates`, `event-create` (only when
   creating, not editing), `tab-<id>` on workspace tabs, `add-photos`,

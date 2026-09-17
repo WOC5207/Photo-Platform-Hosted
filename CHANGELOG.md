@@ -48,7 +48,9 @@
   Overview to the Events list, through naming an event, picking its days and
   creating it, into the gallery and the photo upload wizard. Each step
   highlights the real control and either advances with Next or waits for the
-  user to press it. It can be skipped at any point and replayed from the
+  user to press it. The steps that ask for a title and for shoot days keep
+  Next disabled until the page has them, so the tour cannot lead anyone to a
+  Create button that would only reject them. It can be skipped at any point and replayed from the
   Overview page; completion is stored on the account so it does not return on
   another device. Accounts that already existed are treated as done.
 - Equipment status can be changed straight from the inventory list. The three

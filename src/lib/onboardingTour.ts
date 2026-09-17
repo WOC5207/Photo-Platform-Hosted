@@ -20,6 +20,16 @@ export type TourAdvance =
   /** Last step: the primary button finishes the tour. */
   | "finish";
 
+/**
+ * Something the page must hold before the step will let the user move on, so
+ * the tour never walks anyone to a submit button that can only reject them.
+ */
+export type TourRequirement =
+  /** Any matching field holds non-blank text. */
+  | { kind: "text"; selector: string }
+  /** Any matching field holds a JSON array with at least one entry. */
+  | { kind: "list"; selector: string };
+
 export interface TourStep {
   id: string;
   /** Route the step belongs to. Same-page steps share the same RegExp object. */
@@ -27,6 +37,30 @@ export interface TourStep {
   /** CSS selector of the highlighted element. */
   target: string;
   advance: TourAdvance;
+  /** When set, Next stays disabled until the page satisfies it. */
+  requires?: TourRequirement;
+}
+
+/**
+ * The pure half of a requirement check: the component reads the field values
+ * out of the page, this decides. The day picker publishes its selection to the
+ * form as a hidden JSON array, which is what "list" reads.
+ */
+export function tourRequirementMet(
+  requirement: TourRequirement,
+  values: readonly string[]
+): boolean {
+  if (requirement.kind === "text") {
+    return values.some((value) => value.trim().length > 0);
+  }
+  return values.some((value) => {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return Array.isArray(parsed) && parsed.length > 0;
+    } catch {
+      return false;
+    }
+  });
 }
 
 const OVERVIEW = /^\/dashboard\/?$/;
@@ -39,8 +73,20 @@ const PHOTO_WIZARD = /^\/dashboard\/events\/(?!new$)[^/]+\/photos\/?$/;
 export const TOUR_STEPS: readonly TourStep[] = [
   { id: "overview", route: OVERVIEW, target: '[data-tour="events-card"]', advance: "click" },
   { id: "newEvent", route: EVENT_LIST, target: '[data-tour="new-event"]', advance: "click" },
-  { id: "eventTitle", route: NEW_EVENT, target: '[data-tour="event-title"]', advance: "next" },
-  { id: "eventDates", route: NEW_EVENT, target: '[data-tour="event-dates"]', advance: "next" },
+  {
+    id: "eventTitle",
+    route: NEW_EVENT,
+    target: '[data-tour="event-title"]',
+    advance: "next",
+    requires: { kind: "text", selector: 'input[name="titleEn"], input[name="titleZh"]' }
+  },
+  {
+    id: "eventDates",
+    route: NEW_EVENT,
+    target: '[data-tour="event-dates"]',
+    advance: "next",
+    requires: { kind: "list", selector: 'input[name="dates"]' }
+  },
   { id: "eventCreate", route: NEW_EVENT, target: '[data-tour="event-create"]', advance: "manual" },
   { id: "galleryTab", route: BOOKING_PAGE, target: '[data-tour="tab-gallery"]', advance: "click" },
   { id: "addPhotos", route: GALLERY_PAGE, target: '[data-tour="add-photos"]', advance: "click" },
