@@ -360,6 +360,7 @@
     "exportTitle": "准备成品海报",
     "format": "文件格式",
     "longestEdge": "最长边",
+    "largeExportHint": "8192 像素的海报完全在本浏览器中合成，需要充足内存。若准备失败，请选择较小的尺寸。",
     "unresolvedError": "有 {count} 张照片已不可用。导出前请移除或替换。",
     "selectPhotoFirst": "请至少选择一张照片。",
     "cosplayerRequired": "导出前请填写 Cosplayer CN。",

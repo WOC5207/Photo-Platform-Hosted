@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import {
+  SHARING_POSTER_MAX_EDGE,
+  SHARING_POSTER_MAX_PIXELS,
   defaultSharingPosterComposition,
   legacyTextGapPercent,
   parseSharingPosterComposition,
@@ -62,10 +64,55 @@ assert.equal(cropLeft.x, 0);
 assert.equal(cropRight.x, 1000);
 
 const composition = defaultSharingPosterComposition("en", "Photographer");
-composition.export.longestEdge = 4096;
+
+// A chosen size is delivered exactly, at the squarest ratio as much as at the
+// widest. An area ceiling below the square case would silently shrink both,
+// which is what made the old 4096 option smaller than it claimed.
+assert.equal(SHARING_POSTER_MAX_PIXELS, SHARING_POSTER_MAX_EDGE * SHARING_POSTER_MAX_EDGE);
+for (const edge of [2160, 4096, SHARING_POSTER_MAX_EDGE]) {
+  composition.export.longestEdge = edge;
+  composition.ratio = { width: 1, height: 1 };
+  assert.deepEqual(sharingPosterPixelSize(composition), { width: edge, height: edge });
+  composition.ratio = { width: 4, height: 5 };
+  assert.deepEqual(sharingPosterPixelSize(composition), {
+    width: Math.round((edge * 4) / 5),
+    height: edge
+  });
+  composition.ratio = { width: 16, height: 9 };
+  assert.deepEqual(sharingPosterPixelSize(composition), {
+    width: edge,
+    height: Math.round((edge * 9) / 16)
+  });
+}
+
+// The schema admits the new maximum and nothing beyond it.
+composition.export.longestEdge = SHARING_POSTER_MAX_EDGE;
 composition.ratio = { width: 1, height: 1 };
-const pixels = sharingPosterPixelSize(composition);
-assert(pixels.width * pixels.height <= 12_000_000);
+assert.equal(sharingPosterCompositionSchema.safeParse(composition).success, true);
+assert.equal(
+  sharingPosterCompositionSchema.safeParse({
+    ...composition,
+    export: { ...composition.export, longestEdge: SHARING_POSTER_MAX_EDGE + 1 }
+  }).success,
+  false
+);
+assert.equal(
+  sharingPosterCompositionSchema.safeParse({
+    ...composition,
+    export: { ...composition.export, longestEdge: 719 }
+  }).success,
+  false
+);
+
+// A poster saved before the ceiling moved keeps its stored choice and simply
+// renders it in full, since the layout is proportional to the width.
+const savedAt4096 = parseSharingPosterComposition(
+  { ...composition, export: { format: "jpeg", longestEdge: 4096 } },
+  defaultSharingPosterComposition("en", "Photographer")
+);
+assert.equal(savedAt4096.export.longestEdge, 4096);
+
+composition.export.longestEdge = 4096;
 assert.equal(sharingPosterCompositionSchema.safeParse({
   ...composition,
   photos: [

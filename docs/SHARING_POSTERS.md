@@ -100,9 +100,28 @@ their edges still read against the glass.
 
 All heavy work happens on a working layer about 240 px wide; the blur is a
 downsample/upsample pyramid rather than `context.filter`, so one code path
-serves every browser and a 12 MP export costs a single extra `drawImage`.
+serves every browser, and even the largest export costs a single extra
+`drawImage`.
 Browsers resample slightly differently, so the glass can differ marginally
 between them, but preview and export always match within a session.
+
+## Export size
+
+The longest edge is 2160, 4096 or 8192 px, and the other edge follows the
+chosen ratio, so the largest poster is 8192 x 8192. `SHARING_POSTER_MAX_PIXELS`
+is the square case at the maximum edge and must stay tied to
+`SHARING_POSTER_MAX_EDGE`: while it was 12 MP it quietly shrank 4096 at 1:1,
+4:5 and 4:3, so the option delivered less than it named.
+
+Everything happens in the visitor's browser, from one canvas at the full
+output size, drawn from the `full` renditions and released as soon as the file
+is encoded. A poster at 8192 px holds roughly 270 MB of bitmap while it is
+being built, which desktop browsers handle and small mobile ones may not: if
+the canvas cannot be allocated or encoded the editor reports that the poster
+could not be prepared, and a smaller size still works. The editor says as much
+beside the setting whenever a size above 4096 is chosen. Posters saved with an
+earlier maximum keep their stored choice and simply render it in full; the
+layout is proportional to the width, so only the pixel count changes.
 
 ## Credits and metadata
 

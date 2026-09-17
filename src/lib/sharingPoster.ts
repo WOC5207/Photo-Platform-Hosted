@@ -6,8 +6,19 @@ import {
 
 export const SHARING_POSTER_MAX_PHOTOS = 9;
 export const SHARING_POSTER_DEFAULT_LONG_EDGE = 2160;
-export const SHARING_POSTER_MAX_EDGE = 4096;
-export const SHARING_POSTER_MAX_PIXELS = 12_000_000;
+export const SHARING_POSTER_MAX_EDGE = 8192;
+/**
+ * Area ceiling, deliberately the squarest poster at the longest edge.
+ *
+ * It has to move with SHARING_POSTER_MAX_EDGE or the edge becomes a promise
+ * the export does not keep: a lower ceiling silently shrinks every ratio whose
+ * area exceeds it, which is what the old 12 MP value did to 4096 at 1:1, 4:5
+ * and 4:3. Since the short edge can never exceed the long one, no composition
+ * the schema accepts can reach this now; it stays as a backstop for a
+ * composition assembled in code rather than parsed.
+ */
+export const SHARING_POSTER_MAX_PIXELS =
+  SHARING_POSTER_MAX_EDGE * SHARING_POSTER_MAX_EDGE;
 
 /**
  * How a photo is cropped into its frame.

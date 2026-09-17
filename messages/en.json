@@ -360,6 +360,7 @@
     "exportTitle": "Prepare the finished poster",
     "format": "File format",
     "longestEdge": "Longest edge",
+    "largeExportHint": "An 8192 px poster is built entirely in this browser and needs spare memory. If preparing it fails, choose a smaller size.",
     "unresolvedError": "{count, plural, =1 {One photograph is no longer available. Remove or replace it before export.} other {# photographs are no longer available. Remove or replace them before export.}}",
     "selectPhotoFirst": "Select at least one photograph.",
     "cosplayerRequired": "Enter the Cosplayer CN before export.",
