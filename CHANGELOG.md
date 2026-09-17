@@ -49,6 +49,13 @@
 
 ### User experience
 
+- Sharing posters can be exported at 8192 px on the longest edge, twice the
+  previous maximum. The area ceiling that went with it rose from 12 megapixels
+  to the square case at that edge, which also fixes the old 4096 option: at
+  1:1, 4:5 and 4:3 it was quietly reduced to about 3.5K, so it delivered less
+  than it named. Posters saved earlier keep their stored size and now render
+  it in full. The largest size is built entirely in the browser and is
+  flagged as such next to the setting.
 - Sharing posters now find the subject of each photograph and compose around
   it. New photos follow the detected subject by default, so a portrait is no
   longer cropped through the head, and the layout gives such photos frames
