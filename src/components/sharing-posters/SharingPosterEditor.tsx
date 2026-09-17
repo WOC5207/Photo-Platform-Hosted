@@ -7,6 +7,8 @@ import { useRouter } from "@/i18n/navigation";
 import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import {
+  SHARING_POSTER_GLASS_DEFAULTS,
+  legacyTextGapPercent,
   sharingPosterMetadataFromPhotos,
   sharingPosterPixelSize,
   type SharingPosterComposition,
@@ -407,9 +409,26 @@ export default function SharingPosterEditor({
               <RangeField label={t("outerMargin")} value={composition.style.marginPercent} min={0} max={12} step={0.25} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, marginPercent: value } }))} />
               <RangeField label={t("photoGap")} value={composition.style.gapPercent} min={0} max={5} step={0.1} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, gapPercent: value } }))} />
               <RangeField label={t("footerTextSize")} value={composition.style.footerTextPercent} min={1} max={4} step={0.1} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, footerTextPercent: value } }))} />
+              <RangeField label={t("textGap")} value={composition.style.textGapPercent ?? Math.min(8, Math.round(legacyTextGapPercent(composition.style) * 10) / 10)} min={0} max={8} step={0.1} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, textGapPercent: value } }))} />
               <div className="grid grid-cols-2 gap-3">
                 <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("backgroundColor")}<input type="color" value={composition.style.backgroundColor} onChange={(event) => setComposition((current) => ({ ...current, style: { ...current.style, backgroundColor: event.target.value } }))} className="h-11 w-full rounded-lg border border-border-strong bg-control p-1" /></label>
                 <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("textColor")}<input type="color" value={composition.style.textColor} onChange={(event) => setComposition((current) => ({ ...current, style: { ...current.style, textColor: event.target.value } }))} className="h-11 w-full rounded-lg border border-border-strong bg-control p-1" /></label>
+              </div>
+              <div className="grid gap-3">
+                <span className="text-sm font-semibold text-fg-muted">{t("backgroundMode")}</span>
+                <div role="group" aria-label={t("backgroundMode")} className="grid grid-cols-2 gap-2">
+                  {(["solid", "glass"] as const).map((mode) => {
+                    const active = (composition.style.background?.mode ?? "solid") === mode;
+                    return <button key={mode} type="button" aria-pressed={active} onClick={() => setComposition((current) => ({ ...current, style: { ...current.style, background: mode === "glass" ? (current.style.background?.mode === "glass" ? current.style.background : { mode: "glass", ...SHARING_POSTER_GLASS_DEFAULTS }) : { mode: "solid" } } }))} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${active ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t(mode === "glass" ? "backgroundGlass" : "backgroundSolid")}</button>;
+                  })}
+                </div>
+                {composition.style.background?.mode === "glass" && (
+                  <>
+                    <p className="text-sm leading-6 text-fg-subtle">{t("glassHint")}</p>
+                    <RangeField label={t("glassBlur")} value={composition.style.background.blurPercent} min={0.5} max={8} step={0.1} suffix="%" onChange={(value) => setComposition((current) => current.style.background?.mode === "glass" ? { ...current, style: { ...current.style, background: { ...current.style.background, blurPercent: value } } } : current)} />
+                    <RangeField label={t("glassTint")} value={Math.round(composition.style.background.tintOpacity * 100)} min={0} max={90} step={5} suffix="%" onChange={(value) => setComposition((current) => current.style.background?.mode === "glass" ? { ...current, style: { ...current.style, background: { ...current.style.background, tintOpacity: value / 100 } } } : current)} />
+                  </>
+                )}
               </div>
             </div>
           </section>

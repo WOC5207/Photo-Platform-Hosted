@@ -43,6 +43,14 @@
 
 ### User experience
 
+- Sharing posters gained an adjustable gap between the photographs and the
+  credits, down to zero. It was previously fixed at the outer margin plus a
+  padding derived from the font size and could not be reduced on its own.
+  Posters saved earlier keep their exact spacing until the slider is moved.
+- Sharing posters can use a liquid-glass background instead of a solid colour:
+  the photographs' edges are stretched and blurred behind the frames and the
+  background colour tints the result, matching the site's own backdrop. Blur
+  and tint are adjustable; solid colour remains the default.
 - Equipment status can be changed straight from the inventory list. The three
   everyday states are now a control on each card instead of a read-only badge,
   so moving an item between in-inventory, signed-out and broken no longer means
