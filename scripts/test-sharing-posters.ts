@@ -9,7 +9,17 @@ import {
   sharingPosterPixelSize
 } from "../src/lib/sharingPoster";
 import { sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
-import { glassEdgeStrips } from "../src/lib/sharingPosterGlass";
+import {
+  GLASS_FIELD_WIDTH,
+  computeGlassField,
+  computeGlassShadow,
+  glassGrainTile,
+  glassPaletteFromPixels,
+  glassPixelWeight,
+  oklabToSrgb,
+  srgbToOklab,
+  type GlassPalette
+} from "../src/lib/sharingPosterGlass";
 import {
   calculateSharingPosterLayout,
   coverCropFromAnchor,
@@ -182,41 +192,229 @@ assert.equal(withGlass({ mode: "glass" }), false, "glass needs both numbers");
 assert.equal(withGlass({ mode: "glass", blurPercent: 3, tintOpacity: 1 }), false, "tint is capped below opaque");
 assert.equal(withGlass({ mode: "frosted" }), false);
 
-// --- Glass edge strips -------------------------------------------------------
+// --- Glass background ----------------------------------------------------------
 
-// The eight strips plus the frame tile the canvas exactly, with no overlap.
-{
-  const bounds = { x: 0, y: 0, width: 240, height: 300 };
-  const rect = { x: 40, y: 50, width: 100, height: 120 };
-  const strips = glassEdgeStrips(rect, bounds);
-  assert.equal(strips.length, 8);
-  const pieces = [rect, ...strips.map((strip) => strip.dest)];
-  const area = pieces.reduce((sum, piece) => sum + piece.width * piece.height, 0);
-  assert.equal(area, bounds.width * bounds.height);
-  for (const piece of pieces) {
-    assert.ok(piece.x >= bounds.x && piece.y >= bounds.y);
-    assert.ok(piece.x + piece.width <= bounds.x + bounds.width);
-    assert.ok(piece.y + piece.height <= bounds.y + bounds.height);
-  }
-  for (let a = 0; a < pieces.length; a += 1) {
-    for (let b = a + 1; b < pieces.length; b += 1) {
-      const pa = pieces[a];
-      const pb = pieces[b];
-      if (pa.width === 0 || pa.height === 0 || pb.width === 0 || pb.height === 0) continue;
-      assert.ok(!overlaps(pa, pb), `strips ${a}/${b} overlap`);
+type Rgb = [number, number, number];
+
+function fill(width: number, height: number, paint: (x: number, y: number) => Rgb, alpha = 255) {
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const [r, g, b] = paint(x, y);
+      const i = (y * width + x) * 4;
+      rgba[i] = r;
+      rgba[i + 1] = g;
+      rgba[i + 2] = b;
+      rgba[i + 3] = alpha;
     }
   }
+  return rgba;
 }
-// A frame touching the canvas edge extends nothing on that side.
+
+function labDistance(a: readonly number[], b: readonly number[]) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+function fieldLab(field: { width: number; rgba: Uint8ClampedArray }, posterWidth: number, x: number, y: number) {
+  const scale = field.width / posterWidth;
+  const fx = Math.min(field.width - 1, Math.floor(x * scale));
+  const fy = Math.floor(y * scale);
+  const i = (fy * field.width + fx) * 4;
+  return srgbToOklab(field.rgba[i], field.rgba[i + 1], field.rgba[i + 2]);
+}
+
+const RED: Rgb = [215, 38, 61];
+const BLUE: Rgb = [27, 111, 209];
+const GREY: Rgb = [128, 128, 128];
+const ORANGE: Rgb = [255, 140, 26];
+
+// OKLab round-trips every byte colour it is asked about, and anchors black and white.
+for (const colour of [RED, BLUE, GREY, ORANGE, [0, 0, 0], [255, 255, 255], [12, 250, 90], [250, 5, 240]] as Rgb[]) {
+  const back = oklabToSrgb(...srgbToOklab(...colour));
+  colour.forEach((channel, index) => assert.ok(Math.abs(channel - back[index]) <= 1, `${colour} -> ${back}`));
+}
 {
-  const strips = glassEdgeStrips({ x: 0, y: 20, width: 80, height: 60 }, { x: 0, y: 0, width: 240, height: 300 });
-  const byEdge = Object.fromEntries(strips.map((strip) => [strip.edge, strip.dest]));
-  assert.equal(byEdge.left.width, 0);
-  assert.equal(byEdge.topLeft.width, 0);
-  assert.equal(byEdge.bottomLeft.width, 0);
-  assert.equal(byEdge.right.width, 160);
-  assert.equal(byEdge.top.height, 20);
-  assert.equal(byEdge.bottom.height, 220);
+  const [L, a, b] = srgbToOklab(255, 255, 255);
+  assert.ok(Math.abs(L - 1) < 1e-3 && Math.abs(a) < 1e-3 && Math.abs(b) < 1e-3);
+  assert.ok(Math.abs(srgbToOklab(0, 0, 0)[0]) < 1e-6);
+}
+
+// Vivid colour outweighs grey, mid tones outweigh crushed black, and the
+// weighting moves smoothly rather than in steps.
+{
+  const red = srgbToOklab(...RED);
+  const grey = srgbToOklab(...GREY);
+  assert.ok(glassPixelWeight(...red) > 4 * glassPixelWeight(...grey));
+  assert.ok(glassPixelWeight(0.5, 0, 0) > glassPixelWeight(0.03, 0, 0));
+  for (const L of [0.06, 0.13, 0.2, 0.88, 0.93, 0.98]) {
+    assert.ok(Math.abs(glassPixelWeight(L, 0.05, 0) - glassPixelWeight(L + 1e-4, 0.05, 0)) < 1e-3);
+  }
+}
+
+// A frame's sides take the colour that is actually along them.
+const halves = glassPaletteFromPixels(fill(40, 30, (x) => (x < 20 ? RED : BLUE)), 40, 30)!;
+{
+  const red = srgbToOklab(...RED);
+  const blue = srgbToOklab(...BLUE);
+  assert.ok(labDistance(halves.edges.left, red) < labDistance(halves.edges.left, blue));
+  assert.ok(labDistance(halves.edges.right, blue) < labDistance(halves.edges.right, red));
+  assert.ok(labDistance(halves.mean, red) < labDistance(red, blue));
+  assert.ok(labDistance(halves.mean, blue) < labDistance(red, blue));
+  assert.equal(halves.grid.length, halves.gridColumns * halves.gridRows * 4);
+}
+
+// Colour-weighted: a fifth of vivid orange on grey pulls the palette far more
+// than its share of pixels would.
+{
+  const pixels = fill(50, 50, (x) => (x < 10 ? ORANGE : GREY));
+  const palette = glassPaletteFromPixels(pixels, 50, 50)!;
+  const orange = srgbToOklab(...ORANGE);
+  const grey = srgbToOklab(...GREY);
+  const plainA = orange[1] * 0.2 + grey[1] * 0.8;
+  const plainB = orange[2] * 0.2 + grey[2] * 0.8;
+  assert.ok(Math.hypot(palette.mean[1], palette.mean[2]) > 2.5 * Math.hypot(plainA, plainB));
+}
+
+// Nothing opaque, no palette.
+assert.equal(glassPaletteFromPixels(fill(8, 8, () => RED, 0), 8, 8), null);
+
+// The field: a red frame on the left and a blue one on the right.
+const redPalette = glassPaletteFromPixels(fill(32, 48, () => RED), 32, 48)!;
+const bluePalette = glassPaletteFromPixels(fill(32, 48, () => BLUE), 32, 48)!;
+const posterW = 1000;
+const posterH = 800;
+const pair = [
+  { rect: { x: 100, y: 100, width: 300, height: 500 }, palette: redPalette },
+  { rect: { x: 600, y: 100, width: 300, height: 500 }, palette: bluePalette }
+];
+const field = computeGlassField(posterW, posterH, pair, 3);
+{
+  assert.equal(field.width, GLASS_FIELD_WIDTH);
+  assert.equal(field.height, Math.round((GLASS_FIELD_WIDTH * posterH) / posterW));
+  assert.equal(field.rgba.length, field.width * field.height * 4);
+  for (let i = 3; i < field.rgba.length; i += 4) assert.equal(field.rgba[i], 255);
+
+  const red = srgbToOklab(...RED);
+  const blue = srgbToOklab(...BLUE);
+  const beside = (x: number, y: number) => {
+    const lab = fieldLab(field, posterW, x, y);
+    return { toRed: labDistance(lab, red), toBlue: labDistance(lab, blue) };
+  };
+  // Beside each frame the margin takes that frame's colour.
+  const left = beside(40, 350);
+  const right = beside(960, 350);
+  assert.ok(left.toRed < left.toBlue, `left margin ${JSON.stringify(left)}`);
+  assert.ok(right.toBlue < right.toRed, `right margin ${JSON.stringify(right)}`);
+  // The gap between them is a blend, not either colour.
+  const gap = beside(500, 350);
+  assert.ok(gap.toRed / gap.toBlue > 0.5 && gap.toRed / gap.toBlue < 2, `gap ${JSON.stringify(gap)}`);
+  // Far from both, the corners still carry the side their colour sits on.
+  const topLeft = beside(5, 5);
+  const topRight = beside(995, 5);
+  assert.ok(topLeft.toRed < topRight.toRed && topRight.toBlue < topLeft.toBlue);
+  // The chroma ceiling holds everywhere.
+  for (let i = 0; i < field.rgba.length; i += 4) {
+    const [, a, b] = srgbToOklab(field.rgba[i], field.rgba[i + 1], field.rgba[i + 2]);
+    assert.ok(Math.hypot(a, b) <= 0.17);
+  }
+}
+
+// Deterministic, and continuous: the preview samples a smaller rendition than
+// the export, so a small change in pixels must be a small change in the field.
+{
+  assert.deepEqual(computeGlassField(posterW, posterH, pair, 3).rgba, field.rgba);
+  let seed = 11;
+  const noise = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return (seed / 2147483648) * 8 - 4;
+  };
+  const jitter = (colour: Rgb): Rgb => colour.map((channel) => Math.round(channel + noise())) as Rgb;
+  const noisy = [
+    { rect: pair[0].rect, palette: glassPaletteFromPixels(fill(32, 48, () => jitter(RED)), 32, 48)! },
+    { rect: pair[1].rect, palette: glassPaletteFromPixels(fill(32, 48, () => jitter(BLUE)), 32, 48)! }
+  ];
+  const nudged = computeGlassField(posterW, posterH, noisy, 3);
+  let worst = 0;
+  for (let i = 0; i < field.rgba.length; i += 1) worst = Math.max(worst, Math.abs(field.rgba[i] - nudged.rgba[i]));
+  assert.ok(worst <= 4, `field moved ${worst} levels for ±4 of pixel noise`);
+}
+
+// More softness carries each frame's colour further, so close to the red frame
+// in the gap the blue one shows through more.
+{
+  const red = srgbToOklab(...RED);
+  const nearRed = (blur: number) =>
+    labDistance(fieldLab(computeGlassField(posterW, posterH, pair, blur), posterW, 450, 350), red);
+  assert.ok(nearRed(8) > nearRed(0.5), `soft ${nearRed(8)} vs crisp ${nearRed(0.5)}`);
+}
+
+// Nine frames on a tall poster stay cheap enough to recompute while dragging.
+{
+  const nine: { rect: { x: number; y: number; width: number; height: number }; palette: GlassPalette }[] = [];
+  for (let i = 0; i < 9; i += 1) {
+    nine.push({
+      rect: { x: 60 + (i % 3) * 330, y: 80 + Math.floor(i / 3) * 560, width: 300, height: 520 },
+      palette: i % 2 ? redPalette : bluePalette
+    });
+  }
+  const timings: number[] = [];
+  for (let run = 0; run < 3; run += 1) {
+    const started = performance.now();
+    computeGlassField(1080, 1920, nine, 3);
+    timings.push(performance.now() - started);
+  }
+  timings.sort((a, b) => a - b);
+  assert.ok(timings[1] < 80, `nine-frame field took ${timings[1].toFixed(1)} ms`);
+}
+
+// Shadows fall under frames, a little more below than above, and nowhere else.
+{
+  const shadow = computeGlassShadow(1000, 1000, [{ x: 300, y: 300, width: 400, height: 400 }], 240);
+  const at = (x: number, y: number) => shadow.alpha[Math.floor(y * 0.24) * shadow.width + Math.floor(x * 0.24)];
+  assert.equal(at(50, 50), 0);
+  assert.ok(at(500, 500) > 0);
+  assert.ok(at(500, 712) > at(500, 288), "shadow is offset downward");
+
+  // In the narrow gutter between two frames, at the default 0.65 % gap, the
+  // shadows cancel instead of stacking into a dark line, while an open edge
+  // keeps its shadow over the same width.
+  const scale = 0.24;
+  const pairShadow = computeGlassShadow(
+    1000,
+    1000,
+    [
+      { x: 100, y: 300, width: 397, height: 400 },
+      { x: 503, y: 300, width: 397, height: 400 }
+    ],
+    240
+  );
+  const strongest = (fromX: number, toX: number) => {
+    const row = Math.floor(500 * scale) * pairShadow.width;
+    let best = 0;
+    for (let cell = 0; cell < pairShadow.width; cell += 1) {
+      const centre = (cell + 0.5) / scale;
+      if (centre >= fromX && centre <= toX) best = Math.max(best, pairShadow.alpha[row + cell]);
+    }
+    return best;
+  };
+  const gutter = strongest(497, 503);
+  const openEdge = strongest(94, 100);
+  assert.ok(openEdge > 0, "open edge keeps its shadow");
+  assert.ok(gutter * 3 < openEdge, `gutter ${gutter} vs open edge ${openEdge}`);
+}
+
+// Grain is the same every time from the same seed, about half light, and faint.
+{
+  const tile = glassGrainTile();
+  assert.deepEqual(glassGrainTile(), tile);
+  assert.notDeepEqual(glassGrainTile(64, 1), tile);
+  let light = 0;
+  for (let i = 0; i < tile.length; i += 4) {
+    if (tile[i] === 255) light += 1;
+    assert.ok(tile[i + 3] > 0 && tile[i + 3] < 16);
+  }
+  const share = light / (tile.length / 4);
+  assert.ok(share > 0.45 && share < 0.55, `light share ${share}`);
 }
 
 // --- Crop modes ---------------------------------------------------------------

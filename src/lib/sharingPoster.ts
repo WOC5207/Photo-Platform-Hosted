@@ -49,17 +49,22 @@ export const sharingPosterPhotoSchema = z.object({
 });
 
 /**
- * Poster background. "solid" is the original flat fill. "glass" stretches each
- * frame's edge pixels outward, blurs the result and lays the background colour
- * over it at `tintOpacity`, mirroring the site's blurred backdrop.
+ * Poster background. "solid" is the original flat fill. "glass" is a soft
+ * gradient drawn from the photographs' colours, weighted toward the vivid
+ * ones and flowing out from each frame's sides, frosted with the background
+ * colour at `tintOpacity` (see src/lib/sharingPosterGlass.ts).
  */
 export const sharingPosterBackgroundSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("solid") }),
   z.object({
     mode: z.literal("glass"),
-    /** Blur radius as a percentage of poster width. */
+    /**
+     * Softness: how far each frame's colour carries into the space around it.
+     * Named for the blur it originally set; the stored range is unchanged so
+     * posters saved with it still parse.
+     */
     blurPercent: z.number().min(0.5).max(8),
-    /** How strongly `backgroundColor` tints the blurred layer. */
+    /** How strongly `backgroundColor` frosts the gradient. */
     tintOpacity: z.number().min(0).max(0.9)
   })
 ]);
