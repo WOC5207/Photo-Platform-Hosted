@@ -22,6 +22,7 @@
     "test:cosplan": "tsx --conditions=react-server scripts/test-cosplan.ts",
     "test:cosplan:mobile": "tsx scripts/test-cosplan-mobile.ts",
     "test:sharing-posters": "tsx --conditions=react-server scripts/test-sharing-posters.ts",
+    "test:subject-detection": "tsx --conditions=react-server scripts/test-subject-detection.ts",
     "test:moderation": "tsx --conditions=react-server scripts/test-moderation.ts",
     "test:moderation:db": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-moderation-db.ts",
     "test:http": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-http-isolation.ts",

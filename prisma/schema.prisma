@@ -469,6 +469,18 @@ model Photo {
   // database chooses 1-5 for every new photo; photographers can later tune it.
   // It does not affect gallery ordering or the separate highlight carousel.
   homeWeight              Int               @default(dbgenerated("(floor(random() * 5) + 1)::integer"))
+  // Subject detected on the -med rendition by src/lib/subjectDetection.ts
+  // (libvips attention point plus a coarse energy box). All values are
+  // fractions of the display-oriented image. subjectVersion is the algorithm
+  // version that last ran; a NULL subjectX with a version means "attempted,
+  // nothing found", so the sweep does not retry it.
+  subjectX                Float?
+  subjectY                Float?
+  subjectBoxX             Float?
+  subjectBoxY             Float?
+  subjectBoxWidth         Float?
+  subjectBoxHeight        Float?
+  subjectVersion          Int?
   // Independent from uploadState: files can be fully finalized while their
   // public visibility is held for a post-publish moderation decision.
   // not_required | queued | processing | approved | review_required |
@@ -486,6 +498,7 @@ model Photo {
   @@index([eventId, pendingBatchId])
   @@index([eventId, pendingBatchId, sortOrder, createdAt, id])
   @@index([moderationStatus, moderationNextRetryAt])
+  @@index([subjectVersion])
 }
 
 // A photographer-owned, browser-rendered sharing poster. Source photographs

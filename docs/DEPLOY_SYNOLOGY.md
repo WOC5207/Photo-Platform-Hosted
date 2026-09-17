@@ -89,6 +89,7 @@ Either way you should end up with a folder containing `Dockerfile`,
 | `UPLOAD_MAX_MB` | Max size per uploaded photo, default `100` |
 | `IMAGE_MAX_PIXELS` | Maximum decoded pixels; keep `100000000` unless the NAS has ample memory |
 | `IMAGE_PROCESSING_CONCURRENCY` | Concurrent Sharp jobs; `1` is the recommended Synology value |
+| `SUBJECT_DETECTION_SWEEP` | Boot-time backfill of photo subject positions for sharing posters; on by default, `false` to disable. Runs one photo at a time after the compression sweep |
 | `TRUSTED_PROXY_HOPS` | `1` for DSM's reverse proxy, or `2` when Cloudflare is also proxying traffic |
 
 Uploads stream to a bounded temporary file and stop immediately after the

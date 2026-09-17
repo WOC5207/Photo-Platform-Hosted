@@ -16,8 +16,62 @@ rendered entirely in the browser and are never written to the NAS.
   Outer margin, gaps, and footer space are removed before frame calculation.
 - Crop focal points are normalized (`0..1`), so they survive ratio, ordering,
   weight, and output-resolution changes.
+- When a photo's crop follows its detected subject, the partition also
+  penalizes frame shapes whose crop would cut into the subject's box, so
+  portraits win taller frames and wide subjects wider ones. Photos without a
+  subject, or with a manual crop, keep the aspect-only behaviour, so a poster
+  with no detection data lays out exactly as before.
 - Preview and export both call `renderSharingPoster`; editor selection outlines
   are the only preview-only drawing.
+
+## Crop modes
+
+Each photo entry carries an optional `crop`:
+
+- absent: the original behaviour. `focalX`/`focalY` are fractions of the
+  pannable range (0 flush left/top, 1 flush right/bottom). Projects saved
+  before crop modes existed stay in this mode until the owner changes it, so
+  their crops never move behind their back.
+- `{ mode: "auto" }`: the crop is centred on the subject detected on the
+  server, nudged so the whole subject box stays visible when it fits, and the
+  layout may reshape the frame around it. New photos default to this. Until
+  detection has run the crop is centred, which looks as it did before.
+- `{ mode: "manual", x, y }`: an anchor in image-normalized coordinates that
+  the crop window is centred on, so it survives ratio, layout and weight
+  changes. Dragging the preview switches a photo to manual, and content moves
+  1:1 with the pointer.
+
+`resolvePosterCrop` in `src/lib/sharingPosterLayout.ts` is the one place a
+photo entry becomes a crop; drawing, dragging, the preview's subject marker
+and the layout penalty all use it.
+
+## Subject detection
+
+Detection runs on the server, once per photo, and is stored on the `Photo`
+row (`subjectX/Y`, `subjectBoxX/Y/Width/Height`, `subjectVersion`, all
+fractions of the display-oriented image). `src/lib/subjectDetection.ts` reads
+the 1280 px `-med` rendition, decodes it at most 512 px on the long side, and:
+
+1. takes the point from libvips's attention crop strategy (luminance
+   frequency, saturation, skin tones), feeding it a raw buffer whose short side
+   already equals the target square so no resize happens and the reported
+   coordinates are unambiguous; a runtime check confirms the point lies inside
+   the crop window;
+2. grows a box around it on a 96-cell energy grid of edges, saturation and
+   skin tone, falling back to a fixed extent around the point.
+
+It costs on the order of a hundred milliseconds per photo and well under 30 MB
+transient. New uploads get it inside the compression job. Photos that predate
+detection are backfilled by `sweepPhotoSubjects` after boot: it waits 20 s for
+the compression sweep to pass, then works newest-first, one photo at a time
+with a pause between, all through the single image-processing slot so uploads
+keep priority. Any poster query that meets a photo without a current result
+also nudges the same worker (bounded queue, never awaited), and the editor
+polls the project a few times while a photo it follows is still pending, so
+the crop settles without a reload. `SUBJECT_DETECTION_SWEEP=false` disables
+the boot backfill. A failed decode is stamped with the version and no point,
+so it is not retried every boot; raising `SUBJECT_DETECTION_VERSION` re-runs
+everything.
 
 ## Footer spacing
 
@@ -70,5 +124,9 @@ unfinished or moderation-held photos. Missing/deleted sources remain visible as
 unresolved project entries but block export.
 
 Deployment requires running `prisma migrate deploy` and using an application
-image that contains the new dashboard routes. No new persistent media directory,
-background job, or NAS image-processing allowance is required.
+image that contains the new dashboard routes. No new persistent media directory
+or external service is required. Subject detection adds one background job: a
+one-time sequential backfill after boot that uses the existing
+image-processing slot and stays around a third of one core, plus on-demand
+detection for photos a poster asks for. Posters themselves are still rendered
+entirely in the browser.

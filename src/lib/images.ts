@@ -5,6 +5,11 @@ import { promises as fs } from "fs";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 import { config } from "./config";
+import {
+  SUBJECT_DETECTION_VERSION,
+  detectSubjectFromFile,
+  type SubjectDetectionResult
+} from "./subjectDetection";
 
 // Keep each libvips operation modest; the application-level semaphore below
 // limits how many independent uploads can invoke Sharp at once.
@@ -409,6 +414,8 @@ export interface CompressedPendingMaster {
   /** Total bytes of all three renditions (thumb + med + full). */
   renditionBytes: number;
   sourceBytes: number;
+  /** Where the subject is, read from the fresh -med rendition. */
+  subject: SubjectDetectionResult;
 }
 
 /**
@@ -428,6 +435,15 @@ export async function compressPendingMaster(
   const sourcePath = path.join(dir, sourceFilename);
 
   await writeRenditions(sourcePath, dir, photoId);
+  // The -med rendition is what detection reads, so this runs once the file
+  // exists and inside the caller's processing slot. A failure must not fail
+  // the upload: it is stored as an attempt with no subject.
+  const subject = await detectSubjectFromFile(path.join(dir, `${photoId}-med.webp`)).catch(
+    (error: unknown) => {
+      console.error("Subject detection failed during compression:", error);
+      return { version: SUBJECT_DETECTION_VERSION, subject: null } satisfies SubjectDetectionResult;
+    }
+  );
   const candidate = await writeCandidate(
     sourcePath,
     dir,
@@ -453,7 +469,8 @@ export async function compressPendingMaster(
     candidatePreset,
     candidateBytes: candidate.bytes,
     renditionBytes,
-    sourceBytes
+    sourceBytes,
+    subject
   };
 }
 
