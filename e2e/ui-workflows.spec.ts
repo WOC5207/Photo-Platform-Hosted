@@ -1055,6 +1055,93 @@ test.describe.serial("management workflows", () => {
     await prisma.bookingEvent.delete({ where: { id: bookingId } });
   });
 
+  test("first-login tutorial walks from the overview to the photo upload", async ({ page }) => {
+    const title = `E2E tutorial event ${Date.now()}`;
+    const tour = page.getByRole("dialog", { name: "Getting started tutorial" });
+
+    // The seeded admin skipped the tour during global setup; bring it back.
+    await page.getByRole("button", { name: "Show the getting-started tutorial again" }).click();
+    await expect(tour).toBeVisible();
+    await expect(tour).toContainText("Step 1 of 9");
+    await expect(tour).toContainText("Welcome to your dashboard");
+    await expect(tour).toBeFocused();
+    await expect(page.locator('[data-tour-frame="overview"]')).toBeVisible();
+    await expectNoSeriousAccessibilityViolations(page);
+
+    try {
+      // Next on a link step follows the highlighted link.
+      await tour.getByRole("button", { name: "Next" }).click();
+      await page.waitForURL(/\/en\/dashboard\/events$/);
+      await expect(tour).toContainText("Step 2 of 9");
+      await tour.getByRole("button", { name: "Next" }).click();
+      await page.waitForURL(/\/en\/dashboard\/events\/new$/);
+      await expect(tour).toContainText("Name the event");
+      await expect(tour.getByRole("button", { name: "Back" })).toHaveCount(0);
+
+      // An empty form cannot be walked past: Next waits for the title.
+      await expect(tour.getByRole("button", { name: "Next" })).toBeDisabled();
+      await expect(tour).toContainText("Enter a title in at least one language to continue.");
+      await page.getByLabel("Title (English)").fill(title);
+      await expect(tour.getByRole("button", { name: "Next" })).toBeEnabled();
+
+      // Same-page steps advance without navigating and can go back.
+      await tour.getByRole("button", { name: "Next" }).click();
+      await expect(tour).toContainText("Pick the shoot days");
+      await expect(tour.getByRole("button", { name: "Next" })).toBeDisabled();
+      await expect(tour).toContainText("Select at least one day to continue.");
+      await tour.getByRole("button", { name: "Back" }).click();
+      await expect(tour).toContainText("Name the event");
+      await expect(page.getByLabel("Title (English)")).toHaveValue(title);
+      await expect(tour.getByRole("button", { name: "Next" })).toBeEnabled();
+      await tour.getByRole("button", { name: "Next" }).click();
+      const next = new Date();
+      next.setMonth(next.getMonth() + 1, 15);
+      const day = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-15`;
+      await page.getByRole("button", { name: "Next month" }).click();
+      await page.getByRole("button", { name: day, exact: true }).click();
+      await expect(tour.getByRole("button", { name: "Next" })).toBeEnabled();
+      await tour.getByRole("button", { name: "Next" }).click();
+
+      // The submit step cannot be pressed by the tour; only the form advances it.
+      await expect(tour).toContainText("Step 5 of 9");
+      await expect(tour).toContainText("Use the highlighted button to continue.");
+      await expect(tour.getByRole("button", { name: "Next" })).toHaveCount(0);
+      await page.getByRole("button", { name: "Create", exact: true }).click();
+      await page.waitForURL(/\/dashboard\/bookings\/(?!new$)[^/]+$/);
+      await expect(tour).toContainText("Your event is ready");
+
+      await tour.getByRole("button", { name: "Next" }).click();
+      await page.waitForURL(/\/dashboard\/events\/(?!new$)[^/]+$/);
+      await expect(tour).toContainText("Step 7 of 9");
+      await tour.getByRole("button", { name: "Next" }).click();
+      await page.waitForURL(/\/dashboard\/events\/[^/]+\/photos$/);
+      await expect(tour).toContainText("Choose your photos");
+      await expect(page.locator('[data-tour-frame="upload"]')).toBeVisible();
+
+      // Leaving the path hides the tour; coming back resumes at the same step.
+      await page.goto("/en/dashboard/settings");
+      await expect(tour).toHaveCount(0);
+      await page.goBack();
+      await page.waitForURL(/\/photos$/);
+      await expect(tour).toContainText("Choose your photos");
+
+      await tour.getByRole("button", { name: "Next" }).click();
+      await expect(tour).toContainText("Step 9 of 9");
+      await tour.getByRole("button", { name: "Finish tutorial" }).click();
+      await expect(tour).toBeHidden();
+
+      // Completion is stored on the account: a fresh document does not show it.
+      await page.goto("/en/dashboard");
+      await expect(tour).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Show the getting-started tutorial again" })
+      ).toBeVisible();
+    } finally {
+      await prisma.bookingEvent.deleteMany({ where: { titleEn: title } });
+      await prisma.event.deleteMany({ where: { titleEn: title } });
+    }
+  });
+
   test("platform notification shows on the dashboard until dismissed", async ({ page }) => {
     const title = `E2E notice ${Date.now()}`;
 

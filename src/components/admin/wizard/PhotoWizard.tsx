@@ -391,6 +391,7 @@ export default function PhotoWizard({
             type="button"
             disabled={forwardDisabled}
             aria-describedby={continueHint ? "wizard-forward-hint" : undefined}
+            data-tour="wizard-forward"
             onClick={handleForward}
             className={`${primaryBtnCls} min-h-12 px-6 shadow-md max-sm:w-full`}
           >

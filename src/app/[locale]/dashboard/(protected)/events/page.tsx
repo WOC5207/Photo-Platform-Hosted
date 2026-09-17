@@ -49,7 +49,7 @@ export default async function AdminEventsPage({
   const totalPages = Math.max(1, Math.max(Math.ceil(eventTotal / pageSize), Math.ceil(legacyTotal / pageSize)));
   return <div className="flex flex-col gap-8">
     <PageHeader title={t("listTitle")} description={t("listDescription")} index="02"
-      action={total > 0 ? <Link href="/dashboard/events/new" className={buttonClasses({ variant: "primary" })}>+ {t("newEvent")}</Link> : undefined} />
+      action={total > 0 ? <Link href="/dashboard/events/new" data-tour="new-event" className={buttonClasses({ variant: "primary" })}>+ {t("newEvent")}</Link> : undefined} />
     <nav aria-label={t("allEventTools")} className="flex flex-wrap gap-2">
       <Link href="/dashboard/preparation/slots" className={buttonClasses({ size: "compact", variant: "ghost" })}>{t("allSlots")}</Link>
       <Link href="/dashboard/preparation/equipment" className={buttonClasses({ size: "compact", variant: "ghost" })}>{t("allChecklists")}</Link>
@@ -57,7 +57,7 @@ export default async function AdminEventsPage({
     </nav>
     {total === 0 ? <EmptyState
       title={t("emptyTitle")} description={t("createHint")}
-      action={<Link href="/dashboard/events/new" className={buttonClasses({ variant: "primary" })}>+ {t("newEvent")}</Link>}
+      action={<Link href="/dashboard/events/new" data-tour="new-event" className={buttonClasses({ variant: "primary" })}>+ {t("newEvent")}</Link>}
       steps={["gallery", "bookings", "equipment"].map(key => ({ title: t(key), description: t(key + "Description") }))}
     /> : <ul className="grid gap-4 lg:grid-cols-2">
       {events.map((event, index) => <li key={event.id} className="ui-panel flex min-w-0 flex-col gap-5 p-5 sm:p-6">

@@ -77,6 +77,14 @@ export default async function globalSetup(config: FullConfig) {
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/en\/dashboard(?:\/|$)/);
+    // A freshly seeded admin gets the first-login tutorial. Its coach mark
+    // would sit over controls the workflows click, so close it the way a
+    // person would; completion is stored on the account, not in this state.
+    const skipTutorial = page.getByRole("button", { name: "Skip tutorial" });
+    if (await skipTutorial.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await skipTutorial.click();
+      await expect(skipTutorial).toBeHidden();
+    }
     await mkdir(dirname(storageStatePath), { recursive: true });
     await context.storageState({ path: storageStatePath });
   } finally {

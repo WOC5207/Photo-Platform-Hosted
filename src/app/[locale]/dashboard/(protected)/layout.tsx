@@ -13,6 +13,8 @@ import { siteImageUrl } from "@/lib/images";
 import { ownerBasePath, ownerName } from "@/lib/owner";
 import { getActiveNotificationsForUser } from "@/lib/platformNotifications";
 import PlatformNoticeBanner from "@/components/dashboard/PlatformNoticeBanner";
+import OnboardingTour from "@/components/dashboard/OnboardingTour";
+import { completeOnboardingTour } from "./tourActions";
 import {
   resolveDashboardThemeMode,
   siteDualThemeStyle
@@ -157,6 +159,14 @@ export default async function DashboardLayout({
         locale={locale}
       />
       {children}
+      {/* First-login tutorial. Rendered in the layout so it follows the user
+          from Overview to the photo wizard without remounting; hidden for
+          good once the account records completion. */}
+      <OnboardingTour
+        active={user.tourCompletedAt === null}
+        account={user.id}
+        completeAction={completeOnboardingTour}
+      />
     </ManagementShell>
   );
 }

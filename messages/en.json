@@ -1432,6 +1432,56 @@
     "finishTitle": "You're all set!",
     "finishHint": "We'll create a draft album (and a draft booking event, if enabled) so you have something to explore. Publish or delete them anytime from the admin."
   },
+  "tour": {
+    "dialogLabel": "Getting started tutorial",
+    "stepOf": "Step {current} of {total}",
+    "skip": "Skip tutorial",
+    "back": "Back",
+    "next": "Next",
+    "finish": "Finish tutorial",
+    "clickToContinue": "Use the highlighted button to continue.",
+    "replay": "Show the getting-started tutorial again",
+    "steps": {
+      "overview": {
+        "title": "Welcome to your dashboard",
+        "body": "Everything starts with an event. This short tutorial walks you through creating one and adding photos. Open Events to begin."
+      },
+      "newEvent": {
+        "title": "Create an event",
+        "body": "An event holds a photo gallery, a booking page and an equipment checklist. Click New event to start one."
+      },
+      "eventTitle": {
+        "title": "Name the event",
+        "body": "Give it a title in at least one language. Visitors see it on the gallery and the booking page.",
+        "blocked": "Enter a title in at least one language to continue."
+      },
+      "eventDates": {
+        "title": "Pick the shoot days",
+        "body": "Select at least one day. Each day gets a booking schedule and an equipment checklist you can fill in later.",
+        "blocked": "Select at least one day to continue."
+      },
+      "eventCreate": {
+        "title": "Create it",
+        "body": "Click Create. The gallery starts as a draft and the booking page stays closed until you open them, so nothing is public yet."
+      },
+      "galleryTab": {
+        "title": "Your event is ready",
+        "body": "This is the booking page. Photos live in the Gallery tab; open it to add some."
+      },
+      "addPhotos": {
+        "title": "Add photos",
+        "body": "Click Add photos to open the upload wizard for this gallery."
+      },
+      "upload": {
+        "title": "Choose your photos",
+        "body": "Pick JPEG, PNG, WebP or TIFF files from your device. Uploads start immediately, and you can add more at any time."
+      },
+      "publish": {
+        "title": "Compress, credit, publish",
+        "body": "Continue through the remaining steps: choose a size, add credits, then review and publish. Afterwards, tick Published on the gallery to show it on your site."
+      }
+    }
+  },
   "directory": {
     "title": "Photographers",
     "subtitle": "Browse the photographers hosted here.",

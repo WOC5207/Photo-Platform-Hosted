@@ -159,7 +159,10 @@ export default function BookingDayPicker({
   return (
     <div className="flex flex-col gap-2">
       <span className="text-sm text-fg-muted">{t("daysLabel")}</span>
-      <div className="w-full max-w-xl rounded-xl border border-border-strong bg-surface p-3 select-none">
+      <div
+        data-tour="event-dates"
+        className="w-full max-w-xl rounded-xl border border-border-strong bg-surface p-3 select-none"
+      >
         <div className="flex items-center justify-between">
           <button
             type="button"

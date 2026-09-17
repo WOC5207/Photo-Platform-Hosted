@@ -39,6 +39,10 @@ there is no privileged site.
   account. Each invite works exactly once. Administrators can place a bilingual
   notification or EULA before the account form and choose a 0–300 second delay
   before visitors may continue.
+- **Guided first login.** After the setup wizard, a step-by-step on-screen
+  tutorial walks a new account from the dashboard through creating an event
+  and adding photos, highlighting the real controls. It can be skipped and
+  replayed from the Overview page; see `docs/ONBOARDING_TOUR.md`.
 - **Per-account storage plans.** The admin assigns the default tier, a named
   tier or a custom limit under **Platform admin → Accounts → Storage plan**.
   Named tiers live under **Storage plans**, while **Platform health** is reserved
