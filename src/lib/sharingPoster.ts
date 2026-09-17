@@ -9,11 +9,32 @@ export const SHARING_POSTER_DEFAULT_LONG_EDGE = 2160;
 export const SHARING_POSTER_MAX_EDGE = 4096;
 export const SHARING_POSTER_MAX_PIXELS = 12_000_000;
 
+/**
+ * How a photo is cropped into its frame.
+ * - absent: the original behaviour, `focalX`/`focalY` as fractions of the
+ *   pannable range (0 flush left/top, 1 flush right/bottom).
+ * - "auto": the crop is centred on the subject detected on the server (or the
+ *   image centre until detection has run).
+ * - "manual": an anchor in image-normalized coordinates that the crop window
+ *   is centred on, so it survives ratio, layout and weight changes.
+ */
+export const sharingPosterCropSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("auto") }),
+  z.object({
+    mode: z.literal("manual"),
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1)
+  })
+]);
+export type SharingPosterCrop = z.infer<typeof sharingPosterCropSchema>;
+
 export const sharingPosterPhotoSchema = z.object({
   photoId: z.string().min(1).max(100),
   weight: z.number().int().min(1).max(5),
   focalX: z.number().min(0).max(1),
-  focalY: z.number().min(0).max(1)
+  focalY: z.number().min(0).max(1),
+  // Optional so posters saved before crop modes existed still validate.
+  crop: sharingPosterCropSchema.optional()
 });
 
 /**
@@ -93,6 +114,17 @@ export type SharingPosterComposition = z.infer<
 >;
 export type SharingPosterPhoto = z.infer<typeof sharingPosterPhotoSchema>;
 
+/** "pending" = not detected yet (or by an older algorithm); "none" = attempted, nothing found. */
+export type SharingPosterSubjectState = "pending" | "detected" | "none";
+
+export interface SharingPosterSubject {
+  /** Attention point, fractions of the image. */
+  x: number;
+  y: number;
+  /** Approximate extent, fractions of the image, when the detector produced one. */
+  box: { x: number; y: number; width: number; height: number } | null;
+}
+
 export interface SharingPosterPhotoValue {
   id: string;
   eventId: string;
@@ -108,6 +140,9 @@ export interface SharingPosterPhotoValue {
   creditNames: string[];
   cameraModel: string;
   lensModel: string;
+  subjectState: SharingPosterSubjectState;
+  /** Non-null exactly when `subjectState` is "detected". */
+  subject: SharingPosterSubject | null;
 }
 
 export interface SharingPosterResolvedPhoto {
@@ -173,7 +208,8 @@ export function defaultSharingPosterComposition(
           homeWeight ?? HOME_PHOTO_WEIGHT_FALLBACK
         ),
         focalX: 0.5,
-        focalY: 0.5
+        focalY: 0.5,
+        crop: { mode: "auto" }
       })),
     credits: {
       cosplayer: "",

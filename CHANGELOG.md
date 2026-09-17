@@ -4,6 +4,12 @@
 
 ### Security and reliability
 
+- Photos gain nullable subject columns filled by server-side detection using
+  libvips's attention strategy on the existing 1280 px rendition, with no new
+  dependency or external service. New uploads are detected inside the
+  compression job; existing photos are backfilled once after boot, one at a
+  time through the image-processing slot, newest first, with a
+  `SUBJECT_DETECTION_SWEEP` kill switch.
 - WebP uploads now record their shooting data. exifr returned nothing at all
   for WebP, so the camera, lens, ISO, aperture, focal length and capture time
   of every WebP photo were silently discarded.
@@ -43,6 +49,13 @@
 
 ### User experience
 
+- Sharing posters now find the subject of each photograph and compose around
+  it. New photos follow the detected subject by default, so a portrait is no
+  longer cropped through the head, and the layout gives such photos frames
+  shaped to keep the subject whole. Any photo can be switched to a manual
+  anchor that survives ratio and layout changes; dragging the preview now
+  moves the content 1:1 with the pointer. Posters saved earlier keep their
+  crops exactly until a photo's mode is changed.
 - Sharing posters gained an adjustable gap between the photographs and the
   credits, down to zero. It was previously fixed at the outer margin plus a
   padding derived from the font size and could not be reduced on its own.

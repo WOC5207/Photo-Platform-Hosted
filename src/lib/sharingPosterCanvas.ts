@@ -2,7 +2,7 @@ import type { SharingPosterComposition, SharingPosterResolvedPhoto } from "@/lib
 import { sharingPosterCreditLines } from "@/lib/sharingPoster";
 import {
   calculateSharingPosterLayout,
-  coverCropSource,
+  resolvePosterCrop,
   type PosterLayoutRect,
   type PosterRect
 } from "@/lib/sharingPosterLayout";
@@ -113,6 +113,8 @@ export function renderSharingPoster(
     selectionColor?: string;
     rectangles?: PosterLayoutRect[];
     unavailableLabel?: string;
+    /** Preview only: ring the detected subject of this photo when its crop follows it. */
+    subjectMarkerPhotoId?: string | null;
   } = {}
 ): SharingPosterRenderResult {
   const { style } = composition;
@@ -135,12 +137,21 @@ export function renderSharingPoster(
     footerTextPercent: style.footerTextPercent,
     textGapPercent: style.textGapPercent
   });
-  const layoutItems = photos.map((photo) => ({
-    id: photo.photoId,
-    width: photo.source?.width ?? 1,
-    height: photo.source?.height ?? 1,
-    weight: photo.composition.weight
-  }));
+  const layoutItems = photos.map((photo) => {
+    const subject = photo.source?.subject;
+    return {
+      id: photo.photoId,
+      width: photo.source?.width ?? 1,
+      height: photo.source?.height ?? 1,
+      weight: photo.composition.weight,
+      // Only a crop that follows the subject lets the solver shape its frame
+      // around it; manual and legacy crops keep the aspect-only behaviour.
+      subject:
+        photo.composition.crop?.mode === "auto" && subject?.box
+          ? { x: subject.x, y: subject.y, box: subject.box }
+          : null
+    };
+  });
   const rectangles =
     options.rectangles ?? calculateSharingPosterLayout(layoutItems, geometry.photoArea, gap);
 
@@ -153,13 +164,13 @@ export function renderSharingPoster(
     if (resolved?.source && image?.complete && image.naturalWidth > 0) {
       crops.set(
         rect.id,
-        coverCropSource(
+        resolvePosterCrop(
+          resolved.composition,
+          resolved.source.subject,
           image.naturalWidth,
           image.naturalHeight,
           rect.width,
-          rect.height,
-          resolved.composition.focalX,
-          resolved.composition.focalY
+          rect.height
         )
       );
     }
@@ -204,6 +215,28 @@ export function renderSharingPoster(
       context.fillText(options.unavailableLabel ?? "Image unavailable", rect.x + gap + 4, rect.y + gap + 4);
     }
     context.restore();
+    if (options.subjectMarkerPhotoId === rect.id && image && crop) {
+      const resolved = photos.find((photo) => photo.photoId === rect.id);
+      const subject = resolved?.composition.crop?.mode === "auto" ? resolved.source?.subject : null;
+      if (subject) {
+        const markerX = rect.x + ((subject.x * image.naturalWidth - crop.x) * rect.width) / crop.width;
+        const markerY = rect.y + ((subject.y * image.naturalHeight - crop.y) * rect.height) / crop.height;
+        const radius = Math.max(6, width / 150);
+        context.save();
+        context.beginPath();
+        context.rect(rect.x, rect.y, rect.width, rect.height);
+        context.clip();
+        context.beginPath();
+        context.arc(markerX, markerY, radius, 0, Math.PI * 2);
+        context.lineWidth = Math.max(4, width / 225);
+        context.strokeStyle = "rgba(255, 255, 255, 0.9)";
+        context.stroke();
+        context.lineWidth = Math.max(2, width / 450);
+        context.strokeStyle = options.selectionColor ?? "#a44f25";
+        context.stroke();
+        context.restore();
+      }
+    }
     if (glass) {
       // Glass hides the frame boundary, so lift each frame with the same faint
       // inset line the site uses on image frames.

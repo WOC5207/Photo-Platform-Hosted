@@ -10,7 +10,11 @@ import { sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
 import { glassEdgeStrips } from "../src/lib/sharingPosterGlass";
 import {
   calculateSharingPosterLayout,
-  coverCropSource
+  coverCropFromAnchor,
+  coverCropSource,
+  cropRectToAnchor,
+  legacyFocalToAnchor,
+  resolvePosterCrop
 } from "../src/lib/sharingPosterLayout";
 
 function overlaps(a: { x: number; y: number; width: number; height: number }, b: typeof a) {
@@ -166,6 +170,88 @@ assert.equal(withGlass({ mode: "frosted" }), false);
   assert.equal(byEdge.right.width, 160);
   assert.equal(byEdge.top.height, 20);
   assert.equal(byEdge.bottom.height, 220);
+}
+
+// --- Crop modes ---------------------------------------------------------------
+
+// A pre-change photo entry (no crop mode) must still validate, and the manual
+// mode must carry its anchor.
+{
+  const photo = { photoId: "p", weight: 3, focalX: 0.5, focalY: 0.5 };
+  const withCrop = (crop: unknown) => sharingPosterCompositionSchema.safeParse({ ...composition, photos: [{ ...photo, crop }] }).success;
+  assert.equal(sharingPosterCompositionSchema.safeParse({ ...composition, photos: [photo] }).success, true);
+  assert.equal(withCrop({ mode: "auto" }), true);
+  assert.equal(withCrop({ mode: "manual", x: 0.2, y: 0.9 }), true);
+  assert.equal(withCrop({ mode: "manual" }), false, "manual needs an anchor");
+  assert.equal(withCrop({ mode: "manual", x: 1.5, y: 0 }), false);
+}
+
+// An anchored crop centres on the anchor and clamps at both image edges.
+assert.equal(coverCropFromAnchor(3000, 2000, 500, 500, { x: 0.5, y: 0.5 }).x, 500);
+assert.equal(coverCropFromAnchor(3000, 2000, 500, 500, { x: 0.05, y: 0.5 }).x, 0);
+assert.equal(coverCropFromAnchor(3000, 2000, 500, 500, { x: 0.95, y: 0.5 }).x, 1000);
+// When the subject box fits the window, the window is nudged to keep it whole.
+{
+  const nudged = coverCropFromAnchor(3000, 2000, 500, 500, { x: 0.5, y: 0.5 }, { x: 0.05, y: 0.2, width: 0.4, height: 0.6 });
+  assert.ok(nudged.x <= 0.05 * 3000 + 1e-9, "window starts at or before the box");
+  assert.ok(nudged.x + nudged.width >= 0.45 * 3000 - 1e-9, "window ends at or after the box");
+}
+// A box wider than the window cannot be kept whole; the anchor still rules.
+assert.equal(coverCropFromAnchor(3000, 2000, 500, 500, { x: 0.5, y: 0.5 }, { x: 0, y: 0, width: 1, height: 1 }).x, 500);
+
+// The legacy focal crop and its anchor equivalent produce the same window.
+for (const [frameWidth, frameHeight] of [[500, 500], [900, 300], [300, 900]] as const) {
+  for (const focal of [0, 0.25, 0.5, 1]) {
+    const legacy = coverCropSource(3000, 2000, frameWidth, frameHeight, focal, focal);
+    const anchor = legacyFocalToAnchor(3000, 2000, frameWidth, frameHeight, focal, focal);
+    const viaAnchor = coverCropFromAnchor(3000, 2000, frameWidth, frameHeight, anchor);
+    assert.ok(Math.abs(viaAnchor.x - legacy.x) < 1e-6 && Math.abs(viaAnchor.y - legacy.y) < 1e-6, `focal ${focal} in ${frameWidth}x${frameHeight}`);
+    // And the anchor round-trips through the crop it produced.
+    const back = cropRectToAnchor(viaAnchor, 3000, 2000);
+    assert.ok(Math.abs(back.x - anchor.x) < 1e-9 && Math.abs(back.y - anchor.y) < 1e-9);
+  }
+}
+
+// resolvePosterCrop: absent mode is the legacy crop; auto falls back to centre
+// without a subject and follows it with one; manual uses its anchor.
+{
+  const legacyEntry = { focalX: 0, focalY: 0 };
+  assert.deepEqual(resolvePosterCrop(legacyEntry, null, 3000, 2000, 500, 500), coverCropSource(3000, 2000, 500, 500, 0, 0));
+  const autoEntry = { focalX: 0, focalY: 0, crop: { mode: "auto" as const } };
+  assert.equal(resolvePosterCrop(autoEntry, null, 3000, 2000, 500, 500).x, 500);
+  assert.equal(resolvePosterCrop(autoEntry, { x: 0.9, y: 0.5, box: null }, 3000, 2000, 500, 500).x, 1000);
+  const manualEntry = { focalX: 0, focalY: 0, crop: { mode: "manual" as const, x: 0.1, y: 0.5 } };
+  assert.equal(resolvePosterCrop(manualEntry, { x: 0.9, y: 0.5, box: null }, 3000, 2000, 500, 500).x, 0);
+}
+
+// Dragging by a quarter of the frame moves the crop by a quarter of its window.
+{
+  const rect = { width: 400, height: 400 };
+  const startCrop = coverCropFromAnchor(3000, 2000, rect.width, rect.height, { x: 0.5, y: 0.5 });
+  const scale = startCrop.width / rect.width;
+  const moved = startCrop.x - (rect.width / 4) * scale;
+  assert.ok(Math.abs(startCrop.x - moved - startCrop.width / 4) < 1e-9);
+}
+
+// --- Subject-aware layout ----------------------------------------------------
+
+// A portrait whose subject spans most of its height gets a taller-than-wide
+// frame when paired with a landscape; without subject data the layout is
+// exactly the aspect-only result.
+{
+  const area = { x: 0, y: 0, width: 1000, height: 800 };
+  const portrait = { id: "portrait", width: 2000, height: 3000, weight: 3 };
+  const landscape = { id: "landscape", width: 3000, height: 2000, weight: 3 };
+  const withSubject = calculateSharingPosterLayout(
+    [{ ...portrait, subject: { x: 0.5, y: 0.45, box: { x: 0.3, y: 0.05, width: 0.4, height: 0.8 } } }, { ...landscape, subject: null }],
+    area,
+    0
+  );
+  const portraitRect = withSubject.find((rect) => rect.id === "portrait")!;
+  assert.ok(portraitRect.height > portraitRect.width, "the portrait subject should win a tall frame");
+  const explicitNull = calculateSharingPosterLayout([{ ...portrait, subject: null }, { ...landscape, subject: null }], area, 0);
+  const noField = calculateSharingPosterLayout([portrait, landscape], area, 0);
+  assert.deepEqual(explicitNull, noField, "no subject data must not change the layout");
 }
 
 console.log("Sharing poster layout and composition tests passed.");
