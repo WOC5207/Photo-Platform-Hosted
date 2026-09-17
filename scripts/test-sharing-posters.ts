@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import {
   defaultSharingPosterComposition,
+  legacyTextGapPercent,
+  parseSharingPosterComposition,
   sharingPosterCompositionSchema,
   sharingPosterPixelSize
 } from "../src/lib/sharingPoster";
+import { sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
+import { glassEdgeStrips } from "../src/lib/sharingPosterGlass";
 import {
   calculateSharingPosterLayout,
   coverCropSource
@@ -65,5 +69,103 @@ assert.equal(sharingPosterCompositionSchema.safeParse({
     { photoId: "same", weight: 3, focalX: 0.5, focalY: 0.5 }
   ]
 }).success, false);
+
+// --- Text gap ---------------------------------------------------------------
+
+// A poster without `textGapPercent` must keep the spacing it was saved with:
+// the footer padding derived from margin and font size, the gap being that
+// padding plus the margin. Includes the 11 px font floor (width 300).
+for (const [width, height, marginPercent, footerTextPercent, lineCount] of [
+  [1728, 2160, 2.5, 1.8, 3],
+  [300, 400, 0, 1, 2],
+  [900, 1600, 12, 4, 6],
+  [1080, 1920, 2.5, 1.8, 0]
+] as const) {
+  const geometry = sharingPosterFooterGeometry({ width, height, lineCount, marginPercent, footerTextPercent });
+  const margin = (width * marginPercent) / 100;
+  const fontSize = Math.max(11, (width * footerTextPercent) / 100);
+  const lineHeight = fontSize * 1.38;
+  const footerPadding = Math.max(margin * 0.8, fontSize * 0.8);
+  const footerHeight = lineCount * lineHeight + footerPadding * 2;
+  const photoHeight = height - footerHeight - margin * 2;
+  assert.equal(geometry.margin, margin);
+  assert.equal(geometry.fontSize, fontSize);
+  assert.equal(geometry.lineHeight, lineHeight);
+  assert.deepEqual(geometry.photoArea, { x: margin, y: margin, width: Math.max(1, width - margin * 2), height: Math.max(1, photoHeight) });
+  assert.equal(geometry.textY, height - footerHeight + footerPadding);
+  assert.equal(geometry.footerTooTall, photoHeight < Math.max(height * 0.22, fontSize * 4));
+}
+
+// With the field present the gap is exactly what was asked for, down to zero,
+// and the footer's bottom inset equals the outer margin.
+for (const textGapPercent of [0, 0.7, 2.5, 8]) {
+  const width = 1728;
+  const height = 2160;
+  const lineCount = 3;
+  const geometry = sharingPosterFooterGeometry({ width, height, lineCount, marginPercent: 2.5, footerTextPercent: 1.8, textGapPercent });
+  const gap = (width * textGapPercent) / 100;
+  assert.ok(Math.abs(geometry.textY - (geometry.photoArea.y + geometry.photoArea.height) - gap) < 1e-9, `gap ${textGapPercent}%`);
+  const bottomInset = height - (geometry.textY + lineCount * geometry.lineHeight);
+  assert.ok(Math.abs(bottomInset - geometry.margin) < 1e-9, "bottom inset equals the margin");
+}
+assert.equal(legacyTextGapPercent({ marginPercent: 2.5, footerTextPercent: 1.8 }), 4.5);
+
+// --- Backward compatibility of the composition schema -----------------------
+
+// A composition shaped exactly like one saved before these fields existed
+// must still parse, and must not be replaced by the fallback.
+const legacyShaped = JSON.parse(JSON.stringify(composition)) as Record<string, unknown> & { style: Record<string, unknown> };
+delete legacyShaped.style.textGapPercent;
+delete legacyShaped.style.background;
+assert.equal(sharingPosterCompositionSchema.safeParse(legacyShaped).success, true);
+const fallback = defaultSharingPosterComposition("zh", "Fallback");
+const parsedLegacy = parseSharingPosterComposition(legacyShaped, fallback);
+assert.notEqual(parsedLegacy, fallback);
+assert.equal(parsedLegacy.style.textGapPercent, undefined);
+assert.equal(parsedLegacy.style.background, undefined);
+
+const withGlass = (background: unknown) => sharingPosterCompositionSchema.safeParse({ ...composition, style: { ...composition.style, background } }).success;
+assert.equal(withGlass({ mode: "solid" }), true);
+assert.equal(withGlass({ mode: "glass", blurPercent: 3, tintOpacity: 0.55 }), true);
+assert.equal(withGlass({ mode: "glass" }), false, "glass needs both numbers");
+assert.equal(withGlass({ mode: "glass", blurPercent: 3, tintOpacity: 1 }), false, "tint is capped below opaque");
+assert.equal(withGlass({ mode: "frosted" }), false);
+
+// --- Glass edge strips -------------------------------------------------------
+
+// The eight strips plus the frame tile the canvas exactly, with no overlap.
+{
+  const bounds = { x: 0, y: 0, width: 240, height: 300 };
+  const rect = { x: 40, y: 50, width: 100, height: 120 };
+  const strips = glassEdgeStrips(rect, bounds);
+  assert.equal(strips.length, 8);
+  const pieces = [rect, ...strips.map((strip) => strip.dest)];
+  const area = pieces.reduce((sum, piece) => sum + piece.width * piece.height, 0);
+  assert.equal(area, bounds.width * bounds.height);
+  for (const piece of pieces) {
+    assert.ok(piece.x >= bounds.x && piece.y >= bounds.y);
+    assert.ok(piece.x + piece.width <= bounds.x + bounds.width);
+    assert.ok(piece.y + piece.height <= bounds.y + bounds.height);
+  }
+  for (let a = 0; a < pieces.length; a += 1) {
+    for (let b = a + 1; b < pieces.length; b += 1) {
+      const pa = pieces[a];
+      const pb = pieces[b];
+      if (pa.width === 0 || pa.height === 0 || pb.width === 0 || pb.height === 0) continue;
+      assert.ok(!overlaps(pa, pb), `strips ${a}/${b} overlap`);
+    }
+  }
+}
+// A frame touching the canvas edge extends nothing on that side.
+{
+  const strips = glassEdgeStrips({ x: 0, y: 20, width: 80, height: 60 }, { x: 0, y: 0, width: 240, height: 300 });
+  const byEdge = Object.fromEntries(strips.map((strip) => [strip.edge, strip.dest]));
+  assert.equal(byEdge.left.width, 0);
+  assert.equal(byEdge.topLeft.width, 0);
+  assert.equal(byEdge.bottomLeft.width, 0);
+  assert.equal(byEdge.right.width, 160);
+  assert.equal(byEdge.top.height, 20);
+  assert.equal(byEdge.bottom.height, 220);
+}
 
 console.log("Sharing poster layout and composition tests passed.");
