@@ -52,17 +52,29 @@ row (`subjectX/Y`, `subjectBoxX/Y/Width/Height`, `subjectVersion`, all
 fractions of the display-oriented image). `src/lib/subjectDetection.ts` reads
 the 1280 px `-med` rendition, decodes it at most 512 px on the long side, and:
 
-1. takes the point from libvips's attention crop strategy (luminance
-   frequency, saturation, skin tones), feeding it a raw buffer whose short side
-   already equals the target square so no resize happens and the reported
-   coordinates are unambiguous; a runtime check confirms the point lies inside
-   the crop window;
-2. grows a box around it on a 96-cell energy grid of edges, saturation and
-   skin tone, falling back to a fixed extent around the point.
+1. builds a 96-cell energy grid of edges, saturation and skin tone, splits it
+   at its Otsu threshold (reaching into weaker connected cells when the
+   background is quiet, so a plain costume joins its wearer's skin-dominated
+   head), opens and closes the mask so thin strands (spears, railings) drop
+   out and one figure's pieces rejoin, and takes the heaviest connected region
+   together with any heavy pieces right beside it;
+2. adds pieces directly below that region within a lower leg's reach: plain
+   shins carry almost no energy, so a standing figure's shoes would otherwise
+   fall outside the box;
+3. boxes the result and puts the point at the energy centroid of its top 40%,
+   the upper chest of a standing figure, so a crop too small for the whole box
+   still keeps the head.
 
-It costs on the order of a hundred milliseconds per photo and well under 30 MB
-transient. New uploads get it inside the compression job. Photos that predate
-detection are backfilled by `sweepPhotoSubjects` after boot: it waits 20 s for
+Version 1 took the point from libvips's attention strategy and grew the box
+outward from it. On full-length portraits that strategy is dominated by
+luminance contrast at 32x32 cells, so the point landed on white socks against
+dark shoes, knee ribbons or a floor corner, and the box collapsed to a strip at
+knee height.
+
+It costs about 10 ms per photo on a desktop CPU, a few times that on a
+Celeron-class NAS, and well under 30 MB transient. New uploads get it inside
+the compression job. Photos that predate detection are backfilled by
+`sweepPhotoSubjects` after boot: it waits 20 s for
 the compression sweep to pass, then works newest-first, one photo at a time
 with a pause between, all through the single image-processing slot so uploads
 keep priority. Any poster query that meets a photo without a current result
