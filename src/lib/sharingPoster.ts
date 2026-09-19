@@ -134,7 +134,7 @@ export type SharingPosterPhoto = z.infer<typeof sharingPosterPhotoSchema>;
 export type SharingPosterSubjectState = "pending" | "detected" | "none";
 
 export interface SharingPosterSubject {
-  /** Attention point, fractions of the image. */
+  /** Where a crop that cannot hold the whole box centres, fractions of the image. */
   x: number;
   y: number;
   /** Approximate extent, fractions of the image, when the detector produced one. */
