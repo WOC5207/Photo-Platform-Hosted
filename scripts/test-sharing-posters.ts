@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import {
+  SHARING_POSTER_CREDIT_LABEL_MAX,
   SHARING_POSTER_MAX_EDGE,
   SHARING_POSTER_MAX_PIXELS,
   defaultSharingPosterComposition,
   legacyTextGapPercent,
   parseSharingPosterComposition,
   sharingPosterCompositionSchema,
+  sharingPosterCreditLabel,
+  sharingPosterCreditLines,
   sharingPosterPixelSize
 } from "../src/lib/sharingPoster";
 import { sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
@@ -752,6 +755,31 @@ assert.equal(
   suggestPosterRatio({ width: 4, height: 5 }, nine, ratioStyle, 2);
   const elapsed = performance.now() - started;
   assert.ok(elapsed < 1500, `nine-photo suggestion took ${elapsed.toFixed(0)} ms`);
+}
+
+// Credit titles: the owner's replace the output language's, blank ones fall
+// back to it, and projects saved before titles existed print as they did.
+{
+  const zh = defaultSharingPosterComposition("zh", "摄影师甲");
+  zh.credits.cosplayer = "某 CN";
+  assert.equal("cosplayerLabel" in zh.credits, false);
+  assert.deepEqual(sharingPosterCreditLines(zh).slice(0, 2), ["出镜 / CN: 某 CN", "摄影: 摄影师甲"]);
+  const en = defaultSharingPosterComposition("en", "Ann");
+  en.credits.cosplayer = "Bee";
+  assert.deepEqual(sharingPosterCreditLines(en).slice(0, 2), ["Cosplayer CN: Bee", "Photographer: Ann"]);
+
+  const titled = { ...zh, credits: { ...zh.credits, cosplayerLabel: "Coser", photographerLabel: " 摄影 & 后期： " } };
+  assert.deepEqual(sharingPosterCreditLines(titled).slice(0, 2), ["Coser: 某 CN", "摄影 & 后期: 摄影师甲"]);
+  const blank = { ...zh, credits: { ...zh.credits, cosplayerLabel: "   ", photographerLabel: ":" } };
+  assert.deepEqual(sharingPosterCreditLines(blank).slice(0, 2), ["出镜 / CN: 某 CN", "摄影: 摄影师甲"]);
+  assert.equal(sharingPosterCreditLabel("Model\nand  stylist:", "Cosplayer CN"), "Model and stylist");
+  assert.equal(sharingPosterCreditLabel(undefined, "Photographer"), "Photographer");
+
+  // Saved without titles, saved with them, and a title over the limit.
+  assert.equal(sharingPosterCompositionSchema.parse(zh).credits.cosplayerLabel, undefined);
+  assert.deepEqual(sharingPosterCompositionSchema.parse(titled).credits, titled.credits);
+  const tooLong = { ...zh, credits: { ...zh.credits, photographerLabel: "x".repeat(SHARING_POSTER_CREDIT_LABEL_MAX + 1) } };
+  assert.equal(sharingPosterCompositionSchema.safeParse(tooLong).success, false);
 }
 
 console.log("Sharing poster layout and composition tests passed.");

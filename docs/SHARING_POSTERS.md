@@ -219,6 +219,15 @@ Cosplayer CN and photographer are always rendered. CN is initially deduplicated
 from selected photo credits in selection order. Photographs without a CN require
 the photographer to review the shared poster-specific CN before export.
 
+The titles printed before those two names are editable in the Credits tab and
+saved as `credits.cosplayerLabel` / `credits.photographerLabel` (up to 80
+characters, kept on one line, a trailing colon dropped because the line adds
+its own). Absent or blank titles print the output language's defaults, "出镜 /
+CN" and "摄影" or "Cosplayer CN" and "Photographer"; clearing a title or typing
+the default back removes the field, so an untouched title keeps following the
+language. Projects saved before titles existed print exactly as before, and
+renaming a title does not stop CN from following the selected photographs.
+
 Camera, lens, event, date, and location are opt-in. Their displayed values are
 saved in the project as a snapshot. Reopening a project never silently replaces
 intentional edits; **Refresh from gallery** explicitly rebuilds the snapshot
