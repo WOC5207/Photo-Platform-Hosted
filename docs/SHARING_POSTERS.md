@@ -90,20 +90,50 @@ arithmetic and is covered by `npm run test:sharing-posters`.
 
 `style.background` is `{ mode: "solid" }` (the default, and what a project
 without the field renders as) or `{ mode: "glass", blurPercent, tintOpacity }`.
-Glass follows the site's blurred backdrop: each frame's outermost pixels are
-stretched out to the canvas edges (`glassEdgeStrips` in
-`src/lib/sharingPosterGlass.ts` tiles the space around a frame exactly), the
-layer is blurred, and the background colour is laid over it at `tintOpacity`,
-so the existing colour picker doubles as the tint and works for light and dark
-looks alike. Frames get a faint one-pixel line in the footer text colour so
-their edges still read against the glass.
 
-All heavy work happens on a working layer about 240 px wide; the blur is a
-downsample/upsample pyramid rather than `context.filter`, so one code path
-serves every browser, and even the largest export costs a single extra
-`drawImage`.
-Browsers resample slightly differently, so the glass can differ marginally
-between them, but preview and export always match within a session.
+Glass is a gradient built from the photographs' colours, never their pixels,
+so no shape from a photograph is repeated in the margin. It is drawn in
+`src/lib/sharingPosterGlass.ts`:
+
+1. **Colour statistics per frame.** What the frame actually shows (its
+   resolved crop) is reduced to a 64 px sample and read in OKLab, where
+   averages do not go muddy. Each pixel is weighted by colour: vivid colour
+   counts up to eight times neutral grey, and near-black or near-white counts
+   half, so a red costume shapes the palette more than the grey wall behind
+   it. From that come a weighted mean, a mean for the band along each side,
+   and a 6 x 6 grid of weighted means.
+2. **A base gradient.** Every grid cell, placed where it sits on the poster
+   and weighted by its colour and the area it covers, votes for the four
+   corners. The corners are pushed a little apart from the overall mean and
+   blended bilinearly, so a poster whose warm photographs sit top left and
+   cool ones bottom right gets a gradient that runs the same way.
+3. **Colour flowing from the frames.** Each side's colour spreads into the
+   space beyond that side with a Gaussian falloff whose width is the softness
+   setting (5 % of poster width plus twice `blurPercent`). Neighbouring sides
+   blend around corners, and a gap between two frames becomes a mix of both.
+   Lightness is eased 35 % toward the poster's mean, so hue carries the
+   design and one near-black photograph cannot ink its margin; chroma is
+   capped so the result reads as glass rather than neon.
+4. **The glass finish.** The background colour is laid over the gradient at
+   `tintOpacity` as frost, then a faint diagonal sheen, soft shadows under the
+   frames, and a fixed-seed grain of about 1.5 % that dissolves the banding a
+   smooth gradient shows when stretched to export size. Where two frames'
+   shadows overlap in a narrow gutter they cancel, so gaps do not fill with
+   dark lines. Frames keep the faint one-pixel line in the footer text colour,
+   the same convention the site uses on image frames.
+
+The colour work is pure and tested without a browser. It runs on small grids,
+a field 96 px wide and a shadow layer 240 px wide, and both are cached by
+crop, layout and softness, so typing credits or moving the tint repaints
+without recomputing and a full-size export costs a handful of scaled draws.
+The preview samples the 1280 px rendition and the export the full one; every
+step is a weighted average that changes smoothly with its input, so the two
+agree. Images are read with `getImageData`, which a same-origin image allows;
+if one could not be read the poster falls back to its solid colour.
+
+`blurPercent` keeps its name and range from the first glass implementation, so
+posters saved with it still parse; it now sets softness rather than a blur
+radius, and those posters render with the gradient.
 
 ## Export size
 
