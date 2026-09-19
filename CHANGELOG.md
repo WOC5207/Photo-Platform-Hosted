@@ -49,6 +49,13 @@
 
 ### User experience
 
+- The sharing poster editor suggests a ratio for the selected photographs. It
+  lays the poster out at each common ratio, including 3:4, 2:3 and 3:2, crops
+  every frame exactly as the export would, and measures how much of the
+  detected subjects and of the photographs stays in view. A ratio is suggested
+  only when it keeps at least as much of both and clearly more of one, with
+  the two figures shown against the current ones and a button to apply it;
+  otherwise the editor says no common ratio keeps more of both.
 - Sharing posters can be exported at 8192 px on the longest edge, twice the
   previous maximum. The area ceiling that went with it rose from 12 megapixels
   to the square case at that edge, which also fixes the old 4096 option: at

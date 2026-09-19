@@ -2,76 +2,22 @@ import type { SharingPosterComposition, SharingPosterResolvedPhoto } from "@/lib
 import { sharingPosterCreditLines } from "@/lib/sharingPoster";
 import {
   calculateSharingPosterLayout,
+  posterLayoutItems,
   resolvePosterCrop,
+  sharingPosterFooterGeometry,
   type PosterLayoutRect,
   type PosterRect
 } from "@/lib/sharingPosterLayout";
 import { paintGlassBackground, withAlpha } from "@/lib/sharingPosterGlass";
 
+// The footer geometry is pure layout arithmetic and lives with the layout; it
+// is re-exported so existing imports keep working.
+export { sharingPosterFooterGeometry, type SharingPosterFooterGeometry } from "@/lib/sharingPosterLayout";
+
 export interface SharingPosterRenderResult {
   rectangles: PosterLayoutRect[];
   footerTooTall: boolean;
   wrappedLineCount: number;
-}
-
-export interface SharingPosterFooterGeometry {
-  margin: number;
-  fontSize: number;
-  lineHeight: number;
-  photoArea: PosterRect;
-  /** Top of the first credits line. */
-  textY: number;
-  footerTooTall: boolean;
-}
-
-/**
- * Split the canvas into the photo area and the credits footer. Pure, so the
- * spacing can be tested without a canvas.
- *
- * A poster saved before `textGapPercent` existed reproduces its previous
- * spacing exactly: the footer's padding was derived from the margin and the
- * font size, and the gap between the frames and the text was that padding plus
- * the outer margin, which could not be lowered independently. With the field
- * present the gap is what the owner set, and the footer's bottom inset equals
- * the outer margin so the credits sit symmetrically inside the poster.
- */
-export function sharingPosterFooterGeometry(input: {
-  width: number;
-  height: number;
-  lineCount: number;
-  marginPercent: number;
-  footerTextPercent: number;
-  textGapPercent?: number;
-}): SharingPosterFooterGeometry {
-  const { width, height, lineCount } = input;
-  const margin = (width * input.marginPercent) / 100;
-  const fontSize = Math.max(11, (width * input.footerTextPercent) / 100);
-  const lineHeight = fontSize * 1.38;
-  let photoHeight: number;
-  let textY: number;
-  if (input.textGapPercent === undefined) {
-    const footerPadding = Math.max(margin * 0.8, fontSize * 0.8);
-    const footerHeight = lineCount * lineHeight + footerPadding * 2;
-    photoHeight = height - footerHeight - margin * 2;
-    textY = height - footerHeight + footerPadding;
-  } else {
-    const textGap = (width * input.textGapPercent) / 100;
-    photoHeight = height - margin - textGap - lineCount * lineHeight - margin;
-    textY = margin + photoHeight + textGap;
-  }
-  return {
-    margin,
-    fontSize,
-    lineHeight,
-    photoArea: {
-      x: margin,
-      y: margin,
-      width: Math.max(1, width - margin * 2),
-      height: Math.max(1, photoHeight)
-    },
-    textY,
-    footerTooTall: photoHeight < Math.max(height * 0.22, fontSize * 4)
-  };
 }
 
 function wrapLine(
@@ -137,23 +83,9 @@ export function renderSharingPoster(
     footerTextPercent: style.footerTextPercent,
     textGapPercent: style.textGapPercent
   });
-  const layoutItems = photos.map((photo) => {
-    const subject = photo.source?.subject;
-    return {
-      id: photo.photoId,
-      width: photo.source?.width ?? 1,
-      height: photo.source?.height ?? 1,
-      weight: photo.composition.weight,
-      // Only a crop that follows the subject lets the solver shape its frame
-      // around it; manual and legacy crops keep the aspect-only behaviour.
-      subject:
-        photo.composition.crop?.mode === "auto" && subject?.box
-          ? { x: subject.x, y: subject.y, box: subject.box }
-          : null
-    };
-  });
   const rectangles =
-    options.rectangles ?? calculateSharingPosterLayout(layoutItems, geometry.photoArea, gap);
+    options.rectangles ??
+    calculateSharingPosterLayout(posterLayoutItems(photos), geometry.photoArea, gap);
 
   // Resolve every frame's crop up front: the glass background takes its
   // colours from exactly what each frame shows, so both use the same window.

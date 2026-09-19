@@ -17,6 +17,10 @@ import {
 } from "@/lib/sharingPoster";
 import type { SharingPosterRenderResult } from "@/lib/sharingPosterCanvas";
 import { legacyFocalToAnchor } from "@/lib/sharingPosterLayout";
+import { SHARING_POSTER_RATIO_PRESETS, sameRatio } from "@/lib/sharingPosterRatio";
+import SharingPosterRatioSuggestion, {
+  usePosterRatioSuggestion
+} from "@/components/sharing-posters/SharingPosterRatioSuggestion";
 
 const SharingPosterCanvas = dynamic(
   () => import("@/components/sharing-posters/SharingPosterCanvas"),
@@ -32,14 +36,6 @@ type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 
 const fieldClasses =
   "min-h-11 w-full rounded-lg border border-border-strong bg-control px-3 py-2 text-base text-fg outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-2 focus:ring-accent/20 sm:text-sm";
-const ratioPresets = [
-  [1, 1, "1:1"],
-  [4, 5, "4:5"],
-  [9, 16, "9:16"],
-  [16, 9, "16:9"],
-  [18, 9, "18:9"],
-  [4, 3, "4:3"]
-] as const;
 
 function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -98,6 +94,12 @@ export default function SharingPosterEditor({
     [composition.photos, sourceMap]
   );
   const selectedPhoto = photos.find((photo) => photo.photoId === selectedPhotoId) ?? null;
+  const ratioSuggestion = usePosterRatioSuggestion(composition, photos, metrics.wrappedLineCount);
+  const suggestedRatio =
+    ratioSuggestion.fresh && ratioSuggestion.suggestion?.switchSuggested
+      ? ratioSuggestion.suggestion.best.ratio
+      : null;
+  const detectingSubjects = photos.some((photo) => photo.source?.subjectState === "pending");
   const pixelSize = sharingPosterPixelSize(composition);
   const unresolved = photos.filter((photo) => !photo.source);
   const missingCn = photos.filter((photo) => photo.source && photo.source.creditNames.length === 0);
@@ -484,13 +486,21 @@ export default function SharingPosterEditor({
             <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("layoutTitle")}</h2>
             <p className="mt-1 text-sm leading-6 text-fg-subtle">{t("layoutHint")}</p>
             <div className="mt-5 grid grid-cols-3 gap-2">
-              {ratioPresets.map(([width, height, label]) => <button key={label} type="button" onClick={() => setComposition((current) => ({ ...current, ratio: { width, height } }))} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${composition.ratio.width === width && composition.ratio.height === height ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{label}</button>)}
+              {SHARING_POSTER_RATIO_PRESETS.map(({ width, height, label }) => {
+                const suggested = suggestedRatio !== null && sameRatio(suggestedRatio, { width, height });
+                return <button key={label} type="button" onClick={() => setComposition((current) => ({ ...current, ratio: { width, height } }))} className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2 text-sm font-semibold ${composition.ratio.width === width && composition.ratio.height === height ? "border-accent bg-accent-surface text-accent-strong" : suggested ? "border-dashed border-accent bg-raised text-fg" : "border-border-strong bg-raised text-fg-muted"}`}>{label}{suggested && <span className="font-meta text-[0.625rem] font-semibold tracking-[0.1em] text-accent">{t("ratioSuggestionBadge")}</span>}</button>;
+              })}
             </div>
             <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
               <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("ratioWidth")}<input type="number" min="1" max="100" value={composition.ratio.width} onChange={(event) => setComposition((current) => ({ ...current, ratio: { ...current.ratio, width: Math.min(100, Math.max(1, Number(event.target.value))) } }))} className={fieldClasses} /></label>
               <Button aria-label={t("swapOrientation")} onClick={() => setComposition((current) => ({ ...current, ratio: { width: current.ratio.height, height: current.ratio.width } }))}>↔</Button>
               <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("ratioHeight")}<input type="number" min="1" max="100" value={composition.ratio.height} onChange={(event) => setComposition((current) => ({ ...current, ratio: { ...current.ratio, height: Math.min(100, Math.max(1, Number(event.target.value))) } }))} className={fieldClasses} /></label>
             </div>
+            <SharingPosterRatioSuggestion
+              state={ratioSuggestion}
+              detecting={detectingSubjects}
+              onApply={(ratio) => setComposition((current) => ({ ...current, ratio: { width: ratio.width, height: ratio.height } }))}
+            />
             <div className="mt-5 grid gap-4">
               <RangeField label={t("outerMargin")} value={composition.style.marginPercent} min={0} max={12} step={0.25} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, marginPercent: value } }))} />
               <RangeField label={t("photoGap")} value={composition.style.gapPercent} min={0} max={5} step={0.1} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, gapPercent: value } }))} />
