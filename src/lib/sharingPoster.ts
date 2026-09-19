@@ -19,6 +19,7 @@ export const SHARING_POSTER_MAX_EDGE = 8192;
  */
 export const SHARING_POSTER_MAX_PIXELS =
   SHARING_POSTER_MAX_EDGE * SHARING_POSTER_MAX_EDGE;
+export const SHARING_POSTER_CREDIT_LABEL_MAX = 80;
 
 /**
  * How a photo is cropped into its frame.
@@ -106,8 +107,12 @@ export const sharingPosterCompositionSchema = z.object({
     ),
   credits: z.object({
     cosplayer: z.string().max(2000),
+    /** The owner's title for the cosplayer line; absent or blank prints the locale's. */
+    cosplayerLabel: z.string().max(SHARING_POSTER_CREDIT_LABEL_MAX).optional(),
     cosplayerReviewed: z.boolean(),
     photographer: z.string().max(500),
+    /** The owner's title for the photographer line; absent or blank prints the locale's. */
+    photographerLabel: z.string().max(SHARING_POSTER_CREDIT_LABEL_MAX).optional(),
     camera: z.string().max(2000),
     lens: z.string().max(2000),
     event: z.string().max(2000),
@@ -287,11 +292,9 @@ export function sharingPosterPixelSize(
   return { width, height };
 }
 
-export function sharingPosterCreditLines(
-  composition: SharingPosterComposition
-): string[] {
-  const c = composition.credits;
-  const labels = composition.outputLocale === "zh"
+/** The titles a poster prints before each credit, in its output language. */
+export function sharingPosterCreditLabels(outputLocale: SharingPosterComposition["outputLocale"]) {
+  return outputLocale === "zh"
     ? {
         cosplayer: "出镜 / CN",
         photographer: "摄影",
@@ -310,9 +313,25 @@ export function sharingPosterCreditLines(
         date: "Date",
         location: "Location"
       };
+}
+
+/**
+ * The owner's title for a credit line, on one line and without the trailing
+ * colon the line adds itself; blank falls back to the locale's title.
+ */
+export function sharingPosterCreditLabel(custom: string | undefined, fallback: string): string {
+  const cleaned = (custom ?? "").replace(/\s+/g, " ").trim().replace(/[:：]+$/u, "").trim();
+  return cleaned || fallback;
+}
+
+export function sharingPosterCreditLines(
+  composition: SharingPosterComposition
+): string[] {
+  const c = composition.credits;
+  const labels = sharingPosterCreditLabels(composition.outputLocale);
   const lines = [
-    `${labels.cosplayer}: ${c.cosplayer.trim()}`,
-    `${labels.photographer}: ${c.photographer.trim()}`
+    `${sharingPosterCreditLabel(c.cosplayerLabel, labels.cosplayer)}: ${c.cosplayer.trim()}`,
+    `${sharingPosterCreditLabel(c.photographerLabel, labels.photographer)}: ${c.photographer.trim()}`
   ];
   if (c.showCamera && c.camera.trim()) lines.push(`${labels.camera}: ${c.camera.trim()}`);
   if (c.showLens && c.lens.trim()) lines.push(`${labels.lens}: ${c.lens.trim()}`);

@@ -7,8 +7,11 @@ import { useRouter } from "@/i18n/navigation";
 import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import {
+  SHARING_POSTER_CREDIT_LABEL_MAX,
   SHARING_POSTER_GLASS_DEFAULTS,
   legacyTextGapPercent,
+  sharingPosterCreditLabel,
+  sharingPosterCreditLabels,
   sharingPosterMetadataFromPhotos,
   sharingPosterPixelSize,
   type SharingPosterComposition,
@@ -103,6 +106,7 @@ export default function SharingPosterEditor({
   const pixelSize = sharingPosterPixelSize(composition);
   const unresolved = photos.filter((photo) => !photo.source);
   const missingCn = photos.filter((photo) => photo.source && photo.source.creditNames.length === 0);
+  const defaultCreditLabels = sharingPosterCreditLabels(composition.outputLocale);
   const canExport =
     photos.length > 0 &&
     unresolved.length === 0 &&
@@ -298,6 +302,16 @@ export default function SharingPosterEditor({
   function updateCredit<K extends keyof SharingPosterComposition["credits"]>(key: K, value: SharingPosterComposition["credits"][K]) {
     metadataEditedRef.current = true;
     setComposition((current) => ({ ...current, credits: { ...current.credits, [key]: value } }));
+  }
+
+  // Titles are not gallery metadata, so renaming one leaves the CN auto-fill on.
+  function updateCreditLabel(key: "cosplayerLabel" | "photographerLabel", value: string | undefined) {
+    setComposition((current) => {
+      const credits = { ...current.credits };
+      if (value === undefined) delete credits[key];
+      else credits[key] = value;
+      return { ...current, credits };
+    });
   }
 
   async function refreshMetadata() {
@@ -532,9 +546,9 @@ export default function SharingPosterEditor({
           <section role="tabpanel" hidden={activeTab !== "credits"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("creditsTitle")}</h2><p className="mt-1 text-sm leading-6 text-fg-subtle">{t("creditsHint")}</p></div><Button size="compact" onClick={() => void refreshMetadata()}>{t("refreshFromGallery")}</Button></div>
             <div className="mt-5 grid gap-4">
-              <TextField label={t("cosplayerCn")} required value={composition.credits.cosplayer} onChange={(value) => { updateCredit("cosplayer", value); updateCredit("cosplayerReviewed", true); }} />
+              <CreditField titleLabel={t("cosplayerTitle")} customTitle={composition.credits.cosplayerLabel} defaultTitle={defaultCreditLabels.cosplayer} value={composition.credits.cosplayer} onTitleChange={(value) => updateCreditLabel("cosplayerLabel", value)} onChange={(value) => { updateCredit("cosplayer", value); updateCredit("cosplayerReviewed", true); }} />
               {missingCn.length > 0 && !composition.credits.cosplayerReviewed && <p role="alert" className="rounded-lg border border-warning-border bg-warning-surface p-3 text-sm text-fg-muted">{t("missingCnReview", { count: missingCn.length })}</p>}
-              <TextField label={t("photographerCredit")} required value={composition.credits.photographer} onChange={(value) => updateCredit("photographer", value)} />
+              <CreditField titleLabel={t("photographerTitle")} customTitle={composition.credits.photographerLabel} defaultTitle={defaultCreditLabels.photographer} value={composition.credits.photographer} onTitleChange={(value) => updateCreditLabel("photographerLabel", value)} onChange={(value) => updateCredit("photographer", value)} />
               <OptionalCredit label={t("cameraModel")} checked={composition.credits.showCamera} value={composition.credits.camera} onToggle={(value) => updateCredit("showCamera", value)} onChange={(value) => updateCredit("camera", value)} />
               <OptionalCredit label={t("lensModel")} checked={composition.credits.showLens} value={composition.credits.lens} onToggle={(value) => updateCredit("showLens", value)} onChange={(value) => updateCredit("lens", value)} />
               <OptionalCredit label={t("eventName")} checked={composition.credits.showEvent} value={composition.credits.event} onToggle={(value) => updateCredit("showEvent", value)} onChange={(value) => updateCredit("event", value)} />
@@ -575,8 +589,22 @@ function RangeField({ label, value, min, max, step, suffix, onChange }: { label:
   return <label className="grid gap-2 text-sm font-semibold text-fg-muted"><span className="flex justify-between gap-3"><span>{label}</span><span className="font-meta text-xs text-fg-subtle">{value}{suffix}</span></span><input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} className="min-h-11 accent-accent" /></label>;
 }
 
-function TextField({ label, value, onChange, required = false }: { label: string; value: string; onChange: (value: string) => void; required?: boolean }) {
-  return <label className="grid gap-1 text-sm font-semibold text-fg-muted">{label}{required && <span className="text-accent" aria-hidden="true"> *</span>}<textarea rows={2} value={value} required={required} onChange={(event) => onChange(event.target.value)} className={fieldClasses} /></label>;
+/**
+ * A required credit whose title is the owner's to edit: it is what the poster
+ * prints before the name. Clearing the title, or typing the default back,
+ * returns to the output language's own title so it keeps following it.
+ */
+function CreditField({ titleLabel, customTitle, defaultTitle, value, onTitleChange, onChange }: { titleLabel: string; customTitle: string | undefined; defaultTitle: string; value: string; onTitleChange: (value: string | undefined) => void; onChange: (value: string) => void }) {
+  const title = sharingPosterCreditLabel(customTitle, defaultTitle);
+  return (
+    <div className="grid gap-1">
+      <div className="flex items-center gap-2">
+        <input type="text" value={customTitle ?? defaultTitle} placeholder={defaultTitle} maxLength={SHARING_POSTER_CREDIT_LABEL_MAX} aria-label={titleLabel} onChange={(event) => onTitleChange(event.target.value)} onBlur={() => onTitleChange(title === defaultTitle ? undefined : title)} className={`${fieldClasses} font-semibold sm:max-w-xs`} />
+        <span className="text-accent" aria-hidden="true">*</span>
+      </div>
+      <textarea rows={2} value={value} required aria-label={title} onChange={(event) => onChange(event.target.value)} className={fieldClasses} />
+    </div>
+  );
 }
 
 function OptionalCredit({ label, checked, value, onToggle, onChange }: { label: string; checked: boolean; value: string; onToggle: (value: boolean) => void; onChange: (value: string) => void }) {
