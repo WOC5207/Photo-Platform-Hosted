@@ -16,8 +16,20 @@ import {
   coverCropSource,
   cropRectToAnchor,
   legacyFocalToAnchor,
-  resolvePosterCrop
+  posterLayoutItems,
+  resolvePosterCrop,
+  type PosterLayoutSource
 } from "../src/lib/sharingPosterLayout";
+import {
+  SHARING_POSTER_RATIO_EXTRAS,
+  SHARING_POSTER_RATIO_PRESETS,
+  candidatePosterRatios,
+  evaluatePosterRatio,
+  pickPosterRatioSuggestion,
+  posterRatioLabel,
+  sameRatio,
+  suggestPosterRatio
+} from "../src/lib/sharingPosterRatio";
 
 function overlaps(a: { x: number; y: number; width: number; height: number }, b: typeof a) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
@@ -299,6 +311,249 @@ for (const [frameWidth, frameHeight] of [[500, 500], [900, 300], [300, 900]] as 
   const explicitNull = calculateSharingPosterLayout([{ ...portrait, subject: null }, { ...landscape, subject: null }], area, 0);
   const noField = calculateSharingPosterLayout([portrait, landscape], area, 0);
   assert.deepEqual(explicitNull, noField, "no subject data must not change the layout");
+}
+
+// --- Ratio suggestion -----------------------------------------------------------
+
+type Box = { x: number; y: number; width: number; height: number };
+const tallFigure: Box = { x: 0.33, y: 0.1, width: 0.34, height: 0.8 };
+const leftFigure: Box = { x: 0.15, y: 0.1, width: 0.2, height: 0.82 };
+const withSubject = (box: Box | null) => (box ? { x: box.x + box.width / 2, y: box.y + box.height * 0.3, box } : null);
+function posterPhoto(
+  id: string,
+  width: number,
+  height: number,
+  box: Box | null,
+  crop: PosterLayoutSource["composition"]["crop"] = { mode: "auto" }
+): PosterLayoutSource {
+  return {
+    photoId: id,
+    composition: { weight: 3, focalX: 0.5, focalY: 0.5, crop },
+    source: { width, height, subject: withSubject(box) }
+  };
+}
+const ratioStyle = { marginPercent: 2.5, gapPercent: 0.65, footerTextPercent: 1.8, textGapPercent: 2.5 };
+
+// Names: presets and common ratios by their usual name, anything else reduced.
+assert.equal(posterRatioLabel({ width: 18, height: 9 }), "18:9");
+assert.equal(posterRatioLabel({ width: 8, height: 10 }), "4:5");
+assert.equal(posterRatioLabel({ width: 7, height: 10 }), "7:10");
+assert.equal(posterRatioLabel({ width: 30, height: 40 }), "3:4");
+assert.ok(sameRatio({ width: 8, height: 10 }, { width: 4, height: 5 }));
+assert.ok(!sameRatio({ width: 3, height: 4 }, { width: 4, height: 3 }));
+
+// Candidates: the presets in their order, then the common extras, then the
+// current ratio only if it is none of those.
+{
+  const standard = candidatePosterRatios({ width: 8, height: 10 });
+  assert.equal(standard.length, SHARING_POSTER_RATIO_PRESETS.length + SHARING_POSTER_RATIO_EXTRAS.length);
+  assert.deepEqual(standard[0], { width: 1, height: 1 });
+  const custom = candidatePosterRatios({ width: 7, height: 10 });
+  assert.equal(custom.length, standard.length + 1);
+  assert.deepEqual(custom.at(-1), { width: 7, height: 10 });
+}
+
+// The layout input the renderer and the suggestion share: the subject only
+// for a crop that follows it, and a placeholder size for an unavailable photo.
+{
+  const items = posterLayoutItems([
+    posterPhoto("auto", 4000, 6000, tallFigure),
+    posterPhoto("manual", 4000, 6000, tallFigure, { mode: "manual", x: 0.2, y: 0.5 }),
+    {
+      photoId: "legacy",
+      composition: { weight: 3, focalX: 0.5, focalY: 0.5 },
+      source: { width: 4000, height: 6000, subject: withSubject(tallFigure) }
+    },
+    { photoId: "gone", composition: { weight: 2, focalX: 0.5, focalY: 0.5 }, source: null }
+  ]);
+  assert.ok(items[0].subject?.box);
+  assert.equal(items[1].subject, null);
+  assert.equal(items[2].subject, null);
+  assert.deepEqual([items[3].width, items[3].height, items[3].weight], [1, 1, 2]);
+}
+
+// Portraits with tall subjects: away from a wide poster, to a tall one that
+// keeps every subject whole and more of every photograph.
+{
+  const portraits = [0, 1, 2, 3].map((i) => posterPhoto(`p${i}`, 4000, 6000, tallFigure));
+  const suggestion = suggestPosterRatio({ width: 16, height: 9 }, portraits, ratioStyle, 2)!;
+  assert.ok(suggestion.switchSuggested);
+  assert.ok(suggestion.best.ratio.height > suggestion.best.ratio.width, posterRatioLabel(suggestion.best.ratio));
+  assert.equal(suggestion.best.subjects, 4);
+  assert.equal(suggestion.best.subjectsWhole, 4);
+  assert.ok(suggestion.best.shown > suggestion.current.shown + 0.1);
+  assert.ok(suggestion.best.subjectShown! >= suggestion.current.subjectShown!);
+  assert.ok(Math.abs(suggestion.best.subjectShown! - 1) < 1e-9);
+  // Deterministic.
+  assert.deepEqual(suggestPosterRatio({ width: 16, height: 9 }, portraits, ratioStyle, 2), suggestion);
+}
+
+// With automatic crops the solver shapes frames around a figure standing off
+// to one side, so every candidate keeps it whole.
+{
+  const pair = [0, 1].map((i) => posterPhoto(`l${i}`, 6000, 4000, leftFigure));
+  for (const ratio of candidatePosterRatios({ width: 16, height: 9 })) {
+    assert.equal(evaluatePosterRatio(ratio, pair, ratioStyle, 2).subjectsWhole, 2, posterRatioLabel(ratio));
+  }
+}
+
+// A manual crop anchored away from the figure is where the ratio decides:
+// narrow frames cut the figure off, and the suggestion is a ratio that does not.
+{
+  const offAnchor = [posterPhoto("m", 6000, 4000, leftFigure, { mode: "manual", x: 0.85, y: 0.5 })];
+  const reports = candidatePosterRatios({ width: 1, height: 1 }).map((ratio) =>
+    evaluatePosterRatio(ratio, offAnchor, ratioStyle, 2)
+  );
+  assert.ok(reports.some((report) => report.subjectsWhole === 0), "some ratio must cut the figure off");
+  const suggestion = pickPosterRatioSuggestion({ width: 1, height: 1 }, reports)!;
+  assert.equal(suggestion.current.subjectsWhole, 0);
+  assert.ok(suggestion.switchSuggested);
+  assert.equal(suggestion.best.subjectsWhole, 1);
+}
+
+// A manual crop that cuts the subject off still counts as a cut-off subject,
+// even though the layout itself only follows subjects for automatic crops.
+{
+  const square = { width: 1, height: 1 };
+  const auto = evaluatePosterRatio(square, [posterPhoto("a", 6000, 4000, leftFigure)], ratioStyle, 2);
+  const manual = evaluatePosterRatio(
+    square,
+    [posterPhoto("m", 6000, 4000, leftFigure, { mode: "manual", x: 0.85, y: 0.5 })],
+    ratioStyle,
+    2
+  );
+  assert.equal(auto.subjects, 1);
+  assert.equal(manual.subjects, 1);
+  assert.ok(auto.subjectsWhole === 1 || auto.cost < manual.cost);
+  assert.equal(manual.subjectsWhole, 0);
+  assert.ok(manual.cost > auto.cost);
+}
+
+// The rule a suggestion follows: keep at least as much of both the subjects
+// and the photographs in view, within a point, and clearly more of one. The
+// owner sees exactly those two numbers, so a suggestion never trades one for
+// the other behind their back.
+{
+  const report = (ratio: [number, number], cost: number, shown: number, subjectShown: number | null) => ({
+    ratio: { width: ratio[0], height: ratio[1] },
+    cost,
+    shown,
+    subjectShown,
+    subjects: subjectShown === null ? 0 : 1,
+    subjectsWhole: subjectShown === 1 ? 1 : 0,
+    photoShare: 0.8,
+    footerTooTall: false
+  });
+  const current = report([4, 3], 0.43, 0.83, 0.95);
+
+  // The poster that prompted this rule: 1:1 shows more of the photographs but
+  // cuts further into a subject, and is cheaper by the internal cost. It is a
+  // trade-off, not an improvement, so the current ratio stands.
+  const tradeOff = pickPosterRatioSuggestion({ width: 4, height: 3 }, [current, report([1, 1], 0.4, 0.88, 0.92)])!;
+  assert.equal(tradeOff.switchSuggested, false);
+  assert.ok(sameRatio(tradeOff.best.ratio, { width: 4, height: 3 }));
+
+  // Too small a gain to be worth a switch.
+  assert.equal(
+    pickPosterRatioSuggestion({ width: 4, height: 3 }, [current, report([1, 1], 0.2, 0.84, 0.955)])!.switchSuggested,
+    false
+  );
+
+  // A clear gain in either share, the other held, is suggested even when the
+  // internal cost is higher.
+  const morePhoto = pickPosterRatioSuggestion({ width: 4, height: 3 }, [current, report([9, 16], 0.9, 0.9, 0.95)])!;
+  assert.ok(morePhoto.switchSuggested && sameRatio(morePhoto.best.ratio, { width: 9, height: 16 }));
+  const moreSubject = pickPosterRatioSuggestion({ width: 4, height: 3 }, [current, report([2, 3], 0.9, 0.825, 1)])!;
+  assert.ok(moreSubject.switchSuggested && sameRatio(moreSubject.best.ratio, { width: 2, height: 3 }));
+
+  // Among improvements that neither beats the other, the cost decides.
+  const several = pickPosterRatioSuggestion({ width: 4, height: 3 }, [
+    current,
+    report([9, 16], 0.5, 0.9, 0.99),
+    report([2, 3], 0.3, 0.885, 1)
+  ])!;
+  assert.ok(sameRatio(several.best.ratio, { width: 2, height: 3 }));
+
+  // A suggestion is final: when the cheapest improvement can itself be
+  // improved on, the ratio that improves on both is suggested instead, and
+  // taking it leaves nothing further to suggest.
+  const chain = [
+    current,
+    report([1, 1], 0.2, 0.86, 0.95),
+    report([2, 3], 0.6, 0.9, 1)
+  ];
+  const final = pickPosterRatioSuggestion({ width: 4, height: 3 }, chain)!;
+  assert.ok(sameRatio(final.best.ratio, { width: 2, height: 3 }), posterRatioLabel(final.best.ratio));
+  assert.equal(pickPosterRatioSuggestion({ width: 2, height: 3 }, chain)!.switchSuggested, false);
+
+  // Without detected subjects only the photographs count.
+  const photosOnly = pickPosterRatioSuggestion({ width: 4, height: 5 }, [
+    report([4, 5], 0.6, 0.6, null),
+    report([9, 16], 0.2, 0.86, null)
+  ])!;
+  assert.ok(photosOnly.switchSuggested && photosOnly.best.subjectShown === null);
+}
+
+// Whatever is suggested for real photographs holds to that rule.
+{
+  const mixed = [
+    ...[0, 1, 2].map((i) => posterPhoto(`p${i}`, 4000, 6000, tallFigure)),
+    ...[0, 1, 2].map((i) => posterPhoto(`l${i}`, 6000, 4000, null))
+  ];
+  for (const current of candidatePosterRatios({ width: 4, height: 5 })) {
+    const suggestion = suggestPosterRatio(current, mixed, ratioStyle, 2)!;
+    if (!suggestion.switchSuggested) continue;
+    // Taking the suggestion settles it.
+    assert.equal(
+      suggestPosterRatio(suggestion.best.ratio, mixed, ratioStyle, 2)!.switchSuggested,
+      false,
+      `${posterRatioLabel(current)} -> ${posterRatioLabel(suggestion.best.ratio)}`
+    );
+    assert.ok(suggestion.best.shown >= suggestion.current.shown - 0.01, posterRatioLabel(current));
+    assert.ok(suggestion.best.subjectShown! >= suggestion.current.subjectShown! - 0.01, posterRatioLabel(current));
+    assert.ok(
+      suggestion.best.shown >= suggestion.current.shown + 0.02 ||
+        suggestion.best.subjectShown! >= suggestion.current.subjectShown! + 0.02,
+      posterRatioLabel(current)
+    );
+  }
+}
+
+// A ratio whose credits would crowd the photographs out is never suggested,
+// and one the owner is on is always worth leaving.
+{
+  const crowded = { ...ratioStyle, footerTextPercent: 4 };
+  const portraits = [0, 1].map((i) => posterPhoto(`p${i}`, 4000, 6000, tallFigure));
+  const reports = candidatePosterRatios({ width: 18, height: 9 }).map((ratio) =>
+    evaluatePosterRatio(ratio, portraits, crowded, 8)
+  );
+  assert.ok(reports.some((report) => report.footerTooTall), "fixture must crowd some ratio");
+  const suggestion = pickPosterRatioSuggestion({ width: 18, height: 9 }, reports)!;
+  assert.equal(suggestion.best.footerTooTall, false);
+  if (suggestion.current.footerTooTall) assert.ok(suggestion.switchSuggested);
+}
+
+// Nothing to suggest without photographs to lay out.
+assert.equal(suggestPosterRatio({ width: 4, height: 5 }, [], ratioStyle, 2), null);
+assert.equal(
+  suggestPosterRatio(
+    { width: 4, height: 5 },
+    [{ photoId: "gone", composition: { weight: 3, focalX: 0.5, focalY: 0.5 }, source: null }],
+    ratioStyle,
+    2
+  ),
+  null
+);
+
+// Nine photographs, every candidate: cheap enough to run after edits settle.
+{
+  const nine = Array.from({ length: 9 }, (_, i) =>
+    posterPhoto(`n${i}`, i % 3 ? 4000 : 6000, i % 3 ? 6000 : 4000, i % 2 ? tallFigure : null)
+  );
+  const started = performance.now();
+  suggestPosterRatio({ width: 4, height: 5 }, nine, ratioStyle, 2);
+  const elapsed = performance.now() - started;
+  assert.ok(elapsed < 1500, `nine-photo suggestion took ${elapsed.toFixed(0)} ms`);
 }
 
 console.log("Sharing poster layout and composition tests passed.");

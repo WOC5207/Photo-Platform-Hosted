@@ -73,6 +73,54 @@ the boot backfill. A failed decode is stamped with the version and no point,
 so it is not retried every boot; raising `SUBJECT_DETECTION_VERSION` re-runs
 everything.
 
+## Ratio suggestion
+
+The Layout tab suggests a poster ratio for the selected photographs
+(`src/lib/sharingPosterRatio.ts`, shown by
+`src/components/sharing-posters/SharingPosterRatioSuggestion.tsx`).
+
+**Candidates.** The six preset ratios, then 3:4 (Xiaohongshu's portrait
+format) and the camera's own 2:3 and 3:2, which have no button of their own,
+then the current ratio if it is none of those.
+
+**Scoring.** Each candidate is laid out with the real solver at the preview's
+900 px width, from the same `posterLayoutItems` input the renderer uses, so the
+layout scored is the layout the owner would get. Every frame is then cropped by
+`resolvePosterCrop` exactly as it will render. Two shares come out of that,
+both weighted like the layout weights photographs:
+
+- **Subjects in view**: how much of each detected subject box stays inside its
+  crop. Every detected subject counts, whatever the crop mode, since a manual
+  crop that cuts a subject off still cuts it off on the poster.
+- **Photographs in view**: how much of each photograph the crop keeps.
+
+A ratio whose credits would crowd out the photographs (`footerTooTall`) is
+never suggested.
+
+**Choosing.** A different ratio is suggested only when it keeps at least as
+much of both shares, within one point, and at least two points more of one.
+The owner sees exactly those two numbers, so a suggestion can always be read
+off them and never trades subjects for photographs, or the reverse, unseen.
+Among such ratios, one that no other candidate improves on is preferred, so
+taking a suggestion never leads straight to another one; improvement always
+gains more than it can lose, so it cannot go round in a circle. Between those,
+the solver's own objective decides: `-ln(share kept)` per photograph plus three
+times the subject share cut away, plus half the share of the poster not given
+to photographs. That prefers layouts that crop every photograph evenly and give
+the photographs more of the poster. Earlier candidates win ties, so presets
+come before the extra ratios.
+
+When nothing improves on the current ratio the card says so, and only claims
+that no other common ratio keeps more of both shares, which is true by
+construction. It notes when some photographs are still waiting for detection,
+since their subjects will change the comparison.
+
+**Cost.** At nine photographs the solver takes about 20 ms a ratio, so the
+editor compares ratios only after edits settle for 350 ms, one ratio per task,
+and only when something that moves the layout or the crops changes; credits
+text and colours do not trigger it. Until a new comparison lands the previous
+card stays dimmed and its button disabled.
+
 ## Footer spacing
 
 `style.textGapPercent` is the gap between the bottom of the photo area and the
