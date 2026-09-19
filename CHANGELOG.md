@@ -75,9 +75,15 @@
   padding derived from the font size and could not be reduced on its own.
   Posters saved earlier keep their exact spacing until the slider is moved.
 - Sharing posters can use a liquid-glass background instead of a solid colour:
-  the photographs' edges are stretched and blurred behind the frames and the
-  background colour tints the result, matching the site's own backdrop. Blur
-  and tint are adjustable; solid colour remains the default.
+  a soft gradient built from the photographs' colours rather than their
+  pixels. Colours are weighted toward the most vivid in each photograph, flow
+  out from each frame's sides into the surrounding space and blend across the
+  gaps, and the background colour frosts the result, with a faint sheen, soft
+  shadows under the frames and a fine grain that keeps large exports from
+  banding. An earlier version stretched each photograph's edge pixels
+  outward, which smeared recognisable shapes such as a costume into bars
+  across the margins. Softness and tint are adjustable; solid colour remains
+  the default.
 - New accounts get a step-by-step on-screen tutorial on their first visit to
   the dashboard, after the setup wizard: nine coach marks lead from the
   Overview to the Events list, through naming an event, picking its days and

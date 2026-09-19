@@ -87,8 +87,8 @@ export function renderSharingPoster(
     options.rectangles ??
     calculateSharingPosterLayout(posterLayoutItems(photos), geometry.photoArea, gap);
 
-  // Resolve every frame's crop up front: the glass background continues
-  // exactly what each frame shows, so both must use the same window.
+  // Resolve every frame's crop up front: the glass background takes its
+  // colours from exactly what each frame shows, so both use the same window.
   const crops = new Map<string, PosterRect>();
   for (const rect of rectangles) {
     const resolved = photos.find((photo) => photo.photoId === rect.id);
