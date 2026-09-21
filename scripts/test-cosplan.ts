@@ -125,6 +125,7 @@ async function main() {
     const columns = await storeCosplanTemplate(columnsInput, 720, 900);
     const candidates = await detectCosplanSlotCandidates({
       assetToken: columns.token,
+      color: "#f7f5ef",
       width: 720,
       height: 900,
       preset: "standard",
@@ -145,6 +146,7 @@ async function main() {
     const irregularTemplate = await storeCosplanTemplate(irregularInput, 720, 900);
     const irregularCandidates = await detectCosplanSlotCandidates({
       assetToken: irregularTemplate.token,
+      color: "#f7f5ef",
       width: 720,
       height: 900,
       preset: "standard",
@@ -159,6 +161,7 @@ async function main() {
     const white = await storeCosplanTemplate(whiteInput, 720, 900);
     const whiteCandidates = await detectCosplanSlotCandidates({
       assetToken: white.token,
+      color: "#ffffff",
       width: 720,
       height: 900,
       preset: "strict",
@@ -169,7 +172,32 @@ async function main() {
     assert.ok(whiteCandidates[0].reasons.includes("edge"));
     assert.ok(whiteCandidates[0].reasons.includes("large"));
     await deleteCosplanTemplateAssets([columns.token, irregularTemplate.token, white.token]);
-    console.log("PASS  light-area detection separates columns, preserves irregular outlines, and flags full-page white space");
+    console.log("PASS  selected-color detection separates columns, preserves irregular outlines, and flags full-page regions");
+
+    const darkInput = path.join(root, "dark-slots.png");
+    await sharp(Buffer.from(`<svg width="720" height="900" xmlns="http://www.w3.org/2000/svg">
+      <rect width="720" height="900" fill="#eeeeee"/>
+      <rect x="40" y="200" width="180" height="500" fill="#102040"/>
+      <rect x="270" y="200" width="180" height="500" fill="#203050"/>
+      <rect x="500" y="200" width="180" height="500" fill="#802080"/>
+    </svg>`)).png().toFile(darkInput);
+    const dark = await storeCosplanTemplate(darkInput, 720, 900);
+    const darkOptions = { assetToken: dark.token, width: 720, height: 900, inset: 4, color: "#102040", preset: "standard" as const };
+    const darkCandidates = await detectCosplanSlotCandidates(darkOptions);
+    assert.equal(darkCandidates.length, 2);
+    assert.ok(darkCandidates.every((candidate) => candidate.quality === "recommended"));
+    assert.equal(darkCandidates[0].x, 44);
+    assert.equal(darkCandidates[0].width, 172);
+    const strictDark = await detectCosplanSlotCandidates({ ...darkOptions, preset: "strict" });
+    assert.equal(strictDark.length, 1);
+    const purple = await detectCosplanSlotCandidates({ ...darkOptions, color: "#802080" });
+    assert.equal(purple.length, 1);
+    assert.equal(purple[0].x, 504, "Changing color must not reuse results cached for another color");
+    assert.deepEqual(await detectCosplanSlotCandidates(darkOptions), darkCandidates);
+    assert.equal((await detectCosplanSlotCandidates({ ...darkOptions, color: "#00ff00" })).length, 0);
+    await assert.rejects(detectCosplanSlotCandidates({ ...darkOptions, color: "invalid" }), /invalidInput/);
+    await deleteCosplanTemplateAssets([dark.token]);
+    console.log("PASS  dark and saturated slot colors, match tolerance, color cache isolation, and invalid colors");
 
     const cacheDir = cosplanCharacterCacheDir();
     await fs.mkdir(cacheDir, { recursive: true });

@@ -21,6 +21,7 @@ export async function POST(
   const { id } = await params;
   const body = await request.json().catch(() => null) as {
     preset?: unknown;
+    color?: unknown;
     inset?: unknown;
     assetToken?: unknown;
     layoutVersion?: unknown;
@@ -29,6 +30,8 @@ export async function POST(
   const inset = Number(body?.inset);
   if (
     typeof preset !== "string" ||
+    typeof body?.color !== "string" ||
+    !/^#[0-9a-f]{6}$/i.test(body.color) ||
     !PRESETS.has(preset as CosplanDetectionPreset) ||
     !Number.isInteger(inset) ||
     inset < 0 ||
@@ -52,6 +55,7 @@ export async function POST(
       width: template.width,
       height: template.height,
       preset: preset as CosplanDetectionPreset,
+      color: body.color,
       inset
     });
     const current = await prisma.cosplanTemplate.findUnique({
