@@ -32,6 +32,8 @@ export default async function CosplanAdminPage() {
     removeForeground: t("removeForeground"), foregroundActive: t("foregroundActive"),
     detect: t("detectSlots"), detecting: t("detectingSlots"), detectionTitle: t("detectionTitle"),
     detectionHint: t("detectionHint"), advancedDetection: t("advancedDetection"), preset: t("detectionPreset"),
+    slotColor: t("slotColor"), pickColor: t("pickColor"), cancelPicking: t("cancelPicking"),
+    pickingHint: t("pickingHint"), colorPickError: t("colorPickError"),
     strict: t("detectionStrict"), standard: t("detectionStandard"), loose: t("detectionLoose"),
     inset: t("detectionInset"), insetHint: t("detectionInsetHint"), candidatesFound: t("candidatesFound"),
     noCandidates: t("noCandidates"), recommended: t("candidateRecommended"), review: t("candidateReview"),
