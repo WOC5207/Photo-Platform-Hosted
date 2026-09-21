@@ -32,6 +32,11 @@ type Labels = {
   detecting: string;
   detectionTitle: string;
   detectionHint: string;
+  slotColor: string;
+  pickColor: string;
+  cancelPicking: string;
+  pickingHint: string;
+  colorPickError: string;
   advancedDetection: string;
   preset: string;
   strict: string;
@@ -97,6 +102,7 @@ export default function CosplanSlotEditor({
 }) {
   const router = useRouter();
   const previewRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const dragRef = useRef<{ pointerId: number; id: string; x: number; y: number; clientX: number; clientY: number } | null>(null);
   const [slots, setSlots] = useState(template.slots);
   const [selectedId, setSelectedId] = useState<string | null>(template.slots[0]?.id ?? null);
@@ -104,6 +110,8 @@ export default function CosplanSlotEditor({
   const [foregroundStatus, setForegroundStatus] = useState<"idle" | "saving" | "error">("idle");
   const [detectionPreset, setDetectionPreset] = useState<CosplanDetectionPreset>("standard");
   const [detectionInset, setDetectionInset] = useState(4);
+  const [detectionColor, setDetectionColor] = useState("#ffffff");
+  const [pickingColor, setPickingColor] = useState(false);
   const [detectionStatus, setDetectionStatus] = useState<"idle" | "detecting" | "results" | "error">("idle");
   const [detectionError, setDetectionError] = useState("");
   const [candidates, setCandidates] = useState<CosplanSlotCandidate[]>([]);
@@ -119,6 +127,34 @@ export default function CosplanSlotEditor({
     setDetectionStatus("idle");
     setDetectionError("");
   }, [template.assetToken, template.layoutVersion]);
+
+  useEffect(() => {
+    setDetectionColor("#ffffff");
+    setPickingColor(false);
+  }, [template.assetToken]);
+
+  function sampleColor(clientX: number, clientY: number) {
+    const image = imageRef.current;
+    if (!image?.complete || !image.naturalWidth) return;
+    try {
+      const bounds = image.getBoundingClientRect();
+      const x = Math.min(image.naturalWidth - 1, Math.max(0, Math.floor((clientX - bounds.left) / bounds.width * image.naturalWidth)));
+      const y = Math.min(image.naturalHeight - 1, Math.max(0, Math.floor((clientY - bounds.top) / bounds.height * image.naturalHeight)));
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("canvasUnavailable");
+      context.drawImage(image, x, y, 1, 1, 0, 0, 1, 1);
+      const pixel = context.getImageData(0, 0, 1, 1).data;
+      if (pixel[3] < 242) throw new Error("transparentPixel");
+      setDetectionColor(`#${Array.from(pixel.slice(0, 3)).map((value) => value.toString(16).padStart(2, "0")).join("")}`);
+      clearDetectionResults();
+      setPickingColor(false);
+    } catch {
+      setDetectionError("colorPickFailed");
+      setDetectionStatus("error");
+    }
+  }
 
   function clearDetectionResults() {
     detectionRequest.current += 1;
@@ -188,6 +224,7 @@ export default function CosplanSlotEditor({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         preset: detectionPreset,
+        color: detectionColor,
         inset: detectionInset,
         assetToken: template.assetToken,
         layoutVersion: template.layoutVersion
@@ -200,6 +237,7 @@ export default function CosplanSlotEditor({
       assetToken?: string;
       layoutVersion?: number;
     } | null;
+    if (requestId !== detectionRequest.current) return;
     if (
       !response?.ok ||
       payload?.assetToken !== template.assetToken ||
@@ -272,7 +310,9 @@ export default function CosplanSlotEditor({
   }
 
   const selectedCandidateCount = candidates.filter((candidate) => selectedCandidateIds.has(candidate.id)).length;
-  const detectionErrorLabel = detectionError === "busy"
+  const detectionErrorLabel = detectionError === "colorPickFailed"
+    ? labels.colorPickError
+    : detectionError === "busy"
     ? labels.detectionBusy
     : detectionError === "timeout"
       ? labels.detectionTimeout
@@ -288,13 +328,33 @@ export default function CosplanSlotEditor({
           <p className="mt-1 max-w-2xl text-sm leading-6 text-fg-subtle">{labels.hint}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="compact" onClick={() => void detectSlots()} disabled={detectionStatus === "detecting"}>
+          <Button size="compact" onClick={() => void detectSlots()} disabled={detectionStatus === "detecting" || pickingColor}>
             {detectionStatus === "detecting" ? labels.detecting : labels.detect}
           </Button>
           <Button size="compact" onClick={addSlot} disabled={slots.length >= COSPLAN_SLOT_LIMIT}>{labels.add}</Button>
         </div>
       </div>
       <p className="-mt-3 max-w-3xl text-sm leading-6 text-fg-subtle xl:col-start-1">{labels.detectionHint}</p>
+
+      <div className="rounded-xl border border-border bg-surface-2 p-4 xl:col-start-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-3 text-sm font-semibold text-fg-muted">
+            {labels.slotColor}
+            <input type="color" value={detectionColor} className="h-11 w-14 cursor-pointer rounded border border-border bg-control p-1" onChange={(event) => {
+              setDetectionColor(event.target.value);
+              setPickingColor(false);
+              clearDetectionResults();
+            }} />
+          </label>
+          <span className="font-meta text-xs text-fg-subtle">{detectionColor.toUpperCase()}</span>
+          <Button size="compact" aria-pressed={pickingColor} onClick={() => {
+            clearDetectionResults();
+            setPickingColor(!pickingColor);
+            setMobilePreviewExpanded(true);
+          }}>{pickingColor ? labels.cancelPicking : labels.pickColor}</Button>
+        </div>
+        {pickingColor && <p role="status" className="mt-2 text-sm leading-6 text-accent-text">{labels.pickingHint}</p>}
+      </div>
 
       <details className="rounded-xl border border-border bg-surface-2 px-4 xl:col-start-1">
         <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-fg-muted">{labels.advancedDetection}</summary>
@@ -356,7 +416,7 @@ export default function CosplanSlotEditor({
             style={{ aspectRatio: `${template.width} / ${template.height}` }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={template.imageUrl} alt="" className="absolute inset-0 size-full object-fill" draggable={false} />
+            <img ref={imageRef} src={template.imageUrl} alt="" className="absolute inset-0 size-full object-fill" draggable={false} />
             {slots.map((slot, index) => (
               <button
                 key={slot.id}
@@ -420,6 +480,16 @@ export default function CosplanSlotEditor({
                 </button>
               );
             })}
+            {pickingColor && <button
+              type="button"
+              aria-label={labels.pickingHint}
+              className="absolute inset-0 z-10 cursor-crosshair focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+              onClick={(event) => {
+                const bounds = event.currentTarget.getBoundingClientRect();
+                sampleColor(event.detail === 0 ? bounds.left + bounds.width / 2 : event.clientX, event.detail === 0 ? bounds.top + bounds.height / 2 : event.clientY);
+              }}
+              onKeyDown={(event) => { if (event.key === "Escape") setPickingColor(false); }}
+            />}
           </div>
         </div>
       </div>

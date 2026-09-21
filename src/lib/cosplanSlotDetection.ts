@@ -11,9 +11,9 @@ import {
 } from "@/lib/cosplanTypes";
 
 const PRESETS = {
-  strict: { minimum: 240, spread: 15 },
-  standard: { minimum: 225, spread: 25 },
-  loose: { minimum: 205, spread: 35 }
+  strict: { tolerance: 15 },
+  standard: { tolerance: 30 },
+  loose: { tolerance: 50 }
 } as const;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_LIMIT = 32;
@@ -113,7 +113,7 @@ function intersectionOverUnion(a, b) {
 }
 
 function detect() {
-  const { pixels, width, height, minimum, spread, insetX, insetY } = workerData;
+  const { pixels, width, height, color, tolerance, insetX, insetY } = workerData;
   const totalPixels = width * height;
   const sourceMask = new Uint8Array(totalPixels);
   for (let index = 0; index < totalPixels; index += 1) {
@@ -122,9 +122,8 @@ function detect() {
     const g = pixels[offset + 1];
     const b = pixels[offset + 2];
     const alpha = pixels[offset + 3];
-    const low = Math.min(r, g, b);
-    const high = Math.max(r, g, b);
-    if (alpha >= 242 && low >= minimum && high - low <= spread) sourceMask[index] = 1;
+    const distance = Math.max(Math.abs(r - color[0]), Math.abs(g - color[1]), Math.abs(b - color[2]));
+    if (alpha >= 242 && distance <= tolerance) sourceMask[index] = 1;
   }
 
   const mask = new Uint8Array(totalPixels);
@@ -249,6 +248,7 @@ function runDetectionWorker(
   width: number,
   height: number,
   preset: CosplanDetectionPreset,
+  color: number[],
   insetX: number,
   insetY: number
 ): Promise<Array<{ x: number; y: number; width: number; height: number; contours?: Array<Array<{ x: number; y: number }>>; quality: "recommended" | "review"; reasons: CosplanSlotCandidate["reasons"] }>> {
@@ -258,7 +258,7 @@ function runDetectionWorker(
   return new Promise((resolve, reject) => {
     const worker = new Worker(WORKER_SOURCE, {
       eval: true,
-      workerData: { pixels: new Uint8Array(transferable), width, height, insetX, insetY, ...threshold },
+      workerData: { pixels: new Uint8Array(transferable), width, height, color, insetX, insetY, ...threshold },
       transferList: [transferable]
     });
     const timer = setTimeout(() => {
@@ -289,13 +289,16 @@ export async function detectCosplanSlotCandidates(input: {
   width: number;
   height: number;
   preset: CosplanDetectionPreset;
+  color: string;
   inset: number;
 }): Promise<CosplanSlotCandidate[]> {
   if (!validCosplanDimensions(input.width, input.height) || !(input.preset in PRESETS)) throw new Error("invalidInput");
+  if (typeof input.color !== "string" || !/^#[0-9a-f]{6}$/i.test(input.color)) throw new Error("invalidInput");
+  const color = [1, 3, 5].map((offset) => parseInt(input.color.slice(offset, offset + 2), 16));
   const inset = Math.max(0, Math.min(64, Math.round(input.inset)));
   const source = cosplanTemplatePath(input.assetToken);
   if (!source) throw new Error("invalidAsset");
-  const cacheKey = `${input.assetToken}:${input.width}x${input.height}:${input.preset}:${inset}`;
+  const cacheKey = `${input.assetToken}:${input.width}x${input.height}:${input.preset}:${inset}:${input.color.toLowerCase()}`;
   pruneCache();
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -326,6 +329,7 @@ export async function detectCosplanSlotCandidates(input: {
       decoded.info.width,
       decoded.info.height,
       input.preset,
+      color,
       Math.ceil(inset / scaleX),
       Math.ceil(inset / scaleY)
     );
