@@ -458,8 +458,12 @@ export default function SharingPosterEditor({
           />
         </section>
 
-        <aside className="min-w-0 space-y-4 lg:order-1">
-          <div className="sticky bottom-0 z-30 bg-page pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:static lg:p-0">{tabButtons}</div>
+        <aside className="flex min-w-0 flex-col gap-4 lg:order-1">
+          {/* On phones the tabs are a bar pinned to the bottom of the screen.
+              Bottom-sticky only pins an element whose place in the flow is
+              still below the screen, so it is laid out last; first, it scrolled
+              up over the pinned preview. The DOM keeps it before the panels. */}
+          <div className="sticky bottom-0 z-30 order-last bg-page pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:static lg:order-first lg:p-0">{tabButtons}</div>
 
           <section role="tabpanel" hidden={activeTab !== "photos"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
             <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("photosTitle")}</h2>
