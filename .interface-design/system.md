@@ -362,9 +362,11 @@ preserve private notes and remain owner-scoped on every write.
 - Preserve selection as an indexed horizontal proof strip across gallery
   filters and pages. Weight, crop focus, and ordering stay immediately attached
   to the selected photograph rather than moving into modal dialogs.
-- The complete poster ratio includes its required credit footer. Cosplayer CN
-  and photographer are visually primary; camera, lens, event, date, and location
-  are opt-in metadata snapshots that never overwrite edits without confirmation.
+- The complete poster ratio includes its credit footer. Credits are a layers
+  list: each layer is one printed line with a drag handle (arrow keys too), its
+  kind, an editable title and its text; the top layer prints first. Lines are
+  added from an **Add line** menu, and gallery-derived values are snapshots
+  that never overwrite edits without confirmation.
 - Use one deterministic layout and canvas renderer for preview and export.
   Export preparation is explicit so the later Download or native Share action
   can run from a fresh user gesture on mobile.

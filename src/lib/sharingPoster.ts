@@ -77,8 +77,59 @@ export const SHARING_POSTER_GLASS_DEFAULTS = {
   tintOpacity: 0.55
 } as const;
 
-export const sharingPosterCompositionSchema = z.object({
-  version: z.literal(1),
+/**
+ * What a credit line says: a person, the gear, or event details, printed as
+ * "Title: value"; or "custom", the owner's own text printed as it is.
+ */
+export const SHARING_POSTER_CREDIT_KINDS = [
+  "cosplayer",
+  "photographer",
+  "equipment",
+  "event",
+  "date",
+  "location",
+  "custom"
+] as const;
+export type SharingPosterCreditKind = (typeof SHARING_POSTER_CREDIT_KINDS)[number];
+/** Kinds whose value comes from the selected photographs' gallery metadata. */
+export const SHARING_POSTER_METADATA_KINDS: readonly SharingPosterCreditKind[] = [
+  "cosplayer",
+  "equipment",
+  "event",
+  "date",
+  "location"
+];
+export const SHARING_POSTER_MAX_CREDIT_LINES = 20;
+
+export const sharingPosterCreditLineSchema = z.object({
+  id: z.string().min(1).max(40),
+  kind: z.enum(SHARING_POSTER_CREDIT_KINDS),
+  /** The owner's title for this line; absent or blank prints the locale's. Custom lines have none. */
+  label: z.string().max(SHARING_POSTER_CREDIT_LABEL_MAX).optional(),
+  value: z.string().max(2000)
+});
+export type SharingPosterCreditLine = z.infer<typeof sharingPosterCreditLineSchema>;
+
+/** Version 1 credits: fixed fields, kept only to migrate saved projects. */
+const legacyCreditsSchema = z.object({
+  cosplayer: z.string().max(2000),
+  cosplayerLabel: z.string().max(SHARING_POSTER_CREDIT_LABEL_MAX).optional(),
+  cosplayerReviewed: z.boolean(),
+  photographer: z.string().max(500),
+  photographerLabel: z.string().max(SHARING_POSTER_CREDIT_LABEL_MAX).optional(),
+  camera: z.string().max(2000),
+  lens: z.string().max(2000),
+  event: z.string().max(2000),
+  date: z.string().max(2000),
+  location: z.string().max(2000),
+  showCamera: z.boolean(),
+  showLens: z.boolean(),
+  showEvent: z.boolean(),
+  showDate: z.boolean(),
+  showLocation: z.boolean()
+});
+
+const compositionBaseSchema = z.object({
   outputLocale: z.enum(["en", "zh"]),
   ratio: z.object({
     width: z.number().min(1).max(100),
@@ -105,34 +156,49 @@ export const sharingPosterCompositionSchema = z.object({
       (photos) => new Set(photos.map((photo) => photo.photoId)).size === photos.length,
       "duplicate_photo"
     ),
-  credits: z.object({
-    cosplayer: z.string().max(2000),
-    /** The owner's title for the cosplayer line; absent or blank prints the locale's. */
-    cosplayerLabel: z.string().max(SHARING_POSTER_CREDIT_LABEL_MAX).optional(),
-    cosplayerReviewed: z.boolean(),
-    photographer: z.string().max(500),
-    /** The owner's title for the photographer line; absent or blank prints the locale's. */
-    photographerLabel: z.string().max(SHARING_POSTER_CREDIT_LABEL_MAX).optional(),
-    camera: z.string().max(2000),
-    lens: z.string().max(2000),
-    event: z.string().max(2000),
-    date: z.string().max(2000),
-    location: z.string().max(2000),
-    showCamera: z.boolean(),
-    showLens: z.boolean(),
-    showEvent: z.boolean(),
-    showDate: z.boolean(),
-    showLocation: z.boolean()
-  }),
   export: z.object({
     format: z.enum(["jpeg", "png"]),
     longestEdge: z.number().int().min(720).max(SHARING_POSTER_MAX_EDGE)
   })
 });
 
-export type SharingPosterComposition = z.infer<
-  typeof sharingPosterCompositionSchema
->;
+const compositionSchemaV2 = compositionBaseSchema.extend({
+  version: z.literal(2),
+  credits: z.object({
+    /** The footer's lines, printed top to bottom as the editor's layers list shows them. */
+    lines: z
+      .array(sharingPosterCreditLineSchema)
+      .max(SHARING_POSTER_MAX_CREDIT_LINES)
+      .refine((lines) => new Set(lines.map((line) => line.id)).size === lines.length, "duplicate_line"),
+    /** The owner has checked the shared CN although some photographs have none. */
+    cosplayerReviewed: z.boolean()
+  })
+});
+
+const compositionSchemaV1 = compositionBaseSchema.extend({
+  version: z.literal(1),
+  credits: legacyCreditsSchema
+});
+
+/**
+ * Accepts the current version and migrates version 1 on the way in, so a
+ * project saved before credit lines existed opens, renders and saves as
+ * version 2. Every reader parses through here: a composition that failed to
+ * parse would be replaced by a default, losing the owner's work.
+ */
+export const sharingPosterCompositionSchema = z.union([
+  compositionSchemaV2,
+  compositionSchemaV1.transform(({ credits, ...rest }) => ({
+    ...rest,
+    version: 2 as const,
+    credits: {
+      lines: creditLinesFromLegacy(credits),
+      cosplayerReviewed: credits.cosplayerReviewed
+    }
+  }))
+]);
+
+export type SharingPosterComposition = z.infer<typeof compositionSchemaV2>;
 export type SharingPosterPhoto = z.infer<typeof sharingPosterPhotoSchema>;
 
 /** "pending" = not detected yet (or by an older algorithm); "none" = attempted, nothing found. */
@@ -182,9 +248,19 @@ function uniqueText(values: string[]): string[] {
   });
 }
 
+/** Gallery details of the selected photographs; event, date and location hold one entry per event. */
+export interface SharingPosterMetadata {
+  cosplayer: string;
+  camera: string;
+  lens: string;
+  event: string;
+  date: string;
+  location: string;
+}
+
 export function sharingPosterMetadataFromPhotos(
   photos: SharingPosterPhotoValue[]
-): Pick<SharingPosterComposition["credits"], "cosplayer" | "camera" | "lens" | "event" | "date" | "location"> {
+): SharingPosterMetadata {
   const seenEvents = new Set<string>();
   const events = photos.filter((photo) => {
     if (seenEvents.has(photo.eventId)) return false;
@@ -208,7 +284,7 @@ export function defaultSharingPosterComposition(
 ): SharingPosterComposition {
   const seen = new Set<string>();
   return {
-    version: 1,
+    version: 2,
     outputLocale: locale === "zh" ? "zh" : "en",
     ratio: { width: 4, height: 5 },
     style: {
@@ -232,20 +308,13 @@ export function defaultSharingPosterComposition(
         focalY: 0.5,
         crop: { mode: "auto" }
       })),
+    // The two lines almost every poster carries; both can be removed.
     credits: {
-      cosplayer: "",
-      cosplayerReviewed: false,
-      photographer,
-      camera: "",
-      lens: "",
-      event: "",
-      date: "",
-      location: "",
-      showCamera: false,
-      showLens: false,
-      showEvent: false,
-      showDate: false,
-      showLocation: false
+      lines: [
+        { id: "cosplayer", kind: "cosplayer", value: "" },
+        { id: "photographer", kind: "photographer", value: photographer }
+      ],
+      cosplayerReviewed: false
     },
     export: { format: "jpeg", longestEdge: SHARING_POSTER_DEFAULT_LONG_EDGE }
   };
@@ -292,14 +361,17 @@ export function sharingPosterPixelSize(
   return { width, height };
 }
 
-/** The titles a poster prints before each credit, in its output language. */
-export function sharingPosterCreditLabels(outputLocale: SharingPosterComposition["outputLocale"]) {
+export type SharingPosterTitledKind = Exclude<SharingPosterCreditKind, "custom">;
+
+/** The titles a poster prints before each kind of line, in its output language. */
+export function sharingPosterCreditLabels(
+  outputLocale: SharingPosterComposition["outputLocale"]
+): Record<SharingPosterTitledKind, string> {
   return outputLocale === "zh"
     ? {
         cosplayer: "出镜 / CN",
         photographer: "摄影",
-        camera: "相机",
-        lens: "镜头",
+        equipment: "器材",
         event: "活动",
         date: "日期",
         location: "地点"
@@ -307,12 +379,94 @@ export function sharingPosterCreditLabels(outputLocale: SharingPosterComposition
     : {
         cosplayer: "Cosplayer CN",
         photographer: "Photographer",
-        camera: "Camera",
-        lens: "Lens",
+        equipment: "Equipment",
         event: "Event",
         date: "Date",
         location: "Location"
       };
+}
+
+/** A value as one printed line: its lines joined by " / ", runs of spaces collapsed. */
+function oneLine(value: string): string {
+  return value
+    .split("\n")
+    .map((part) => part.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join(" / ");
+}
+
+/**
+ * The gallery's value for a line of this kind, or null for kinds the gallery
+ * does not know (the photographer is the owner, custom text is the owner's).
+ * Equipment is the body and lens together; events contribute one entry each.
+ */
+export function sharingPosterCreditMetadataValue(
+  kind: SharingPosterCreditKind,
+  metadata: SharingPosterMetadata
+): string | null {
+  switch (kind) {
+    case "cosplayer":
+      return metadata.cosplayer;
+    case "equipment":
+      return [metadata.camera, metadata.lens].map((part) => part.trim()).filter(Boolean).join(" + ");
+    case "event":
+    case "date":
+    case "location":
+      return uniqueText(metadata[kind].split("\n")).map((part) => part.trim()).join(" / ");
+    default:
+      return null;
+  }
+}
+
+/** Refills every gallery-derived line from fresh metadata; the owner's own lines stay as they are. */
+export function withSharingPosterMetadata(
+  lines: SharingPosterCreditLine[],
+  metadata: SharingPosterMetadata
+): SharingPosterCreditLine[] {
+  return lines.map((line) => {
+    const value = sharingPosterCreditMetadataValue(line.kind, metadata);
+    return value === null ? line : { ...line, value };
+  });
+}
+
+/** The lines with `id` moved to `index` (clamped); the same array when nothing moves. */
+export function moveSharingPosterCreditLine(
+  lines: SharingPosterCreditLine[],
+  id: string,
+  index: number
+): SharingPosterCreditLine[] {
+  const from = lines.findIndex((line) => line.id === id);
+  const to = Math.min(lines.length - 1, Math.max(0, index));
+  if (from < 0 || from === to) return lines;
+  const next = [...lines];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+/**
+ * Version 1's fixed fields as lines, in the order it printed them. Hidden
+ * details were never printed, so they are dropped; camera and lens become one
+ * equipment line, and each event detail its own line.
+ */
+function creditLinesFromLegacy(credits: z.infer<typeof legacyCreditsSchema>): SharingPosterCreditLine[] {
+  const line = (kind: SharingPosterCreditKind, value: string, label?: string): SharingPosterCreditLine =>
+    label === undefined ? { id: kind, kind, value } : { id: kind, kind, label, value };
+  const lines = [
+    line("cosplayer", credits.cosplayer, credits.cosplayerLabel),
+    line("photographer", credits.photographer, credits.photographerLabel)
+  ];
+  const equipment = [credits.showCamera ? credits.camera : "", credits.showLens ? credits.lens : ""]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" + ");
+  if (equipment) lines.push(line("equipment", equipment));
+  const shown = { event: credits.showEvent, date: credits.showDate, location: credits.showLocation };
+  for (const kind of ["event", "date", "location"] as const) {
+    const value = oneLine(credits[kind]);
+    if (shown[kind] && value) lines.push(line(kind, value));
+  }
+  return lines;
 }
 
 /**
@@ -324,36 +478,18 @@ export function sharingPosterCreditLabel(custom: string | undefined, fallback: s
   return cleaned || fallback;
 }
 
+/**
+ * The footer's text, one entry per line in layer order. Empty lines are
+ * skipped, as an empty text layer draws nothing.
+ */
 export function sharingPosterCreditLines(
   composition: SharingPosterComposition
 ): string[] {
-  const c = composition.credits;
   const labels = sharingPosterCreditLabels(composition.outputLocale);
-  const lines = [
-    `${sharingPosterCreditLabel(c.cosplayerLabel, labels.cosplayer)}: ${c.cosplayer.trim()}`,
-    `${sharingPosterCreditLabel(c.photographerLabel, labels.photographer)}: ${c.photographer.trim()}`
-  ];
-  if (c.showCamera && c.camera.trim()) lines.push(`${labels.camera}: ${c.camera.trim()}`);
-  if (c.showLens && c.lens.trim()) lines.push(`${labels.lens}: ${c.lens.trim()}`);
-  if (c.showEvent || c.showDate || c.showLocation) {
-    const eventValues = c.event.split("\n");
-    const dateValues = c.date.split("\n");
-    const locationValues = c.location.split("\n");
-    const groupCount = Math.max(eventValues.length, dateValues.length, locationValues.length);
-    for (let index = 0; index < groupCount; index += 1) {
-      const parts = [
-        c.showEvent && eventValues[index]?.trim()
-          ? `${labels.event}: ${eventValues[index].trim()}`
-          : "",
-        c.showDate && dateValues[index]?.trim()
-          ? `${labels.date}: ${dateValues[index].trim()}`
-          : "",
-        c.showLocation && locationValues[index]?.trim()
-          ? `${labels.location}: ${locationValues[index].trim()}`
-          : ""
-      ].filter(Boolean);
-      if (parts.length) lines.push(parts.join(" · "));
-    }
-  }
-  return lines;
+  return composition.credits.lines.flatMap((line) => {
+    const value = oneLine(line.value);
+    if (!value) return [];
+    if (line.kind === "custom") return [value];
+    return [`${sharingPosterCreditLabel(line.label, labels[line.kind])}: ${value}`];
+  });
 }

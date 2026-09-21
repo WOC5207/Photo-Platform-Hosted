@@ -7,17 +7,26 @@ import { useRouter } from "@/i18n/navigation";
 import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import {
-  SHARING_POSTER_CREDIT_LABEL_MAX,
   SHARING_POSTER_GLASS_DEFAULTS,
+  SHARING_POSTER_MAX_CREDIT_LINES,
+  SHARING_POSTER_METADATA_KINDS,
   legacyTextGapPercent,
-  sharingPosterCreditLabel,
+  moveSharingPosterCreditLine,
   sharingPosterCreditLabels,
+  sharingPosterCreditLines,
+  sharingPosterCreditMetadataValue,
   sharingPosterMetadataFromPhotos,
   sharingPosterPixelSize,
+  withSharingPosterMetadata,
   type SharingPosterComposition,
+  type SharingPosterCreditKind,
+  type SharingPosterCreditLine,
+  type SharingPosterMetadata,
   type SharingPosterPhotoValue,
   type SharingPosterResolvedPhoto
 } from "@/lib/sharingPoster";
+import SharingPosterCreditLayers from "@/components/sharing-posters/SharingPosterCreditLayers";
+import { posterFieldClasses as fieldClasses } from "@/components/sharing-posters/posterFieldClasses";
 import type { SharingPosterRenderResult } from "@/lib/sharingPosterCanvas";
 import { legacyFocalToAnchor } from "@/lib/sharingPosterLayout";
 import { SHARING_POSTER_RATIO_PRESETS, sameRatio } from "@/lib/sharingPosterRatio";
@@ -37,8 +46,13 @@ const SharingPosterPhotoPicker = dynamic(
 type EditorTab = "photos" | "layout" | "credits";
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 
-const fieldClasses =
-  "min-h-11 w-full rounded-lg border border-border-strong bg-control px-3 py-2 text-base text-fg outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-2 focus:ring-accent/20 sm:text-sm";
+/** A short id that is unique among the poster's lines, readable in the stored JSON. */
+function newCreditLineId(kind: SharingPosterCreditKind, lines: SharingPosterCreditLine[]): string {
+  for (;;) {
+    const id = `${kind}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    if (!lines.some((line) => line.id === id)) return id;
+  }
+}
 
 function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -55,7 +69,8 @@ export default function SharingPosterEditor({
   initialPhotos,
   events
 }: {
-  project: { id: string; name: string; revision: number; composition: SharingPosterComposition };
+  /** `ownerName` fills a newly added photographer line. */
+  project: { id: string; name: string; revision: number; composition: SharingPosterComposition; ownerName: string };
   initialPhotos: SharingPosterResolvedPhoto[];
   events: { id: string; title: string }[];
 }) {
@@ -107,12 +122,16 @@ export default function SharingPosterEditor({
   const unresolved = photos.filter((photo) => !photo.source);
   const missingCn = photos.filter((photo) => photo.source && photo.source.creditNames.length === 0);
   const defaultCreditLabels = sharingPosterCreditLabels(composition.outputLocale);
+  // The CN review only matters when the poster prints a CN at all.
+  const cnNeedsReview =
+    missingCn.length > 0 &&
+    !composition.credits.cosplayerReviewed &&
+    composition.credits.lines.some((line) => line.kind === "cosplayer");
+  const printsCredits = sharingPosterCreditLines(composition).length > 0;
   const canExport =
     photos.length > 0 &&
     unresolved.length === 0 &&
-    composition.credits.cosplayer.trim().length > 0 &&
-    composition.credits.photographer.trim().length > 0 &&
-    (missingCn.length === 0 || composition.credits.cosplayerReviewed) &&
+    !cnNeedsReview &&
     !metrics.footerTooTall;
   const nativeShareAvailable = useMemo(() => {
     if (!prepared || typeof navigator === "undefined" || typeof File === "undefined" || !navigator.share) return false;
@@ -264,8 +283,7 @@ export default function SharingPosterEditor({
     setComposition((current) => ({
       ...current,
       credits: {
-        ...current.credits,
-        ...metadata,
+        lines: withSharingPosterMetadata(current.credits.lines, metadata),
         cosplayerReviewed: available.every((photo) => photo.creditNames.length > 0)
       }
     }));
@@ -299,19 +317,51 @@ export default function SharingPosterEditor({
     });
   }
 
-  function updateCredit<K extends keyof SharingPosterComposition["credits"]>(key: K, value: SharingPosterComposition["credits"][K]) {
-    metadataEditedRef.current = true;
-    setComposition((current) => ({ ...current, credits: { ...current.credits, [key]: value } }));
+  function updateCreditLines(update: (lines: SharingPosterCreditLine[]) => SharingPosterCreditLine[]) {
+    setComposition((current) => {
+      const lines = update(current.credits.lines);
+      return lines === current.credits.lines ? current : { ...current, credits: { ...current.credits, lines } };
+    });
   }
 
-  // Titles are not gallery metadata, so renaming one leaves the CN auto-fill on.
-  function updateCreditLabel(key: "cosplayerLabel" | "photographerLabel", value: string | undefined) {
-    setComposition((current) => {
-      const credits = { ...current.credits };
-      if (value === undefined) delete credits[key];
-      else credits[key] = value;
-      return { ...current, credits };
-    });
+  /** A new layer at the bottom, filled from the gallery (or the owner's name) so it starts useful. */
+  function addCreditLine(kind: SharingPosterCreditKind): string {
+    const id = newCreditLineId(kind, composition.credits.lines);
+    const available = photos.flatMap((photo) => (photo.source ? [photo.source] : []));
+    const value =
+      kind === "photographer"
+        ? project.ownerName
+        : sharingPosterCreditMetadataValue(kind, sharingPosterMetadataFromPhotos(available)) ?? "";
+    updateCreditLines((lines) =>
+      lines.length >= SHARING_POSTER_MAX_CREDIT_LINES ? lines : [...lines, { id, kind, value }]
+    );
+    return id;
+  }
+
+  function setCreditValue(id: string, value: string) {
+    const kind = composition.credits.lines.find((line) => line.id === id)?.kind;
+    // Editing gallery-derived text stops the auto-fill from overwriting it.
+    if (kind && SHARING_POSTER_METADATA_KINDS.includes(kind)) metadataEditedRef.current = true;
+    setComposition((current) => ({
+      ...current,
+      credits: {
+        lines: current.credits.lines.map((line) => (line.id === id ? { ...line, value } : line)),
+        cosplayerReviewed: current.credits.cosplayerReviewed || kind === "cosplayer"
+      }
+    }));
+  }
+
+  // Titles are not gallery metadata, so renaming one leaves the auto-fill on.
+  function setCreditLabel(id: string, value: string | undefined) {
+    updateCreditLines((lines) =>
+      lines.map((line) => {
+        if (line.id !== id) return line;
+        const next = { ...line };
+        if (value === undefined) delete next.label;
+        else next.label = value;
+        return next;
+      })
+    );
   }
 
   async function refreshMetadata() {
@@ -320,12 +370,11 @@ export default function SharingPosterEditor({
     try {
       const response = await fetch(`/api/dashboard/sharing-posters/${encodeURIComponent(project.id)}/metadata?locale=${locale}`, { cache: "no-store" });
       if (!response.ok) throw new Error("refresh_failed");
-      const metadata = (await response.json()) as ReturnType<typeof sharingPosterMetadataFromPhotos>;
+      const metadata = (await response.json()) as SharingPosterMetadata;
       setComposition((current) => ({
         ...current,
         credits: {
-          ...current.credits,
-          ...metadata,
+          lines: withSharingPosterMetadata(current.credits.lines, metadata),
           cosplayerReviewed: missingCn.length === 0
         }
       }));
@@ -549,15 +598,18 @@ export default function SharingPosterEditor({
 
           <section role="tabpanel" hidden={activeTab !== "credits"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("creditsTitle")}</h2><p className="mt-1 text-sm leading-6 text-fg-subtle">{t("creditsHint")}</p></div><Button size="compact" onClick={() => void refreshMetadata()}>{t("refreshFromGallery")}</Button></div>
-            <div className="mt-5 grid gap-4">
-              <CreditField titleLabel={t("cosplayerTitle")} customTitle={composition.credits.cosplayerLabel} defaultTitle={defaultCreditLabels.cosplayer} value={composition.credits.cosplayer} onTitleChange={(value) => updateCreditLabel("cosplayerLabel", value)} onChange={(value) => { updateCredit("cosplayer", value); updateCredit("cosplayerReviewed", true); }} />
-              {missingCn.length > 0 && !composition.credits.cosplayerReviewed && <p role="alert" className="rounded-lg border border-warning-border bg-warning-surface p-3 text-sm text-fg-muted">{t("missingCnReview", { count: missingCn.length })}</p>}
-              <CreditField titleLabel={t("photographerTitle")} customTitle={composition.credits.photographerLabel} defaultTitle={defaultCreditLabels.photographer} value={composition.credits.photographer} onTitleChange={(value) => updateCreditLabel("photographerLabel", value)} onChange={(value) => updateCredit("photographer", value)} />
-              <OptionalCredit label={t("cameraModel")} checked={composition.credits.showCamera} value={composition.credits.camera} onToggle={(value) => updateCredit("showCamera", value)} onChange={(value) => updateCredit("camera", value)} />
-              <OptionalCredit label={t("lensModel")} checked={composition.credits.showLens} value={composition.credits.lens} onToggle={(value) => updateCredit("showLens", value)} onChange={(value) => updateCredit("lens", value)} />
-              <OptionalCredit label={t("eventName")} checked={composition.credits.showEvent} value={composition.credits.event} onToggle={(value) => updateCredit("showEvent", value)} onChange={(value) => updateCredit("event", value)} />
-              <OptionalCredit label={t("date")} checked={composition.credits.showDate} value={composition.credits.date} onToggle={(value) => updateCredit("showDate", value)} onChange={(value) => updateCredit("date", value)} />
-              <OptionalCredit label={t("location")} checked={composition.credits.showLocation} value={composition.credits.location} onToggle={(value) => updateCredit("showLocation", value)} onChange={(value) => updateCredit("location", value)} />
+            <div className="mt-5">
+              <SharingPosterCreditLayers
+                lines={composition.credits.lines}
+                defaultLabels={defaultCreditLabels}
+                cnWarning={cnNeedsReview ? t("missingCnReview", { count: missingCn.length }) : null}
+                onConfirmCn={() => setComposition((current) => ({ ...current, credits: { ...current.credits, cosplayerReviewed: true } }))}
+                onAdd={addCreditLine}
+                onMove={(id, index) => updateCreditLines((lines) => moveSharingPosterCreditLine(lines, id, index))}
+                onValueChange={setCreditValue}
+                onLabelChange={setCreditLabel}
+                onRemove={(id) => updateCreditLines((lines) => lines.filter((line) => line.id !== id))}
+              />
             </div>
             {notice && <p role="status" className="mt-4 text-sm text-fg-subtle">{notice}</p>}
           </section>
@@ -571,8 +623,8 @@ export default function SharingPosterEditor({
             {composition.export.longestEdge > 4096 && <p className="mt-3 text-sm text-fg-subtle">{t("largeExportHint")}</p>}
             {unresolved.length > 0 && <p role="alert" className="mt-3 text-sm text-danger">{t("unresolvedError", { count: unresolved.length })}</p>}
             {photos.length === 0 && <p role="alert" className="mt-3 text-sm text-warning">{t("selectPhotoFirst")}</p>}
-            {!composition.credits.cosplayer.trim() && <p role="alert" className="mt-3 text-sm text-warning">{t("cosplayerRequired")}</p>}
-            {!composition.credits.photographer.trim() && <p role="alert" className="mt-3 text-sm text-warning">{t("photographerRequired")}</p>}
+            {cnNeedsReview && <p role="alert" className="mt-3 text-sm text-warning">{t("cnReviewRequired")}</p>}
+            {!printsCredits && <p className="mt-3 text-sm text-fg-subtle">{t("creditsEmptyHint")}</p>}
             {metrics.footerTooTall && <p role="alert" className="mt-3 text-sm text-warning">{t("footerTooTall")}</p>}
             {metrics.rectangles.some((rect) => { const photo = photos.find((candidate) => candidate.photoId === rect.id)?.source; const scale = pixelSize.width / 900; return photo ? rect.width * scale > photo.width || rect.height * scale > photo.height : false; }) && <p className="mt-3 text-sm text-warning">{t("upscaleWarning")}</p>}
             <div className="mt-4 flex flex-wrap gap-2">
@@ -591,26 +643,4 @@ export default function SharingPosterEditor({
 
 function RangeField({ label, value, min, max, step, suffix, onChange }: { label: string; value: number; min: number; max: number; step: number; suffix: string; onChange: (value: number) => void }) {
   return <label className="grid gap-2 text-sm font-semibold text-fg-muted"><span className="flex justify-between gap-3"><span>{label}</span><span className="font-meta text-xs text-fg-subtle">{value}{suffix}</span></span><input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} className="min-h-11 accent-accent" /></label>;
-}
-
-/**
- * A required credit whose title is the owner's to edit: it is what the poster
- * prints before the name. Clearing the title, or typing the default back,
- * returns to the output language's own title so it keeps following it.
- */
-function CreditField({ titleLabel, customTitle, defaultTitle, value, onTitleChange, onChange }: { titleLabel: string; customTitle: string | undefined; defaultTitle: string; value: string; onTitleChange: (value: string | undefined) => void; onChange: (value: string) => void }) {
-  const title = sharingPosterCreditLabel(customTitle, defaultTitle);
-  return (
-    <div className="grid gap-1">
-      <div className="flex items-center gap-2">
-        <input type="text" value={customTitle ?? defaultTitle} placeholder={defaultTitle} maxLength={SHARING_POSTER_CREDIT_LABEL_MAX} aria-label={titleLabel} onChange={(event) => onTitleChange(event.target.value)} onBlur={() => onTitleChange(title === defaultTitle ? undefined : title)} className={`${fieldClasses} font-semibold sm:max-w-xs`} />
-        <span className="text-accent" aria-hidden="true">*</span>
-      </div>
-      <textarea rows={2} value={value} required aria-label={title} onChange={(event) => onChange(event.target.value)} className={fieldClasses} />
-    </div>
-  );
-}
-
-function OptionalCredit({ label, checked, value, onToggle, onChange }: { label: string; checked: boolean; value: string; onToggle: (value: boolean) => void; onChange: (value: string) => void }) {
-  return <div className="rounded-lg border border-border bg-raised p-3"><label className="flex min-h-11 items-center gap-3 text-sm font-semibold"><input type="checkbox" checked={checked} onChange={(event) => onToggle(event.target.checked)} className="h-5 w-5 accent-accent" />{label}</label>{checked && <textarea rows={2} value={value} onChange={(event) => onChange(event.target.value)} className={`${fieldClasses} mt-2`} />}</div>;
 }

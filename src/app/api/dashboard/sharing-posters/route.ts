@@ -7,7 +7,8 @@ import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
 import {
   defaultSharingPosterComposition,
   SHARING_POSTER_MAX_PHOTOS,
-  sharingPosterMetadataFromPhotos
+  sharingPosterMetadataFromPhotos,
+  withSharingPosterMetadata
 } from "@/lib/sharingPoster";
 import { getSharingPosterPhotosByIds } from "@/lib/sharingPosterData";
 
@@ -78,7 +79,10 @@ export async function POST(request: NextRequest) {
     ownerName(user),
     selected.map((photo) => ({ id: photo.id, homeWeight: photo.homeWeight }))
   );
-  Object.assign(composition.credits, sharingPosterMetadataFromPhotos(selected));
+  composition.credits.lines = withSharingPosterMetadata(
+    composition.credits.lines,
+    sharingPosterMetadataFromPhotos(selected)
+  );
   composition.credits.cosplayerReviewed = selected.every(
     (photo) => photo.creditNames.length > 0
   );

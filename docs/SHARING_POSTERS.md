@@ -215,23 +215,40 @@ layout is proportional to the width, so only the pixel count changes.
 
 ## Credits and metadata
 
-Cosplayer CN and photographer are always rendered. CN is initially deduplicated
-from selected photo credits in selection order. Photographs without a CN require
-the photographer to review the shared poster-specific CN before export.
+The credits are a stack of layers, one printed line each, stored in order as
+`credits.lines` (composition version 2, at most 20 lines). The Credits tab
+works like a layers panel: **Add line** opens a menu of Cosplayer CN,
+Photographer, Equipment (body and lens), Event name, Date, Location and Other;
+each layer is dragged by its handle, or moved with the arrow keys, and the top
+layer prints first. A new poster starts with a CN and a photographer line, and
+either can be removed.
 
-The titles printed before those two names are editable in the Credits tab and
-saved as `credits.cosplayerLabel` / `credits.photographerLabel` (up to 80
-characters, kept on one line, a trailing colon dropped because the line adds
-its own). Absent or blank titles print the output language's defaults, "出镜 /
-CN" and "摄影" or "Cosplayer CN" and "Photographer"; clearing a title or typing
-the default back removes the field, so an untouched title keeps following the
-language. Projects saved before titles existed print exactly as before, and
-renaming a title does not stop CN from following the selected photographs.
+Each line is `{ id, kind, label?, value }`. Every kind but Other prints
+"Title: value", where the title is the owner's `label` or, absent or blank, the
+output language's default ("出镜 / CN", "摄影", "器材", "活动", "日期", "地点", or
+the English equivalents). Titles are kept on one line with a trailing colon
+dropped, since the line adds its own; clearing a title or typing the default
+back removes `label`, so an untouched title keeps following the language. Other
+prints its text as it is. Newlines in a value print as " / ", and an empty line
+is left off the poster; with no lines at all the footer disappears and the
+photographs keep even margins.
 
-Camera, lens, event, date, and location are opt-in. Their displayed values are
-saved in the project as a snapshot. Reopening a project never silently replaces
-intentional edits; **Refresh from gallery** explicitly rebuilds the snapshot
-from current source metadata.
+A new line starts from the gallery: CN deduplicated from the selected photos'
+credits in selection order, equipment as "body + lens", and one entry per event
+for event name, date and location; a photographer line starts with the owner's
+name. These values are snapshots saved in the project. While a new project's
+first selection is assembled they follow it, until the owner edits one of them;
+**Refresh from gallery** explicitly refills every gallery-derived line. When
+the poster prints a CN and some selected photographs have none, export waits
+until the owner edits the CN or confirms it.
+
+Projects saved as version 1 (fixed CN, photographer and opt-in detail fields)
+migrate when parsed, on every read: CN and photographer lines with their titles,
+then an equipment line if camera or lens was shown, then event, date and
+location lines for whichever were shown. Hidden details are dropped, since they
+never printed. The project is stored as version 2 on its next save. Their
+footers change in two ways: camera and lens share one equipment line, and event
+details print one kind per line rather than grouped per event.
 
 ## Storage, security, and deployment
 

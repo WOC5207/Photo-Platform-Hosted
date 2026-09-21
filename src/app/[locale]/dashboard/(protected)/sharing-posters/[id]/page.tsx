@@ -39,7 +39,7 @@ export default async function SharingPosterEditorPage({
 
   return (
     <SharingPosterEditorLoader
-      project={{ ...project, composition }}
+      project={{ ...project, composition, ownerName: ownerName(user) }}
       initialPhotos={photos}
       events={events.map((event) => ({
         id: event.id,
