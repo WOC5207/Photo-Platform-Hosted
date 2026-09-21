@@ -411,7 +411,11 @@ export function sharingPosterFooterGeometry(input: {
   const lineHeight = fontSize * 1.38;
   let photoHeight: number;
   let textY: number;
-  if (input.textGapPercent === undefined) {
+  if (lineCount === 0) {
+    // No credit lines: no footer, so the photographs keep even margins.
+    photoHeight = height - margin * 2;
+    textY = height - margin;
+  } else if (input.textGapPercent === undefined) {
     const footerPadding = Math.max(margin * 0.8, fontSize * 0.8);
     const footerHeight = lineCount * lineHeight + footerPadding * 2;
     photoHeight = height - footerHeight - margin * 2;

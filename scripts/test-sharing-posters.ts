@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
 import {
   SHARING_POSTER_CREDIT_LABEL_MAX,
+  SHARING_POSTER_MAX_CREDIT_LINES,
   SHARING_POSTER_MAX_EDGE,
   SHARING_POSTER_MAX_PIXELS,
   defaultSharingPosterComposition,
   legacyTextGapPercent,
+  moveSharingPosterCreditLine,
   parseSharingPosterComposition,
   sharingPosterCompositionSchema,
   sharingPosterCreditLabel,
   sharingPosterCreditLines,
-  sharingPosterPixelSize
+  sharingPosterCreditMetadataValue,
+  sharingPosterPixelSize,
+  withSharingPosterMetadata,
+  type SharingPosterCreditKind,
+  type SharingPosterCreditLine
 } from "../src/lib/sharingPoster";
 import { sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
 import {
@@ -155,7 +161,9 @@ for (const [width, height, marginPercent, footerTextPercent, lineCount] of [
   [1728, 2160, 2.5, 1.8, 3],
   [300, 400, 0, 1, 2],
   [900, 1600, 12, 4, 6],
-  [1080, 1920, 2.5, 1.8, 0]
+  // Zero lines is not a legacy state (version 1 always printed CN and
+  // photographer); it drops the footer and is covered with the credit lines.
+  [1080, 1920, 2.5, 1.8, 1]
 ] as const) {
   const geometry = sharingPosterFooterGeometry({ width, height, lineCount, marginPercent, footerTextPercent });
   const margin = (width * marginPercent) / 100;
@@ -757,29 +765,166 @@ assert.equal(
   assert.ok(elapsed < 1500, `nine-photo suggestion took ${elapsed.toFixed(0)} ms`);
 }
 
-// Credit titles: the owner's replace the output language's, blank ones fall
-// back to it, and projects saved before titles existed print as they did.
+// Credit lines: layers printed top to bottom, each "Title: value" or custom text.
 {
   const zh = defaultSharingPosterComposition("zh", "摄影师甲");
-  zh.credits.cosplayer = "某 CN";
-  assert.equal("cosplayerLabel" in zh.credits, false);
-  assert.deepEqual(sharingPosterCreditLines(zh).slice(0, 2), ["出镜 / CN: 某 CN", "摄影: 摄影师甲"]);
-  const en = defaultSharingPosterComposition("en", "Ann");
-  en.credits.cosplayer = "Bee";
-  assert.deepEqual(sharingPosterCreditLines(en).slice(0, 2), ["Cosplayer CN: Bee", "Photographer: Ann"]);
+  assert.equal(zh.version, 2);
+  assert.deepEqual(zh.credits.lines, [
+    { id: "cosplayer", kind: "cosplayer", value: "" },
+    { id: "photographer", kind: "photographer", value: "摄影师甲" }
+  ]);
+  // An empty line prints nothing, like an empty text layer.
+  assert.deepEqual(sharingPosterCreditLines(zh), ["摄影: 摄影师甲"]);
 
-  const titled = { ...zh, credits: { ...zh.credits, cosplayerLabel: "Coser", photographerLabel: " 摄影 & 后期： " } };
-  assert.deepEqual(sharingPosterCreditLines(titled).slice(0, 2), ["Coser: 某 CN", "摄影 & 后期: 摄影师甲"]);
-  const blank = { ...zh, credits: { ...zh.credits, cosplayerLabel: "   ", photographerLabel: ":" } };
-  assert.deepEqual(sharingPosterCreditLines(blank).slice(0, 2), ["出镜 / CN: 某 CN", "摄影: 摄影师甲"]);
+  const line = (id: string, kind: SharingPosterCreditKind, value: string, label?: string): SharingPosterCreditLine =>
+    label === undefined ? { id, kind, value } : { id, kind, label, value };
+  const layered = {
+    ...zh,
+    credits: {
+      ...zh.credits,
+      lines: [
+        line("note", "custom", "  Thanks   for\nwatching  "),
+        line("gear", "equipment", "Sony α7 IV + FE 85mm F1.4 GM"),
+        line("cn", "cosplayer", "某 CN", "Coser"),
+        line("ph", "photographer", "摄影师甲", " 摄影 & 后期： "),
+        line("when", "date", ""),
+        line("where", "location", "Toronto\n\nHarbourfront")
+      ]
+    }
+  };
+  assert.deepEqual(sharingPosterCreditLines(layered), [
+    "Thanks for / watching",
+    "器材: Sony α7 IV + FE 85mm F1.4 GM",
+    "Coser: 某 CN",
+    "摄影 & 后期: 摄影师甲",
+    "地点: Toronto / Harbourfront"
+  ]);
+  const en = defaultSharingPosterComposition("en", "Ann");
+  en.credits.lines.push(line("gear", "equipment", "Body + Lens"), line("e", "event", "Expo"));
+  assert.deepEqual(sharingPosterCreditLines(en), ["Photographer: Ann", "Equipment: Body + Lens", "Event: Expo"]);
   assert.equal(sharingPosterCreditLabel("Model\nand  stylist:", "Cosplayer CN"), "Model and stylist");
   assert.equal(sharingPosterCreditLabel(undefined, "Photographer"), "Photographer");
 
-  // Saved without titles, saved with them, and a title over the limit.
-  assert.equal(sharingPosterCompositionSchema.parse(zh).credits.cosplayerLabel, undefined);
-  assert.deepEqual(sharingPosterCompositionSchema.parse(titled).credits, titled.credits);
-  const tooLong = { ...zh, credits: { ...zh.credits, photographerLabel: "x".repeat(SHARING_POSTER_CREDIT_LABEL_MAX + 1) } };
-  assert.equal(sharingPosterCompositionSchema.safeParse(tooLong).success, false);
+  // Gallery metadata fills the lines it knows and leaves the owner's alone.
+  const metadata = {
+    cosplayer: "A / B",
+    camera: "ILCE-7M4",
+    lens: "FE 85mm F1.4 GM",
+    event: "Expo\nExpo\nFair",
+    date: "2026-09-01\n2026-09-01",
+    location: "Hall 1\nHall 2"
+  };
+  assert.equal(sharingPosterCreditMetadataValue("equipment", metadata), "ILCE-7M4 + FE 85mm F1.4 GM");
+  assert.equal(sharingPosterCreditMetadataValue("equipment", { ...metadata, lens: " " }), "ILCE-7M4");
+  assert.equal(sharingPosterCreditMetadataValue("event", metadata), "Expo / Fair");
+  assert.equal(sharingPosterCreditMetadataValue("date", metadata), "2026-09-01");
+  assert.equal(sharingPosterCreditMetadataValue("photographer", metadata), null);
+  assert.equal(sharingPosterCreditMetadataValue("custom", metadata), null);
+  const refilled = withSharingPosterMetadata(layered.credits.lines, metadata);
+  assert.deepEqual(
+    refilled.map((entry) => entry.value),
+    ["  Thanks   for\nwatching  ", "ILCE-7M4 + FE 85mm F1.4 GM", "A / B", "摄影师甲", "2026-09-01", "Hall 1 / Hall 2"]
+  );
+  assert.equal(refilled[2].label, "Coser");
+
+  // Reordering moves one layer and leaves the array alone when nothing moves.
+  const ids = (lines: SharingPosterCreditLine[]) => lines.map((entry) => entry.id);
+  const lines = layered.credits.lines;
+  assert.deepEqual(ids(moveSharingPosterCreditLine(lines, "where", 0)), ["where", "note", "gear", "cn", "ph", "when"]);
+  assert.deepEqual(ids(moveSharingPosterCreditLine(lines, "note", 2)), ["gear", "cn", "note", "ph", "when", "where"]);
+  assert.deepEqual(ids(moveSharingPosterCreditLine(lines, "gear", 99)), ["note", "cn", "ph", "when", "where", "gear"]);
+  assert.equal(moveSharingPosterCreditLine(lines, "cn", 2), lines);
+  assert.equal(moveSharingPosterCreditLine(lines, "missing", 0), lines);
+
+  // The schema: layers round-trip; bad ones are refused.
+  assert.deepEqual(sharingPosterCompositionSchema.parse(layered).credits, layered.credits);
+  const withLines = (next: unknown[]) => ({ ...zh, credits: { ...zh.credits, lines: next } });
+  assert.equal(sharingPosterCompositionSchema.safeParse(withLines([line("a", "custom", "x"), line("a", "date", "y")])).success, false);
+  assert.equal(sharingPosterCompositionSchema.safeParse(withLines([{ id: "a", kind: "camera", value: "x" }])).success, false);
+  assert.equal(
+    sharingPosterCompositionSchema.safeParse(withLines([line("a", "date", "x", "t".repeat(SHARING_POSTER_CREDIT_LABEL_MAX + 1))])).success,
+    false
+  );
+  const many = Array.from({ length: SHARING_POSTER_MAX_CREDIT_LINES }, (_, index) => line(`c${index}`, "custom", `${index}`));
+  assert.equal(sharingPosterCompositionSchema.safeParse(withLines(many)).success, true);
+  assert.equal(sharingPosterCompositionSchema.safeParse(withLines([...many, line("over", "custom", "x")])).success, false);
+  assert.equal(sharingPosterCompositionSchema.safeParse(withLines([])).success, true);
+}
+
+// Version 1 projects migrate on parse: fixed fields become layers in the
+// order they printed, hidden details are dropped, camera and lens become one
+// equipment line, and nothing else about the project changes.
+{
+  const base = defaultSharingPosterComposition("zh", "摄影师甲", [{ id: "p1", homeWeight: 3 }, { id: "p2" }]);
+  const rest = { ...base } as Partial<typeof base>;
+  delete rest.credits;
+  delete rest.version;
+  const legacyCredits = {
+    cosplayer: "某 CN",
+    cosplayerReviewed: true,
+    photographer: "摄影师甲",
+    photographerLabel: "摄影 & 后期",
+    camera: "ILCE-7M4",
+    lens: "FE 85mm F1.4 GM",
+    event: "Expo\nFair",
+    date: "2026-09-01\n2026-09-02",
+    location: "Hall 1\nHall 2",
+    showCamera: true,
+    showLens: true,
+    showEvent: true,
+    showDate: false,
+    showLocation: true
+  };
+  const legacy = { ...rest, version: 1, credits: legacyCredits };
+  const migrated = sharingPosterCompositionSchema.parse(legacy);
+  assert.equal(migrated.version, 2);
+  assert.deepEqual(migrated.credits, {
+    lines: [
+      { id: "cosplayer", kind: "cosplayer", value: "某 CN" },
+      { id: "photographer", kind: "photographer", label: "摄影 & 后期", value: "摄影师甲" },
+      { id: "equipment", kind: "equipment", value: "ILCE-7M4 + FE 85mm F1.4 GM" },
+      { id: "event", kind: "event", value: "Expo / Fair" },
+      { id: "location", kind: "location", value: "Hall 1 / Hall 2" }
+    ],
+    cosplayerReviewed: true
+  });
+  assert.deepEqual({ ...migrated, credits: base.credits, version: base.version }, base);
+  assert.deepEqual(sharingPosterCreditLines(migrated), [
+    "出镜 / CN: 某 CN",
+    "摄影 & 后期: 摄影师甲",
+    "器材: ILCE-7M4 + FE 85mm F1.4 GM",
+    "活动: Expo / Fair",
+    "地点: Hall 1 / Hall 2"
+  ]);
+  // Only the lens shown, then nothing optional shown.
+  const lensOnly = sharingPosterCompositionSchema.parse({
+    ...legacy,
+    credits: { ...legacyCredits, showCamera: false, showEvent: false, showLocation: false }
+  });
+  assert.deepEqual(lensOnly.credits.lines.map((entry) => `${entry.kind}:${entry.value}`), [
+    "cosplayer:某 CN",
+    "photographer:摄影师甲",
+    "equipment:FE 85mm F1.4 GM"
+  ]);
+  const bare = sharingPosterCompositionSchema.parse({
+    ...legacy,
+    credits: { ...legacyCredits, showCamera: false, showLens: false, showEvent: false, showLocation: false }
+  });
+  assert.deepEqual(bare.credits.lines.map((entry) => entry.kind), ["cosplayer", "photographer"]);
+  // The fallback is never used for a valid version 1 project.
+  const fallback = defaultSharingPosterComposition("en", "Nobody");
+  assert.deepEqual(parseSharingPosterComposition(legacy, fallback), migrated);
+  assert.equal(parseSharingPosterComposition({ ...legacy, version: 3 }, fallback), fallback);
+}
+
+// With no credit lines there is no footer: the photographs keep even margins.
+{
+  const none = sharingPosterFooterGeometry({ width: 1000, height: 1250, lineCount: 0, marginPercent: 2.5, footerTextPercent: 1.8, textGapPercent: 2.5 });
+  assert.equal(none.photoArea.y, 25);
+  assert.equal(none.photoArea.height, 1250 - 50);
+  assert.equal(none.footerTooTall, false);
+  const legacyNone = sharingPosterFooterGeometry({ width: 1000, height: 1250, lineCount: 0, marginPercent: 2.5, footerTextPercent: 1.8 });
+  assert.equal(legacyNone.photoArea.height, 1250 - 50);
 }
 
 console.log("Sharing poster layout and composition tests passed.");

@@ -17,7 +17,7 @@ const SharingPosterEditor = dynamic(
 );
 
 export default function SharingPosterEditorLoader(props: {
-  project: { id: string; name: string; revision: number; composition: SharingPosterComposition };
+  project: { id: string; name: string; revision: number; composition: SharingPosterComposition; ownerName: string };
   initialPhotos: SharingPosterResolvedPhoto[];
   events: { id: string; title: string }[];
 }) {
