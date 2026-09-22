@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "preview:cosplan": "tsx scripts/preview-cosplan.ts",
     "build": "next build",
     "start": "next start",
     "db:generate": "prisma generate",
@@ -20,6 +21,7 @@
     "test:email": "tsx --conditions=react-server scripts/test-email.ts",
     "test:theme": "tsx --conditions=react-server scripts/test-theme-color.ts",
     "test:cosplan": "tsx --conditions=react-server scripts/test-cosplan.ts",
+    "test:cosplan:names": "tsx scripts/test-cosplan-names.ts",
     "test:cosplan:mobile": "tsx scripts/test-cosplan-mobile.ts",
     "test:sharing-posters": "tsx --conditions=react-server scripts/test-sharing-posters.ts",
     "test:subject-detection": "tsx --conditions=react-server scripts/test-subject-detection.ts",

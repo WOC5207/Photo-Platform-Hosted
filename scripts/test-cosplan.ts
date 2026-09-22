@@ -16,6 +16,7 @@ import {
 } from "../src/lib/cosplanStorage";
 import {
   normalizeCosplanLayerOrder,
+  cosplanCharacterNames,
   parseCosplanSlots,
   scaleCosplanSlots,
   type CosplanLayer
@@ -58,6 +59,20 @@ async function main() {
   assert.deepEqual(layers.map((layer) => layer.id), ["image-a", "image-b", "text"]);
   assert.equal(layers[0]?.type === "image" && layers[0].drawForeground, false);
   assert.equal(layers[1]?.type === "image" && layers[1].drawForeground, true);
+  const namedSlots = parseCosplanSlots([{ ...slots[0], nameText: { x: 20, y: 440, width: 200, height: 48, fontSize: 28, fill: "#ffffff", align: "center", bold: true } }], 720, 900);
+  assert.equal(namedSlots.length, 1);
+  assert.equal(namedSlots[0].nameText?.y, 440);
+  assert.deepEqual(scaleCosplanSlots(namedSlots, 720, 900, 1440, 1800)[0].nameText, { x: 40, y: 880, width: 400, height: 96, fontSize: 56, fill: "#ffffff", align: "center", bold: true });
+  for (const patch of [{ x: -1 }, { width: 900 }, { fontSize: 0 }, { fill: "red" }, { align: "invalid" }, { bold: "yes" }]) {
+    assert.equal(parseCosplanSlots([{ ...namedSlots[0], nameText: { ...namedSlots[0].nameText, ...patch } }], 720, 900).length, 0);
+  }
+  const assigned = layers.map((layer) => layer.type === "image" ? { ...layer, slotId: "day-1" } : layer);
+  assert.equal(cosplanCharacterNames(namedSlots, assigned)[0].text, "B");
+  assert.equal(cosplanCharacterNames(namedSlots, assigned.filter((layer) => layer.id !== "image-b"))[0].text, "A");
+  assert.equal(cosplanCharacterNames(namedSlots, layers).length, 0);
+  assert.equal(cosplanCharacterNames(slots, assigned).length, 0);
+  assert.deepEqual(cosplanCharacterNames(JSON.parse(JSON.stringify(namedSlots)), JSON.parse(JSON.stringify(assigned))), cosplanCharacterNames(namedSlots, assigned));
+  console.log("PASS  linked character names validate, scale, restore, and follow assigned image layers");
   assert.ok(allowedBangumiImageUrl("https://lain.bgm.tv/pic/crt/m/example.jpg"));
   for (const blocked of [
     "http://lain.bgm.tv/pic/crt/m/example.jpg",
@@ -92,12 +107,13 @@ async function main() {
     assert.equal(metadata.hasAlpha, true);
     assert.ok(stored.bytes > 0);
 
-    const foreground = await generateCosplanForeground(stored.token, 720, 900, slots);
+    const foreground = await generateCosplanForeground(stored.token, 720, 900, namedSlots);
     const foregroundPath = cosplanTemplatePath(foreground.token);
     assert.ok(foregroundPath);
     const { data, info } = await sharp(foregroundPath!).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const alphaAt = (x: number, y: number) => data[(y * info.width + x) * info.channels + 3];
     assert.equal(alphaAt(30, 50), 0);
+    assert.ok(alphaAt(30, 460) > 0, "Name fields must preserve the printed background rather than cut photo openings");
     assert.ok(alphaAt(400, 500) > 0);
 
     const irregularForeground = await generateCosplanForeground(stored.token, 720, 900, irregularSlots);
