@@ -7,6 +7,7 @@ import { controlClasses } from "@/components/ui/Field";
 import {
   COSPLAN_SLOT_LIMIT,
   type CosplanDetectionPreset,
+  type CosplanNameTextSlot,
   type CosplanSlot,
   type CosplanSlotCandidate
 } from "@/lib/cosplanTypes";
@@ -37,6 +38,16 @@ type Labels = {
   cancelPicking: string;
   pickingHint: string;
   colorPickError: string;
+  nameText: string;
+  nameTextHint: string;
+  enableNameText: string;
+  fontSize: string;
+  textColor: string;
+  textAlign: string;
+  alignLeft: string;
+  alignCenter: string;
+  alignRight: string;
+  boldText: string;
   advancedDetection: string;
   preset: string;
   strict: string;
@@ -195,6 +206,17 @@ export default function CosplanSlotEditor({
     setSlots((items) => [...items, slot]);
     setSelectedId(id);
     setStatus("idle");
+  }
+
+  function updateNameText(slot: CosplanSlot, patch: Partial<CosplanNameTextSlot>) {
+    if (!slot.nameText) return;
+    const next = { ...slot.nameText, ...patch };
+    next.width = clamp(next.width, 24, template.width);
+    next.height = clamp(next.height, 12, template.height);
+    next.x = clamp(next.x, 0, template.width - next.width);
+    next.y = clamp(next.y, 0, template.height - next.height);
+    next.fontSize = clamp(next.fontSize, 8, 300);
+    updateSlot(slot.id, { nameText: next });
   }
 
   function removeSlot(id: string) {
@@ -480,6 +502,28 @@ export default function CosplanSlotEditor({
                 </button>
               );
             })}
+            {slots.filter((slot) => slot.nameText).map((slot) => {
+              const field = slot.nameText!;
+              return <button key={`name-${slot.id}`} type="button" aria-label={`${labels.nameText}: ${slot.nameZh} / ${slot.nameEn}`}
+                onClick={() => setSelectedId(slot.id)}
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  dragRef.current = { pointerId: event.pointerId, id: `name-${slot.id}`, x: field.x, y: field.y, clientX: event.clientX, clientY: event.clientY };
+                  setSelectedId(slot.id);
+                }}
+                onPointerMove={(event) => {
+                  const drag = dragRef.current;
+                  const preview = previewRef.current;
+                  if (!drag || drag.pointerId !== event.pointerId || drag.id !== `name-${slot.id}` || !preview) return;
+                  const scale = template.width / preview.getBoundingClientRect().width;
+                  updateNameText(slot, { x: drag.x + (event.clientX - drag.clientX) * scale, y: drag.y + (event.clientY - drag.clientY) * scale });
+                }}
+                onPointerUp={() => { dragRef.current = null; }}
+                onPointerCancel={() => { dragRef.current = null; }}
+                className={`absolute overflow-hidden border-2 border-dashed bg-black/30 px-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${selectedId === slot.id ? "border-accent" : "border-white/90"}`}
+                style={{ left: `${field.x / template.width * 100}%`, top: `${field.y / template.height * 100}%`, width: `${field.width / template.width * 100}%`, height: `${field.height / template.height * 100}%`, color: field.fill, textAlign: field.align, fontWeight: field.bold ? 700 : 400 }}
+              >{labels.nameText} · {slots.indexOf(slot) + 1}</button>;
+            })}
             {pickingColor && <button
               type="button"
               aria-label={labels.pickingHint}
@@ -509,6 +553,22 @@ export default function CosplanSlotEditor({
                 <label key={field} className="text-sm font-semibold uppercase text-fg-muted">{field}<input className={`${controlClasses} mt-1`} type="number" value={selected[field]} onChange={(event) => updateSlot(selected.id, { [field]: Number(event.target.value) })} /></label>
               ))}
             </div>
+            <fieldset className="mt-4 border-t border-border pt-4">
+              <legend className="px-1 text-sm font-semibold text-fg-muted">{labels.nameText}</legend>
+              <p className="mb-3 text-sm leading-6 text-fg-subtle">{labels.nameTextHint}</p>
+              <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-fg-muted">
+                <input type="checkbox" checked={Boolean(selected.nameText)} onChange={(event) => updateSlot(selected.id, { nameText: event.target.checked ? {
+                  x: selected.x, y: Math.min(template.height - 48, selected.y + selected.height), width: selected.width, height: 48, fontSize: 28, fill: "#ffffff", align: "center", bold: false
+                } : undefined })} />{labels.enableNameText}
+              </label>
+              {selected.nameText && <div className="mt-3 grid grid-cols-2 gap-3">
+                {(["x", "y", "width", "height"] as const).map((field) => <label key={field} className="text-sm font-semibold uppercase text-fg-muted">{field}<input type="number" value={selected.nameText![field]} className={`${controlClasses} mt-1`} onChange={(event) => updateNameText(selected, { [field]: Number(event.target.value) })} /></label>)}
+                <label className="text-sm font-semibold text-fg-muted">{labels.fontSize}<input type="number" min={8} max={300} value={selected.nameText.fontSize} className={`${controlClasses} mt-1`} onChange={(event) => updateNameText(selected, { fontSize: Number(event.target.value) })} /></label>
+                <label className="text-sm font-semibold text-fg-muted">{labels.textColor}<input type="color" value={selected.nameText.fill} className={`${controlClasses} mt-1 h-11 p-1`} onChange={(event) => updateNameText(selected, { fill: event.target.value })} /></label>
+                <label className="text-sm font-semibold text-fg-muted">{labels.textAlign}<select value={selected.nameText.align} className={`${controlClasses} mt-1`} onChange={(event) => updateNameText(selected, { align: event.target.value as CosplanNameTextSlot["align"] })}><option value="left">{labels.alignLeft}</option><option value="center">{labels.alignCenter}</option><option value="right">{labels.alignRight}</option></select></label>
+                <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-fg-muted"><input type="checkbox" checked={selected.nameText.bold} onChange={(event) => updateNameText(selected, { bold: event.target.checked })} />{labels.boldText}</label>
+              </div>}
+            </fieldset>
           </div>
         ) : <p className="rounded-xl border border-border bg-surface-2 p-4 text-sm text-fg-subtle">{labels.empty}</p>}
         <Button variant="primary" onClick={() => void saveSlots()} disabled={status === "saving"}>{status === "saving" ? labels.saving : labels.save}</Button>

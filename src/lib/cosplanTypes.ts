@@ -10,6 +10,17 @@ export type CosplanSlotShape = {
   contours: CosplanPoint[][];
 };
 
+export type CosplanNameTextSlot = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  fill: string;
+  align: "left" | "center" | "right";
+  bold: boolean;
+};
+
 export type CosplanSlot = {
   id: string;
   nameEn: string;
@@ -19,6 +30,8 @@ export type CosplanSlot = {
   width: number;
   height: number;
   shape?: CosplanSlotShape;
+  /** Character-name field linked to this photo slot, in poster coordinates. */
+  nameText?: CosplanNameTextSlot;
 };
 
 export type CosplanDetectionPreset = "strict" | "standard" | "loose";
@@ -156,8 +169,21 @@ export function parseCosplanSlots(value: unknown, canvasWidth: number, canvasHei
     const hasShape = raw.shape !== undefined && raw.shape !== null;
     const shape = parseCosplanSlotShape(raw.shape);
     if (hasShape && !shape) continue;
+    let nameText: CosplanNameTextSlot | undefined;
+    if (raw.nameText !== undefined) {
+      if (!raw.nameText || typeof raw.nameText !== "object") continue;
+      const field = raw.nameText as Record<string, unknown>;
+      const nx = Math.round(Number(field.x));
+      const ny = Math.round(Number(field.y));
+      const nw = Math.round(Number(field.width));
+      const nh = Math.round(Number(field.height));
+      const fontSize = Math.round(Number(field.fontSize));
+      if (![nx, ny, nw, nh, fontSize].every(Number.isFinite) || nx < 0 || ny < 0 || nw < 24 || nh < 12 || nx + nw > canvasWidth || ny + nh > canvasHeight || fontSize < 8 || fontSize > 300) continue;
+      if (typeof field.fill !== "string" || !/^#[0-9a-f]{6}$/i.test(field.fill) || !["left", "center", "right"].includes(String(field.align)) || typeof field.bold !== "boolean") continue;
+      nameText = { x: nx, y: ny, width: nw, height: nh, fontSize, fill: field.fill, align: field.align as CosplanNameTextSlot["align"], bold: field.bold };
+    }
     ids.add(id);
-    slots.push({ id, nameEn, nameZh, x, y, width, height, ...(shape ? { shape } : {}) });
+    slots.push({ id, nameEn, nameZh, x, y, width, height, ...(shape ? { shape } : {}), ...(nameText ? { nameText } : {}) });
   }
   return slots;
 }
@@ -178,11 +204,29 @@ export function scaleCosplanSlots(
       x: slot.x * scaleX,
       y: slot.y * scaleY,
       width: slot.width * scaleX,
-      height: slot.height * scaleY
+      height: slot.height * scaleY,
+      ...(slot.nameText ? { nameText: {
+        ...slot.nameText,
+        x: slot.nameText.x * scaleX,
+        y: slot.nameText.y * scaleY,
+        width: Math.max(24, slot.nameText.width * scaleX),
+        height: Math.max(12, slot.nameText.height * scaleY),
+        fontSize: Math.max(8, Math.min(300, slot.nameText.fontSize * Math.min(scaleX, scaleY)))
+      } } : {})
     })),
     toWidth,
     toHeight
   );
+}
+
+/** One name per photo slot; the uppermost assigned character supplies the name. */
+export function cosplanCharacterNames(slots: CosplanSlot[], layers: CosplanLayer[]) {
+  return slots.flatMap((slot) => {
+    if (!slot.nameText) return [];
+    const character = layers.findLast((layer) => layer.type === "image" && layer.slotId === slot.id);
+    if (!character?.name.trim()) return [];
+    return [{ ...slot.nameText, slotId: slot.id, text: character.name.trim() }];
+  });
 }
 
 /**
