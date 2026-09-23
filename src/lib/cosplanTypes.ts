@@ -63,6 +63,8 @@ export type CosplanImageLayer = {
   src: string;
   blob?: Blob;
   sourceUrl?: string;
+  /** Visitor preference; omitted in older drafts means the name is shown. */
+  showName?: boolean;
   slotId?: string;
   slot?: CosplanSlot;
   drawForeground?: boolean;
@@ -224,7 +226,7 @@ export function cosplanCharacterNames(slots: CosplanSlot[], layers: CosplanLayer
   return slots.flatMap((slot) => {
     if (!slot.nameText) return [];
     const character = layers.findLast((layer) => layer.type === "image" && layer.slotId === slot.id);
-    if (!character?.name.trim()) return [];
+    if (character?.type !== "image" || character.showName === false || !character.name.trim()) return [];
     return [{ ...slot.nameText, slotId: slot.id, text: character.name.trim() }];
   });
 }

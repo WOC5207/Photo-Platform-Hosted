@@ -1967,6 +1967,7 @@
     "draftError": "此浏览器无法保存草稿。你仍可继续编辑并导出海报。",
     "backgrounds": "背景",
     "characterName": "角色名称",
+    "showCharacterName": "显示角色名称",
     "characters": "角色",
     "restoreTitle": "继续编辑已保存的海报？",
     "restoreHint": "在此浏览器中找到使用“{title}”背景的本地草稿。",
