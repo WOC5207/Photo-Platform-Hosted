@@ -91,7 +91,7 @@ export default function SharingPosterEditor({
   );
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [saveCycle, setSaveCycle] = useState(0);
-  const [metrics, setMetrics] = useState<SharingPosterRenderResult>({ rectangles: [], photoRects: [], footerTooTall: false, wrappedLineCount: 0 });
+  const [metrics, setMetrics] = useState<SharingPosterRenderResult>({ rectangles: [], photoRects: [], text: null, footerTooTall: false, wrappedLineCount: 0 });
   const [exportState, setExportState] = useState<"idle" | "preparing" | "ready" | "error">("idle");
   const [prepared, setPrepared] = useState<{ blob: Blob; url: string; filename: string; signature: string } | null>(null);
   const [notice, setNotice] = useState("");
@@ -298,6 +298,12 @@ export default function SharingPosterEditor({
       }
     }));
   }
+
+  const setCreditsX = useCallback((x: number) => {
+    setComposition((current) =>
+      current.style.creditsX === x ? current : { ...current, style: { ...current.style, creditsX: x } }
+    );
+  }, []);
 
   function setCropMode(photo: SharingPosterResolvedPhoto, mode: "auto" | "manual") {
     if (mode === "auto") {
@@ -541,6 +547,7 @@ export default function SharingPosterEditor({
             selectedPhotoId={selectedPhotoId}
             onSelectPhoto={setSelectedPhotoId}
             onCropChange={(id, crop) => updatePhoto(id, (photo) => ({ ...photo, crop }))}
+            onCreditsMove={setCreditsX}
             onRenderMetrics={handleMetrics}
             ariaLabel={t("previewAria")}
             unavailableLabel={t("unavailable")}
@@ -670,6 +677,16 @@ export default function SharingPosterEditor({
                 onLabelChange={setCreditLabel}
                 onRemove={(id) => updateCreditLines((lines) => lines.filter((line) => line.id !== id))}
               />
+            </div>
+            <div className="mt-5 grid gap-3">
+              <span className="text-sm font-semibold text-fg-muted">{t("creditsPosition")}</span>
+              <div role="group" aria-label={t("creditsPosition")} className="grid grid-cols-3 gap-2">
+                {([[0, "creditsLeft"], [0.5, "creditsCenter"], [1, "creditsRight"]] as const).map(([x, label]) => {
+                  const active = (composition.style.creditsX ?? 0) === x;
+                  return <button key={label} type="button" aria-pressed={active} onClick={() => setCreditsX(x)} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${active ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t(label)}</button>;
+                })}
+              </div>
+              <p className="text-sm leading-6 text-fg-subtle">{t("creditsPositionHint")}</p>
             </div>
             {notice && <p role="status" className="mt-4 text-sm text-fg-subtle">{notice}</p>}
           </section>

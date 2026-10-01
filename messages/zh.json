@@ -300,7 +300,7 @@
     "layout": "版式",
     "credits": "署名",
     "preview": "海报预览",
-    "previewAria": "海报预览。点击照片进行选择，拖动照片可以改变裁切位置。",
+    "previewAria": "海报预览。点击照片进行选择，拖动照片可以改变裁切位置。拖动文字可调整位置，靠近照片边缘或中线时会自动吸附。",
     "backToProjects": "分享海报",
     "projectName": "项目名称",
     "projectNameRequired": "请输入项目名称以保存修改。",
@@ -417,7 +417,12 @@
     "ratioSuggestionCoveredCompare": "照片区域覆盖：{shown}%（当前 {current}%）",
     "ratioSuggestionHintCollage": "每张照片都以自身比例的画框完整显示，因此按各常用比例比较拼贴覆盖照片区域的程度。",
     "ratioAdaptive": "自适应",
-    "ratioAdaptiveHint": "海报会采用拼贴恰好填满的比例（当前为 {ratio}），并随照片的增删、排序和权重变化自动调整。选择任一比例即可固定。"
+    "ratioAdaptiveHint": "海报会采用拼贴恰好填满的比例（当前为 {ratio}），并随照片的增删、排序和权重变化自动调整。选择任一比例即可固定。",
+    "creditsPosition": "文字位置",
+    "creditsLeft": "左对齐",
+    "creditsCenter": "居中",
+    "creditsRight": "右对齐",
+    "creditsPositionHint": "也可以在预览中拖动文字，靠近照片左边缘、中线或右边缘时会自动吸附对齐。"
   },
   "equipment": {
     "searchEquipment": "搜索库存",

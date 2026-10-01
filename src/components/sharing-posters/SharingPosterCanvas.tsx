@@ -13,6 +13,7 @@ import {
 import {
   cropRectToAnchor,
   resolvePosterCrop,
+  snapCreditsPosition,
   type PosterLayoutRect,
   type PosterRect
 } from "@/lib/sharingPosterLayout";
@@ -23,6 +24,7 @@ export default function SharingPosterCanvas({
   selectedPhotoId,
   onSelectPhoto,
   onCropChange,
+  onCreditsMove,
   onRenderMetrics,
   ariaLabel,
   unavailableLabel
@@ -32,12 +34,17 @@ export default function SharingPosterCanvas({
   selectedPhotoId: string | null;
   onSelectPhoto: (id: string | null) => void;
   onCropChange: (id: string, crop: { mode: "manual"; x: number; y: number }) => void;
+  /** The credits were dragged to `x` (0 left edge, 0.5 centre, 1 right edge of the photographs). */
+  onCreditsMove: (x: number) => void;
   onRenderMetrics: (result: SharingPosterRenderResult) => void;
   ariaLabel: string;
   unavailableLabel: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rectanglesRef = useRef<PosterLayoutRect[]>([]);
+  const textRef = useRef<SharingPosterRenderResult["text"]>(null);
+  const textDragRef = useRef<{ pointerId: number; x: number; startPosition: number; travel: number } | null>(null);
+  const [textGuide, setTextGuide] = useState<0 | 0.5 | 1 | null>(null);
   const cacheRef = useRef<{ key: string; rectangles: PosterLayoutRect[] } | null>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -96,12 +103,14 @@ export default function SharingPosterCanvas({
       selectionColor: getComputedStyle(canvas).getPropertyValue("--accent").trim() || "#a44f25",
       rectangles: cached,
       unavailableLabel,
-      subjectMarkerPhotoId: selectedPhotoId
+      subjectMarkerPhotoId: selectedPhotoId,
+      textGuide
     });
     rectanglesRef.current = result.rectangles;
+    textRef.current = result.text;
     cacheRef.current = { key: layoutKey, rectangles: result.rectangles };
     onRenderMetrics(result);
-  }, [composition, photos, images, selectedPhotoId, layoutKey, onRenderMetrics, unavailableLabel]);
+  }, [composition, photos, images, selectedPhotoId, layoutKey, onRenderMetrics, unavailableLabel, textGuide]);
 
   function point(event: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current!;
@@ -112,8 +121,32 @@ export default function SharingPosterCanvas({
     };
   }
 
+  function overText(p: { x: number; y: number }): boolean {
+    const text = textRef.current;
+    // A little slack around the glyphs so thin text is easy to grab.
+    const slack = 8;
+    return Boolean(
+      text &&
+        p.x >= text.x - slack &&
+        p.x <= text.x + text.width + slack &&
+        p.y >= text.y - slack &&
+        p.y <= text.y + text.height + slack
+    );
+  }
+
   function handlePointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
     const p = point(event);
+    const text = textRef.current;
+    if (text && overText(p)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      textDragRef.current = {
+        pointerId: event.pointerId,
+        x: p.x,
+        startPosition: composition.style.creditsX ?? 0,
+        travel: text.travel
+      };
+      return;
+    }
     const rect = [...rectanglesRef.current]
       .reverse()
       .find((candidate) =>
@@ -150,6 +183,19 @@ export default function SharingPosterCanvas({
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
+    const textDrag = textDragRef.current;
+    if (textDrag && textDrag.pointerId === event.pointerId) {
+      const p = point(event);
+      const raw = textDrag.travel > 0 ? textDrag.startPosition + (p.x - textDrag.x) / textDrag.travel : 0;
+      // Snap within about 2% of the poster's width of an alignment.
+      const snap = snapCreditsPosition(raw, textDrag.travel, (canvasRef.current?.width ?? 900) * 0.02);
+      setTextGuide(snap.snapped);
+      onCreditsMove(Math.round(snap.position * 1000) / 1000);
+      return;
+    }
+    if (!dragRef.current) {
+      event.currentTarget.style.cursor = overText(point(event)) ? "ew-resize" : "";
+    }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const p = point(event);
@@ -168,6 +214,10 @@ export default function SharingPosterCanvas({
 
   function endDrag(event: React.PointerEvent<HTMLCanvasElement>) {
     if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
+    if (textDragRef.current?.pointerId === event.pointerId) {
+      textDragRef.current = null;
+      setTextGuide(null);
+    }
   }
 
   return (

@@ -3,6 +3,8 @@ import { sharingPosterCreditLines, sharingPosterFit } from "@/lib/sharingPoster"
 import {
   calculateSharingPosterLayout,
   containFrame,
+  creditLineX,
+  creditsSpan,
   gatherAlignment,
   posterLayoutItems,
   resolvePosterCrop,
@@ -19,6 +21,11 @@ export { sharingPosterFooterGeometry, type SharingPosterFooterGeometry } from "@
 export interface SharingPosterRenderResult {
   /** The layout's frames. */
   rectangles: PosterLayoutRect[];
+  /**
+   * The credits as drawn, for dragging: the block around every line, the
+   * span the text aligns to, and how far the block travels from left to right.
+   */
+  text: { x: number; y: number; width: number; height: number; span: { left: number; right: number }; travel: number } | null;
   /**
    * Where each photograph is drawn: its frame when cropped to fill, the
    * centred whole photograph inside it otherwise.
@@ -69,6 +76,8 @@ export function renderSharingPoster(
     unavailableLabel?: string;
     /** Preview only: ring the detected subject of this photo when its crop follows it. */
     subjectMarkerPhotoId?: string | null;
+    /** Preview only: the alignment the dragged credits snapped to, drawn as a guide line. */
+    textGuide?: 0 | 0.5 | 1 | null;
   } = {}
 ): SharingPosterRenderResult {
   const { style } = composition;
@@ -219,15 +228,48 @@ export function renderSharingPoster(
 
   context.fillStyle = style.textColor;
   context.font = `600 ${fontSize}px "Avenir Next", "Segoe UI", "Microsoft YaHei", sans-serif`;
+  const bounds = { left: margin, right: width - margin };
+  const span = creditsSpan(photoRects, bounds);
+  const position = style.creditsX ?? 0;
+  const lineWidths = lines.map((line) => context.measureText(line).width);
   let textY = geometry.textY;
-  for (const line of lines) {
-    context.fillText(line, margin, textY);
+  let blockLeft = Number.POSITIVE_INFINITY;
+  let blockRight = Number.NEGATIVE_INFINITY;
+  lines.forEach((line, index) => {
+    const x = creditLineX(span, lineWidths[index], position, bounds);
+    context.fillText(line, x, textY);
+    blockLeft = Math.min(blockLeft, x);
+    blockRight = Math.max(blockRight, x + lineWidths[index]);
     textY += geometry.lineHeight;
+  });
+  const blockWidth = lines.length > 0 ? Math.max(...lineWidths) : 0;
+  if (options.textGuide !== undefined && options.textGuide !== null && lines.length > 0) {
+    const guideX = span.left + (span.right - span.left) * options.textGuide;
+    context.save();
+    context.strokeStyle = options.selectionColor ?? "#a44f25";
+    context.lineWidth = Math.max(1, width / 600);
+    context.setLineDash([Math.max(4, width / 120), Math.max(3, width / 180)]);
+    context.beginPath();
+    context.moveTo(guideX, 0);
+    context.lineTo(guideX, height);
+    context.stroke();
+    context.restore();
   }
   context.restore();
   return {
     rectangles,
     photoRects,
+    text:
+      lines.length > 0
+        ? {
+            x: blockLeft,
+            y: geometry.textY,
+            width: blockRight - blockLeft,
+            height: lines.length * geometry.lineHeight,
+            span,
+            travel: Math.max(0, span.right - span.left - blockWidth)
+          }
+        : null,
     footerTooTall: geometry.footerTooTall,
     wrappedLineCount: lines.length
   };

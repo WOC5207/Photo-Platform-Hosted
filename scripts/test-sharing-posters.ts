@@ -33,6 +33,9 @@ import {
 import {
   calculateCollageLayout,
   calculateSharingPosterLayout,
+  creditLineX,
+  creditsSpan,
+  snapCreditsPosition,
   containFrame,
   coverCropFromAnchor,
   gatherAlignment,
@@ -1089,6 +1092,41 @@ assert.equal(
     assert.ok(report.shown > 0.97, `adaptive collage of ${count} covers only ${report.shown.toFixed(3)}`);
   }
   assert.equal(adaptivePosterRatio([], { marginPercent: 2.5, gapPercent: 0.65, footerTextPercent: 1.8 }, 2), null);
+}
+
+// Credits position: lines align to the photographs' span, slide smoothly
+// between left, centre and right, stay inside the margins, and snap near an
+// alignment.
+{
+  const bounds = { left: 20, right: 880 };
+  assert.deepEqual(creditsSpan([], bounds), bounds);
+  const span = creditsSpan([{ x: 100, y: 0, width: 300, height: 10 }, { x: 410, y: 0, width: 390, height: 10 }], bounds);
+  assert.deepEqual(span, { left: 100, right: 800 });
+  assert.equal(creditLineX(span, 200, 0, bounds), 100);
+  assert.equal(creditLineX(span, 200, 1, bounds), 600);
+  assert.equal(creditLineX(span, 200, 0.5, bounds), 350);
+  assert.equal(creditLineX(span, 200, 0.25, bounds), 225);
+  // A line wider than a narrow collage stays inside the margins.
+  assert.equal(creditLineX({ left: 400, right: 500 }, 300, 1, bounds), 200);
+  assert.equal(creditLineX({ left: 400, right: 500 }, 600, 1, bounds), 20);
+  assert.equal(creditLineX({ left: 400, right: 500 }, 900, 0.5, bounds), 20);
+  assert.deepEqual(snapCreditsPosition(0.52, 500, 18), { position: 0.5, snapped: 0.5 });
+  assert.deepEqual(snapCreditsPosition(0.03, 500, 18), { position: 0, snapped: 0 });
+  assert.deepEqual(snapCreditsPosition(0.97, 500, 18), { position: 1, snapped: 1 });
+  assert.deepEqual(snapCreditsPosition(0.3, 500, 18), { position: 0.3, snapped: null });
+  assert.deepEqual(snapCreditsPosition(1.4, 500, 18), { position: 1, snapped: 1 });
+  const withPosition = sharingPosterCompositionSchema.safeParse({
+    ...defaultSharingPosterComposition("en", "P"),
+    style: { ...defaultSharingPosterComposition("en", "P").style, creditsX: 0.5 }
+  });
+  assert.equal(withPosition.success, true);
+  assert.equal(
+    sharingPosterCompositionSchema.safeParse({
+      ...defaultSharingPosterComposition("en", "P"),
+      style: { ...defaultSharingPosterComposition("en", "P").style, creditsX: 1.5 }
+    }).success,
+    false
+  );
 }
 
 console.log("Sharing poster layout and composition tests passed.");

@@ -177,7 +177,13 @@ const compositionBaseSchema = z.object({
      * gutters; "fill" crops to cover the frame. Absent means "fill", how
      * posters were drawn before.
      */
-    fit: z.enum(["fill", "whole", "collage"]).optional()
+    fit: z.enum(["fill", "whole", "collage"]).optional(),
+    /**
+     * Where the credits sit across the photographs' width: 0 flush with their
+     * left edge, 0.5 centred, 1 flush with their right edge. Absent is 0, the
+     * original left-aligned credits.
+     */
+    creditsX: z.number().min(0).max(1).optional()
   }),
   photos: z
     .array(sharingPosterPhotoSchema)

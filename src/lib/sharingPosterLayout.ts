@@ -745,3 +745,64 @@ export function calculateCollageLayout(
   );
   return rects.map((rect, index) => ({ ...rect, id: items[index].id }));
 }
+
+/** Where the credits can align: the photographs' left edge, their centre, their right edge. */
+export const CREDITS_SNAP_POSITIONS = [0, 0.5, 1] as const;
+
+/**
+ * The horizontal extent the credits align to: from the leftmost photograph's
+ * left edge to the rightmost one's right edge, so text lines up with the
+ * photographs even when a collage is narrower than the margins allow.
+ * `fallback` (the margins) when no photograph is placed.
+ */
+export function creditsSpan(
+  photoRects: readonly PosterRect[],
+  fallback: { left: number; right: number }
+): { left: number; right: number } {
+  if (photoRects.length === 0) return fallback;
+  return {
+    left: Math.min(...photoRects.map((rect) => rect.x)),
+    right: Math.max(...photoRects.map((rect) => rect.x + rect.width))
+  };
+}
+
+/**
+ * Where a credits line of `lineWidth` starts for a text `position` from 0 to
+ * 1: 0 is flush with the span's left edge, 1 flush with its right edge, 0.5
+ * centred, and values between slide smoothly, so every line keeps the same
+ * alignment as the block moves. Kept inside `bounds` (the margins), so a line
+ * wider than a narrow collage never leaves the poster.
+ */
+export function creditLineX(
+  span: { left: number; right: number },
+  lineWidth: number,
+  position: number,
+  bounds: { left: number; right: number }
+): number {
+  const clamped = Math.min(1, Math.max(0, position));
+  const x = span.left + (span.right - span.left - lineWidth) * clamped;
+  return Math.min(Math.max(x, bounds.left), Math.max(bounds.left, bounds.right - lineWidth));
+}
+
+/**
+ * A dragged text position, snapped to the nearest alignment when the block is
+ * within `threshold` pixels of it. `travel` is how far, in pixels, the block
+ * moves from position 0 to 1 (the span less the block's width).
+ */
+export function snapCreditsPosition(
+  position: number,
+  travel: number,
+  threshold: number
+): { position: number; snapped: (typeof CREDITS_SNAP_POSITIONS)[number] | null } {
+  const clamped = Math.min(1, Math.max(0, position));
+  let best: (typeof CREDITS_SNAP_POSITIONS)[number] | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const target of CREDITS_SNAP_POSITIONS) {
+    const distance = Math.abs(clamped - target) * Math.max(0, travel);
+    if (distance <= threshold && distance < bestDistance) {
+      best = target;
+      bestDistance = distance;
+    }
+  }
+  return best === null ? { position: clamped, snapped: null } : { position: best, snapped: best };
+}

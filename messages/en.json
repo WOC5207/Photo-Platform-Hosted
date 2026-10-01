@@ -300,7 +300,7 @@
     "layout": "Layout",
     "credits": "Credits",
     "preview": "Poster preview",
-    "previewAria": "Poster preview. Tap a photograph to select it and drag to reposition its crop.",
+    "previewAria": "Poster preview. Tap a photograph to select it and drag to reposition its crop. Drag the credits to move them; they snap to the photographs' edges and centre.",
     "backToProjects": "Sharing posters",
     "projectName": "Project name",
     "projectNameRequired": "Enter a project name so changes can be saved.",
@@ -417,7 +417,12 @@
     "ratioSuggestionCoveredCompare": "Photo area covered: {shown}%, against {current}% now",
     "ratioSuggestionHintCollage": "Every photograph is shown whole in a frame of its own shape, so the common ratios are compared by how much of the photo area the packed collage covers.",
     "ratioAdaptive": "Adaptive",
-    "ratioAdaptiveHint": "The poster takes the shape the collage fills exactly, {ratio} right now, and follows as you add, remove, reorder or reweight photographs. Pick any ratio to fix it."
+    "ratioAdaptiveHint": "The poster takes the shape the collage fills exactly, {ratio} right now, and follows as you add, remove, reorder or reweight photographs. Pick any ratio to fix it.",
+    "creditsPosition": "Text position",
+    "creditsLeft": "Left",
+    "creditsCenter": "Centre",
+    "creditsRight": "Right",
+    "creditsPositionHint": "Or drag the credits in the preview. They snap to the photographs' left edge, centre and right edge as you come close."
   },
   "equipment": {
     "searchEquipment": "Search inventory",
