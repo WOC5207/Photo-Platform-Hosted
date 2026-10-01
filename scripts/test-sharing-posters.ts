@@ -44,7 +44,10 @@ import {
   type PosterLayoutSource
 } from "../src/lib/sharingPosterLayout";
 import {
+  ADAPTIVE_MAX_ASPECT,
+  ADAPTIVE_MIN_ASPECT,
   SHARING_POSTER_RATIO_EXTRAS,
+  adaptivePosterRatio,
   SHARING_POSTER_RATIO_PRESETS,
   candidatePosterRatios,
   evaluatePosterRatio,
@@ -560,7 +563,8 @@ assert.ok(!sameRatio({ width: 3, height: 4 }, { width: 4, height: 3 }));
 {
   const standard = candidatePosterRatios({ width: 8, height: 10 });
   assert.equal(standard.length, SHARING_POSTER_RATIO_PRESETS.length + SHARING_POSTER_RATIO_EXTRAS.length);
-  assert.deepEqual(standard[0], { width: 1, height: 1 });
+  assert.deepEqual(standard[0], { width: 4, height: 5 });
+  assert.ok(standard.some((ratio) => sameRatio(ratio, { width: 1, height: 1 })), "1:1 is still considered for suggestions");
   const custom = candidatePosterRatios({ width: 7, height: 10 });
   assert.equal(custom.length, standard.length + 1);
   assert.deepEqual(custom.at(-1), { width: 7, height: 10 });
@@ -1058,6 +1062,33 @@ assert.equal(
   assert.ok(wholeReport.shown > 0 && wholeReport.shown <= 1);
   const fillReport = evaluatePosterRatio({ width: 4, height: 5 }, mixed, style, 2);
   assert.ok(wholeReport.photoShare <= fillReport.photoShare + 1e-9);
+}
+
+// Adaptive ratio: the poster takes the shape its collage fills, so the
+// collage covers the photo area edge to edge, within the allowed range.
+{
+  const adaptiveShapes: Array<[number, number]> = [[2000, 3000], [3000, 2000], [2400, 2400], [2000, 3000], [3000, 2000], [3200, 1800], [1800, 3200], [2400, 3000], [2400, 2400]];
+  const style = { marginPercent: 2.5, gapPercent: 0.65, footerTextPercent: 1.8, textGapPercent: 2.5, fit: "collage" as const };
+  for (let count = 1; count <= adaptiveShapes.length; count += 1) {
+    const sources: PosterLayoutSource[] = adaptiveShapes.slice(0, count).map(([width, height], index) => ({
+      photoId: `a${index}`,
+      composition: { weight: 3, focalX: 0.5, focalY: 0.5 },
+      source: { width, height, subject: null }
+    }));
+    const ratio = adaptivePosterRatio(sources, style, 2);
+    assert.ok(ratio, `no adaptive ratio for ${count}`);
+    assert.deepEqual(adaptivePosterRatio(sources, style, 2), ratio);
+    assert.ok(ratio.width >= 1 && ratio.width <= 100 && ratio.height >= 1 && ratio.height <= 100);
+    const aspect = ratio.width / ratio.height;
+    assert.ok(aspect >= ADAPTIVE_MIN_ASPECT - 0.01 && aspect <= ADAPTIVE_MAX_ASPECT + 0.01);
+    assert.equal(sharingPosterCompositionSchema.safeParse({
+      ...defaultSharingPosterComposition("en", "P"),
+      ratio: { ...ratio, adaptive: true }
+    }).success, true);
+    const report = evaluatePosterRatio(ratio, sources, style, 2);
+    assert.ok(report.shown > 0.97, `adaptive collage of ${count} covers only ${report.shown.toFixed(3)}`);
+  }
+  assert.equal(adaptivePosterRatio([], { marginPercent: 2.5, gapPercent: 0.65, footerTextPercent: 1.8 }, 2), null);
 }
 
 console.log("Sharing poster layout and composition tests passed.");

@@ -415,7 +415,9 @@
     "photoFitCollageHint": "每张照片都完整显示，画框与照片比例一致，并以均匀间距紧密排列。多余空间留在拼贴四周，由流体玻璃渐变填充。",
     "ratioSuggestionCovered": "照片区域覆盖：{shown}%",
     "ratioSuggestionCoveredCompare": "照片区域覆盖：{shown}%（当前 {current}%）",
-    "ratioSuggestionHintCollage": "每张照片都以自身比例的画框完整显示，因此按各常用比例比较拼贴覆盖照片区域的程度。"
+    "ratioSuggestionHintCollage": "每张照片都以自身比例的画框完整显示，因此按各常用比例比较拼贴覆盖照片区域的程度。",
+    "ratioAdaptive": "自适应",
+    "ratioAdaptiveHint": "海报会采用拼贴恰好填满的比例（当前为 {ratio}），并随照片的增删、排序和权重变化自动调整。选择任一比例即可固定。"
   },
   "equipment": {
     "searchEquipment": "搜索库存",

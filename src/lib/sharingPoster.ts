@@ -150,7 +150,13 @@ const compositionBaseSchema = z.object({
   outputLocale: z.enum(["en", "zh"]),
   ratio: z.object({
     width: z.number().min(1).max(100),
-    height: z.number().min(1).max(100)
+    height: z.number().min(1).max(100),
+    /**
+     * The editor keeps `width` and `height` at the shape a collage of the
+     * photographs fills exactly (see adaptivePosterRatio), so the export and
+     * everything else read an ordinary ratio.
+     */
+    adaptive: z.boolean().optional()
   }),
   style: z.object({
     marginPercent: z.number().min(0).max(12),

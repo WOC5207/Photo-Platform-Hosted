@@ -415,7 +415,9 @@
     "photoFitCollageHint": "Every photograph is shown in full, in a frame of its own shape, packed with even gaps. Spare room goes around the collage, where the liquid glass gradient fills it.",
     "ratioSuggestionCovered": "Photo area covered: {shown}%",
     "ratioSuggestionCoveredCompare": "Photo area covered: {shown}%, against {current}% now",
-    "ratioSuggestionHintCollage": "Every photograph is shown whole in a frame of its own shape, so the common ratios are compared by how much of the photo area the packed collage covers."
+    "ratioSuggestionHintCollage": "Every photograph is shown whole in a frame of its own shape, so the common ratios are compared by how much of the photo area the packed collage covers.",
+    "ratioAdaptive": "Adaptive",
+    "ratioAdaptiveHint": "The poster takes the shape the collage fills exactly, {ratio} right now, and follows as you add, remove, reorder or reweight photographs. Pick any ratio to fix it."
   },
   "equipment": {
     "searchEquipment": "Search inventory",

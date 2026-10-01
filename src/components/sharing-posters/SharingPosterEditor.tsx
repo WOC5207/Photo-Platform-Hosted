@@ -32,7 +32,7 @@ import SharingPosterCreditLayers from "@/components/sharing-posters/SharingPoste
 import { posterFieldClasses as fieldClasses } from "@/components/sharing-posters/posterFieldClasses";
 import type { SharingPosterRenderResult } from "@/lib/sharingPosterCanvas";
 import { legacyFocalToAnchor } from "@/lib/sharingPosterLayout";
-import { SHARING_POSTER_RATIO_PRESETS, sameRatio } from "@/lib/sharingPosterRatio";
+import { SHARING_POSTER_RATIO_PRESETS, adaptivePosterRatio, sameRatio } from "@/lib/sharingPosterRatio";
 import SharingPosterRatioSuggestion, {
   usePosterRatioSuggestion
 } from "@/components/sharing-posters/SharingPosterRatioSuggestion";
@@ -116,8 +116,27 @@ export default function SharingPosterEditor({
   );
   const selectedPhoto = photos.find((photo) => photo.photoId === selectedPhotoId) ?? null;
   const ratioSuggestion = usePosterRatioSuggestion(composition, photos, metrics.wrappedLineCount);
+  const adaptive = composition.ratio.adaptive === true;
+  const adaptiveRatio = useMemo(
+    () =>
+      adaptive
+        ? adaptivePosterRatio(photos, composition.style, metrics.wrappedLineCount)
+        : null,
+    [adaptive, photos, composition.style, metrics.wrappedLineCount]
+  );
+  // An adaptive poster follows its photographs: keep the stored ratio at the
+  // shape their collage fills, so preview, export and saving all read it.
+  useEffect(() => {
+    if (!adaptiveRatio) return;
+    setComposition((current) =>
+      current.ratio.adaptive &&
+      (current.ratio.width !== adaptiveRatio.width || current.ratio.height !== adaptiveRatio.height)
+        ? { ...current, ratio: { ...adaptiveRatio, adaptive: true } }
+        : current
+    );
+  }, [adaptiveRatio]);
   const suggestedRatio =
-    ratioSuggestion.fresh && ratioSuggestion.suggestion?.switchSuggested
+    !adaptive && ratioSuggestion.fresh && ratioSuggestion.suggestion?.switchSuggested
       ? ratioSuggestion.suggestion.best.ratio
       : null;
   const fit = sharingPosterFit(composition.style);
@@ -267,6 +286,8 @@ export default function SharingPosterEditor({
   function setPhotoFit(mode: SharingPosterFit) {
     setComposition((current) => ({
       ...current,
+      // Adaptive sizes the poster to a collage; another fit keeps the shape it reached.
+      ratio: mode === "collage" ? current.ratio : { width: current.ratio.width, height: current.ratio.height },
       style: {
         ...current.style,
         fit: mode,
@@ -578,22 +599,25 @@ export default function SharingPosterEditor({
             <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("layoutTitle")}</h2>
             <p className="mt-1 text-sm leading-6 text-fg-subtle">{t("layoutHint")}</p>
             <div className="mt-5 grid grid-cols-3 gap-2">
+              <button type="button" aria-pressed={adaptive} onClick={() => { setComposition((current) => ({ ...current, ratio: { ...current.ratio, adaptive: true } })); if (fit !== "collage") setPhotoFit("collage"); }} className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2 text-sm font-semibold ${adaptive ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t("ratioAdaptive")}</button>
               {SHARING_POSTER_RATIO_PRESETS.map(({ width, height, label }) => {
                 const suggested = suggestedRatio !== null && sameRatio(suggestedRatio, { width, height });
-                return <button key={label} type="button" onClick={() => setComposition((current) => ({ ...current, ratio: { width, height } }))} className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2 text-sm font-semibold ${composition.ratio.width === width && composition.ratio.height === height ? "border-accent bg-accent-surface text-accent-strong" : suggested ? "border-dashed border-accent bg-raised text-fg" : "border-border-strong bg-raised text-fg-muted"}`}>{label}{suggested && <span className="font-meta text-[0.625rem] font-semibold tracking-[0.1em] text-accent">{t("ratioSuggestionBadge")}</span>}</button>;
+                return <button key={label} type="button" onClick={() => setComposition((current) => ({ ...current, ratio: { width, height } }))} className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2 text-sm font-semibold ${!adaptive && composition.ratio.width === width && composition.ratio.height === height ? "border-accent bg-accent-surface text-accent-strong" : suggested ? "border-dashed border-accent bg-raised text-fg" : "border-border-strong bg-raised text-fg-muted"}`}>{label}{suggested && <span className="font-meta text-[0.625rem] font-semibold tracking-[0.1em] text-accent">{t("ratioSuggestionBadge")}</span>}</button>;
               })}
             </div>
             <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-              <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("ratioWidth")}<input type="number" min="1" max="100" value={composition.ratio.width} onChange={(event) => setComposition((current) => ({ ...current, ratio: { ...current.ratio, width: Math.min(100, Math.max(1, Number(event.target.value))) } }))} className={fieldClasses} /></label>
+              <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("ratioWidth")}<input type="number" min="1" max="100" value={composition.ratio.width} onChange={(event) => setComposition((current) => ({ ...current, ratio: { width: Math.min(100, Math.max(1, Number(event.target.value))), height: current.ratio.height } }))} className={fieldClasses} /></label>
               <Button aria-label={t("swapOrientation")} onClick={() => setComposition((current) => ({ ...current, ratio: { width: current.ratio.height, height: current.ratio.width } }))}>↔</Button>
-              <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("ratioHeight")}<input type="number" min="1" max="100" value={composition.ratio.height} onChange={(event) => setComposition((current) => ({ ...current, ratio: { ...current.ratio, height: Math.min(100, Math.max(1, Number(event.target.value))) } }))} className={fieldClasses} /></label>
+              <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("ratioHeight")}<input type="number" min="1" max="100" value={composition.ratio.height} onChange={(event) => setComposition((current) => ({ ...current, ratio: { width: current.ratio.width, height: Math.min(100, Math.max(1, Number(event.target.value))) } }))} className={fieldClasses} /></label>
             </div>
-            <SharingPosterRatioSuggestion
+            {adaptive ? (
+              <p className="mt-4 text-sm leading-6 text-fg-subtle">{t("ratioAdaptiveHint", { ratio: composition.ratio.width >= composition.ratio.height ? `${(composition.ratio.width / composition.ratio.height).toFixed(2)}:1` : `1:${(composition.ratio.height / composition.ratio.width).toFixed(2)}` })}</p>
+            ) : <SharingPosterRatioSuggestion
               state={ratioSuggestion}
               detecting={detectingSubjects}
               fit={fit}
               onApply={(ratio) => setComposition((current) => ({ ...current, ratio: { width: ratio.width, height: ratio.height } }))}
-            />
+            />}
             <div className="mt-5 grid gap-3">
               <span className="text-sm font-semibold text-fg-muted">{t("photoFit")}</span>
               <div role="group" aria-label={t("photoFit")} className="grid grid-cols-3 gap-2">

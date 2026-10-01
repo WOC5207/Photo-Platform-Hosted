@@ -656,20 +656,26 @@ function placeCollage(tree: CollageTree, x: number, y: number, width: number, ga
 }
 
 /**
- * The collage layout: every photograph whole, in its own shape, with gutters
- * of exactly `gap` between neighbours, packed as one block and centred in
- * `area`. Order is kept. Of the arrangements found, the chosen one balances
- * how much of the area the block covers against how evenly it sizes the
- * photographs for their weights. Spare room is left around the block, where
- * the glass gradient fills it, rather than inside frames.
+ * A packed collage block: `height = slope * width + offset` for any width, and
+ * how unevenly it sizes the photographs for their weights.
  */
-export function calculateCollageLayout(
-  items: PosterLayoutInput[],
-  area: PosterRect,
-  gap: number
-): PosterLayoutRect[] {
-  if (items.length === 0 || area.width <= 0 || area.height <= 0) return [];
-  const safeGap = Math.max(0, gap);
+export interface CollageBlock {
+  slope: number;
+  offset: number;
+  imbalance: number;
+}
+
+/**
+ * The arrangements worth considering for `items` as one collage block, the
+ * most even per shape. Exposed so the adaptive ratio can pick the poster
+ * shape a block fills exactly.
+ */
+export function collageBlocks(items: PosterLayoutInput[], gap: number): CollageBlock[] {
+  return collageTrees(items, Math.max(0, gap));
+}
+
+function collageTrees(items: PosterLayoutInput[], safeGap: number): CollageTree[] {
+  if (items.length === 0) return [];
   const logWeights = items.map((item) => Math.log(homePhotoWeightScale(item.weight)));
   const count = items.length;
   const runs: CollageTree[][][] = Array.from({ length: count }, () => new Array(count + 1));
@@ -695,9 +701,27 @@ export function calculateCollageLayout(
       runs[start][end] = pruneCollage(candidates);
     }
   }
+  return runs[0][count];
+}
 
+/**
+ * The collage layout: every photograph whole, in its own shape, with gutters
+ * of exactly `gap` between neighbours, packed as one block and centred in
+ * `area`. Order is kept. Of the arrangements found, the chosen one balances
+ * how much of the area the block covers against how evenly it sizes the
+ * photographs for their weights. Spare room is left around the block, where
+ * the glass gradient fills it, rather than inside frames.
+ */
+export function calculateCollageLayout(
+  items: PosterLayoutInput[],
+  area: PosterRect,
+  gap: number
+): PosterLayoutRect[] {
+  if (items.length === 0 || area.width <= 0 || area.height <= 0) return [];
+  const safeGap = Math.max(0, gap);
+  const count = items.length;
   let best: { cost: number; tree: CollageTree; width: number } | null = null;
-  for (const tree of runs[0][count]) {
+  for (const tree of collageTrees(items, safeGap)) {
     // As wide as the area allows without overflowing its height.
     let width = area.width;
     if (tree.slope * width + tree.offset > area.height) width = (area.height - tree.offset) / tree.slope;

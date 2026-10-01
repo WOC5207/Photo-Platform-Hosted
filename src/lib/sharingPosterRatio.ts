@@ -1,7 +1,9 @@
 import { homePhotoWeightScale } from "@/lib/homePhotoWeight";
 import {
+  COLLAGE_BALANCE_WEIGHT,
   SUBJECT_CLIP_WEIGHT,
   calculateSharingPosterLayout,
+  collageBlocks,
   containFrame,
   posterLayoutItems,
   resolvePosterCrop,
@@ -51,9 +53,11 @@ export interface NamedPosterRatio extends PosterRatio {
   label: string;
 }
 
-/** The ratios offered as buttons in the editor, in their order there. */
+/**
+ * The fixed ratios offered as buttons in the editor, in their order there,
+ * after the adaptive one that took 1:1's place.
+ */
 export const SHARING_POSTER_RATIO_PRESETS: readonly NamedPosterRatio[] = [
-  { width: 1, height: 1, label: "1:1" },
   { width: 4, height: 5, label: "4:5" },
   { width: 9, height: 16, label: "9:16" },
   { width: 16, height: 9, label: "16:9" },
@@ -63,9 +67,11 @@ export const SHARING_POSTER_RATIO_PRESETS: readonly NamedPosterRatio[] = [
 
 /**
  * Common ratios considered for a suggestion without a button of their own:
- * 3:4, the portrait format of Xiaohongshu, and the camera's native 2:3 and 3:2.
+ * 1:1, 3:4, the portrait format of Xiaohongshu, and the camera's native 2:3
+ * and 3:2.
  */
 export const SHARING_POSTER_RATIO_EXTRAS: readonly NamedPosterRatio[] = [
+  { width: 1, height: 1, label: "1:1" },
   { width: 3, height: 4, label: "3:4" },
   { width: 2, height: 3, label: "2:3" },
   { width: 3, height: 2, label: "3:2" }
@@ -312,4 +318,67 @@ export function suggestPosterRatio(
     evaluatePosterRatio(ratio, photos, style, lineCount)
   );
   return pickPosterRatioSuggestion(current, reports);
+}
+
+/** The adaptive ratio stays between these poster shapes (width / height). */
+export const ADAPTIVE_MIN_ASPECT = 9 / 16;
+export const ADAPTIVE_MAX_ASPECT = 16 / 9;
+/** The shape the adaptive ratio leans toward when arrangements are otherwise close. */
+const ADAPTIVE_TARGET_ASPECT = 4 / 5;
+const ADAPTIVE_SHAPE_WEIGHT = 0.15;
+
+/**
+ * The poster ratio a collage of these photographs fills exactly: no glass
+ * margin beyond the outer margin, whatever their shapes. Each arrangement the
+ * collage would consider is a block whose height follows from the photo
+ * area's width; adding the margins and the credits gives a poster shape.
+ * Among those within 9:16 to 16:9 the most even arrangement wins, leaning
+ * gently toward 4:5 so a row of nine photographs does not become a banner. A
+ * block outside that range is clamped to it, leaving a little glass. Null
+ * when no photograph has known dimensions. Rounded so the stored ratio is
+ * stable from one render to the next.
+ */
+export function adaptivePosterRatio(
+  photos: readonly PosterLayoutSource[],
+  style: PosterRatioStyle,
+  lineCount: number
+): PosterRatio | null {
+  const known = photos.filter((photo) => photo.source && photo.source.width > 0 && photo.source.height > 0);
+  if (known.length === 0) return null;
+  const width = RATIO_REFERENCE_WIDTH;
+  // Everything but the photo area depends only on the width, so measure it
+  // once on a poster tall enough for any block.
+  const probeHeight = width * 20;
+  const probe = sharingPosterFooterGeometry({
+    width,
+    height: probeHeight,
+    lineCount,
+    marginPercent: style.marginPercent,
+    footerTextPercent: style.footerTextPercent,
+    textGapPercent: style.textGapPercent
+  });
+  const nonPhotoHeight = probeHeight - probe.photoArea.height;
+  const gap = (width * style.gapPercent) / 100;
+  const blocks = collageBlocks(posterLayoutItems(photos, "collage"), gap);
+
+  let best: { cost: number; aspect: number } | null = null;
+  for (const block of blocks) {
+    const height = block.slope * probe.photoArea.width + block.offset + nonPhotoHeight;
+    if (!(height > 0)) continue;
+    const natural = width / height;
+    const aspect = Math.min(ADAPTIVE_MAX_ASPECT, Math.max(ADAPTIVE_MIN_ASPECT, natural));
+    // Clamping leaves margin the block cannot fill; count it like the
+    // collage counts uncovered area.
+    const uncovered = Math.abs(Math.log(natural / aspect));
+    const cost =
+      COLLAGE_BALANCE_WEIGHT * block.imbalance +
+      uncovered +
+      ADAPTIVE_SHAPE_WEIGHT * Math.log(aspect / ADAPTIVE_TARGET_ASPECT) ** 2;
+    if (!best || cost < best.cost - 1e-12) best = { cost, aspect };
+  }
+  if (!best) return null;
+  const round = (value: number) => Math.min(100, Math.max(1, Math.round(value * 100) / 100));
+  return best.aspect >= 1
+    ? { width: 100, height: round(100 / best.aspect) }
+    : { width: round(100 * best.aspect), height: 100 };
 }
