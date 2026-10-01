@@ -10,6 +10,7 @@ import {
   SHARING_POSTER_GLASS_DEFAULTS,
   SHARING_POSTER_MAX_CREDIT_LINES,
   SHARING_POSTER_METADATA_KINDS,
+  SHARING_POSTER_SHADOW_DEFAULTS,
   SHARING_POSTER_WHOLE_GLASS_DEFAULTS,
   applySharingPosterSizeRank,
   legacyTextGapPercent,
@@ -734,6 +735,14 @@ export default function SharingPosterEditor({
               <p className="text-sm leading-6 text-fg-subtle">{t(fit === "collage" ? "photoFitCollageHint" : fit === "whole" ? "photoFitWholeHint" : "photoFitFillHint")}</p>
               <RangeField label={t("featherEdges")} value={composition.style.featherPercent ?? 0} min={0} max={25} step={0.5} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, featherPercent: value } }))} />
               <p className="text-sm leading-6 text-fg-subtle">{t("featherEdgesHint")}</p>
+              <RangeField label={t("dropShadow")} value={Math.round((composition.style.shadow?.opacity ?? 0) * 100)} min={0} max={100} step={5} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, shadow: value > 0 ? { ...SHARING_POSTER_SHADOW_DEFAULTS, ...current.style.shadow, opacity: value / 100 } : undefined } }))} />
+              {composition.style.shadow && (
+                <>
+                  <RangeField label={t("dropShadowBlur")} value={composition.style.shadow.blurPercent} min={0} max={5} step={0.1} suffix="%" onChange={(value) => setComposition((current) => current.style.shadow ? { ...current, style: { ...current.style, shadow: { ...current.style.shadow, blurPercent: value } } } : current)} />
+                  <RangeField label={t("dropShadowOffset")} value={composition.style.shadow.offsetPercent} min={0} max={3} step={0.1} suffix="%" onChange={(value) => setComposition((current) => current.style.shadow ? { ...current, style: { ...current.style, shadow: { ...current.style.shadow, offsetPercent: value } } } : current)} />
+                </>
+              )}
+              <p className="text-sm leading-6 text-fg-subtle">{t("dropShadowHint")}</p>
             </div>
             <div className="mt-5 grid gap-4">
               <RangeField label={t("outerMargin")} value={composition.style.marginPercent} min={0} max={12} step={0.25} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, marginPercent: value } }))} />

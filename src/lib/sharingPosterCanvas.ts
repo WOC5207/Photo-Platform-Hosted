@@ -88,6 +88,32 @@ export function featherWidth(rect: PosterRect, featherPercent: number | undefine
   return ((featherPercent ?? 0) / 100) * Math.min(rect.width, rect.height);
 }
 
+export interface PosterShadow {
+  colour: string;
+  blur: number;
+  offsetY: number;
+}
+
+/** The drop shadow in poster pixels, or null when there is none to draw. */
+export function posterShadow(
+  shadow: SharingPosterComposition["style"]["shadow"],
+  width: number
+): PosterShadow | null {
+  if (!shadow || shadow.opacity <= 0) return null;
+  return {
+    colour: `rgba(0, 0, 0, ${shadow.opacity})`,
+    blur: (shadow.blurPercent / 100) * width,
+    offsetY: (shadow.offsetPercent / 100) * width
+  };
+}
+
+function applyShadow(context: CanvasRenderingContext2D, shadow: PosterShadow) {
+  context.shadowColor = shadow.colour;
+  context.shadowBlur = shadow.blur;
+  context.shadowOffsetX = 0;
+  context.shadowOffsetY = shadow.offsetY;
+}
+
 /** Where a layer is drawn on a poster of `width` x `height`. */
 export function posterLayerRect(layer: SharingPosterLayer, width: number, height: number): PosterLayoutRect {
   const drawnWidth = layer.scale * width;
@@ -115,7 +141,9 @@ function drawFeathered(
   image: HTMLImageElement,
   crop: PosterRect,
   rect: PosterRect,
-  feather: number
+  feather: number,
+  /** Draw this far to the left, for a shadow cast back into place. */
+  shiftX = 0
 ): boolean {
   if (typeof document === "undefined") return false;
   const width = Math.max(1, Math.round(rect.width));
@@ -142,7 +170,7 @@ function drawFeathered(
     scratch.fillRect(0, 0, width, height);
   }
   scratch.globalCompositeOperation = "source-over";
-  context.drawImage(featherCanvas, rect.x, rect.y, rect.width, rect.height);
+  context.drawImage(featherCanvas, rect.x - shiftX, rect.y, rect.width, rect.height);
   // Let go of the memory a full-size export's scratch canvas holds.
   featherCanvas.width = 1;
   featherCanvas.height = 1;
@@ -271,8 +299,8 @@ export function renderSharingPoster(
       local: style.background.local,
       // Shadows lift a frame off the glass; around a whole photograph, or one
       // whose edges fade into it, they would draw the very box the gradient
-      // is there to dissolve.
-      shadows: fit === "fill" && !feathered
+      // is there to dissolve. The owner's drop shadow replaces them.
+      shadows: fit === "fill" && !feathered && !style.shadow
     });
   if (!glass) {
     context.fillStyle = style.backgroundColor;
@@ -282,16 +310,40 @@ export function renderSharingPoster(
   const layerRects: PosterLayoutRect[] = [];
   drawLayers(context, layers, "back", width, height, options.layerImages, layerRects);
 
+  // Every shadow goes down before any photograph, so no photograph's shadow
+  // falls across a neighbour. Each is cast by the shape the photograph is
+  // drawn with: a feathered one casts a shadow that fades with its edges, so
+  // it reads as a soft glow rather than a box. The shape itself is drawn off
+  // to the left and only its shadow is offset back into place.
+  const shadow = posterShadow(style.shadow, width);
+  if (shadow) {
+    const shift = width + shadow.blur * 4 + 100;
+    context.save();
+    applyShadow(context, shadow);
+    context.shadowOffsetX = shift;
+    context.fillStyle = "#000000";
+    for (const rect of photoRects) {
+      const image = images.get(rect.id);
+      const crop = crops.get(rect.id);
+      if (!image || !crop) continue;
+      const feather = featherWidth(rect, style.featherPercent);
+      if (feather <= 0 || !drawFeathered(context, image, crop, rect, feather, shift)) {
+        context.fillRect(rect.x - shift, rect.y, rect.width, rect.height);
+      }
+    }
+    context.restore();
+  }
   for (const rect of photoRects) {
     const image = images.get(rect.id);
     const crop = crops.get(rect.id);
+    const feather = image && crop ? featherWidth(rect, style.featherPercent) : 0;
+    const drawn = feather > 0 && image && crop ? drawFeathered(context, image, crop, rect, feather) : false;
     context.save();
     context.beginPath();
     context.rect(rect.x, rect.y, rect.width, rect.height);
     context.clip();
     if (image && crop) {
-      const feather = featherWidth(rect, style.featherPercent);
-      if (feather <= 0 || !drawFeathered(context, image, crop, rect, feather)) {
+      if (!drawn) {
         context.drawImage(
           image,
           crop.x,

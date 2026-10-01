@@ -22,7 +22,7 @@ import {
   type SharingPosterCreditKind,
   type SharingPosterCreditLine
 } from "../src/lib/sharingPoster";
-import { featherStops, featherWidth, posterLayerRect, sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
+import { featherStops, featherWidth, posterLayerRect, posterShadow, sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
 import {
   GLASS_FIELD_WIDTH,
   computeGlassField,
@@ -1258,6 +1258,21 @@ assert.equal(
   assert.ok(Math.abs(wide[8][0] - 0.5) < 1e-9);
   assert.equal(featherWidth({ x: 0, y: 0, width: 400, height: 300 }, 10), 30);
   assert.equal(featherWidth({ x: 0, y: 0, width: 400, height: 300 }, undefined), 0);
+}
+
+// Drop shadow: measured from the poster's width, absent or at 0% not drawn.
+{
+  assert.equal(posterShadow(undefined, 1000), null);
+  assert.equal(posterShadow({ opacity: 0, blurPercent: 2, offsetPercent: 1 }, 1000), null);
+  assert.deepEqual(posterShadow({ opacity: 0.4, blurPercent: 2, offsetPercent: 0.5 }, 1000), { colour: "rgba(0, 0, 0, 0.4)", blur: 20, offsetY: 5 });
+  const preview = posterShadow({ opacity: 0.4, blurPercent: 2, offsetPercent: 0.5 }, 900)!;
+  const exported = posterShadow({ opacity: 0.4, blurPercent: 2, offsetPercent: 0.5 }, 2700)!;
+  assert.equal(exported.blur / preview.blur, 3, "the preview and the export cast the same shadow at their scale");
+  const base = defaultSharingPosterComposition("en", "P");
+  assert.equal(base.style.shadow, undefined, "new posters have no drop shadow");
+  const shadowed = { ...base, style: { ...base.style, shadow: { opacity: 0.35, blurPercent: 1.5, offsetPercent: 0.6 } } };
+  assert.deepEqual(parseSharingPosterComposition(JSON.parse(JSON.stringify(shadowed)), base).style.shadow, shadowed.style.shadow);
+  assert.equal(sharingPosterCompositionSchema.safeParse({ ...shadowed, style: { ...shadowed.style, shadow: { opacity: 2, blurPercent: 1, offsetPercent: 1 } } }).success, false);
 }
 
 // Image layers: placed by centre and width, covering, snapping, and the schema.

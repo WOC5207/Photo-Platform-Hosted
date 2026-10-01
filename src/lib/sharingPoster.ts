@@ -79,6 +79,13 @@ export const sharingPosterBackgroundSchema = z.discriminatedUnion("mode", [
 ]);
 export type SharingPosterBackground = z.infer<typeof sharingPosterBackgroundSchema>;
 
+/** The shadow a poster starts with when the owner first raises its strength. */
+export const SHARING_POSTER_SHADOW_DEFAULTS = {
+  opacity: 0.35,
+  blurPercent: 1.5,
+  offsetPercent: 0.6
+} as const;
+
 /** Values applied when an owner switches a poster to the glass background. */
 export const SHARING_POSTER_GLASS_DEFAULTS = {
   blurPercent: 3,
@@ -251,7 +258,19 @@ const compositionBaseSchema = z.object({
      * background, as a percentage of the photograph's shorter drawn side.
      * Absent or 0 is a hard edge.
      */
-    featherPercent: z.number().min(0).max(25).optional()
+    featherPercent: z.number().min(0).max(25).optional(),
+    /**
+     * A drop shadow under every photograph, cast straight down. `opacity` is
+     * its strength, `blurPercent` its softness and `offsetPercent` how far it
+     * falls, both as percentages of the poster's width. Absent is no shadow.
+     */
+    shadow: z
+      .object({
+        opacity: z.number().min(0).max(1),
+        blurPercent: z.number().min(0).max(5),
+        offsetPercent: z.number().min(0).max(3)
+      })
+      .optional()
   }),
   layers: z
     .array(sharingPosterLayerSchema)
