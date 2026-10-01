@@ -410,7 +410,12 @@
     "photoFitFill": "填满画框（裁切）",
     "photoFitWholeHint": "每张照片都完整显示，不做裁切。背景为流体玻璃时，照片四周和之间的空隙会以照片颜色的渐变填充。",
     "photoFitFillHint": "每张照片会被裁切以填满画框。在预览中拖动照片可以调整裁切位置。",
-    "wholePhotoNoCrop": "这张海报完整显示每张照片，因此无需调整裁切。如需裁切，请在“版式”中将照片适配改为“填满画框”。"
+    "wholePhotoNoCrop": "这张海报完整显示每张照片，因此无需调整裁切。如需裁切，请在“版式”中将照片适配改为“填满画框”。",
+    "photoFitCollage": "拼贴",
+    "photoFitCollageHint": "每张照片都完整显示，画框与照片比例一致，并以均匀间距紧密排列。多余空间留在拼贴四周，由流体玻璃渐变填充。",
+    "ratioSuggestionCovered": "照片区域覆盖：{shown}%",
+    "ratioSuggestionCoveredCompare": "照片区域覆盖：{shown}%（当前 {current}%）",
+    "ratioSuggestionHintCollage": "每张照片都以自身比例的画框完整显示，因此按各常用比例比较拼贴覆盖照片区域的程度。"
   },
   "equipment": {
     "searchEquipment": "搜索库存",

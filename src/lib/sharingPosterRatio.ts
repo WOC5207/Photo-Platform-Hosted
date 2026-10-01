@@ -38,6 +38,8 @@ import {
  * A poster showing whole photographs crops nothing, so there `shown` is the
  * share of each frame its photograph fills and no subjects are counted: the
  * suggestion is then the ratio that leaves the least empty space around them.
+ * A collage's frames are the photographs' own shapes, so there `shown` is the
+ * share of the photo area the packed photographs cover.
  */
 
 export interface PosterRatio {
@@ -75,7 +77,7 @@ export interface PosterRatioStyle {
   gapPercent: number;
   footerTextPercent: number;
   textGapPercent?: number;
-  fit?: "fill" | "whole";
+  fit?: "fill" | "whole" | "collage";
 }
 
 export interface PosterRatioReport {
@@ -173,13 +175,9 @@ export function evaluatePosterRatio(
     textGapPercent: style.textGapPercent
   });
   const gap = (width * style.gapPercent) / 100;
-  const whole = style.fit === "whole";
-  const rectangles = calculateSharingPosterLayout(
-    posterLayoutItems(photos, whole ? "whole" : "fill"),
-    geometry.photoArea,
-    gap,
-    whole ? "whole" : "fill"
-  );
+  const fit = style.fit ?? "fill";
+  const whole = fit !== "fill";
+  const rectangles = calculateSharingPosterLayout(posterLayoutItems(photos, fit), geometry.photoArea, gap, fit);
 
   let totalWeight = 0;
   let cropCost = 0;
@@ -235,6 +233,13 @@ export function evaluatePosterRatio(
   }
 
   const photoShare = photoArea / (width * height);
+  if (fit === "collage" && totalWeight > 0) {
+    // Collage frames are the photographs' own shapes, so every frame is full;
+    // what varies is how much of the photo area the packed block covers.
+    const covered = Math.min(1, photoArea / Math.max(1e-6, geometry.photoArea.width * geometry.photoArea.height));
+    shownSum = covered * totalWeight;
+    cropCost = -Math.log(Math.max(0.01, covered)) * totalWeight;
+  }
   return {
     ratio: { width: ratio.width, height: ratio.height },
     cost: (totalWeight > 0 ? cropCost / totalWeight : 0) + SPACE_WEIGHT * (1 - photoShare),

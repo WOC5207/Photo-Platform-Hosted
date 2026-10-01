@@ -45,9 +45,11 @@ export interface PosterLayoutRect extends PosterRect {
  * How a photograph sits in its frame. "fill" crops it to cover the frame (the
  * original behaviour, and what a poster saved without the setting uses);
  * "whole" shows the entire photograph, scaled to fit inside its frame, and
- * leaves the rest of the frame to the background.
+ * leaves the rest of the frame to the background; "collage" sizes every frame
+ * to its photograph's exact shape and packs them with even gutters (see
+ * `calculateCollageLayout`).
  */
-export type PosterFit = "fill" | "whole";
+export type PosterFit = "fill" | "whole" | "collage";
 
 /** The crop-related part of a composition photo entry. */
 export interface PosterCropEntry {
@@ -204,6 +206,7 @@ export function calculateSharingPosterLayout(
   gap: number,
   fit: PosterFit = "fill"
 ): PosterLayoutRect[] {
+  if (fit === "collage") return calculateCollageLayout(items, area, gap);
   if (items.length === 0 || area.width <= 0 || area.height <= 0) return [];
   const safeGap = Math.max(0, gap);
   const prepared: PreparedItem[] = items.map((item) => ({
@@ -546,4 +549,175 @@ export function sharingPosterFooterGeometry(input: {
     textY,
     footerTooTall: photoHeight < Math.max(height * 0.22, fontSize * 4)
   };
+}
+
+/**
+ * One way to arrange a run of photographs as a shape-exact block. With gutters
+ * of a fixed size a block's height is an affine function of its width,
+ * `height = slope * width + offset`, which composes exactly: side by side the
+ * two children share a height and split the width less one gutter; stacked
+ * they share the width and add their heights and one gutter. `shares` is each
+ * photograph's share of the block's area ignoring gutters, used to judge how
+ * evenly a tree sizes the photographs before it is placed.
+ */
+interface CollageTree {
+  slope: number;
+  offset: number;
+  /** Gutter-free aspect ratio (width / height), for bucketing candidates. */
+  aspect: number;
+  /** ln(area share) of each photograph, in order. */
+  logShares: number[];
+  /** How unevenly the tree sizes its photographs against their weights. */
+  imbalance: number;
+  node: { leaf: number } | { axis: "row" | "column"; first: CollageTree; second: CollageTree };
+}
+
+/** Candidates kept per run of photographs: one per aspect bucket. */
+const COLLAGE_BUCKETS_PER_OCTAVE = 6;
+const COLLAGE_MAX_CANDIDATES = 48;
+/** Weight of size imbalance against empty space when choosing a collage. */
+export const COLLAGE_BALANCE_WEIGHT = 0.6;
+
+function collageImbalance(logShares: number[], logWeights: number[]): number {
+  // Spread of ln(share / weight share): zero when every photograph's area is
+  // exactly proportional to its weight, whatever the overall scale.
+  const deviations = logShares.map((share, index) => share - logWeights[index]);
+  const mean = deviations.reduce((sum, value) => sum + value, 0) / deviations.length;
+  return deviations.reduce((sum, value) => sum + (value - mean) ** 2, 0) / deviations.length;
+}
+
+function combineCollage(
+  first: CollageTree,
+  second: CollageTree,
+  axis: "row" | "column",
+  gap: number,
+  logWeights: number[]
+): CollageTree {
+  let slope: number;
+  let offset: number;
+  let aspect: number;
+  let firstShare: number;
+  if (axis === "row") {
+    // h = s1*w1 + o1 = s2*w2 + o2 with w1 + w2 = w - gap.
+    const total = first.slope + second.slope;
+    slope = (first.slope * second.slope) / total;
+    offset = (first.slope * (second.offset - second.slope * gap) + second.slope * first.offset) / total;
+    aspect = first.aspect + second.aspect;
+    firstShare = first.aspect / aspect;
+  } else {
+    slope = first.slope + second.slope;
+    offset = first.offset + second.offset + gap;
+    aspect = 1 / (1 / first.aspect + 1 / second.aspect);
+    firstShare = (1 / first.aspect) / (1 / first.aspect + 1 / second.aspect);
+  }
+  const logShares = [
+    ...first.logShares.map((share) => share + Math.log(firstShare)),
+    ...second.logShares.map((share) => share + Math.log(1 - firstShare))
+  ];
+  return {
+    slope,
+    offset,
+    aspect,
+    logShares,
+    imbalance: collageImbalance(logShares, logWeights),
+    node: { axis, first, second }
+  };
+}
+
+/** Keep the most even tree in each aspect bucket, then the most even buckets. */
+function pruneCollage(candidates: CollageTree[]): CollageTree[] {
+  const buckets = new Map<number, CollageTree>();
+  for (const candidate of candidates) {
+    const bucket = Math.round(Math.log2(candidate.aspect) * COLLAGE_BUCKETS_PER_OCTAVE);
+    const kept = buckets.get(bucket);
+    if (!kept || candidate.imbalance < kept.imbalance - 1e-12) buckets.set(bucket, candidate);
+  }
+  return [...buckets.values()]
+    .sort((a, b) => a.imbalance - b.imbalance)
+    .slice(0, COLLAGE_MAX_CANDIDATES);
+}
+
+function placeCollage(tree: CollageTree, x: number, y: number, width: number, gap: number, out: PosterRect[]): void {
+  const height = tree.slope * width + tree.offset;
+  if ("leaf" in tree.node) {
+    out[tree.node.leaf] = { x, y, width, height };
+    return;
+  }
+  const { axis, first, second } = tree.node;
+  if (axis === "column") {
+    const firstHeight = first.slope * width + first.offset;
+    placeCollage(first, x, y, width, gap, out);
+    placeCollage(second, x, y + firstHeight + gap, width, gap, out);
+    return;
+  }
+  const firstWidth = (height - first.offset) / first.slope;
+  placeCollage(first, x, y, firstWidth, gap, out);
+  placeCollage(second, x + firstWidth + gap, y, Math.max(0, width - firstWidth - gap), gap, out);
+}
+
+/**
+ * The collage layout: every photograph whole, in its own shape, with gutters
+ * of exactly `gap` between neighbours, packed as one block and centred in
+ * `area`. Order is kept. Of the arrangements found, the chosen one balances
+ * how much of the area the block covers against how evenly it sizes the
+ * photographs for their weights. Spare room is left around the block, where
+ * the glass gradient fills it, rather than inside frames.
+ */
+export function calculateCollageLayout(
+  items: PosterLayoutInput[],
+  area: PosterRect,
+  gap: number
+): PosterLayoutRect[] {
+  if (items.length === 0 || area.width <= 0 || area.height <= 0) return [];
+  const safeGap = Math.max(0, gap);
+  const logWeights = items.map((item) => Math.log(homePhotoWeightScale(item.weight)));
+  const count = items.length;
+  const runs: CollageTree[][][] = Array.from({ length: count }, () => new Array(count + 1));
+  for (let index = 0; index < count; index += 1) {
+    const aspect = Math.max(0.05, items[index].width / Math.max(1, items[index].height));
+    runs[index][index + 1] = [
+      { slope: 1 / aspect, offset: 0, aspect, logShares: [0], imbalance: 0, node: { leaf: index } }
+    ];
+  }
+  for (let length = 2; length <= count; length += 1) {
+    for (let start = 0; start + length <= count; start += 1) {
+      const end = start + length;
+      const runWeights = logWeights.slice(start, end);
+      const candidates: CollageTree[] = [];
+      for (let split = start + 1; split < end; split += 1) {
+        for (const first of runs[start][split]) {
+          for (const second of runs[split][end]) {
+            candidates.push(combineCollage(first, second, "row", safeGap, runWeights));
+            candidates.push(combineCollage(first, second, "column", safeGap, runWeights));
+          }
+        }
+      }
+      runs[start][end] = pruneCollage(candidates);
+    }
+  }
+
+  let best: { cost: number; tree: CollageTree; width: number } | null = null;
+  for (const tree of runs[0][count]) {
+    // As wide as the area allows without overflowing its height.
+    let width = area.width;
+    if (tree.slope * width + tree.offset > area.height) width = (area.height - tree.offset) / tree.slope;
+    if (!(width > 0)) continue;
+    const height = tree.slope * width + tree.offset;
+    const coverage = Math.min(1, (width * height) / (area.width * area.height));
+    const cost = -Math.log(Math.max(0.01, coverage)) + COLLAGE_BALANCE_WEIGHT * tree.imbalance;
+    if (!best || cost < best.cost - 1e-12) best = { cost, tree, width };
+  }
+  if (!best) return calculateSharingPosterLayout(items, area, gap, "whole");
+
+  const height = best.tree.slope * best.width + best.tree.offset;
+  const rects: PosterRect[] = new Array(count);
+  placeCollage(
+    best.tree,
+    area.x + (area.width - best.width) / 2,
+    area.y + (area.height - height) / 2,
+    best.width,
+    safeGap,
+    rects
+  );
+  return rects.map((rect, index) => ({ ...rect, id: items[index].id }));
 }

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import Button from "@/components/ui/Button";
-import type { SharingPosterComposition, SharingPosterResolvedPhoto } from "@/lib/sharingPoster";
+import type { SharingPosterComposition, SharingPosterFit, SharingPosterResolvedPhoto } from "@/lib/sharingPoster";
 import {
   candidatePosterRatios,
   evaluatePosterRatio,
@@ -102,14 +102,14 @@ function percent(value: number): number {
 export default function SharingPosterRatioSuggestion({
   state,
   detecting,
-  whole = false,
+  fit = "fill",
   onApply
 }: {
   state: PosterRatioSuggestionState;
   /** Some photographs are still waiting for subject detection. */
   detecting: boolean;
-  /** The poster shows whole photographs, so the comparison is of empty space, not crops. */
-  whole?: boolean;
+  /** Whole photographs and collages crop nothing, so the comparison is of empty space, not crops. */
+  fit?: SharingPosterFit;
   onApply: (ratio: PosterRatio) => void;
 }) {
   const t = useTranslations("sharingPosters");
@@ -122,6 +122,8 @@ export default function SharingPosterRatioSuggestion({
     );
   }
   const { best, current, switchSuggested } = suggestion;
+  const whole = fit !== "fill";
+  const filledKey = fit === "collage" ? "ratioSuggestionCovered" : "ratioSuggestionFilled";
   const label = posterRatioLabel(best.ratio);
 
   return (
@@ -157,15 +159,15 @@ export default function SharingPosterRatioSuggestion({
         )}
         <li>
           {switchSuggested && percent(best.shown) !== percent(current.shown)
-            ? t(whole ? "ratioSuggestionFilledCompare" : "ratioSuggestionShownCompare", {
+            ? t(whole ? `${filledKey}Compare` : "ratioSuggestionShownCompare", {
                 shown: percent(best.shown),
                 current: percent(current.shown)
               })
-            : t(whole ? "ratioSuggestionFilled" : "ratioSuggestionShown", { shown: percent(best.shown) })}
+            : t(whole ? filledKey : "ratioSuggestionShown", { shown: percent(best.shown) })}
         </li>
       </ul>
       {detecting && !whole && <p className="mt-2 text-xs text-fg-subtle">{t("ratioSuggestionPending")}</p>}
-      <p className="mt-2 text-xs leading-5 text-fg-subtle">{t(whole ? "ratioSuggestionHintWhole" : "ratioSuggestionHint")}</p>
+      <p className="mt-2 text-xs leading-5 text-fg-subtle">{t(fit === "collage" ? "ratioSuggestionHintCollage" : whole ? "ratioSuggestionHintWhole" : "ratioSuggestionHint")}</p>
       {switchSuggested && (
         <Button
           variant="primary"

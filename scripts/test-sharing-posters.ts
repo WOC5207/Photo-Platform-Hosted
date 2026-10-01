@@ -31,6 +31,7 @@ import {
   type GlassPalette
 } from "../src/lib/sharingPosterGlass";
 import {
+  calculateCollageLayout,
   calculateSharingPosterLayout,
   containFrame,
   coverCropFromAnchor,
@@ -934,11 +935,13 @@ assert.equal(
 // saved posters without the setting keep their crop.
 {
   const fresh = defaultSharingPosterComposition("en", "Photographer", [{ id: "a" }]);
-  assert.equal(fresh.style.fit, "whole");
+  assert.equal(fresh.style.fit, "collage");
   assert.equal(fresh.style.background?.mode, "glass");
-  assert.equal(sharingPosterFit(fresh.style), "whole");
+  assert.equal(sharingPosterFit(fresh.style), "collage");
   const reparsed = parseSharingPosterComposition(JSON.parse(JSON.stringify(fresh)), fallback);
-  assert.equal(reparsed.style.fit, "whole");
+  assert.equal(reparsed.style.fit, "collage");
+  const asWhole = parseSharingPosterComposition({ ...fresh, style: { ...fresh.style, fit: "whole" } }, fallback);
+  assert.equal(asWhole.style.fit, "whole");
   const { fit: _fit, ...legacyStyle } = fresh.style;
   const legacy = parseSharingPosterComposition({ ...fresh, style: legacyStyle }, fallback);
   assert.equal(legacy.style.fit, undefined);
@@ -991,6 +994,45 @@ assert.equal(
     assert.ok(Math.min(...areas) / Math.max(...areas) > 0.25, `whole layout of ${count} is lopsided`);
     // Fill mode is untouched by the whole-fit options.
     assert.deepEqual(calculateSharingPosterLayout(items, area, 6), calculateSharingPosterLayout(items, area, 6, "fill"));
+  }
+
+  // Collage frames are exactly each photograph's shape, never overlap, stay
+  // inside the area, sit at least one gutter apart, keep their order's
+  // determinism and cover most of the area.
+  for (let count = 1; count <= shapes.length; count += 1) {
+    const items = shapes.slice(0, count).map(([width, height], index) => ({ id: `c${index}`, width, height, weight: 3 }));
+    const area = { x: 20, y: 20, width: 860, height: 980 };
+    const gutter = 6;
+    const frames = calculateCollageLayout(items, area, gutter);
+    assert.deepEqual(frames, calculateSharingPosterLayout(items, area, gutter, "collage"));
+    assert.deepEqual(frames.map((frame) => frame.id), items.map((item) => item.id));
+    for (let i = 0; i < frames.length; i += 1) {
+      const frame = frames[i];
+      assert.ok(Math.abs(frame.width / frame.height - items[i].width / items[i].height) < 1e-6, `collage frame ${i} of ${count} is not the photo's shape`);
+      assert.ok(frame.x >= area.x - 1e-6 && frame.y >= area.y - 1e-6);
+      assert.ok(frame.x + frame.width <= area.x + area.width + 1e-6);
+      assert.ok(frame.y + frame.height <= area.y + area.height + 1e-6);
+      for (let j = i + 1; j < frames.length; j += 1) {
+        const grown = { x: frame.x - gutter + 1e-6, y: frame.y - gutter + 1e-6, width: frame.width + 2 * gutter - 2e-6, height: frame.height + 2 * gutter - 2e-6 };
+        assert.equal(overlaps(grown, frames[j]), false, `collage frames ${i} and ${j} of ${count} are closer than a gutter`);
+      }
+    }
+    const covered = frames.reduce((sum, frame) => sum + frame.width * frame.height, 0) / (area.width * area.height);
+    if (count >= 4) assert.ok(covered > 0.7, `collage of ${count} covers only ${covered.toFixed(2)}`);
+  }
+  // A collage report measures coverage of the photo area.
+  {
+    const collageReport = evaluatePosterRatio(
+      { width: 4, height: 5 },
+      [
+        { photoId: "a", composition: { weight: 3, focalX: 0.5, focalY: 0.5 }, source: { width: 2000, height: 3000, subject: null } },
+        { photoId: "b", composition: { weight: 3, focalX: 0.5, focalY: 0.5 }, source: { width: 3000, height: 2000, subject: null } }
+      ],
+      { marginPercent: 2.5, gapPercent: 0.65, footerTextPercent: 1.8, textGapPercent: 2.5, fit: "collage" },
+      2
+    );
+    assert.ok(collageReport.shown > 0.3 && collageReport.shown <= 1);
+    assert.equal(collageReport.subjectShown, null);
   }
 
   // Whole photographs cannot clip a subject, so the solver ignores it.

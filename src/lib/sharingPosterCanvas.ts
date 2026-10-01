@@ -107,7 +107,7 @@ export function renderSharingPoster(
     const resolved = photos.find((photo) => photo.photoId === rect.id);
     const image = images.get(rect.id);
     const loaded = Boolean(resolved?.source && image?.complete && image.naturalWidth > 0);
-    if (fit === "whole" && resolved?.source) {
+    if (fit !== "fill" && resolved?.source) {
       const sourceWidth = resolved.source.width > 0 ? resolved.source.width : image?.naturalWidth ?? 1;
       const sourceHeight = resolved.source.height > 0 ? resolved.source.height : image?.naturalHeight ?? 1;
       photoRects.push({

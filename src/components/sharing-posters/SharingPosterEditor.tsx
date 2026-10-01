@@ -22,6 +22,7 @@ import {
   withSharingPosterMetadata,
   type SharingPosterComposition,
   type SharingPosterCreditKind,
+  type SharingPosterFit,
   type SharingPosterCreditLine,
   type SharingPosterMetadata,
   type SharingPosterPhotoValue,
@@ -263,14 +264,14 @@ export default function SharingPosterEditor({
   }
 
   /** Whole photographs leave space in their frames, which a solid fill would turn back into boxes, so they bring the glass with them. */
-  function setPhotoFit(mode: "fill" | "whole") {
+  function setPhotoFit(mode: SharingPosterFit) {
     setComposition((current) => ({
       ...current,
       style: {
         ...current.style,
         fit: mode,
         background:
-          mode === "whole" && current.style.background?.mode !== "glass"
+          mode !== "fill" && current.style.background?.mode !== "glass"
             ? { mode: "glass", ...SHARING_POSTER_WHOLE_GLASS_DEFAULTS }
             : current.style.background
       }
@@ -542,7 +543,7 @@ export default function SharingPosterEditor({
                   <span className="flex justify-between"><span>{t("visualWeight")}</span><span className="font-meta">{selectedPhoto.composition.weight}</span></span>
                   <input type="range" min="1" max="5" step="1" value={selectedPhoto.composition.weight} onChange={(event) => updatePhoto(selectedPhoto.photoId, (photo) => ({ ...photo, weight: Number(event.target.value) }))} className="min-h-11 accent-accent" />
                 </label>
-                {fit === "whole" ? (
+                {fit !== "fill" ? (
                   <p className="mt-4 text-xs leading-5 text-fg-subtle">{t("wholePhotoNoCrop")}</p>
                 ) : (
                   <>
@@ -590,18 +591,18 @@ export default function SharingPosterEditor({
             <SharingPosterRatioSuggestion
               state={ratioSuggestion}
               detecting={detectingSubjects}
-              whole={fit === "whole"}
+              fit={fit}
               onApply={(ratio) => setComposition((current) => ({ ...current, ratio: { width: ratio.width, height: ratio.height } }))}
             />
             <div className="mt-5 grid gap-3">
               <span className="text-sm font-semibold text-fg-muted">{t("photoFit")}</span>
-              <div role="group" aria-label={t("photoFit")} className="grid grid-cols-2 gap-2">
-                {(["whole", "fill"] as const).map((mode) => {
+              <div role="group" aria-label={t("photoFit")} className="grid grid-cols-3 gap-2">
+                {(["collage", "whole", "fill"] as const).map((mode) => {
                   const active = fit === mode;
-                  return <button key={mode} type="button" aria-pressed={active} onClick={() => setPhotoFit(mode)} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${active ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t(mode === "whole" ? "photoFitWhole" : "photoFitFill")}</button>;
+                  return <button key={mode} type="button" aria-pressed={active} onClick={() => setPhotoFit(mode)} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${active ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t(mode === "collage" ? "photoFitCollage" : mode === "whole" ? "photoFitWhole" : "photoFitFill")}</button>;
                 })}
               </div>
-              <p className="text-sm leading-6 text-fg-subtle">{t(fit === "whole" ? "photoFitWholeHint" : "photoFitFillHint")}</p>
+              <p className="text-sm leading-6 text-fg-subtle">{t(fit === "collage" ? "photoFitCollageHint" : fit === "whole" ? "photoFitWholeHint" : "photoFitFillHint")}</p>
             </div>
             <div className="mt-5 grid gap-4">
               <RangeField label={t("outerMargin")} value={composition.style.marginPercent} min={0} max={12} step={0.25} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, marginPercent: value } }))} />

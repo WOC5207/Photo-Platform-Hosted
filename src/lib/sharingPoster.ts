@@ -87,8 +87,10 @@ export const SHARING_POSTER_WHOLE_GLASS_DEFAULTS = {
   tintOpacity: 0.25
 } as const;
 
+export type SharingPosterFit = "fill" | "whole" | "collage";
+
 /** How a poster draws its photographs; absent is the original crop. */
-export function sharingPosterFit(style: { fit?: "fill" | "whole" }): "fill" | "whole" {
+export function sharingPosterFit(style: { fit?: SharingPosterFit }): SharingPosterFit {
   return style.fit ?? "fill";
 }
 
@@ -164,10 +166,12 @@ const compositionBaseSchema = z.object({
     textGapPercent: z.number().min(0).max(8).optional(),
     background: sharingPosterBackgroundSchema.optional(),
     /**
-     * "whole" shows every photograph uncropped inside its frame; "fill" crops
-     * to cover it. Absent means "fill", how posters were drawn before.
+     * "whole" shows every photograph uncropped inside its frame; "collage"
+     * also keeps them whole, in frames of their exact shape packed with even
+     * gutters; "fill" crops to cover the frame. Absent means "fill", how
+     * posters were drawn before.
      */
-    fit: z.enum(["fill", "whole"]).optional()
+    fit: z.enum(["fill", "whole", "collage"]).optional()
   }),
   photos: z
     .array(sharingPosterPhotoSchema)
@@ -314,10 +318,10 @@ export function defaultSharingPosterComposition(
       textColor: "#211d18",
       footerTextPercent: 1.8,
       textGapPercent: 2.5,
-      // New posters keep every photograph whole and let the glass gradient
-      // fill the space around them, so no frame edge reads as a hard box.
+      // New posters keep every photograph whole, packed in frames of their own
+      // shape, and let the glass gradient fill the space around them.
       background: { mode: "glass", ...SHARING_POSTER_WHOLE_GLASS_DEFAULTS },
-      fit: "whole"
+      fit: "collage"
     },
     photos: photoIds
       .filter(({ id }) => id && !seen.has(id) && seen.add(id))

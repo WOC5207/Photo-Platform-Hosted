@@ -410,7 +410,12 @@
     "photoFitFill": "Fill frame (crop)",
     "photoFitWholeHint": "Every photograph is shown in full, never cropped. The space around and between them is filled with a gradient of their colours when the background is liquid glass.",
     "photoFitFillHint": "Each photograph is cropped to fill its frame. Drag a photograph in the preview to move its crop.",
-    "wholePhotoNoCrop": "This poster shows every photograph whole, so there is no crop to adjust. Switch Photo fit to Fill frame in Layout to crop."
+    "wholePhotoNoCrop": "This poster shows every photograph whole, so there is no crop to adjust. Switch Photo fit to Fill frame in Layout to crop.",
+    "photoFitCollage": "Collage",
+    "photoFitCollageHint": "Every photograph is shown in full, in a frame of its own shape, packed with even gaps. Spare room goes around the collage, where the liquid glass gradient fills it.",
+    "ratioSuggestionCovered": "Photo area covered: {shown}%",
+    "ratioSuggestionCoveredCompare": "Photo area covered: {shown}%, against {current}% now",
+    "ratioSuggestionHintCollage": "Every photograph is shown whole in a frame of its own shape, so the common ratios are compared by how much of the photo area the packed collage covers."
   },
   "equipment": {
     "searchEquipment": "Search inventory",

@@ -124,7 +124,7 @@ export default function SharingPosterCanvas({
       );
     onSelectPhoto(rect?.id ?? null);
     // A whole photograph has no crop to drag.
-    if (!rect || composition.style.fit === "whole") return;
+    if (!rect || (composition.style.fit ?? "fill") !== "fill") return;
     const photo = photos.find((candidate) => candidate.photoId === rect.id);
     const image = images.get(rect.id);
     if (!photo?.source || !image?.complete || image.naturalWidth === 0) return;
