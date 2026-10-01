@@ -1,4 +1,3 @@
-import { homePhotoWeightScale } from "@/lib/homePhotoWeight";
 import {
   COLLAGE_BALANCE_WEIGHT,
   SUBJECT_CLIP_WEIGHT,
@@ -6,6 +5,7 @@ import {
   collageBlocks,
   containFrame,
   posterLayoutItems,
+  posterWeightScale,
   resolvePosterCrop,
   sharingPosterFooterGeometry,
   type PosterLayoutSource
@@ -197,7 +197,7 @@ export function evaluatePosterRatio(
     const photo = photos.find((candidate) => candidate.photoId === rect.id);
     const source = photo?.source;
     if (!photo || !source || source.width <= 0 || source.height <= 0) continue;
-    const weight = homePhotoWeightScale(photo.composition.weight);
+    const weight = posterWeightScale(photo.composition.weight);
     if (whole) {
       const placed = containFrame(source.width, source.height, rect);
       const filled = Math.min(1, (placed.width * placed.height) / Math.max(1e-6, rect.width * rect.height));

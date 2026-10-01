@@ -1,4 +1,20 @@
-import { homePhotoWeightScale } from "@/lib/homePhotoWeight";
+import {
+  HOME_PHOTO_WEIGHT_FALLBACK,
+  HOME_PHOTO_WEIGHT_MAX,
+  HOME_PHOTO_WEIGHT_MIN,
+  homePhotoWeightScale
+} from "@/lib/homePhotoWeight";
+
+/**
+ * A poster photograph's target-area multiplier: the homepage's 1-5 scale, but
+ * unrounded, so the fractional weights a size ranking gives keep their order.
+ * Whole weights scale exactly as before.
+ */
+export function posterWeightScale(weight: number): number {
+  if (!Number.isFinite(weight)) return homePhotoWeightScale(HOME_PHOTO_WEIGHT_FALLBACK);
+  const clamped = Math.min(HOME_PHOTO_WEIGHT_MAX, Math.max(HOME_PHOTO_WEIGHT_MIN, weight));
+  return 0.75 + (clamped - HOME_PHOTO_WEIGHT_MIN) * 0.25;
+}
 
 export interface PosterRect {
   x: number;
@@ -214,7 +230,7 @@ export function calculateSharingPosterLayout(
     width: item.width,
     height: item.height,
     imageAspect: Math.max(0.01, item.width / Math.max(1, item.height)),
-    weightScale: homePhotoWeightScale(item.weight),
+    weightScale: posterWeightScale(item.weight),
     subject: item.subject ?? null
   }));
 
@@ -676,7 +692,7 @@ export function collageBlocks(items: PosterLayoutInput[], gap: number): CollageB
 
 function collageTrees(items: PosterLayoutInput[], safeGap: number): CollageTree[] {
   if (items.length === 0) return [];
-  const logWeights = items.map((item) => Math.log(homePhotoWeightScale(item.weight)));
+  const logWeights = items.map((item) => Math.log(posterWeightScale(item.weight)));
   const count = items.length;
   const runs: CollageTree[][][] = Array.from({ length: count }, () => new Array(count + 1));
   for (let index = 0; index < count; index += 1) {

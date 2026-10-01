@@ -11,6 +11,7 @@ import {
   SHARING_POSTER_MAX_CREDIT_LINES,
   SHARING_POSTER_METADATA_KINDS,
   SHARING_POSTER_WHOLE_GLASS_DEFAULTS,
+  applySharingPosterSizeRank,
   legacyTextGapPercent,
   moveSharingPosterCreditLine,
   sharingPosterCreditLabels,
@@ -140,6 +141,12 @@ export default function SharingPosterEditor({
       ? ratioSuggestion.suggestion.best.ratio
       : null;
   const fit = sharingPosterFit(composition.style);
+  const sizeRank = composition.sizeRank ?? null;
+  // A ranking follows photographs as they are added and removed, and every
+  // change to it rewrites the weights; unchanged, this sets nothing.
+  useEffect(() => {
+    setComposition((current) => applySharingPosterSizeRank(current));
+  }, [composition.photos, composition.sizeRank]);
   const detectingSubjects = photos.some((photo) => photo.source?.subjectState === "pending");
   const pixelSize = sharingPosterPixelSize(composition);
   const unresolved = photos.filter((photo) => !photo.source);
@@ -350,6 +357,38 @@ export default function SharingPosterEditor({
     setComposition((current) => ({ ...current, photos: current.photos.filter((photo) => photo.photoId !== id) }));
     if (selectedPhotoId === id) setSelectedPhotoId(next[0]?.photoId ?? null);
     syncMetadata(next);
+  }
+
+  /**
+   * Ranking starts from the sizes the sliders give now, largest first (ties
+   * keep poster order); going back to sliders keeps each photograph's size,
+   * rounded to the slider's steps.
+   */
+  function setSizeMode(mode: "weight" | "rank") {
+    setComposition((current) => {
+      if (mode === "rank") {
+        if (current.sizeRank) return current;
+        const rank = current.photos
+          .map((photo, index) => ({ id: photo.photoId, weight: photo.weight, index }))
+          .sort((a, b) => b.weight - a.weight || a.index - b.index)
+          .map(({ id }) => id);
+        return applySharingPosterSizeRank({ ...current, sizeRank: rank });
+      }
+      const { sizeRank: _sizeRank, ...rest } = current;
+      return { ...rest, photos: current.photos.map((photo) => ({ ...photo, weight: Math.round(photo.weight) })) };
+    });
+  }
+
+  function moveSizeRank(id: string, direction: -1 | 1) {
+    setComposition((current) => {
+      if (!current.sizeRank) return current;
+      const rank = [...current.sizeRank];
+      const index = rank.indexOf(id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= rank.length) return current;
+      [rank[index], rank[target]] = [rank[target], rank[index]];
+      return applySharingPosterSizeRank({ ...current, sizeRank: rank });
+    });
   }
 
   function movePhoto(id: string, direction: -1 | 1) {
@@ -564,13 +603,53 @@ export default function SharingPosterEditor({
           <section role="tabpanel" hidden={activeTab !== "photos"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
             <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("photosTitle")}</h2>
             <p className="mt-1 text-sm leading-6 text-fg-subtle">{t("photosHint")}</p>
+            {photos.length > 1 && (
+              <div className="mt-4 rounded-xl border border-border bg-raised p-4">
+                <h3 className="font-semibold">{t("photoSizes")}</h3>
+                <div role="group" aria-label={t("photoSizes")} className="mt-3 grid grid-cols-2 gap-2">
+                  {(["rank", "weight"] as const).map((mode) => {
+                    const active = (sizeRank ? "rank" : "weight") === mode;
+                    return <button key={mode} type="button" aria-pressed={active} onClick={() => setSizeMode(mode)} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${active ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t(mode === "rank" ? "photoSizesRank" : "photoSizesWeight")}</button>;
+                  })}
+                </div>
+                <p className="mt-2 text-xs leading-5 text-fg-subtle">{t(sizeRank ? "photoSizesRankHint" : "photoSizesWeightHint")}</p>
+                {sizeRank && (
+                  <ol className="mt-3 grid gap-2" aria-label={t("photoSizesRank")}>
+                    {sizeRank.map((id, index) => {
+                      const photo = photos.find((candidate) => candidate.photoId === id);
+                      if (!photo) return null;
+                      return (
+                        <li key={id} className={`grid grid-cols-[auto_3rem_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg border bg-surface p-2 ${selectedPhotoId === id ? "border-accent" : "border-border"}`}>
+                          <span className="font-meta w-6 text-center text-xs text-accent">{index + 1}</span>
+                          <button type="button" onClick={() => setSelectedPhotoId(id)} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" aria-label={t("selectRankedPhoto", { rank: index + 1 })}>
+                            {photo.source ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={photo.source.thumbUrl} alt="" className="ui-image-frame aspect-square w-12 rounded-md object-cover" />
+                            ) : (
+                              <span className="flex aspect-square w-12 items-center justify-center rounded-md bg-control text-[0.625rem] text-danger">{t("unavailable")}</span>
+                            )}
+                          </button>
+                          <span className="truncate text-xs text-fg-subtle">{index === 0 ? t("photoSizesLargest") : index === sizeRank.length - 1 ? t("photoSizesSmallest") : ""}</span>
+                          <button type="button" disabled={index === 0} aria-label={t("rankLarger")} onClick={() => moveSizeRank(id, -1)} className="min-h-11 min-w-11 rounded-md text-fg-subtle hover:bg-accent-surface disabled:opacity-30 sm:min-h-10 sm:min-w-10">↑</button>
+                          <button type="button" disabled={index === sizeRank.length - 1} aria-label={t("rankSmaller")} onClick={() => moveSizeRank(id, 1)} className="min-h-11 min-w-11 rounded-md text-fg-subtle hover:bg-accent-surface disabled:opacity-30 sm:min-h-10 sm:min-w-10">↓</button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+              </div>
+            )}
             {selectedPhoto && (
               <div className="mt-4 rounded-xl border border-border bg-raised p-4">
                 <div className="flex items-center justify-between gap-3"><h3 className="font-semibold">{t("selectedPhoto")}</h3><span className="font-meta text-xs text-accent">{composition.photos.findIndex((photo) => photo.photoId === selectedPhoto.photoId) + 1} / {photos.length}</span></div>
-                <label className="mt-4 grid gap-2 text-sm font-semibold text-fg-muted">
-                  <span className="flex justify-between"><span>{t("visualWeight")}</span><span className="font-meta">{selectedPhoto.composition.weight}</span></span>
-                  <input type="range" min="1" max="5" step="1" value={selectedPhoto.composition.weight} onChange={(event) => updatePhoto(selectedPhoto.photoId, (photo) => ({ ...photo, weight: Number(event.target.value) }))} className="min-h-11 accent-accent" />
-                </label>
+                {sizeRank ? (
+                  <p className="mt-4 text-sm text-fg-muted">{t("photoSizesRankOf", { rank: sizeRank.indexOf(selectedPhoto.photoId) + 1, count: sizeRank.length })}</p>
+                ) : (
+                  <label className="mt-4 grid gap-2 text-sm font-semibold text-fg-muted">
+                    <span className="flex justify-between"><span>{t("visualWeight")}</span><span className="font-meta">{selectedPhoto.composition.weight}</span></span>
+                    <input type="range" min="1" max="5" step="1" value={selectedPhoto.composition.weight} onChange={(event) => updatePhoto(selectedPhoto.photoId, (photo) => ({ ...photo, weight: Number(event.target.value) }))} className="min-h-11 accent-accent" />
+                  </label>
+                )}
                 {fit !== "fill" ? (
                   <p className="mt-4 text-xs leading-5 text-fg-subtle">{t("wholePhotoNoCrop")}</p>
                 ) : (

@@ -4,10 +4,12 @@ import {
   SHARING_POSTER_MAX_CREDIT_LINES,
   SHARING_POSTER_MAX_EDGE,
   SHARING_POSTER_MAX_PIXELS,
+  applySharingPosterSizeRank,
   defaultSharingPosterComposition,
   legacyTextGapPercent,
   moveSharingPosterCreditLine,
   parseSharingPosterComposition,
+  rankedSharingPosterWeight,
   sharingPosterCompositionSchema,
   sharingPosterFit,
   sharingPosterCreditLabel,
@@ -32,6 +34,7 @@ import {
 } from "../src/lib/sharingPosterGlass";
 import {
   calculateCollageLayout,
+  posterWeightScale,
   calculateSharingPosterLayout,
   creditLineX,
   creditsSpan,
@@ -1127,6 +1130,51 @@ assert.equal(
     }).success,
     false
   );
+}
+
+// A size ranking turns the photographs' order, largest first, into evenly
+// spaced weights from 5 to 1, follows photographs as they come and go, and
+// survives a save; the poster scale keeps the fractional steps apart.
+{
+  assert.equal(rankedSharingPosterWeight(0, 1), 3);
+  assert.equal(rankedSharingPosterWeight(0, 3), 5);
+  assert.equal(rankedSharingPosterWeight(1, 3), 3);
+  assert.equal(rankedSharingPosterWeight(2, 3), 1);
+  for (let count = 2; count <= 9; count += 1) {
+    for (let index = 1; index < count; index += 1) {
+      assert.ok(rankedSharingPosterWeight(index, count) < rankedSharingPosterWeight(index - 1, count));
+      assert.ok(posterWeightScale(rankedSharingPosterWeight(index, count)) < posterWeightScale(rankedSharingPosterWeight(index - 1, count)));
+    }
+  }
+  for (let weight = 1; weight <= 5; weight += 1) assert.equal(posterWeightScale(weight), 0.75 + (weight - 1) * 0.25);
+
+  const base = defaultSharingPosterComposition("en", "P", [{ id: "a" }, { id: "b" }, { id: "c" }]);
+  assert.equal(applySharingPosterSizeRank(base), base, "no ranking leaves the weights alone");
+  const ranked = applySharingPosterSizeRank({ ...base, sizeRank: ["c", "a", "b"] });
+  assert.deepEqual(ranked.photos.map((photo) => [photo.photoId, photo.weight]), [["a", 3], ["b", 1], ["c", 5]]);
+  assert.equal(applySharingPosterSizeRank(ranked), ranked, "an applied ranking is stable");
+
+  const removed = applySharingPosterSizeRank({ ...ranked, photos: ranked.photos.filter((photo) => photo.photoId !== "a") });
+  assert.deepEqual(removed.sizeRank, ["c", "b"]);
+  assert.deepEqual(removed.photos.map((photo) => photo.weight), [1, 5]);
+  const added = applySharingPosterSizeRank({ ...ranked, photos: [...ranked.photos, { ...ranked.photos[0], photoId: "d", weight: 5 }] });
+  assert.deepEqual(added.sizeRank, ["c", "a", "b", "d"]);
+  assert.equal(added.photos.find((photo) => photo.photoId === "d")?.weight, 1, "a new photograph joins at the small end");
+
+  const fallback = defaultSharingPosterComposition("en", "P");
+  const reparsed = parseSharingPosterComposition(JSON.parse(JSON.stringify(added)), fallback);
+  assert.deepEqual(reparsed.sizeRank, added.sizeRank);
+  assert.deepEqual(reparsed.photos.map((photo) => photo.weight), added.photos.map((photo) => photo.weight));
+  assert.equal(sharingPosterCompositionSchema.safeParse({ ...added, sizeRank: Array.from({ length: 10 }, (_, i) => `p${i}`) }).success, false);
+
+  // Ranked first is drawn largest, ranked last smallest, in a collage of equal shapes.
+  const items = ["a", "b", "c", "d"].map((id, index) => ({ id, width: 3000, height: 2000, weight: rankedSharingPosterWeight(index, 4) }));
+  const frames = calculateCollageLayout(items, { x: 0, y: 0, width: 900, height: 1100 }, 6);
+  const area = (id: string) => {
+    const frame = frames.find((candidate) => candidate.id === id)!;
+    return frame.width * frame.height;
+  };
+  assert.ok(area("a") > area("d"), "the photograph ranked first is drawn larger than the one ranked last");
 }
 
 console.log("Sharing poster layout and composition tests passed.");

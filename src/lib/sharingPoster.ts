@@ -42,7 +42,9 @@ export type SharingPosterCrop = z.infer<typeof sharingPosterCropSchema>;
 
 export const sharingPosterPhotoSchema = z.object({
   photoId: z.string().min(1).max(100),
-  weight: z.number().int().min(1).max(5),
+  // Whole steps from the slider; a size ranking spreads fractional weights
+  // evenly between 5 and 1 (see applySharingPosterSizeRank).
+  weight: z.number().min(1).max(5),
   focalX: z.number().min(0).max(1),
   focalY: z.number().min(0).max(1),
   // Optional so posters saved before crop modes existed still validate.
@@ -158,6 +160,12 @@ const compositionBaseSchema = z.object({
      */
     adaptive: z.boolean().optional()
   }),
+  /**
+   * Photo ids from the largest to the smallest the owner wants them drawn.
+   * Present, it sets every photograph's weight from its place (see
+   * applySharingPosterSizeRank) instead of the per-photo slider.
+   */
+  sizeRank: z.array(z.string().min(1).max(100)).max(SHARING_POSTER_MAX_PHOTOS).optional(),
   style: z.object({
     marginPercent: z.number().min(0).max(12),
     gapPercent: z.number().min(0).max(5),
@@ -236,6 +244,41 @@ export const sharingPosterCompositionSchema = z.union([
 
 export type SharingPosterComposition = z.infer<typeof compositionSchemaV2>;
 export type SharingPosterPhoto = z.infer<typeof sharingPosterPhotoSchema>;
+
+/**
+ * The weight a place in the size ranking gives: the largest 5, the smallest 1
+ * and the rest evenly between, so every step down the list is a step smaller.
+ * A lone photograph keeps the middle weight.
+ */
+export function rankedSharingPosterWeight(index: number, count: number): number {
+  if (count <= 1) return HOME_PHOTO_WEIGHT_FALLBACK;
+  return 5 - (4 * index) / (count - 1);
+}
+
+/**
+ * Keep a size ranking in step with the poster's photographs and write the
+ * weights it gives. Removed photographs leave the ranking; added ones join it
+ * at the small end, in poster order. Returns the same object when nothing
+ * changes, so it is safe to apply on every edit.
+ */
+export function applySharingPosterSizeRank(composition: SharingPosterComposition): SharingPosterComposition {
+  const current = composition.sizeRank;
+  if (!current) return composition;
+  const present = new Set(composition.photos.map((photo) => photo.photoId));
+  const rank = [...new Set(current)].filter((id) => present.has(id));
+  for (const photo of composition.photos) if (!rank.includes(photo.photoId)) rank.push(photo.photoId);
+  const weights = new Map(rank.map((id, index) => [id, rankedSharingPosterWeight(index, rank.length)]));
+  const unchanged =
+    rank.length === current.length &&
+    rank.every((id, index) => id === current[index]) &&
+    composition.photos.every((photo) => photo.weight === weights.get(photo.photoId));
+  if (unchanged) return composition;
+  return {
+    ...composition,
+    sizeRank: rank,
+    photos: composition.photos.map((photo) => ({ ...photo, weight: weights.get(photo.photoId) ?? photo.weight }))
+  };
+}
 
 /** "pending" = not detected yet (or by an older algorithm); "none" = attempted, nothing found. */
 export type SharingPosterSubjectState = "pending" | "detected" | "none";
