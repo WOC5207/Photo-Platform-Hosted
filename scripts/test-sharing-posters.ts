@@ -4,11 +4,16 @@ import {
   SHARING_POSTER_MAX_CREDIT_LINES,
   SHARING_POSTER_MAX_EDGE,
   SHARING_POSTER_MAX_PIXELS,
+  applySharingPosterSizeRank,
+  coverSharingPosterLayerScale,
   defaultSharingPosterComposition,
+  snapSharingPosterLayerCentre,
   legacyTextGapPercent,
   moveSharingPosterCreditLine,
   parseSharingPosterComposition,
+  rankedSharingPosterWeight,
   sharingPosterCompositionSchema,
+  sharingPosterFit,
   sharingPosterCreditLabel,
   sharingPosterCreditLines,
   sharingPosterCreditMetadataValue,
@@ -17,12 +22,14 @@ import {
   type SharingPosterCreditKind,
   type SharingPosterCreditLine
 } from "../src/lib/sharingPoster";
-import { sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
+import { featherStops, featherWidth, posterLayerRect, posterShadow, sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
 import {
   GLASS_FIELD_WIDTH,
   computeGlassField,
   computeGlassShadow,
+  glassEdgeStrips,
   glassGrainTile,
+  stripColour,
   glassPaletteFromPixels,
   glassPixelWeight,
   oklabToSrgb,
@@ -30,8 +37,16 @@ import {
   type GlassPalette
 } from "../src/lib/sharingPosterGlass";
 import {
+  calculateCollageLayout,
+  posterWeightScale,
   calculateSharingPosterLayout,
+  creditLineX,
+  creditsSpan,
+  snapCreditsPosition,
+  sizeOrderCost,
+  containFrame,
   coverCropFromAnchor,
+  gatherAlignment,
   coverCropSource,
   cropRectToAnchor,
   legacyFocalToAnchor,
@@ -40,7 +55,10 @@ import {
   type PosterLayoutSource
 } from "../src/lib/sharingPosterLayout";
 import {
+  ADAPTIVE_MAX_ASPECT,
+  ADAPTIVE_MIN_ASPECT,
   SHARING_POSTER_RATIO_EXTRAS,
+  adaptivePosterRatio,
   SHARING_POSTER_RATIO_PRESETS,
   candidatePosterRatios,
   evaluatePosterRatio,
@@ -362,6 +380,38 @@ const field = computeGlassField(posterW, posterH, pair, 3);
   assert.ok(worst <= 4, `field moved ${worst} levels for ±4 of pixel noise`);
 }
 
+// Local colour: a photograph red on its left half and blue on its right.
+// Without it, the margin above is one colour all along; with it, the margin
+// above the red half is redder than the margin above the blue half.
+{
+  const split = glassPaletteFromPixels(fill(60, 40, (x) => (x < 30 ? RED : BLUE)), 60, 40)!;
+  const frames = [{ rect: { x: 200, y: 300, width: 600, height: 400 }, palette: split }];
+  const red = srgbToOklab(...RED);
+  const lean = (local: number) => {
+    const localField = computeGlassField(posterW, posterH, frames, 3, GLASS_FIELD_WIDTH, local);
+    const leftAbove = labDistance(fieldLab(localField, posterW, 300, 260), red);
+    const rightAbove = labDistance(fieldLab(localField, posterW, 700, 260), red);
+    return rightAbove - leftAbove;
+  };
+  assert.ok(lean(1) > lean(0) + 0.02, `local colour ${lean(1)} vs side average ${lean(0)}`);
+  assert.ok(lean(1) > 0.05, `the margin above the red half is redder (${lean(1)})`);
+  // Absent and 0 are the gradient as it was.
+  assert.deepEqual(computeGlassField(posterW, posterH, pair, 3, GLASS_FIELD_WIDTH, 0).rgba, field.rgba);
+
+  // Strips run along each side; at 0 every cell is the side's average.
+  const flat = glassEdgeStrips(split, 0);
+  for (const colour of flat.top) assert.deepEqual(colour, split.edges.top);
+  const strips = glassEdgeStrips(split, 1);
+  assert.equal(strips.top.length, split.gridColumns);
+  assert.equal(strips.left.length, split.gridRows);
+  assert.ok(labDistance(strips.top[0], red) < labDistance(strips.top[strips.top.length - 1], red));
+  // Between cell centres the colour is interpolated, and clamps at the ends.
+  assert.deepEqual(stripColour(strips.top, 0), strips.top[0]);
+  assert.deepEqual(stripColour(strips.top, 1), strips.top[strips.top.length - 1]);
+  const middle = stripColour(strips.top, 0.5);
+  assert.ok(labDistance(middle, strips.top[0]) > 0 && labDistance(middle, strips.top[strips.top.length - 1]) > 0);
+}
+
 // More softness carries each frame's colour further, so close to the red frame
 // in the gap the blue one shows through more.
 {
@@ -556,7 +606,8 @@ assert.ok(!sameRatio({ width: 3, height: 4 }, { width: 4, height: 3 }));
 {
   const standard = candidatePosterRatios({ width: 8, height: 10 });
   assert.equal(standard.length, SHARING_POSTER_RATIO_PRESETS.length + SHARING_POSTER_RATIO_EXTRAS.length);
-  assert.deepEqual(standard[0], { width: 1, height: 1 });
+  assert.deepEqual(standard[0], { width: 4, height: 5 });
+  assert.ok(standard.some((ratio) => sameRatio(ratio, { width: 1, height: 1 })), "1:1 is still considered for suggestions");
   const custom = candidatePosterRatios({ width: 7, height: 10 });
   assert.equal(custom.length, standard.length + 1);
   assert.deepEqual(custom.at(-1), { width: 7, height: 10 });
@@ -925,6 +976,336 @@ assert.equal(
   assert.equal(none.footerTooTall, false);
   const legacyNone = sharingPosterFooterGeometry({ width: 1000, height: 1250, lineCount: 0, marginPercent: 2.5, footerTextPercent: 1.8 });
   assert.equal(legacyNone.photoArea.height, 1250 - 50);
+}
+
+// Whole-photo fit: new posters show every photograph uncropped over glass;
+// saved posters without the setting keep their crop.
+{
+  const fresh = defaultSharingPosterComposition("en", "Photographer", [{ id: "a" }]);
+  assert.equal(fresh.style.fit, "collage");
+  assert.equal(fresh.style.background?.mode, "glass");
+  assert.equal(sharingPosterFit(fresh.style), "collage");
+  const reparsed = parseSharingPosterComposition(JSON.parse(JSON.stringify(fresh)), fallback);
+  assert.equal(reparsed.style.fit, "collage");
+  const asWhole = parseSharingPosterComposition({ ...fresh, style: { ...fresh.style, fit: "whole" } }, fallback);
+  assert.equal(asWhole.style.fit, "whole");
+  const { fit: _fit, ...legacyStyle } = fresh.style;
+  const legacy = parseSharingPosterComposition({ ...fresh, style: legacyStyle }, fallback);
+  assert.equal(legacy.style.fit, undefined);
+  assert.equal(sharingPosterFit(legacy.style), "fill");
+  assert.equal(
+    sharingPosterCompositionSchema.safeParse({ ...fresh, style: { ...fresh.style, fit: "stretch" } }).success,
+    false
+  );
+
+  // A portrait in a landscape frame is centred at full height; a landscape in
+  // a portrait frame at full width. Neither escapes its frame.
+  const frame = { x: 10, y: 20, width: 300, height: 200 };
+  const portrait = containFrame(2000, 3000, frame);
+  assert.ok(Math.abs(portrait.height - 200) < 1e-9);
+  assert.ok(Math.abs(portrait.width - 200 * (2 / 3)) < 1e-9);
+  assert.ok(Math.abs(portrait.x + portrait.width / 2 - (frame.x + frame.width / 2)) < 1e-9);
+  assert.equal(portrait.y, frame.y);
+  const landscape = containFrame(3000, 2000, { x: 0, y: 0, width: 200, height: 300 });
+  assert.ok(Math.abs(landscape.width - 200) < 1e-9);
+  assert.ok(Math.abs(landscape.y - (300 - 200 * (2 / 3)) / 2) < 1e-9);
+  const same = containFrame(4000, 4000, { x: 5, y: 5, width: 100, height: 100 });
+  assert.deepEqual(same, { x: 5, y: 5, width: 100, height: 100 });
+
+  // Frames left of / above the middle push their photograph toward it; a
+  // frame spanning the middle centres it.
+  const photoArea = { x: 0, y: 0, width: 1000, height: 1000 };
+  assert.deepEqual(gatherAlignment({ x: 0, y: 0, width: 500, height: 1000 }, photoArea), { x: 1, y: 0.5 });
+  assert.deepEqual(gatherAlignment({ x: 500, y: 500, width: 500, height: 500 }, photoArea), { x: 0, y: 0 });
+  const pushed = containFrame(2000, 3000, frame, { x: 1, y: 0.5 });
+  assert.ok(Math.abs(pushed.x + pushed.width - (frame.x + frame.width)) < 1e-9);
+
+  // Whole-fit layouts tile without overlap, stay inside the area, and keep
+  // equally weighted photographs within a reasonable size of each other.
+  const shapes: Array<[number, number]> = [[2000, 3000], [3000, 2000], [2400, 2400], [2000, 3000], [3000, 2000], [1600, 900], [900, 1600]];
+  for (let count = 2; count <= shapes.length; count += 1) {
+    const items = shapes.slice(0, count).map(([width, height], index) => ({ id: `w${index}`, width, height, weight: 3 }));
+    const area = { x: 20, y: 20, width: 860, height: 980 };
+    const cells = calculateSharingPosterLayout(items, area, 6, "whole");
+    assert.equal(cells.length, count);
+    for (let i = 0; i < cells.length; i += 1) {
+      assert.ok(cells[i].x >= area.x - 1e-6 && cells[i].y >= area.y - 1e-6);
+      assert.ok(cells[i].x + cells[i].width <= area.x + area.width + 1e-6);
+      assert.ok(cells[i].y + cells[i].height <= area.y + area.height + 1e-6);
+      for (let j = i + 1; j < cells.length; j += 1) assert.equal(overlaps(cells[i], cells[j]), false);
+    }
+    const areas = cells.map((cell, index) => {
+      const placed = containFrame(items[index].width, items[index].height, cell);
+      return placed.width * placed.height;
+    });
+    assert.ok(Math.min(...areas) / Math.max(...areas) > 0.25, `whole layout of ${count} is lopsided`);
+    // Fill mode is untouched by the whole-fit options.
+    assert.deepEqual(calculateSharingPosterLayout(items, area, 6), calculateSharingPosterLayout(items, area, 6, "fill"));
+  }
+
+  // Collage frames are exactly each photograph's shape, never overlap, stay
+  // inside the area, sit at least one gutter apart, keep their order's
+  // determinism and cover most of the area.
+  for (let count = 1; count <= shapes.length; count += 1) {
+    const items = shapes.slice(0, count).map(([width, height], index) => ({ id: `c${index}`, width, height, weight: 3 }));
+    const area = { x: 20, y: 20, width: 860, height: 980 };
+    const gutter = 6;
+    const frames = calculateCollageLayout(items, area, gutter);
+    assert.deepEqual(frames, calculateSharingPosterLayout(items, area, gutter, "collage"));
+    assert.deepEqual(frames.map((frame) => frame.id), items.map((item) => item.id));
+    for (let i = 0; i < frames.length; i += 1) {
+      const frame = frames[i];
+      assert.ok(Math.abs(frame.width / frame.height - items[i].width / items[i].height) < 1e-6, `collage frame ${i} of ${count} is not the photo's shape`);
+      assert.ok(frame.x >= area.x - 1e-6 && frame.y >= area.y - 1e-6);
+      assert.ok(frame.x + frame.width <= area.x + area.width + 1e-6);
+      assert.ok(frame.y + frame.height <= area.y + area.height + 1e-6);
+      for (let j = i + 1; j < frames.length; j += 1) {
+        const grown = { x: frame.x - gutter + 1e-6, y: frame.y - gutter + 1e-6, width: frame.width + 2 * gutter - 2e-6, height: frame.height + 2 * gutter - 2e-6 };
+        assert.equal(overlaps(grown, frames[j]), false, `collage frames ${i} and ${j} of ${count} are closer than a gutter`);
+      }
+    }
+    const covered = frames.reduce((sum, frame) => sum + frame.width * frame.height, 0) / (area.width * area.height);
+    if (count >= 4) assert.ok(covered > 0.7, `collage of ${count} covers only ${covered.toFixed(2)}`);
+  }
+  // A collage report measures coverage of the photo area.
+  {
+    const collageReport = evaluatePosterRatio(
+      { width: 4, height: 5 },
+      [
+        { photoId: "a", composition: { weight: 3, focalX: 0.5, focalY: 0.5 }, source: { width: 2000, height: 3000, subject: null } },
+        { photoId: "b", composition: { weight: 3, focalX: 0.5, focalY: 0.5 }, source: { width: 3000, height: 2000, subject: null } }
+      ],
+      { marginPercent: 2.5, gapPercent: 0.65, footerTextPercent: 1.8, textGapPercent: 2.5, fit: "collage" },
+      2
+    );
+    assert.ok(collageReport.shown > 0.3 && collageReport.shown <= 1);
+    assert.equal(collageReport.subjectShown, null);
+  }
+
+  // Whole photographs cannot clip a subject, so the solver ignores it.
+  const subjectPhoto: PosterLayoutSource = {
+    photoId: "s",
+    composition: { weight: 3, focalX: 0.5, focalY: 0.5, crop: { mode: "auto" } },
+    source: { width: 2000, height: 3000, subject: { x: 0.5, y: 0.3, box: { x: 0.3, y: 0.1, width: 0.4, height: 0.6 } } }
+  };
+  assert.notEqual(posterLayoutItems([subjectPhoto])[0].subject, null);
+  assert.equal(posterLayoutItems([subjectPhoto], "whole")[0].subject, null);
+
+  // The ratio comparison for whole photographs measures how much of each
+  // frame is filled, counts no subjects, and keeps every photograph in view.
+  const mixed: PosterLayoutSource[] = [
+    subjectPhoto,
+    { photoId: "l", composition: { weight: 3, focalX: 0.5, focalY: 0.5 }, source: { width: 3000, height: 2000, subject: null } },
+    { photoId: "q", composition: { weight: 3, focalX: 0.5, focalY: 0.5 }, source: { width: 2000, height: 2000, subject: null } }
+  ];
+  const style = { marginPercent: 2.5, gapPercent: 0.65, footerTextPercent: 1.8, textGapPercent: 2.5 };
+  const wholeReport = evaluatePosterRatio({ width: 4, height: 5 }, mixed, { ...style, fit: "whole" }, 2);
+  assert.equal(wholeReport.subjects, 0);
+  assert.equal(wholeReport.subjectShown, null);
+  assert.ok(wholeReport.shown > 0 && wholeReport.shown <= 1);
+  const fillReport = evaluatePosterRatio({ width: 4, height: 5 }, mixed, style, 2);
+  assert.ok(wholeReport.photoShare <= fillReport.photoShare + 1e-9);
+}
+
+// Adaptive ratio: the poster takes the shape its collage fills, so the
+// collage covers the photo area edge to edge, within the allowed range.
+{
+  const adaptiveShapes: Array<[number, number]> = [[2000, 3000], [3000, 2000], [2400, 2400], [2000, 3000], [3000, 2000], [3200, 1800], [1800, 3200], [2400, 3000], [2400, 2400]];
+  const style = { marginPercent: 2.5, gapPercent: 0.65, footerTextPercent: 1.8, textGapPercent: 2.5, fit: "collage" as const };
+  for (let count = 1; count <= adaptiveShapes.length; count += 1) {
+    const sources: PosterLayoutSource[] = adaptiveShapes.slice(0, count).map(([width, height], index) => ({
+      photoId: `a${index}`,
+      composition: { weight: 3, focalX: 0.5, focalY: 0.5 },
+      source: { width, height, subject: null }
+    }));
+    const ratio = adaptivePosterRatio(sources, style, 2);
+    assert.ok(ratio, `no adaptive ratio for ${count}`);
+    assert.deepEqual(adaptivePosterRatio(sources, style, 2), ratio);
+    assert.ok(ratio.width >= 1 && ratio.width <= 100 && ratio.height >= 1 && ratio.height <= 100);
+    const aspect = ratio.width / ratio.height;
+    assert.ok(aspect >= ADAPTIVE_MIN_ASPECT - 0.01 && aspect <= ADAPTIVE_MAX_ASPECT + 0.01);
+    assert.equal(sharingPosterCompositionSchema.safeParse({
+      ...defaultSharingPosterComposition("en", "P"),
+      ratio: { ...ratio, adaptive: true }
+    }).success, true);
+    const report = evaluatePosterRatio(ratio, sources, style, 2);
+    assert.ok(report.shown > 0.97, `adaptive collage of ${count} covers only ${report.shown.toFixed(3)}`);
+  }
+  assert.equal(adaptivePosterRatio([], { marginPercent: 2.5, gapPercent: 0.65, footerTextPercent: 1.8 }, 2), null);
+}
+
+// Credits position: lines align to the photographs' span, slide smoothly
+// between left, centre and right, stay inside the margins, and snap near an
+// alignment.
+{
+  const bounds = { left: 20, right: 880 };
+  assert.deepEqual(creditsSpan([], bounds), bounds);
+  const span = creditsSpan([{ x: 100, y: 0, width: 300, height: 10 }, { x: 410, y: 0, width: 390, height: 10 }], bounds);
+  assert.deepEqual(span, { left: 100, right: 800 });
+  assert.equal(creditLineX(span, 200, 0, bounds), 100);
+  assert.equal(creditLineX(span, 200, 1, bounds), 600);
+  assert.equal(creditLineX(span, 200, 0.5, bounds), 350);
+  assert.equal(creditLineX(span, 200, 0.25, bounds), 225);
+  // A line wider than a narrow collage stays inside the margins.
+  assert.equal(creditLineX({ left: 400, right: 500 }, 300, 1, bounds), 200);
+  assert.equal(creditLineX({ left: 400, right: 500 }, 600, 1, bounds), 20);
+  assert.equal(creditLineX({ left: 400, right: 500 }, 900, 0.5, bounds), 20);
+  assert.deepEqual(snapCreditsPosition(0.52, 500, 18), { position: 0.5, snapped: 0.5 });
+  assert.deepEqual(snapCreditsPosition(0.03, 500, 18), { position: 0, snapped: 0 });
+  assert.deepEqual(snapCreditsPosition(0.97, 500, 18), { position: 1, snapped: 1 });
+  assert.deepEqual(snapCreditsPosition(0.3, 500, 18), { position: 0.3, snapped: null });
+  assert.deepEqual(snapCreditsPosition(1.4, 500, 18), { position: 1, snapped: 1 });
+  const withPosition = sharingPosterCompositionSchema.safeParse({
+    ...defaultSharingPosterComposition("en", "P"),
+    style: { ...defaultSharingPosterComposition("en", "P").style, creditsX: 0.5 }
+  });
+  assert.equal(withPosition.success, true);
+  assert.equal(
+    sharingPosterCompositionSchema.safeParse({
+      ...defaultSharingPosterComposition("en", "P"),
+      style: { ...defaultSharingPosterComposition("en", "P").style, creditsX: 1.5 }
+    }).success,
+    false
+  );
+}
+
+// A size ranking turns the photographs' order, largest first, into evenly
+// spaced weights from 5 to 1, follows photographs as they come and go, and
+// survives a save; the poster scale keeps the fractional steps apart.
+{
+  assert.equal(rankedSharingPosterWeight(0, 1), 3);
+  assert.equal(rankedSharingPosterWeight(0, 3), 5);
+  assert.equal(rankedSharingPosterWeight(1, 3), 3);
+  assert.equal(rankedSharingPosterWeight(2, 3), 1);
+  for (let count = 2; count <= 9; count += 1) {
+    for (let index = 1; index < count; index += 1) {
+      assert.ok(rankedSharingPosterWeight(index, count) < rankedSharingPosterWeight(index - 1, count));
+      assert.ok(posterWeightScale(rankedSharingPosterWeight(index, count)) < posterWeightScale(rankedSharingPosterWeight(index - 1, count)));
+    }
+  }
+  for (let weight = 1; weight <= 5; weight += 1) assert.equal(posterWeightScale(weight), 0.75 + (weight - 1) * 0.25);
+
+  const base = defaultSharingPosterComposition("en", "P", [{ id: "a" }, { id: "b" }, { id: "c" }]);
+  assert.equal(applySharingPosterSizeRank(base), base, "no ranking leaves the weights alone");
+  const ranked = applySharingPosterSizeRank({ ...base, sizeRank: ["c", "a", "b"] });
+  assert.deepEqual(ranked.photos.map((photo) => [photo.photoId, photo.weight]), [["a", 3], ["b", 1], ["c", 5]]);
+  assert.equal(applySharingPosterSizeRank(ranked), ranked, "an applied ranking is stable");
+
+  const removed = applySharingPosterSizeRank({ ...ranked, photos: ranked.photos.filter((photo) => photo.photoId !== "a") });
+  assert.deepEqual(removed.sizeRank, ["c", "b"]);
+  assert.deepEqual(removed.photos.map((photo) => photo.weight), [1, 5]);
+  const added = applySharingPosterSizeRank({ ...ranked, photos: [...ranked.photos, { ...ranked.photos[0], photoId: "d", weight: 5 }] });
+  assert.deepEqual(added.sizeRank, ["c", "a", "b", "d"]);
+  assert.equal(added.photos.find((photo) => photo.photoId === "d")?.weight, 1, "a new photograph joins at the small end");
+
+  const fallback = defaultSharingPosterComposition("en", "P");
+  const reparsed = parseSharingPosterComposition(JSON.parse(JSON.stringify(added)), fallback);
+  assert.deepEqual(reparsed.sizeRank, added.sizeRank);
+  assert.deepEqual(reparsed.photos.map((photo) => photo.weight), added.photos.map((photo) => photo.weight));
+  assert.equal(sharingPosterCompositionSchema.safeParse({ ...added, sizeRank: Array.from({ length: 10 }, (_, i) => `p${i}`) }).success, false);
+
+  // Ranked first is drawn largest, ranked last smallest, in a collage of equal shapes.
+  const items = ["a", "b", "c", "d"].map((id, index) => ({ id, width: 3000, height: 2000, weight: rankedSharingPosterWeight(index, 4) }));
+  const frames = calculateCollageLayout(items, { x: 0, y: 0, width: 900, height: 1100 }, 6);
+  const area = (id: string) => {
+    const frame = frames.find((candidate) => candidate.id === id)!;
+    return frame.width * frame.height;
+  };
+  assert.ok(area("a") > area("d"), "the photograph ranked first is drawn larger than the one ranked last");
+
+  // Only a heavier photograph drawn smaller (or barely larger) than a lighter one costs anything.
+  assert.equal(sizeOrderCost([{ weight: 3, logArea: 1 }, { weight: 3, logArea: 5 }]), 0, "equal weights carry no order");
+  assert.equal(sizeOrderCost([{ weight: 5, logArea: 3 }, { weight: 1, logArea: 1 }]), 0, "a ranking already drawn in order is free");
+  assert.ok(sizeOrderCost([{ weight: 5, logArea: 1 }, { weight: 1, logArea: 3 }]) > 0, "a ranking drawn backwards costs");
+  assert.ok(
+    sizeOrderCost([{ weight: 5, logArea: 1 }], [{ weight: 1, logArea: 3 }]) > 0 &&
+      sizeOrderCost([{ weight: 1, logArea: 3 }], [{ weight: 5, logArea: 1 }]) > 0,
+    "the cost between two groups does not depend on which comes first"
+  );
+
+  // With mixed shapes, the photograph ranked first is drawn larger than the one ranked last in both no-crop fits.
+  const shapes = [[3000, 2000], [2000, 3000], [4000, 2250], [2400, 3000], [3000, 3000]];
+  for (const fit of ["whole", "collage"] as const) {
+    for (let shift = 0; shift < shapes.length; shift += 1) {
+      const mixed = shapes.map((_, index) => {
+        const [width, height] = shapes[(index + shift) % shapes.length];
+        return { id: `m${index}`, width, height, weight: rankedSharingPosterWeight((index * 2) % shapes.length, shapes.length) };
+      });
+      const area = { x: 0, y: 0, width: 900, height: 1125 };
+      const drawn = (id: string) => {
+        const frame = calculateSharingPosterLayout(mixed, area, 6, fit).find((candidate) => candidate.id === id)!;
+        const item = mixed.find((candidate) => candidate.id === id)!;
+        const rect = fit === "whole" ? containFrame(item.width, item.height, frame) : frame;
+        return rect.width * rect.height;
+      };
+      const largest = mixed.reduce((best, item) => (item.weight > best.weight ? item : best));
+      const smallest = mixed.reduce((best, item) => (item.weight < best.weight ? item : best));
+      assert.ok(drawn(largest.id) > drawn(smallest.id), `${fit} draws the photograph ranked first larger than the one ranked last (shift ${shift})`);
+    }
+  }
+}
+
+// Feathered edges: a smooth ramp from transparent to opaque at both ends.
+{
+  assert.deepEqual(featherStops(0, 100), [[0, 1], [1, 1]]);
+  const stops = featherStops(20, 100);
+  assert.deepEqual(stops[0], [0, 0]);
+  assert.deepEqual(stops[stops.length - 1], [1, 0]);
+  assert.ok(stops.every(([offset], index) => index === 0 || offset >= stops[index - 1][0]), "offsets never go backwards");
+  assert.ok(Math.abs(stops[8][0] - 0.2) < 1e-9 && stops[8][1] === 1, "opaque once the feather is crossed");
+  // A feather wider than half the length meets in the middle.
+  const wide = featherStops(80, 100);
+  assert.ok(Math.abs(wide[8][0] - 0.5) < 1e-9);
+  assert.equal(featherWidth({ x: 0, y: 0, width: 400, height: 300 }, 10), 30);
+  assert.equal(featherWidth({ x: 0, y: 0, width: 400, height: 300 }, undefined), 0);
+}
+
+// Drop shadow: measured from the poster's width, absent or at 0% not drawn.
+{
+  assert.equal(posterShadow(undefined, 1000), null);
+  assert.equal(posterShadow({ opacity: 0, blurPercent: 2, offsetPercent: 1 }, 1000), null);
+  assert.deepEqual(posterShadow({ opacity: 0.4, blurPercent: 2, offsetPercent: 0.5 }, 1000), { colour: "rgba(0, 0, 0, 0.4)", blur: 20, offsetY: 5 });
+  const preview = posterShadow({ opacity: 0.4, blurPercent: 2, offsetPercent: 0.5 }, 900)!;
+  const exported = posterShadow({ opacity: 0.4, blurPercent: 2, offsetPercent: 0.5 }, 2700)!;
+  assert.equal(exported.blur / preview.blur, 3, "the preview and the export cast the same shadow at their scale");
+  const base = defaultSharingPosterComposition("en", "P");
+  assert.equal(base.style.shadow, undefined, "new posters have no drop shadow");
+  const shadowed = { ...base, style: { ...base.style, shadow: { opacity: 0.35, blurPercent: 1.5, offsetPercent: 0.6 } } };
+  assert.deepEqual(parseSharingPosterComposition(JSON.parse(JSON.stringify(shadowed)), base).style.shadow, shadowed.style.shadow);
+  assert.equal(sharingPosterCompositionSchema.safeParse({ ...shadowed, style: { ...shadowed.style, shadow: { opacity: 2, blurPercent: 1, offsetPercent: 1 } } }).success, false);
+}
+
+// Image layers: placed by centre and width, covering, snapping, and the schema.
+{
+  const layer = { id: "layer-1", token: `posterlayer${"a".repeat(32)}`, width: 400, height: 200, x: 0.5, y: 0.25, scale: 0.5, opacity: 0.8, placement: "front" as const };
+  assert.deepEqual(posterLayerRect(layer, 1000, 800), { id: "layer-1", x: 250, y: 75, width: 500, height: 250 });
+  // Cover a 4:5 poster with a 2:1 image: tall enough means 2.5 times its width.
+  const cover = coverSharingPosterLayerScale(layer, { width: 4, height: 5 });
+  const covered = posterLayerRect({ ...layer, x: 0.5, y: 0.5, scale: cover }, 400, 500);
+  assert.ok(covered.x <= 0 && covered.y <= 1e-9 && covered.x + covered.width >= 400 && covered.y + covered.height >= 500 - 1e-9);
+  assert.equal(coverSharingPosterLayerScale({ width: 100, height: 400 }, { width: 4, height: 5 }), 1);
+  assert.deepEqual(snapSharingPosterLayerCentre(0.51, 0.02), { value: 0.5, snapped: true });
+  assert.deepEqual(snapSharingPosterLayerCentre(0.6, 0.02), { value: 0.6, snapped: false });
+  assert.deepEqual(snapSharingPosterLayerCentre(1.3, 0.02), { value: 1, snapped: false });
+
+  const base = defaultSharingPosterComposition("en", "P");
+  assert.equal(base.layers, undefined, "a new poster has no layers");
+  assert.equal(base.style.featherPercent, undefined);
+  assert.equal(base.style.background?.mode === "glass" && base.style.background.local, 0.6, "new posters start with local colour");
+  const withLayers = { ...base, layers: [layer], style: { ...base.style, featherPercent: 6 } };
+  const reparsed = parseSharingPosterComposition(JSON.parse(JSON.stringify(withLayers)), base);
+  assert.deepEqual(reparsed.layers, [layer]);
+  assert.equal(reparsed.style.featherPercent, 6);
+  for (const bad of [
+    { ...layer, token: "../../etc/passwd" },
+    { ...layer, token: "posterlayerZZ" },
+    { ...layer, scale: 0 },
+    { ...layer, placement: "middle" }
+  ]) {
+    assert.equal(sharingPosterCompositionSchema.safeParse({ ...withLayers, layers: [bad] }).success, false, JSON.stringify(bad));
+  }
+  assert.equal(sharingPosterCompositionSchema.safeParse({ ...withLayers, layers: [layer, layer] }).success, false, "layer ids are unique");
+  assert.equal(sharingPosterCompositionSchema.safeParse({ ...withLayers, layers: Array.from({ length: 5 }, (_, i) => ({ ...layer, id: `l${i}` })) }).success, false);
 }
 
 console.log("Sharing poster layout and composition tests passed.");

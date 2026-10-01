@@ -1,7 +1,11 @@
-import type { SharingPosterComposition, SharingPosterResolvedPhoto } from "@/lib/sharingPoster";
-import { sharingPosterCreditLines } from "@/lib/sharingPoster";
+import type { SharingPosterComposition, SharingPosterLayer, SharingPosterResolvedPhoto } from "@/lib/sharingPoster";
+import { sharingPosterCreditLines, sharingPosterFit, sharingPosterLayerUrl } from "@/lib/sharingPoster";
 import {
   calculateSharingPosterLayout,
+  containFrame,
+  creditLineX,
+  creditsSpan,
+  gatherAlignment,
   posterLayoutItems,
   resolvePosterCrop,
   sharingPosterFooterGeometry,
@@ -15,7 +19,20 @@ import { paintGlassBackground, withAlpha } from "@/lib/sharingPosterGlass";
 export { sharingPosterFooterGeometry, type SharingPosterFooterGeometry } from "@/lib/sharingPosterLayout";
 
 export interface SharingPosterRenderResult {
+  /** The layout's frames. */
   rectangles: PosterLayoutRect[];
+  /**
+   * The credits as drawn, for dragging: the block around every line, the
+   * span the text aligns to, and how far the block travels from left to right.
+   */
+  text: { x: number; y: number; width: number; height: number; span: { left: number; right: number }; travel: number } | null;
+  /**
+   * Where each photograph is drawn: its frame when cropped to fill, the
+   * centred whole photograph inside it otherwise.
+   */
+  photoRects: PosterLayoutRect[];
+  /** Where each image layer is drawn, back to front, keyed by layer id. */
+  layerRects: PosterLayoutRect[];
   footerTooTall: boolean;
   wrappedLineCount: number;
 }
@@ -47,6 +64,143 @@ function wrapLine(
   return wrapped;
 }
 
+/**
+ * The colour stops of one axis of a feathered edge: opaque in the middle,
+ * easing to transparent over `feather` at both ends of a `length`, along a
+ * smoothstep so the fade has no visible start or end. Offsets are fractions of
+ * `length`. A feather wider than half the length meets in the middle.
+ */
+export function featherStops(feather: number, length: number): Array<[number, number]> {
+  const reach = Math.min(Math.max(0, feather), length / 2) / Math.max(1e-6, length);
+  if (reach <= 0) return [[0, 1], [1, 1]];
+  const steps = 8;
+  const rising: Array<[number, number]> = [];
+  for (let step = 0; step <= steps; step += 1) {
+    const t = step / steps;
+    rising.push([t * reach, t * t * (3 - 2 * t)]);
+  }
+  const falling = rising.map(([offset, alpha]): [number, number] => [1 - offset, alpha]).reverse();
+  return [...rising, ...falling];
+}
+
+/** Feathered edges in poster pixels for a photograph drawn in `rect`. */
+export function featherWidth(rect: PosterRect, featherPercent: number | undefined): number {
+  return ((featherPercent ?? 0) / 100) * Math.min(rect.width, rect.height);
+}
+
+export interface PosterShadow {
+  colour: string;
+  blur: number;
+  offsetY: number;
+}
+
+/** The drop shadow in poster pixels, or null when there is none to draw. */
+export function posterShadow(
+  shadow: SharingPosterComposition["style"]["shadow"],
+  width: number
+): PosterShadow | null {
+  if (!shadow || shadow.opacity <= 0) return null;
+  return {
+    colour: `rgba(0, 0, 0, ${shadow.opacity})`,
+    blur: (shadow.blurPercent / 100) * width,
+    offsetY: (shadow.offsetPercent / 100) * width
+  };
+}
+
+function applyShadow(context: CanvasRenderingContext2D, shadow: PosterShadow) {
+  context.shadowColor = shadow.colour;
+  context.shadowBlur = shadow.blur;
+  context.shadowOffsetX = 0;
+  context.shadowOffsetY = shadow.offsetY;
+}
+
+/** Where a layer is drawn on a poster of `width` x `height`. */
+export function posterLayerRect(layer: SharingPosterLayer, width: number, height: number): PosterLayoutRect {
+  const drawnWidth = layer.scale * width;
+  const drawnHeight = (drawnWidth * layer.height) / Math.max(1, layer.width);
+  return {
+    id: layer.id,
+    x: layer.x * width - drawnWidth / 2,
+    y: layer.y * height - drawnHeight / 2,
+    width: drawnWidth,
+    height: drawnHeight
+  };
+}
+
+let featherCanvas: HTMLCanvasElement | null = null;
+
+/**
+ * Draw `crop` of `image` into `rect` with its edges fading into what is
+ * already on `context`. The photograph is drawn on a scratch canvas, which is
+ * then multiplied by a horizontal and a vertical ramp; the product rounds the
+ * corners' fade the way a soft vignette does. Measured in poster pixels from
+ * the drawn rectangle, so the preview and the export fade alike.
+ */
+function drawFeathered(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  crop: PosterRect,
+  rect: PosterRect,
+  feather: number,
+  /** Draw this far to the left, for a shadow cast back into place. */
+  shiftX = 0
+): boolean {
+  if (typeof document === "undefined") return false;
+  const width = Math.max(1, Math.round(rect.width));
+  const height = Math.max(1, Math.round(rect.height));
+  featherCanvas ??= document.createElement("canvas");
+  featherCanvas.width = width;
+  featherCanvas.height = height;
+  const scratch = featherCanvas.getContext("2d");
+  if (!scratch) return false;
+  scratch.clearRect(0, 0, width, height);
+  scratch.imageSmoothingEnabled = true;
+  scratch.imageSmoothingQuality = "high";
+  scratch.globalCompositeOperation = "source-over";
+  scratch.drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, width, height);
+  scratch.globalCompositeOperation = "destination-in";
+  const scaleX = width / Math.max(1e-6, rect.width);
+  const scaleY = height / Math.max(1e-6, rect.height);
+  for (const [axis, length, scale] of [["x", width, scaleX], ["y", height, scaleY]] as const) {
+    const ramp = axis === "x" ? scratch.createLinearGradient(0, 0, width, 0) : scratch.createLinearGradient(0, 0, 0, height);
+    for (const [offset, alpha] of featherStops(feather * scale, length)) {
+      ramp.addColorStop(offset, `rgba(0, 0, 0, ${alpha})`);
+    }
+    scratch.fillStyle = ramp;
+    scratch.fillRect(0, 0, width, height);
+  }
+  scratch.globalCompositeOperation = "source-over";
+  context.drawImage(featherCanvas, rect.x - shiftX, rect.y, rect.width, rect.height);
+  // Let go of the memory a full-size export's scratch canvas holds.
+  featherCanvas.width = 1;
+  featherCanvas.height = 1;
+  return true;
+}
+
+function drawLayers(
+  context: CanvasRenderingContext2D,
+  layers: SharingPosterLayer[],
+  placement: SharingPosterLayer["placement"],
+  width: number,
+  height: number,
+  images: Map<string, HTMLImageElement> | undefined,
+  drawn: PosterLayoutRect[]
+) {
+  for (const layer of layers) {
+    if (layer.placement !== placement) continue;
+    const rect = posterLayerRect(layer, width, height);
+    drawn.push(rect);
+    const image = images?.get(layer.token);
+    if (!image?.complete || image.naturalWidth === 0) continue;
+    context.save();
+    context.globalAlpha = layer.opacity;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
+    context.restore();
+  }
+}
+
 export function renderSharingPoster(
   context: CanvasRenderingContext2D,
   width: number,
@@ -61,6 +215,14 @@ export function renderSharingPoster(
     unavailableLabel?: string;
     /** Preview only: ring the detected subject of this photo when its crop follows it. */
     subjectMarkerPhotoId?: string | null;
+    /** Preview only: the alignment the dragged credits snapped to, drawn as a guide line. */
+    textGuide?: 0 | 0.5 | 1 | null;
+    /** Uploaded layer images by token (see loadPosterLayerImages). */
+    layerImages?: Map<string, HTMLImageElement>;
+    /** Preview only: outline this layer. */
+    selectedLayerId?: string | null;
+    /** Preview only: the poster's centre lines a dragged layer snapped to. */
+    layerGuides?: { vertical: boolean; horizontal: boolean } | null;
   } = {}
 ): SharingPosterRenderResult {
   const { style } = composition;
@@ -83,17 +245,36 @@ export function renderSharingPoster(
     footerTextPercent: style.footerTextPercent,
     textGapPercent: style.textGapPercent
   });
+  const fit = sharingPosterFit(style);
   const rectangles =
     options.rectangles ??
-    calculateSharingPosterLayout(posterLayoutItems(photos), geometry.photoArea, gap);
+    calculateSharingPosterLayout(posterLayoutItems(photos, fit), geometry.photoArea, gap, fit);
 
-  // Resolve every frame's crop up front: the glass background takes its
-  // colours from exactly what each frame shows, so both use the same window.
+  // Resolve every photograph's crop and placement up front: the glass
+  // background takes its colours from exactly what each photograph shows and
+  // flows out from where it is drawn, so all three use the same values. A
+  // whole photograph is placed from the gallery's dimensions when known, so
+  // the preview rendition and the full one land on the same rectangle.
   const crops = new Map<string, PosterRect>();
+  const photoRects: PosterLayoutRect[] = [];
   for (const rect of rectangles) {
     const resolved = photos.find((photo) => photo.photoId === rect.id);
     const image = images.get(rect.id);
-    if (resolved?.source && image?.complete && image.naturalWidth > 0) {
+    const loaded = Boolean(resolved?.source && image?.complete && image.naturalWidth > 0);
+    if (fit !== "fill" && resolved?.source) {
+      const sourceWidth = resolved.source.width > 0 ? resolved.source.width : image?.naturalWidth ?? 1;
+      const sourceHeight = resolved.source.height > 0 ? resolved.source.height : image?.naturalHeight ?? 1;
+      photoRects.push({
+        ...containFrame(sourceWidth, sourceHeight, rect, gatherAlignment(rect, geometry.photoArea)),
+        id: rect.id
+      });
+      if (image && loaded) {
+        crops.set(rect.id, { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight });
+      }
+      continue;
+    }
+    photoRects.push(rect);
+    if (resolved?.source && image && loaded) {
       crops.set(
         rect.id,
         resolvePosterCrop(
@@ -108,37 +289,73 @@ export function renderSharingPoster(
     }
   }
 
+  const feathered = (style.featherPercent ?? 0) > 0;
   const glass =
     style.background?.mode === "glass" &&
-    paintGlassBackground(context, width, height, rectangles, crops, images, {
+    paintGlassBackground(context, width, height, photoRects, crops, images, {
       colour: style.backgroundColor,
       blurPercent: style.background.blurPercent,
-      tintOpacity: style.background.tintOpacity
+      tintOpacity: style.background.tintOpacity,
+      local: style.background.local,
+      // Shadows lift a frame off the glass; around a whole photograph, or one
+      // whose edges fade into it, they would draw the very box the gradient
+      // is there to dissolve. The owner's drop shadow replaces them.
+      shadows: fit === "fill" && !feathered && !style.shadow
     });
   if (!glass) {
     context.fillStyle = style.backgroundColor;
     context.fillRect(0, 0, width, height);
   }
+  const layers = composition.layers ?? [];
+  const layerRects: PosterLayoutRect[] = [];
+  drawLayers(context, layers, "back", width, height, options.layerImages, layerRects);
 
-  for (const rect of rectangles) {
+  // Every shadow goes down before any photograph, so no photograph's shadow
+  // falls across a neighbour. Each is cast by the shape the photograph is
+  // drawn with: a feathered one casts a shadow that fades with its edges, so
+  // it reads as a soft glow rather than a box. The shape itself is drawn off
+  // to the left and only its shadow is offset back into place.
+  const shadow = posterShadow(style.shadow, width);
+  if (shadow) {
+    const shift = width + shadow.blur * 4 + 100;
+    context.save();
+    applyShadow(context, shadow);
+    context.shadowOffsetX = shift;
+    context.fillStyle = "#000000";
+    for (const rect of photoRects) {
+      const image = images.get(rect.id);
+      const crop = crops.get(rect.id);
+      if (!image || !crop) continue;
+      const feather = featherWidth(rect, style.featherPercent);
+      if (feather <= 0 || !drawFeathered(context, image, crop, rect, feather, shift)) {
+        context.fillRect(rect.x - shift, rect.y, rect.width, rect.height);
+      }
+    }
+    context.restore();
+  }
+  for (const rect of photoRects) {
     const image = images.get(rect.id);
     const crop = crops.get(rect.id);
+    const feather = image && crop ? featherWidth(rect, style.featherPercent) : 0;
+    const drawn = feather > 0 && image && crop ? drawFeathered(context, image, crop, rect, feather) : false;
     context.save();
     context.beginPath();
     context.rect(rect.x, rect.y, rect.width, rect.height);
     context.clip();
     if (image && crop) {
-      context.drawImage(
-        image,
-        crop.x,
-        crop.y,
-        crop.width,
-        crop.height,
-        rect.x,
-        rect.y,
-        rect.width,
-        rect.height
-      );
+      if (!drawn) {
+        context.drawImage(
+          image,
+          crop.x,
+          crop.y,
+          crop.width,
+          crop.height,
+          rect.x,
+          rect.y,
+          rect.width,
+          rect.height
+        );
+      }
     } else {
       context.fillStyle = "#d9d4ca";
       context.fillRect(rect.x, rect.y, rect.width, rect.height);
@@ -147,7 +364,7 @@ export function renderSharingPoster(
       context.fillText(options.unavailableLabel ?? "Image unavailable", rect.x + gap + 4, rect.y + gap + 4);
     }
     context.restore();
-    if (options.subjectMarkerPhotoId === rect.id && image && crop) {
+    if (fit === "fill" && options.subjectMarkerPhotoId === rect.id && image && crop) {
       const resolved = photos.find((photo) => photo.photoId === rect.id);
       const subject = resolved?.composition.crop?.mode === "auto" ? resolved.source?.subject : null;
       if (subject) {
@@ -169,7 +386,7 @@ export function renderSharingPoster(
         context.restore();
       }
     }
-    if (glass) {
+    if (glass && fit === "fill" && !feathered) {
       // Glass hides the frame boundary, so lift each frame with the same faint
       // inset line the site uses on image frames.
       context.save();
@@ -189,14 +406,76 @@ export function renderSharingPoster(
 
   context.fillStyle = style.textColor;
   context.font = `600 ${fontSize}px "Avenir Next", "Segoe UI", "Microsoft YaHei", sans-serif`;
+  const bounds = { left: margin, right: width - margin };
+  const span = creditsSpan(photoRects, bounds);
+  const position = style.creditsX ?? 0;
+  const lineWidths = lines.map((line) => context.measureText(line).width);
   let textY = geometry.textY;
-  for (const line of lines) {
-    context.fillText(line, margin, textY);
+  let blockLeft = Number.POSITIVE_INFINITY;
+  let blockRight = Number.NEGATIVE_INFINITY;
+  lines.forEach((line, index) => {
+    const x = creditLineX(span, lineWidths[index], position, bounds);
+    context.fillText(line, x, textY);
+    blockLeft = Math.min(blockLeft, x);
+    blockRight = Math.max(blockRight, x + lineWidths[index]);
     textY += geometry.lineHeight;
+  });
+  const blockWidth = lines.length > 0 ? Math.max(...lineWidths) : 0;
+  drawLayers(context, layers, "front", width, height, options.layerImages, layerRects);
+  const selectedLayer = layerRects.find((rect) => rect.id === options.selectedLayerId);
+  if (selectedLayer) {
+    context.save();
+    context.strokeStyle = options.selectionColor ?? "#a44f25";
+    context.lineWidth = Math.max(1.5, width / 450);
+    context.setLineDash([Math.max(4, width / 150), Math.max(3, width / 220)]);
+    context.strokeRect(selectedLayer.x, selectedLayer.y, selectedLayer.width, selectedLayer.height);
+    context.restore();
+  }
+  if (options.layerGuides) {
+    context.save();
+    context.strokeStyle = options.selectionColor ?? "#a44f25";
+    context.lineWidth = Math.max(1, width / 600);
+    context.setLineDash([Math.max(4, width / 120), Math.max(3, width / 180)]);
+    context.beginPath();
+    if (options.layerGuides.vertical) {
+      context.moveTo(width / 2, 0);
+      context.lineTo(width / 2, height);
+    }
+    if (options.layerGuides.horizontal) {
+      context.moveTo(0, height / 2);
+      context.lineTo(width, height / 2);
+    }
+    context.stroke();
+    context.restore();
+  }
+  if (options.textGuide !== undefined && options.textGuide !== null && lines.length > 0) {
+    const guideX = span.left + (span.right - span.left) * options.textGuide;
+    context.save();
+    context.strokeStyle = options.selectionColor ?? "#a44f25";
+    context.lineWidth = Math.max(1, width / 600);
+    context.setLineDash([Math.max(4, width / 120), Math.max(3, width / 180)]);
+    context.beginPath();
+    context.moveTo(guideX, 0);
+    context.lineTo(guideX, height);
+    context.stroke();
+    context.restore();
   }
   context.restore();
   return {
     rectangles,
+    photoRects,
+    layerRects,
+    text:
+      lines.length > 0
+        ? {
+            x: blockLeft,
+            y: geometry.textY,
+            width: blockRight - blockLeft,
+            height: lines.length * geometry.lineHeight,
+            span,
+            travel: Math.max(0, span.right - span.left - blockWidth)
+          }
+        : null,
     footerTooTall: geometry.footerTooTall,
     wrappedLineCount: lines.length
   };
@@ -227,6 +506,25 @@ export async function loadPosterImages(
   }
   await Promise.all(
     Array.from({ length: Math.min(concurrency, Math.max(1, photos.length)) }, () => worker())
+  );
+  return result;
+}
+
+/** The poster's uploaded layer images, keyed by token; ones that fail to load are left out. */
+export async function loadPosterLayerImages(layers: SharingPosterLayer[] | undefined): Promise<Map<string, HTMLImageElement>> {
+  const result = new Map<string, HTMLImageElement>();
+  await Promise.all(
+    [...new Set((layers ?? []).map((layer) => layer.token))].map(async (token) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = sharingPosterLayerUrl(token);
+      try {
+        await image.decode();
+        result.set(token, image);
+      } catch {
+        // A missing layer is left out rather than failing the whole poster.
+      }
+    })
   );
   return result;
 }

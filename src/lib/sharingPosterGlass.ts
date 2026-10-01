@@ -61,6 +61,10 @@ export interface GlassBackgroundOptions {
   /** The editor's softness control, 0.5..8. */
   blurPercent: number;
   tintOpacity: number;
+  /** How far the colour beside each stretch of an edge follows that stretch, 0..1. */
+  local?: number;
+  /** Soft drop shadows under the frames; on unless false. */
+  shadows?: boolean;
 }
 
 /** Longest side of the sample each frame's crop is reduced to. */
@@ -87,6 +91,15 @@ const EDGE_TO_MEAN = 0.2;
 const CORNER_SPREAD = 1.3;
 // Weight of the base gradient against the colours flowing out of the frames.
 const BASE_WEIGHT = 0.6;
+// How much of the base gradient's weight full local colour hands to the
+// colours flowing out of the frames.
+const LOCAL_BASE_EASE = 0.8;
+// How much of the easing toward the poster's mean tone, and of each edge
+// colour toward its frame's mean, full local colour lifts, so a dark corner of
+// a photograph can darken the margin beside it.
+const LOCAL_TONE_LIFT = 0.6;
+// How much full local colour shortens the reach of each edge's colour.
+const LOCAL_REACH_EASE = 0.3;
 const EDGE_STRENGTH = 1.5;
 // Chroma ceiling for the finished gradient, so it reads as glass, not neon.
 const MAX_CHROMA = 0.16;
@@ -261,6 +274,54 @@ export function glassPaletteFromPixels(
   };
 }
 
+/**
+ * Each side of a palette as a run of colours along it, from the grid cells on
+ * that border: top and bottom left to right, left and right top to bottom.
+ * Every colour is eased toward the side's average by `1 - local`, and toward
+ * the frame's mean (less so as `local` rises), so one dark cell cannot ink
+ * its whole stretch of margin.
+ */
+export function glassEdgeStrips(palette: GlassPalette, local: number): Record<GlassSide, GlassLab[]> {
+  const { grid, gridColumns: columns, gridRows: rows, mean, edges } = palette;
+  const amount = clamp01(local);
+  const cell = (row: number, column: number, side: GlassSide): GlassLab => {
+    const offset = (row * columns + column) * 4;
+    const ease = EDGE_TO_MEAN * (1 - LOCAL_TONE_LIFT * amount);
+    const own: GlassLab = [
+      grid[offset] + (mean[0] - grid[offset]) * ease,
+      grid[offset + 1] + (mean[1] - grid[offset + 1]) * ease,
+      grid[offset + 2] + (mean[2] - grid[offset + 2]) * ease
+    ];
+    const average = edges[side];
+    return [
+      average[0] + (own[0] - average[0]) * amount,
+      average[1] + (own[1] - average[1]) * amount,
+      average[2] + (own[2] - average[2]) * amount
+    ];
+  };
+  return {
+    top: Array.from({ length: columns }, (_, column) => cell(0, column, "top")),
+    bottom: Array.from({ length: columns }, (_, column) => cell(rows - 1, column, "bottom")),
+    left: Array.from({ length: rows }, (_, row) => cell(row, 0, "left")),
+    right: Array.from({ length: rows }, (_, row) => cell(row, columns - 1, "right"))
+  };
+}
+
+/** The colour `t` (0..1, clamped) of the way along a strip, between cell centres. */
+export function stripColour(strip: GlassLab[], t: number): GlassLab {
+  const position = clamp01(t) * strip.length - 0.5;
+  const index = Math.max(0, Math.min(strip.length - 1, Math.floor(position)));
+  const next = Math.min(strip.length - 1, index + 1);
+  const fraction = Math.max(0, Math.min(1, position - index));
+  const from = strip[index];
+  const to = strip[next];
+  return [
+    from[0] + (to[0] - from[0]) * fraction,
+    from[1] + (to[1] - from[1]) * fraction,
+    from[2] + (to[2] - from[2]) * fraction
+  ];
+}
+
 /** The editor's 0.5..8 control as the colour falloff, in percent of poster width. */
 export function glassSoftnessPercent(blurPercent: number): number {
   return 5 + 2 * blurPercent;
@@ -269,13 +330,21 @@ export function glassSoftnessPercent(blurPercent: number): number {
 /**
  * The gradient for a poster of `posterWidth` x `posterHeight` with `frames`
  * placed on it, sampled `fieldWidth` cells wide. Pure and deterministic.
+ *
+ * `local` (0..1) makes the colour beside each stretch of a frame's edge come
+ * from that stretch of the photograph, read from the border cells of its
+ * palette grid, instead of from the side's single average, and lets those
+ * colours carry more of the field against the four-corner base. A portrait
+ * with a red sleeve at its lower left then glows red at the lower left, not
+ * just a little warmer along the whole left side.
  */
 export function computeGlassField(
   posterWidth: number,
   posterHeight: number,
   frames: GlassFrame[],
   blurPercent: number,
-  fieldWidth = GLASS_FIELD_WIDTH
+  fieldWidth = GLASS_FIELD_WIDTH,
+  local = 0
 ): GlassField {
   const width = Math.max(1, Math.round(fieldWidth));
   const height = Math.max(1, Math.round((width * posterHeight) / Math.max(1, posterWidth)));
@@ -329,10 +398,14 @@ export function computeGlassField(
     ];
   });
 
-  const sigma = (glassSoftnessPercent(blurPercent) / 100) * width;
+  const localAmount = clamp01(local);
+  // Local colour keeps each stretch's colour closer to where it comes from.
+  const sigma = (glassSoftnessPercent(blurPercent) / 100) * width * (1 - LOCAL_REACH_EASE * localAmount);
   const falloff = 1 / (2 * sigma * sigma);
   const reach = 9 * sigma * sigma;
   const halo = 0.25 * sigma;
+  const baseWeight = BASE_WEIGHT * (1 - LOCAL_BASE_EASE * localAmount);
+  const toneEase = TONE_EASE * (1 - LOCAL_TONE_LIFT * localAmount);
   const placed = frames.map(({ rect, palette }) => {
     const share = totalArea > 0 ? (rect.width * rect.height * frames.length) / totalArea : 1;
     return {
@@ -341,7 +414,8 @@ export function computeGlassField(
       x2: (rect.x + rect.width) * scale,
       y2: (rect.y + rect.height) * scale,
       strength: EDGE_STRENGTH * Math.min(1.4, Math.max(0.7, Math.sqrt(share))),
-      edges: palette.edges
+      edges: palette.edges,
+      strips: localAmount > 0 ? glassEdgeStrips(palette, localAmount) : null
     };
   });
 
@@ -355,21 +429,24 @@ export function computeGlassField(
       const wTr = u * (1 - v);
       const wBl = (1 - u) * v;
       const wBr = u * v;
-      let sumL = (tl[0] * wTl + tr[0] * wTr + bl[0] * wBl + br[0] * wBr) * BASE_WEIGHT;
-      let sumA = (tl[1] * wTl + tr[1] * wTr + bl[1] * wBl + br[1] * wBr) * BASE_WEIGHT;
-      let sumB = (tl[2] * wTl + tr[2] * wTr + bl[2] * wBl + br[2] * wBr) * BASE_WEIGHT;
-      let total = BASE_WEIGHT;
+      let sumL = (tl[0] * wTl + tr[0] * wTr + bl[0] * wBl + br[0] * wBr) * baseWeight;
+      let sumA = (tl[1] * wTl + tr[1] * wTr + bl[1] * wBl + br[1] * wBr) * baseWeight;
+      let sumB = (tl[2] * wTl + tr[2] * wTr + bl[2] * wBl + br[2] * wBr) * baseWeight;
+      let total = baseWeight;
 
       for (const frame of placed) {
         const alongX = px < frame.x1 ? frame.x1 - px : px > frame.x2 ? px - frame.x2 : 0;
         const alongY = py < frame.y1 ? frame.y1 - py : py > frame.y2 ? py - frame.y2 : 0;
         // Each side contributes only on its own outer half-plane, eased in
         // across a narrow halo so neighbouring sides blend around corners.
+        const strips = frame.strips;
+        const acrossX = (px - frame.x1) / Math.max(1e-6, frame.x2 - frame.x1);
+        const acrossY = (py - frame.y1) / Math.max(1e-6, frame.y2 - frame.y1);
         const outward: Array<[number, number, GlassLab]> = [
-          [frame.y1 - py, alongX, frame.edges.top],
-          [py - frame.y2, alongX, frame.edges.bottom],
-          [frame.x1 - px, alongY, frame.edges.left],
-          [px - frame.x2, alongY, frame.edges.right]
+          [frame.y1 - py, alongX, strips ? stripColour(strips.top, acrossX) : frame.edges.top],
+          [py - frame.y2, alongX, strips ? stripColour(strips.bottom, acrossX) : frame.edges.bottom],
+          [frame.x1 - px, alongY, strips ? stripColour(strips.left, acrossY) : frame.edges.left],
+          [px - frame.x2, alongY, strips ? stripColour(strips.right, acrossY) : frame.edges.right]
         ];
         for (const [distance, along, colour] of outward) {
           if (distance <= -halo) continue;
@@ -385,7 +462,7 @@ export function computeGlassField(
       }
 
       const raw = sumL / total;
-      const L = raw + (mean[0] - raw) * TONE_EASE;
+      const L = raw + (mean[0] - raw) * toneEase;
       let a = sumA / total;
       let b = sumB / total;
       const chroma = Math.hypot(a, b);
@@ -564,15 +641,16 @@ function geometryKey(width: number, height: number, rect: PosterRect): string {
     .join(",");
 }
 
-function fieldLayer(width: number, height: number, frames: GlassFrame[], blurPercent: number) {
+function fieldLayer(width: number, height: number, frames: GlassFrame[], blurPercent: number, local: number) {
   const key = [
     blurPercent.toFixed(2),
+    local.toFixed(2),
     (height / width).toFixed(4),
     ...frames.map((frame) => `${paletteIds.get(frame.palette)}@${geometryKey(width, height, frame.rect)}`)
   ].join("|");
   const cached = fieldLayers.get(key);
   if (cached) return cached;
-  const field = computeGlassField(width, height, frames, blurPercent);
+  const field = computeGlassField(width, height, frames, blurPercent, GLASS_FIELD_WIDTH, local);
   const raw = createCanvas(field.width, field.height);
   const rawContext = raw.getContext("2d");
   // Upscale once, four times over, so the final stretch to poster size starts
@@ -644,7 +722,7 @@ export function paintGlassBackground(
     return false;
   }
   if (frames.length === 0) return false;
-  const field = fieldLayer(width, height, frames, options.blurPercent);
+  const field = fieldLayer(width, height, frames, options.blurPercent, options.local ?? 0);
   if (!field) return false;
 
   context.save();
@@ -662,7 +740,7 @@ export function paintGlassBackground(
   sheen.addColorStop(1, "rgba(255, 255, 255, 0)");
   context.fillStyle = sheen;
   context.fillRect(0, 0, width, height);
-  const shadow = shadowLayer(width, height, rectangles);
+  const shadow = options.shadows === false ? null : shadowLayer(width, height, rectangles);
   if (shadow) context.drawImage(shadow, 0, 0, width, height);
   const tile = grain();
   const pattern = tile ? context.createPattern(tile, "repeat") : null;

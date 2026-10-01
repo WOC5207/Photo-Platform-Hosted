@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import Button from "@/components/ui/Button";
-import type { SharingPosterComposition, SharingPosterResolvedPhoto } from "@/lib/sharingPoster";
+import type { SharingPosterComposition, SharingPosterFit, SharingPosterResolvedPhoto } from "@/lib/sharingPoster";
 import {
   candidatePosterRatios,
   evaluatePosterRatio,
@@ -39,7 +39,7 @@ export function usePosterRatioSuggestion(
     () =>
       JSON.stringify({
         ratio: [ratio.width, ratio.height],
-        style: [style.marginPercent, style.gapPercent, style.footerTextPercent, style.textGapPercent ?? null],
+        style: [style.marginPercent, style.gapPercent, style.footerTextPercent, style.textGapPercent ?? null, style.fit ?? null],
         lineCount,
         photos: photos.map((photo) => [
           photo.photoId,
@@ -57,6 +57,7 @@ export function usePosterRatioSuggestion(
       style.gapPercent,
       style.footerTextPercent,
       style.textGapPercent,
+      style.fit,
       lineCount,
       photos
     ]
@@ -101,11 +102,14 @@ function percent(value: number): number {
 export default function SharingPosterRatioSuggestion({
   state,
   detecting,
+  fit = "fill",
   onApply
 }: {
   state: PosterRatioSuggestionState;
   /** Some photographs are still waiting for subject detection. */
   detecting: boolean;
+  /** Whole photographs and collages crop nothing, so the comparison is of empty space, not crops. */
+  fit?: SharingPosterFit;
   onApply: (ratio: PosterRatio) => void;
 }) {
   const t = useTranslations("sharingPosters");
@@ -118,6 +122,8 @@ export default function SharingPosterRatioSuggestion({
     );
   }
   const { best, current, switchSuggested } = suggestion;
+  const whole = fit !== "fill";
+  const filledKey = fit === "collage" ? "ratioSuggestionCovered" : "ratioSuggestionFilled";
   const label = posterRatioLabel(best.ratio);
 
   return (
@@ -133,8 +139,10 @@ export default function SharingPosterRatioSuggestion({
       </h3>
       <p role="status" className="mt-1 text-sm font-semibold text-fg">
         {switchSuggested
-          ? t("ratioSuggestionBetter", { ratio: label })
-          : best.subjectShown === null
+          ? t(whole ? "ratioSuggestionBetterWhole" : "ratioSuggestionBetter", { ratio: label })
+          : whole
+            ? t("ratioSuggestionCurrentWhole")
+            : best.subjectShown === null
             ? t("ratioSuggestionCurrentPhotos")
             : t("ratioSuggestionCurrent")}
       </p>
@@ -151,12 +159,15 @@ export default function SharingPosterRatioSuggestion({
         )}
         <li>
           {switchSuggested && percent(best.shown) !== percent(current.shown)
-            ? t("ratioSuggestionShownCompare", { shown: percent(best.shown), current: percent(current.shown) })
-            : t("ratioSuggestionShown", { shown: percent(best.shown) })}
+            ? t(whole ? `${filledKey}Compare` : "ratioSuggestionShownCompare", {
+                shown: percent(best.shown),
+                current: percent(current.shown)
+              })
+            : t(whole ? filledKey : "ratioSuggestionShown", { shown: percent(best.shown) })}
         </li>
       </ul>
-      {detecting && <p className="mt-2 text-xs text-fg-subtle">{t("ratioSuggestionPending")}</p>}
-      <p className="mt-2 text-xs leading-5 text-fg-subtle">{t("ratioSuggestionHint")}</p>
+      {detecting && !whole && <p className="mt-2 text-xs text-fg-subtle">{t("ratioSuggestionPending")}</p>}
+      <p className="mt-2 text-xs leading-5 text-fg-subtle">{t(fit === "collage" ? "ratioSuggestionHintCollage" : whole ? "ratioSuggestionHintWhole" : "ratioSuggestionHint")}</p>
       {switchSuggested && (
         <Button
           variant="primary"

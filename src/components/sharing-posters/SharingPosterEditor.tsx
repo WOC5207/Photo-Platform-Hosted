@@ -10,9 +10,13 @@ import {
   SHARING_POSTER_GLASS_DEFAULTS,
   SHARING_POSTER_MAX_CREDIT_LINES,
   SHARING_POSTER_METADATA_KINDS,
+  SHARING_POSTER_SHADOW_DEFAULTS,
+  SHARING_POSTER_WHOLE_GLASS_DEFAULTS,
+  applySharingPosterSizeRank,
   legacyTextGapPercent,
   moveSharingPosterCreditLine,
   sharingPosterCreditLabels,
+  sharingPosterFit,
   sharingPosterCreditLines,
   sharingPosterCreditMetadataValue,
   sharingPosterMetadataFromPhotos,
@@ -20,6 +24,7 @@ import {
   withSharingPosterMetadata,
   type SharingPosterComposition,
   type SharingPosterCreditKind,
+  type SharingPosterFit,
   type SharingPosterCreditLine,
   type SharingPosterMetadata,
   type SharingPosterPhotoValue,
@@ -27,9 +32,11 @@ import {
 } from "@/lib/sharingPoster";
 import SharingPosterCreditLayers from "@/components/sharing-posters/SharingPosterCreditLayers";
 import { posterFieldClasses as fieldClasses } from "@/components/sharing-posters/posterFieldClasses";
+import RangeField from "@/components/sharing-posters/PosterRangeField";
+import SharingPosterImageLayers from "@/components/sharing-posters/SharingPosterImageLayers";
 import type { SharingPosterRenderResult } from "@/lib/sharingPosterCanvas";
 import { legacyFocalToAnchor } from "@/lib/sharingPosterLayout";
-import { SHARING_POSTER_RATIO_PRESETS, sameRatio } from "@/lib/sharingPosterRatio";
+import { SHARING_POSTER_RATIO_PRESETS, adaptivePosterRatio, sameRatio } from "@/lib/sharingPosterRatio";
 import SharingPosterRatioSuggestion, {
   usePosterRatioSuggestion
 } from "@/components/sharing-posters/SharingPosterRatioSuggestion";
@@ -88,10 +95,11 @@ export default function SharingPosterEditor({
   );
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [saveCycle, setSaveCycle] = useState(0);
-  const [metrics, setMetrics] = useState<SharingPosterRenderResult>({ rectangles: [], footerTooTall: false, wrappedLineCount: 0 });
+  const [metrics, setMetrics] = useState<SharingPosterRenderResult>({ rectangles: [], photoRects: [], layerRects: [], text: null, footerTooTall: false, wrappedLineCount: 0 });
   const [exportState, setExportState] = useState<"idle" | "preparing" | "ready" | "error">("idle");
   const [prepared, setPrepared] = useState<{ blob: Blob; url: string; filename: string; signature: string } | null>(null);
   const [notice, setNotice] = useState("");
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   // Existing projects carry an intentional snapshot. Only a brand-new empty
   // project auto-prefills while its first selection is being assembled.
   const metadataEditedRef = useRef(project.composition.photos.length > 0);
@@ -113,10 +121,36 @@ export default function SharingPosterEditor({
   );
   const selectedPhoto = photos.find((photo) => photo.photoId === selectedPhotoId) ?? null;
   const ratioSuggestion = usePosterRatioSuggestion(composition, photos, metrics.wrappedLineCount);
+  const adaptive = composition.ratio.adaptive === true;
+  const adaptiveRatio = useMemo(
+    () =>
+      adaptive
+        ? adaptivePosterRatio(photos, composition.style, metrics.wrappedLineCount)
+        : null,
+    [adaptive, photos, composition.style, metrics.wrappedLineCount]
+  );
+  // An adaptive poster follows its photographs: keep the stored ratio at the
+  // shape their collage fills, so preview, export and saving all read it.
+  useEffect(() => {
+    if (!adaptiveRatio) return;
+    setComposition((current) =>
+      current.ratio.adaptive &&
+      (current.ratio.width !== adaptiveRatio.width || current.ratio.height !== adaptiveRatio.height)
+        ? { ...current, ratio: { ...adaptiveRatio, adaptive: true } }
+        : current
+    );
+  }, [adaptiveRatio]);
   const suggestedRatio =
-    ratioSuggestion.fresh && ratioSuggestion.suggestion?.switchSuggested
+    !adaptive && ratioSuggestion.fresh && ratioSuggestion.suggestion?.switchSuggested
       ? ratioSuggestion.suggestion.best.ratio
       : null;
+  const fit = sharingPosterFit(composition.style);
+  const sizeRank = composition.sizeRank ?? null;
+  // A ranking follows photographs as they are added and removed, and every
+  // change to it rewrites the weights; unchanged, this sets nothing.
+  useEffect(() => {
+    setComposition((current) => applySharingPosterSizeRank(current));
+  }, [composition.photos, composition.sizeRank]);
   const detectingSubjects = photos.some((photo) => photo.source?.subjectState === "pending");
   const pixelSize = sharingPosterPixelSize(composition);
   const unresolved = photos.filter((photo) => !photo.source);
@@ -259,6 +293,40 @@ export default function SharingPosterEditor({
     );
   }
 
+  /** Whole photographs leave space in their frames, which a solid fill would turn back into boxes, so they bring the glass with them. */
+  function setPhotoFit(mode: SharingPosterFit) {
+    setComposition((current) => ({
+      ...current,
+      // Adaptive sizes the poster to a collage; another fit keeps the shape it reached.
+      ratio: mode === "collage" ? current.ratio : { width: current.ratio.width, height: current.ratio.height },
+      style: {
+        ...current.style,
+        fit: mode,
+        background:
+          mode !== "fill" && current.style.background?.mode !== "glass"
+            ? { mode: "glass", ...SHARING_POSTER_WHOLE_GLASS_DEFAULTS }
+            : current.style.background
+      }
+    }));
+  }
+
+  const updateLayers = useCallback((update: (layers: NonNullable<SharingPosterComposition["layers"]>) => NonNullable<SharingPosterComposition["layers"]>) => {
+    setComposition((current) => {
+      const layers = update(current.layers ?? []);
+      return layers === current.layers ? current : { ...current, layers };
+    });
+  }, []);
+
+  const moveLayer = useCallback((id: string, x: number, y: number) => {
+    updateLayers((layers) => layers.map((layer) => (layer.id === id ? { ...layer, x, y } : layer)));
+  }, [updateLayers]);
+
+  const setCreditsX = useCallback((x: number) => {
+    setComposition((current) =>
+      current.style.creditsX === x ? current : { ...current, style: { ...current.style, creditsX: x } }
+    );
+  }, []);
+
   function setCropMode(photo: SharingPosterResolvedPhoto, mode: "auto" | "manual") {
     if (mode === "auto") {
       updatePhoto(photo.photoId, (entry) => ({ ...entry, crop: { mode: "auto" } }));
@@ -304,6 +372,38 @@ export default function SharingPosterEditor({
     setComposition((current) => ({ ...current, photos: current.photos.filter((photo) => photo.photoId !== id) }));
     if (selectedPhotoId === id) setSelectedPhotoId(next[0]?.photoId ?? null);
     syncMetadata(next);
+  }
+
+  /**
+   * Ranking starts from the sizes the sliders give now, largest first (ties
+   * keep poster order); going back to sliders keeps each photograph's size,
+   * rounded to the slider's steps.
+   */
+  function setSizeMode(mode: "weight" | "rank") {
+    setComposition((current) => {
+      if (mode === "rank") {
+        if (current.sizeRank) return current;
+        const rank = current.photos
+          .map((photo, index) => ({ id: photo.photoId, weight: photo.weight, index }))
+          .sort((a, b) => b.weight - a.weight || a.index - b.index)
+          .map(({ id }) => id);
+        return applySharingPosterSizeRank({ ...current, sizeRank: rank });
+      }
+      const { sizeRank: _sizeRank, ...rest } = current;
+      return { ...rest, photos: current.photos.map((photo) => ({ ...photo, weight: Math.round(photo.weight) })) };
+    });
+  }
+
+  function moveSizeRank(id: string, direction: -1 | 1) {
+    setComposition((current) => {
+      if (!current.sizeRank) return current;
+      const rank = [...current.sizeRank];
+      const index = rank.indexOf(id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= rank.length) return current;
+      [rank[index], rank[target]] = [rank[target], rank[index]];
+      return applySharingPosterSizeRank({ ...current, sizeRank: rank });
+    });
   }
 
   function movePhoto(id: string, direction: -1 | 1) {
@@ -405,15 +505,17 @@ export default function SharingPosterEditor({
     setNotice("");
     try {
       await document.fonts?.ready;
-      const { loadPosterImages, renderSharingPoster } = await import("@/lib/sharingPosterCanvas");
+      const { loadPosterImages, loadPosterLayerImages, renderSharingPoster } = await import("@/lib/sharingPosterCanvas");
       const images = await loadPosterImages(photos, "full", 2);
       if (images.size !== photos.length) throw new Error("image_load_failed");
+      const layerImages = await loadPosterLayerImages(composition.layers);
+      if (layerImages.size !== new Set(composition.layers?.map((layer) => layer.token)).size) throw new Error("layer_load_failed");
       const canvas = document.createElement("canvas");
       canvas.width = pixelSize.width;
       canvas.height = pixelSize.height;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("canvas_failed");
-      const result = renderSharingPoster(context, canvas.width, canvas.height, composition, photos, images);
+      const result = renderSharingPoster(context, canvas.width, canvas.height, composition, photos, images, { layerImages });
       if (result.footerTooTall) throw new Error("footer_too_tall");
       const mime = composition.export.format === "png" ? "image/png" : "image/jpeg";
       const blob = await canvasBlob(canvas, mime, composition.export.format === "jpeg" ? 0.92 : undefined);
@@ -499,8 +601,12 @@ export default function SharingPosterEditor({
             composition={composition}
             photos={photos}
             selectedPhotoId={selectedPhotoId}
-            onSelectPhoto={setSelectedPhotoId}
+            onSelectPhoto={(id) => { setSelectedPhotoId(id); setSelectedLayerId(null); }}
+            selectedLayerId={selectedLayerId}
+            onSelectLayer={setSelectedLayerId}
+            onLayerMove={moveLayer}
             onCropChange={(id, crop) => updatePhoto(id, (photo) => ({ ...photo, crop }))}
+            onCreditsMove={setCreditsX}
             onRenderMetrics={handleMetrics}
             ariaLabel={t("previewAria")}
             unavailableLabel={t("unavailable")}
@@ -517,13 +623,57 @@ export default function SharingPosterEditor({
           <section role="tabpanel" hidden={activeTab !== "photos"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
             <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("photosTitle")}</h2>
             <p className="mt-1 text-sm leading-6 text-fg-subtle">{t("photosHint")}</p>
+            {photos.length > 1 && (
+              <div className="mt-4 rounded-xl border border-border bg-raised p-4">
+                <h3 className="font-semibold">{t("photoSizes")}</h3>
+                <div role="group" aria-label={t("photoSizes")} className="mt-3 grid grid-cols-2 gap-2">
+                  {(["rank", "weight"] as const).map((mode) => {
+                    const active = (sizeRank ? "rank" : "weight") === mode;
+                    return <button key={mode} type="button" aria-pressed={active} onClick={() => setSizeMode(mode)} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${active ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t(mode === "rank" ? "photoSizesRank" : "photoSizesWeight")}</button>;
+                  })}
+                </div>
+                <p className="mt-2 text-xs leading-5 text-fg-subtle">{t(sizeRank ? "photoSizesRankHint" : "photoSizesWeightHint")}</p>
+                {sizeRank && (
+                  <ol className="mt-3 grid gap-2" aria-label={t("photoSizesRank")}>
+                    {sizeRank.map((id, index) => {
+                      const photo = photos.find((candidate) => candidate.photoId === id);
+                      if (!photo) return null;
+                      return (
+                        <li key={id} className={`grid grid-cols-[auto_3rem_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg border bg-surface p-2 ${selectedPhotoId === id ? "border-accent" : "border-border"}`}>
+                          <span className="font-meta w-6 text-center text-xs text-accent">{index + 1}</span>
+                          <button type="button" onClick={() => setSelectedPhotoId(id)} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" aria-label={t("selectRankedPhoto", { rank: index + 1 })}>
+                            {photo.source ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={photo.source.thumbUrl} alt="" className="ui-image-frame aspect-square w-12 rounded-md object-cover" />
+                            ) : (
+                              <span className="flex aspect-square w-12 items-center justify-center rounded-md bg-control text-[0.625rem] text-danger">{t("unavailable")}</span>
+                            )}
+                          </button>
+                          <span className="truncate text-xs text-fg-subtle">{index === 0 ? t("photoSizesLargest") : index === sizeRank.length - 1 ? t("photoSizesSmallest") : ""}</span>
+                          <button type="button" disabled={index === 0} aria-label={t("rankLarger")} onClick={() => moveSizeRank(id, -1)} className="min-h-11 min-w-11 rounded-md text-fg-subtle hover:bg-accent-surface disabled:opacity-30 sm:min-h-10 sm:min-w-10">↑</button>
+                          <button type="button" disabled={index === sizeRank.length - 1} aria-label={t("rankSmaller")} onClick={() => moveSizeRank(id, 1)} className="min-h-11 min-w-11 rounded-md text-fg-subtle hover:bg-accent-surface disabled:opacity-30 sm:min-h-10 sm:min-w-10">↓</button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+              </div>
+            )}
             {selectedPhoto && (
               <div className="mt-4 rounded-xl border border-border bg-raised p-4">
                 <div className="flex items-center justify-between gap-3"><h3 className="font-semibold">{t("selectedPhoto")}</h3><span className="font-meta text-xs text-accent">{composition.photos.findIndex((photo) => photo.photoId === selectedPhoto.photoId) + 1} / {photos.length}</span></div>
-                <label className="mt-4 grid gap-2 text-sm font-semibold text-fg-muted">
-                  <span className="flex justify-between"><span>{t("visualWeight")}</span><span className="font-meta">{selectedPhoto.composition.weight}</span></span>
-                  <input type="range" min="1" max="5" step="1" value={selectedPhoto.composition.weight} onChange={(event) => updatePhoto(selectedPhoto.photoId, (photo) => ({ ...photo, weight: Number(event.target.value) }))} className="min-h-11 accent-accent" />
-                </label>
+                {sizeRank ? (
+                  <p className="mt-4 text-sm text-fg-muted">{t("photoSizesRankOf", { rank: sizeRank.indexOf(selectedPhoto.photoId) + 1, count: sizeRank.length })}</p>
+                ) : (
+                  <label className="mt-4 grid gap-2 text-sm font-semibold text-fg-muted">
+                    <span className="flex justify-between"><span>{t("visualWeight")}</span><span className="font-meta">{selectedPhoto.composition.weight}</span></span>
+                    <input type="range" min="1" max="5" step="1" value={selectedPhoto.composition.weight} onChange={(event) => updatePhoto(selectedPhoto.photoId, (photo) => ({ ...photo, weight: Number(event.target.value) }))} className="min-h-11 accent-accent" />
+                  </label>
+                )}
+                {fit !== "fill" ? (
+                  <p className="mt-4 text-xs leading-5 text-fg-subtle">{t("wholePhotoNoCrop")}</p>
+                ) : (
+                  <>
                 <div className="mt-4 grid gap-2">
                   <span className="text-sm font-semibold text-fg-muted">{t("cropMode")}</span>
                   <div role="group" aria-label={t("cropMode")} className="grid grid-cols-2 gap-2">
@@ -544,6 +694,8 @@ export default function SharingPosterEditor({
                     <p className="mt-2 text-xs text-fg-subtle">{t("cropHint")}</p>
                   </>
                 )}
+                  </>
+                )}
               </div>
             )}
             <div className="mt-5"><SharingPosterPhotoPicker locale={locale} events={events} photos={photos} onAdd={addPhoto} onRemove={removePhoto} onMove={movePhoto} onSelect={setSelectedPhotoId} /></div>
@@ -553,21 +705,45 @@ export default function SharingPosterEditor({
             <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("layoutTitle")}</h2>
             <p className="mt-1 text-sm leading-6 text-fg-subtle">{t("layoutHint")}</p>
             <div className="mt-5 grid grid-cols-3 gap-2">
+              <button type="button" aria-pressed={adaptive} onClick={() => { setComposition((current) => ({ ...current, ratio: { ...current.ratio, adaptive: true } })); if (fit !== "collage") setPhotoFit("collage"); }} className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2 text-sm font-semibold ${adaptive ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t("ratioAdaptive")}</button>
               {SHARING_POSTER_RATIO_PRESETS.map(({ width, height, label }) => {
                 const suggested = suggestedRatio !== null && sameRatio(suggestedRatio, { width, height });
-                return <button key={label} type="button" onClick={() => setComposition((current) => ({ ...current, ratio: { width, height } }))} className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2 text-sm font-semibold ${composition.ratio.width === width && composition.ratio.height === height ? "border-accent bg-accent-surface text-accent-strong" : suggested ? "border-dashed border-accent bg-raised text-fg" : "border-border-strong bg-raised text-fg-muted"}`}>{label}{suggested && <span className="font-meta text-[0.625rem] font-semibold tracking-[0.1em] text-accent">{t("ratioSuggestionBadge")}</span>}</button>;
+                return <button key={label} type="button" onClick={() => setComposition((current) => ({ ...current, ratio: { width, height } }))} className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2 text-sm font-semibold ${!adaptive && composition.ratio.width === width && composition.ratio.height === height ? "border-accent bg-accent-surface text-accent-strong" : suggested ? "border-dashed border-accent bg-raised text-fg" : "border-border-strong bg-raised text-fg-muted"}`}>{label}{suggested && <span className="font-meta text-[0.625rem] font-semibold tracking-[0.1em] text-accent">{t("ratioSuggestionBadge")}</span>}</button>;
               })}
             </div>
             <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-              <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("ratioWidth")}<input type="number" min="1" max="100" value={composition.ratio.width} onChange={(event) => setComposition((current) => ({ ...current, ratio: { ...current.ratio, width: Math.min(100, Math.max(1, Number(event.target.value))) } }))} className={fieldClasses} /></label>
+              <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("ratioWidth")}<input type="number" min="1" max="100" value={composition.ratio.width} onChange={(event) => setComposition((current) => ({ ...current, ratio: { width: Math.min(100, Math.max(1, Number(event.target.value))), height: current.ratio.height } }))} className={fieldClasses} /></label>
               <Button aria-label={t("swapOrientation")} onClick={() => setComposition((current) => ({ ...current, ratio: { width: current.ratio.height, height: current.ratio.width } }))}>↔</Button>
-              <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("ratioHeight")}<input type="number" min="1" max="100" value={composition.ratio.height} onChange={(event) => setComposition((current) => ({ ...current, ratio: { ...current.ratio, height: Math.min(100, Math.max(1, Number(event.target.value))) } }))} className={fieldClasses} /></label>
+              <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("ratioHeight")}<input type="number" min="1" max="100" value={composition.ratio.height} onChange={(event) => setComposition((current) => ({ ...current, ratio: { width: current.ratio.width, height: Math.min(100, Math.max(1, Number(event.target.value))) } }))} className={fieldClasses} /></label>
             </div>
-            <SharingPosterRatioSuggestion
+            {adaptive ? (
+              <p className="mt-4 text-sm leading-6 text-fg-subtle">{t("ratioAdaptiveHint", { ratio: composition.ratio.width >= composition.ratio.height ? `${(composition.ratio.width / composition.ratio.height).toFixed(2)}:1` : `1:${(composition.ratio.height / composition.ratio.width).toFixed(2)}` })}</p>
+            ) : <SharingPosterRatioSuggestion
               state={ratioSuggestion}
               detecting={detectingSubjects}
+              fit={fit}
               onApply={(ratio) => setComposition((current) => ({ ...current, ratio: { width: ratio.width, height: ratio.height } }))}
-            />
+            />}
+            <div className="mt-5 grid gap-3">
+              <span className="text-sm font-semibold text-fg-muted">{t("photoFit")}</span>
+              <div role="group" aria-label={t("photoFit")} className="grid grid-cols-3 gap-2">
+                {(["collage", "whole", "fill"] as const).map((mode) => {
+                  const active = fit === mode;
+                  return <button key={mode} type="button" aria-pressed={active} onClick={() => setPhotoFit(mode)} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${active ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t(mode === "collage" ? "photoFitCollage" : mode === "whole" ? "photoFitWhole" : "photoFitFill")}</button>;
+                })}
+              </div>
+              <p className="text-sm leading-6 text-fg-subtle">{t(fit === "collage" ? "photoFitCollageHint" : fit === "whole" ? "photoFitWholeHint" : "photoFitFillHint")}</p>
+              <RangeField label={t("featherEdges")} value={composition.style.featherPercent ?? 0} min={0} max={25} step={0.5} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, featherPercent: value } }))} />
+              <p className="text-sm leading-6 text-fg-subtle">{t("featherEdgesHint")}</p>
+              <RangeField label={t("dropShadow")} value={Math.round((composition.style.shadow?.opacity ?? 0) * 100)} min={0} max={100} step={5} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, shadow: value > 0 ? { ...SHARING_POSTER_SHADOW_DEFAULTS, ...current.style.shadow, opacity: value / 100 } : undefined } }))} />
+              {composition.style.shadow && (
+                <>
+                  <RangeField label={t("dropShadowBlur")} value={composition.style.shadow.blurPercent} min={0} max={5} step={0.1} suffix="%" onChange={(value) => setComposition((current) => current.style.shadow ? { ...current, style: { ...current.style, shadow: { ...current.style.shadow, blurPercent: value } } } : current)} />
+                  <RangeField label={t("dropShadowOffset")} value={composition.style.shadow.offsetPercent} min={0} max={3} step={0.1} suffix="%" onChange={(value) => setComposition((current) => current.style.shadow ? { ...current, style: { ...current.style, shadow: { ...current.style.shadow, offsetPercent: value } } } : current)} />
+                </>
+              )}
+              <p className="text-sm leading-6 text-fg-subtle">{t("dropShadowHint")}</p>
+            </div>
             <div className="mt-5 grid gap-4">
               <RangeField label={t("outerMargin")} value={composition.style.marginPercent} min={0} max={12} step={0.25} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, marginPercent: value } }))} />
               <RangeField label={t("photoGap")} value={composition.style.gapPercent} min={0} max={5} step={0.1} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, gapPercent: value } }))} />
@@ -590,10 +766,19 @@ export default function SharingPosterEditor({
                     <p className="text-sm leading-6 text-fg-subtle">{t("glassHint")}</p>
                     <RangeField label={t("glassBlur")} value={composition.style.background.blurPercent} min={0.5} max={8} step={0.1} suffix="%" onChange={(value) => setComposition((current) => current.style.background?.mode === "glass" ? { ...current, style: { ...current.style, background: { ...current.style.background, blurPercent: value } } } : current)} />
                     <RangeField label={t("glassTint")} value={Math.round(composition.style.background.tintOpacity * 100)} min={0} max={90} step={5} suffix="%" onChange={(value) => setComposition((current) => current.style.background?.mode === "glass" ? { ...current, style: { ...current.style, background: { ...current.style.background, tintOpacity: value / 100 } } } : current)} />
+                    <RangeField label={t("glassLocal")} value={Math.round((composition.style.background.local ?? 0) * 100)} min={0} max={100} step={5} suffix="%" onChange={(value) => setComposition((current) => current.style.background?.mode === "glass" ? { ...current, style: { ...current.style, background: { ...current.style.background, local: value / 100 } } } : current)} />
+                    <p className="text-sm leading-6 text-fg-subtle">{t("glassLocalHint")}</p>
                   </>
                 )}
               </div>
             </div>
+            <SharingPosterImageLayers
+              layers={composition.layers ?? []}
+              ratio={composition.ratio}
+              selectedLayerId={selectedLayerId}
+              onSelect={setSelectedLayerId}
+              onChange={updateLayers}
+            />
           </section>
 
           <section role="tabpanel" hidden={activeTab !== "credits"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
@@ -611,6 +796,16 @@ export default function SharingPosterEditor({
                 onRemove={(id) => updateCreditLines((lines) => lines.filter((line) => line.id !== id))}
               />
             </div>
+            <div className="mt-5 grid gap-3">
+              <span className="text-sm font-semibold text-fg-muted">{t("creditsPosition")}</span>
+              <div role="group" aria-label={t("creditsPosition")} className="grid grid-cols-3 gap-2">
+                {([[0, "creditsLeft"], [0.5, "creditsCenter"], [1, "creditsRight"]] as const).map(([x, label]) => {
+                  const active = (composition.style.creditsX ?? 0) === x;
+                  return <button key={label} type="button" aria-pressed={active} onClick={() => setCreditsX(x)} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${active ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t(label)}</button>;
+                })}
+              </div>
+              <p className="text-sm leading-6 text-fg-subtle">{t("creditsPositionHint")}</p>
+            </div>
             {notice && <p role="status" className="mt-4 text-sm text-fg-subtle">{notice}</p>}
           </section>
 
@@ -626,7 +821,7 @@ export default function SharingPosterEditor({
             {cnNeedsReview && <p role="alert" className="mt-3 text-sm text-warning">{t("cnReviewRequired")}</p>}
             {!printsCredits && <p className="mt-3 text-sm text-fg-subtle">{t("creditsEmptyHint")}</p>}
             {metrics.footerTooTall && <p role="alert" className="mt-3 text-sm text-warning">{t("footerTooTall")}</p>}
-            {metrics.rectangles.some((rect) => { const photo = photos.find((candidate) => candidate.photoId === rect.id)?.source; const scale = pixelSize.width / 900; return photo ? rect.width * scale > photo.width || rect.height * scale > photo.height : false; }) && <p className="mt-3 text-sm text-warning">{t("upscaleWarning")}</p>}
+            {metrics.photoRects.some((rect) => { const photo = photos.find((candidate) => candidate.photoId === rect.id)?.source; const scale = pixelSize.width / 900; return photo ? rect.width * scale > photo.width || rect.height * scale > photo.height : false; }) && <p className="mt-3 text-sm text-warning">{t("upscaleWarning")}</p>}
             <div className="mt-4 flex flex-wrap gap-2">
               <Button variant="primary" disabled={!canExport || exportState === "preparing"} onClick={() => void prepareExport()}>{exportState === "preparing" ? t("preparing") : t("prepareExport")}</Button>
               {prepared && <a href={prepared.url} download={prepared.filename} className={buttonClasses()}>{t("download")}</a>}
@@ -639,8 +834,4 @@ export default function SharingPosterEditor({
       </div>
     </div>
   );
-}
-
-function RangeField({ label, value, min, max, step, suffix, onChange }: { label: string; value: number; min: number; max: number; step: number; suffix: string; onChange: (value: number) => void }) {
-  return <label className="grid gap-2 text-sm font-semibold text-fg-muted"><span className="flex justify-between gap-3"><span>{label}</span><span className="font-meta text-xs text-fg-subtle">{value}{suffix}</span></span><input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} className="min-h-11 accent-accent" /></label>;
 }

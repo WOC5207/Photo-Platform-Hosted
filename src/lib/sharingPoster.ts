@@ -42,7 +42,9 @@ export type SharingPosterCrop = z.infer<typeof sharingPosterCropSchema>;
 
 export const sharingPosterPhotoSchema = z.object({
   photoId: z.string().min(1).max(100),
-  weight: z.number().int().min(1).max(5),
+  // Whole steps from the slider; a size ranking spreads fractional weights
+  // evenly between 5 and 1 (see applySharingPosterSizeRank).
+  weight: z.number().min(1).max(5),
   focalX: z.number().min(0).max(1),
   focalY: z.number().min(0).max(1),
   // Optional so posters saved before crop modes existed still validate.
@@ -66,16 +68,94 @@ export const sharingPosterBackgroundSchema = z.discriminatedUnion("mode", [
      */
     blurPercent: z.number().min(0.5).max(8),
     /** How strongly `backgroundColor` frosts the gradient. */
-    tintOpacity: z.number().min(0).max(0.9)
+    tintOpacity: z.number().min(0).max(0.9),
+    /**
+     * How far the colour beside each stretch of a photograph's edge follows
+     * that stretch rather than the side's average: 0 is one colour per side,
+     * as before this existed (and when absent), 1 follows the edge fully.
+     */
+    local: z.number().min(0).max(1).optional()
   })
 ]);
 export type SharingPosterBackground = z.infer<typeof sharingPosterBackgroundSchema>;
 
+/** The shadow a poster starts with when the owner first raises its strength. */
+export const SHARING_POSTER_SHADOW_DEFAULTS = {
+  opacity: 0.35,
+  blurPercent: 1.5,
+  offsetPercent: 0.6
+} as const;
+
 /** Values applied when an owner switches a poster to the glass background. */
 export const SHARING_POSTER_GLASS_DEFAULTS = {
   blurPercent: 3,
-  tintOpacity: 0.55
+  tintOpacity: 0.55,
+  local: 0.6
 } as const;
+
+/**
+ * The glass a new whole-photo poster starts with: lightly frosted, so the
+ * colour around each photograph reads as a continuation of it rather than a
+ * pale mount.
+ */
+export const SHARING_POSTER_WHOLE_GLASS_DEFAULTS = {
+  blurPercent: 3,
+  tintOpacity: 0.25,
+  local: 0.6
+} as const;
+
+export type SharingPosterFit = "fill" | "whole" | "collage";
+
+export const SHARING_POSTER_MAX_LAYERS = 4;
+export const SHARING_POSTER_LAYER_TOKEN = /^posterlayer[a-f0-9]{32}$/;
+export const SHARING_POSTER_LAYER_MAX_SCALE = 4;
+
+/**
+ * An image the owner uploaded and placed on the poster: a logo, a watermark,
+ * a texture. `x` and `y` are its centre as fractions of the poster, `scale`
+ * its width as a fraction of the poster's width. "back" layers sit on the
+ * background under the photographs, "front" ones over everything.
+ */
+export const sharingPosterLayerSchema = z.object({
+  id: z.string().min(1).max(40),
+  token: z.string().regex(SHARING_POSTER_LAYER_TOKEN),
+  width: z.number().int().min(1).max(8192),
+  height: z.number().int().min(1).max(8192),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  scale: z.number().min(0.02).max(SHARING_POSTER_LAYER_MAX_SCALE),
+  opacity: z.number().min(0).max(1),
+  placement: z.enum(["front", "back"])
+});
+export type SharingPosterLayer = z.infer<typeof sharingPosterLayerSchema>;
+
+/**
+ * The scale at which a layer covers the whole poster: at least its width, and
+ * tall enough to reach top and bottom, within the largest scale allowed.
+ */
+export function coverSharingPosterLayerScale(
+  layer: Pick<SharingPosterLayer, "width" | "height">,
+  ratio: { width: number; height: number }
+): number {
+  const tall = (ratio.height / ratio.width) * (layer.width / Math.max(1, layer.height));
+  return Math.min(SHARING_POSTER_LAYER_MAX_SCALE, Math.max(1, tall));
+}
+
+/** A dragged layer's centre snaps to the poster's centre line within `threshold` (a fraction). */
+export function snapSharingPosterLayerCentre(value: number, threshold: number): { value: number; snapped: boolean } {
+  const clamped = Math.min(1, Math.max(0, value));
+  return Math.abs(clamped - 0.5) <= threshold ? { value: 0.5, snapped: true } : { value: clamped, snapped: false };
+}
+
+/** Where a poster serves an uploaded layer from; only its owner can read it. */
+export function sharingPosterLayerUrl(token: string): string {
+  return `/api/dashboard/sharing-posters/layers/${token}.webp`;
+}
+
+/** How a poster draws its photographs; absent is the original crop. */
+export function sharingPosterFit(style: { fit?: SharingPosterFit }): SharingPosterFit {
+  return style.fit ?? "fill";
+}
 
 /**
  * What a credit line says: a person, the gear, or event details, printed as
@@ -133,8 +213,20 @@ const compositionBaseSchema = z.object({
   outputLocale: z.enum(["en", "zh"]),
   ratio: z.object({
     width: z.number().min(1).max(100),
-    height: z.number().min(1).max(100)
+    height: z.number().min(1).max(100),
+    /**
+     * The editor keeps `width` and `height` at the shape a collage of the
+     * photographs fills exactly (see adaptivePosterRatio), so the export and
+     * everything else read an ordinary ratio.
+     */
+    adaptive: z.boolean().optional()
   }),
+  /**
+   * Photo ids from the largest to the smallest the owner wants them drawn.
+   * Present, it sets every photograph's weight from its place (see
+   * applySharingPosterSizeRank) instead of the per-photo slider.
+   */
+  sizeRank: z.array(z.string().min(1).max(100)).max(SHARING_POSTER_MAX_PHOTOS).optional(),
   style: z.object({
     marginPercent: z.number().min(0).max(12),
     gapPercent: z.number().min(0).max(5),
@@ -147,8 +239,44 @@ const compositionBaseSchema = z.object({
     // are absent.
     /** Gap between the photo area and the credits, as a percentage of width. */
     textGapPercent: z.number().min(0).max(8).optional(),
-    background: sharingPosterBackgroundSchema.optional()
+    background: sharingPosterBackgroundSchema.optional(),
+    /**
+     * "whole" shows every photograph uncropped inside its frame; "collage"
+     * also keeps them whole, in frames of their exact shape packed with even
+     * gutters; "fill" crops to cover the frame. Absent means "fill", how
+     * posters were drawn before.
+     */
+    fit: z.enum(["fill", "whole", "collage"]).optional(),
+    /**
+     * Where the credits sit across the photographs' width: 0 flush with their
+     * left edge, 0.5 centred, 1 flush with their right edge. Absent is 0, the
+     * original left-aligned credits.
+     */
+    creditsX: z.number().min(0).max(1).optional(),
+    /**
+     * Feathered photograph edges: how far each edge fades into the
+     * background, as a percentage of the photograph's shorter drawn side.
+     * Absent or 0 is a hard edge.
+     */
+    featherPercent: z.number().min(0).max(25).optional(),
+    /**
+     * A drop shadow under every photograph, cast straight down. `opacity` is
+     * its strength, `blurPercent` its softness and `offsetPercent` how far it
+     * falls, both as percentages of the poster's width. Absent is no shadow.
+     */
+    shadow: z
+      .object({
+        opacity: z.number().min(0).max(1),
+        blurPercent: z.number().min(0).max(5),
+        offsetPercent: z.number().min(0).max(3)
+      })
+      .optional()
   }),
+  layers: z
+    .array(sharingPosterLayerSchema)
+    .max(SHARING_POSTER_MAX_LAYERS)
+    .refine((layers) => new Set(layers.map((layer) => layer.id)).size === layers.length, "duplicate_layer")
+    .optional(),
   photos: z
     .array(sharingPosterPhotoSchema)
     .max(SHARING_POSTER_MAX_PHOTOS)
@@ -200,6 +328,41 @@ export const sharingPosterCompositionSchema = z.union([
 
 export type SharingPosterComposition = z.infer<typeof compositionSchemaV2>;
 export type SharingPosterPhoto = z.infer<typeof sharingPosterPhotoSchema>;
+
+/**
+ * The weight a place in the size ranking gives: the largest 5, the smallest 1
+ * and the rest evenly between, so every step down the list is a step smaller.
+ * A lone photograph keeps the middle weight.
+ */
+export function rankedSharingPosterWeight(index: number, count: number): number {
+  if (count <= 1) return HOME_PHOTO_WEIGHT_FALLBACK;
+  return 5 - (4 * index) / (count - 1);
+}
+
+/**
+ * Keep a size ranking in step with the poster's photographs and write the
+ * weights it gives. Removed photographs leave the ranking; added ones join it
+ * at the small end, in poster order. Returns the same object when nothing
+ * changes, so it is safe to apply on every edit.
+ */
+export function applySharingPosterSizeRank(composition: SharingPosterComposition): SharingPosterComposition {
+  const current = composition.sizeRank;
+  if (!current) return composition;
+  const present = new Set(composition.photos.map((photo) => photo.photoId));
+  const rank = [...new Set(current)].filter((id) => present.has(id));
+  for (const photo of composition.photos) if (!rank.includes(photo.photoId)) rank.push(photo.photoId);
+  const weights = new Map(rank.map((id, index) => [id, rankedSharingPosterWeight(index, rank.length)]));
+  const unchanged =
+    rank.length === current.length &&
+    rank.every((id, index) => id === current[index]) &&
+    composition.photos.every((photo) => photo.weight === weights.get(photo.photoId));
+  if (unchanged) return composition;
+  return {
+    ...composition,
+    sizeRank: rank,
+    photos: composition.photos.map((photo) => ({ ...photo, weight: weights.get(photo.photoId) ?? photo.weight }))
+  };
+}
 
 /** "pending" = not detected yet (or by an older algorithm); "none" = attempted, nothing found. */
 export type SharingPosterSubjectState = "pending" | "detected" | "none";
@@ -294,7 +457,10 @@ export function defaultSharingPosterComposition(
       textColor: "#211d18",
       footerTextPercent: 1.8,
       textGapPercent: 2.5,
-      background: { mode: "solid" }
+      // New posters keep every photograph whole, packed in frames of their own
+      // shape, and let the glass gradient fill the space around them.
+      background: { mode: "glass", ...SHARING_POSTER_WHOLE_GLASS_DEFAULTS },
+      fit: "collage"
     },
     photos: photoIds
       .filter(({ id }) => id && !seen.has(id) && seen.add(id))

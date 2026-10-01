@@ -41,7 +41,9 @@ export default async function SharingPostersPage({
       id: row.id,
       name: row.name,
       photoCount: composition.photos.length,
-      ratioLabel: `${composition.ratio.width}:${composition.ratio.height}`,
+      ratioLabel: composition.ratio.adaptive
+        ? t("ratioAdaptive")
+        : `${composition.ratio.width}:${composition.ratio.height}`,
       updatedLabel: formatter.format(row.updatedAt)
     };
   });
