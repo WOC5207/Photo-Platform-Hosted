@@ -68,6 +68,9 @@ async function main() {
   }
   const assigned = layers.map((layer) => layer.type === "image" ? { ...layer, slotId: "day-1" } : layer);
   assert.equal(cosplanCharacterNames(namedSlots, assigned)[0].text, "B");
+  const hiddenTop = assigned.map((layer) => layer.id === "image-b" && layer.type === "image" ? { ...layer, showName: false } : layer);
+  assert.equal(cosplanCharacterNames(namedSlots, hiddenTop).length, 0, "Hiding the top character's name must not reveal a lower character's name");
+  assert.equal(cosplanCharacterNames(namedSlots, hiddenTop.map((layer) => layer.type === "image" ? { ...layer, showName: true } : layer))[0].text, "B");
   assert.equal(cosplanCharacterNames(namedSlots, assigned.filter((layer) => layer.id !== "image-b"))[0].text, "A");
   assert.equal(cosplanCharacterNames(namedSlots, layers).length, 0);
   assert.equal(cosplanCharacterNames(slots, assigned).length, 0);

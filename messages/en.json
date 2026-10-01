@@ -1967,6 +1967,7 @@
     "draftError": "This browser could not save the draft. You can keep editing and export your poster.",
     "backgrounds": "Backgrounds",
     "characterName": "Character name",
+    "showCharacterName": "Show character name",
     "characters": "Characters",
     "restoreTitle": "Continue your saved poster?",
     "restoreHint": "A local draft using “{title}” was found in this browser.",

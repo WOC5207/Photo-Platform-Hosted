@@ -31,23 +31,44 @@ async function main() {
     const longName = "初音未来 Hatsune Miku with a very long character name";
     await page.getByLabel("Character name", { exact: true }).first().fill(longName);
     await expect.poll(names).toEqual([longName]);
-    const download = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download PNG", exact: true }).first().click();
-    const file = await (await download).path();
-    assert.ok(file);
-    const { data } = await sharp(file!).extract({ left: 50, top: 750, width: 300, height: 60 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
-    assert.ok(data.some((value, index) => index % 3 === 0 && value > 220 && data[index + 1] > 220 && data[index + 2] > 220), "Export contains white character-name text in the linked field");
+    const nameToggle = page.getByLabel("Show character name", { exact: true }).first();
+    assert.equal(await nameToggle.isChecked(), true, "Character names start on");
+    await nameToggle.uncheck();
+    await expect.poll(names).toEqual([]);
+    async function exportHasName() {
+      const download = page.waitForEvent("download");
+      await page.getByRole("button", { name: "Download PNG", exact: true }).first().click();
+      const file = await (await download).path();
+      assert.ok(file);
+      const { data } = await sharp(file!).extract({ left: 50, top: 750, width: 300, height: 60 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      return data.some((value, index) => index % 3 === 0 && value > 220 && data[index + 1] > 220 && data[index + 2] > 220);
+    }
+    assert.equal(await exportHasName(), false, "The exported poster omits a hidden character name");
     await page.getByRole("button", { name: new RegExp(`01.*${longName}`) }).first().click();
+    await nameToggle.check();
+    await expect.poll(names).toEqual([longName]);
+    assert.equal(await exportHasName(), true, "The exported poster includes the enabled character name");
+    await page.getByRole("button", { name: new RegExp(`01.*${longName}`) }).first().click();
+    await nameToggle.uncheck();
+    await expect.poll(names).toEqual([]);
+    await page.waitForTimeout(800); // Existing draft debounce.
+    await page.reload();
+    await page.getByRole("button", { name: "Restore draft", exact: true }).click();
+    await expect.poll(names).toEqual([]);
+    await page.getByRole("button", { name: new RegExp(`01.*${longName}`) }).first().click();
+    await nameToggle.check();
+    await expect.poll(names).toEqual([longName]);
     await page.getByRole("button", { name: "Delete", exact: true }).first().click();
     await expect.poll(names).toEqual([]);
     await page.getByRole("button", { name: "Undo", exact: true }).first().click();
     await expect.poll(names).toEqual([longName]);
-    await page.waitForTimeout(800); // Existing draft debounce.
-    await page.reload();
-    await page.getByRole("button", { name: "Restore draft", exact: true }).click();
+    await page.getByRole("button", { name: new RegExp(`01.*${longName}`) }).first().click();
+    await nameToggle.uncheck();
+    await expect.poll(names).toEqual([]);
+    await page.getByRole("button", { name: "Undo", exact: true }).first().click();
     await expect.poll(names).toEqual([longName]);
     assert.deepEqual(errors, []);
-    console.log("PASS  character-name assignment, editing, PNG export, deletion, undo, and draft restoration in Chrome");
+    console.log("PASS  default-on character names, visitor visibility, PNG export, deletion, undo, and draft restoration in Chrome");
   } finally {
     await browser.close();
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
