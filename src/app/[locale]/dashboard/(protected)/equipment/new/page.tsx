@@ -6,11 +6,16 @@ import { Link } from "@/i18n/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
-export default async function NewEquipmentPage() {
-  const [locale, t] = await Promise.all([
+export default async function NewEquipmentPage({ searchParams }: {
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
+  const [locale, t, tQr, params] = await Promise.all([
     getLocale(),
-    getTranslations("equipment")
+    getTranslations("equipment"),
+    getTranslations("equipmentQrPrint"),
+    searchParams
   ]);
+  const returnToQrLabels = params.returnTo === "qr-labels";
   const user = await requireUser(locale);
   const categories = await prisma.equipmentCategory.findMany({
     where: { ownerId: user.id },
@@ -24,9 +29,15 @@ export default async function NewEquipmentPage() {
         title={t("newEquipmentTitle")}
         description={t("addEquipmentHint")}
         action={
-          <Link href="/dashboard/equipment" className={buttonClasses()}>
-            {t("backToInventory")}
-          </Link>
+          returnToQrLabels ? (
+            <Link href="/dashboard/equipment/qr-labels" className={buttonClasses()}>
+              {tQr("backToQrLabels")}
+            </Link>
+          ) : (
+            <Link href="/dashboard/equipment" className={buttonClasses()}>
+              {t("backToInventory")}
+            </Link>
+          )
         }
       />
 
@@ -43,7 +54,7 @@ export default async function NewEquipmentPage() {
             {t("manageCategories")}
           </Link>
         </div>
-        <EquipmentCreateForm categories={categories} />
+        <EquipmentCreateForm categories={categories} returnToQrLabels={returnToQrLabels} />
       </section>
     </div>
   );

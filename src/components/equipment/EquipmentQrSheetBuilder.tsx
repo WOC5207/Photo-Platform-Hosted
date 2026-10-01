@@ -183,7 +183,7 @@ async function renderLabelCanvas({
   cursorY += layout.textBlockGapMm * PX_PER_MM;
 
   if (includeName) {
-    const fontSize = layout.textSizePt * (300 / 72);
+    const fontSize = layout.nameTextSizePt * (300 / 72);
     context.imageSmoothingEnabled = true;
     context.fillStyle = "#211d18";
     context.font = `600 ${fontSize}px "Avenir Next", "Segoe UI", "Microsoft YaHei", sans-serif`;
@@ -270,6 +270,69 @@ function triggerDownload(blob: Blob, fileName: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function waitForImages(images: HTMLImageElement[]): Promise<void> {
+  return Promise.all(
+    images.map((image) =>
+      image.complete && image.naturalWidth > 0
+        ? Promise.resolve()
+        : new Promise<void>((resolve, reject) => {
+            image.onload = () => resolve();
+            image.onerror = () => reject(new Error("Label image could not be loaded"));
+          })
+    )
+  ).then(() => undefined);
+}
+
+async function printLabelImages(
+  blobs: Blob[],
+  widthMm: number,
+  heightMm: number
+): Promise<void> {
+  const urls = blobs.map((blob) => URL.createObjectURL(blob));
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(frame);
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    frame.remove();
+    urls.forEach((url) => URL.revokeObjectURL(url));
+  };
+
+  try {
+    const frameWindow = frame.contentWindow;
+    const frameDocument = frame.contentDocument;
+    if (!frameWindow || !frameDocument) throw new Error("Print frame is unavailable");
+    frameDocument.open();
+    frameDocument.write(`<!doctype html><html><head><title>QR labels</title><style>
+@page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; }
+img { display: block; width: ${widthMm}mm; height: ${heightMm}mm; break-after: page; page-break-after: always; }
+img:last-child { break-after: auto; page-break-after: auto; }
+</style></head><body></body></html>`);
+    frameDocument.close();
+    const images = urls.map((url) => {
+      const image = frameDocument.createElement("img");
+      image.alt = "";
+      image.src = url;
+      frameDocument.body.appendChild(image);
+      return image;
+    });
+    await waitForImages(images);
+    frameWindow.addEventListener("afterprint", () => window.setTimeout(cleanup, 0), { once: true });
+    // Some browsers return from print() before the dialog closes and never
+    // fire afterprint; keep the frame alive long enough for the dialog.
+    window.setTimeout(cleanup, 10 * 60 * 1000);
+    frameWindow.focus();
+    frameWindow.print();
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+}
+
 function isSavedSize(value: unknown): value is SavedSize {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<SavedSize>;
@@ -311,19 +374,22 @@ export default function EquipmentQrSheetBuilder({
   equipment,
   categories,
   locale,
-  logoUrl
+  logoUrl,
+  initialSelectedIds = []
 }: {
   equipment: EquipmentQrLabelItem[];
   categories: string[];
   locale: string;
   logoUrl: string;
+  initialSelectedIds?: string[];
 }) {
   const t = useTranslations("equipmentQrPrint");
   const [includeName, setIncludeName] = useState(true);
   const [includeUid, setIncludeUid] = useState(false);
   const [includeLogo, setIncludeLogo] = useState(Boolean(logoUrl));
   const [logoPlacement, setLogoPlacement] = useState<EquipmentQrLogoPlacement>("ABOVE");
-  const [textSizeInput, setTextSizeInput] = useState(String(DEFAULT_TEXT_SIZE_PT));
+  const [nameTextSizeInput, setNameTextSizeInput] = useState(String(DEFAULT_TEXT_SIZE_PT));
+  const [uidTextSizeInput, setUidTextSizeInput] = useState(String(DEFAULT_TEXT_SIZE_PT));
   const [logoHeightInput, setLogoHeightInput] = useState(String(DEFAULT_LOGO_HEIGHT_MM));
   const [elementGapInput, setElementGapInput] = useState(String(DEFAULT_ELEMENT_GAP_MM));
   const [backgroundUrl, setBackgroundUrl] = useState("");
@@ -333,13 +399,13 @@ export default function EquipmentQrSheetBuilder({
   const [heightInput, setHeightInput] = useState(String(DEFAULT_SIZE.heightMm));
   const [labelRotation, setLabelRotation] = useState<LabelRotation>(0);
   const [savedSize, setSavedSize] = useState(DEFAULT_SIZE);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(initialSelectedIds));
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("ALL");
   const [previewIndex, setPreviewIndex] = useState(0);
   const [previewQrs, setPreviewQrs] = useState<Record<string, string>>({});
   const [mobilePreviewExpanded, setMobilePreviewExpanded] = useState(true);
-  const [exporting, setExporting] = useState<"pdf" | "png" | null>(null);
+  const [exporting, setExporting] = useState<"pdf" | "png" | "print" | null>(null);
   const [sizeNotice, setSizeNotice] = useState("");
   const [message, setMessage] = useState<
     { kind: "success" | "error"; text: string } | null
@@ -365,7 +431,8 @@ export default function EquipmentQrSheetBuilder({
           includeUid: false,
           includeLogo: Boolean(logoUrl),
           logoPlacement: "ABOVE",
-          textSizePt: DEFAULT_TEXT_SIZE_PT,
+          nameTextSizePt: DEFAULT_TEXT_SIZE_PT,
+          uidTextSizePt: DEFAULT_TEXT_SIZE_PT,
           logoHeightMm: DEFAULT_LOGO_HEIGHT_MM,
           elementGapMm: DEFAULT_ELEMENT_GAP_MM
         })
@@ -381,7 +448,8 @@ export default function EquipmentQrSheetBuilder({
 
   const labelWidthMm = Number(widthInput);
   const labelHeightMm = Number(heightInput);
-  const textSizePt = Number(textSizeInput);
+  const nameTextSizePt = Number(nameTextSizeInput);
+  const uidTextSizePt = Number(uidTextSizeInput);
   const logoHeightMm = Number(logoHeightInput);
   const elementGapMm = Number(elementGapInput);
   const backgroundOpacity = Number(backgroundOpacityInput);
@@ -414,11 +482,12 @@ export default function EquipmentQrSheetBuilder({
         includeUid,
         includeLogo: includeLogo && Boolean(logoUrl),
         logoPlacement,
-        textSizePt,
+        nameTextSizePt,
+        uidTextSizePt,
         logoHeightMm,
         elementGapMm
       }),
-    [elementGapMm, includeLogo, includeName, includeUid, labelHeightMm, labelWidthMm, logoHeightMm, logoPlacement, logoUrl, textSizePt]
+    [elementGapMm, includeLogo, includeName, includeUid, labelHeightMm, labelWidthMm, logoHeightMm, logoPlacement, logoUrl, nameTextSizePt, uidTextSizePt]
   );
   const totalPreviews = Math.max(1, selectedEquipment.length);
   const safePreviewIndex = Math.min(previewIndex, totalPreviews - 1);
@@ -622,6 +691,50 @@ export default function EquipmentQrSheetBuilder({
     }
   }
 
+  async function printLabels() {
+    if (!layout || selectedEquipment.length === 0) {
+      setMessage({
+        kind: "error",
+        text: layout ? t("selectBeforePrint") : t("labelInvalid")
+      });
+      return;
+    }
+    setExporting("print");
+    setMessage(null);
+    try {
+      const [logo, background] = await Promise.all([
+        includeLogo && logoUrl ? loadImage(logoUrl) : Promise.resolve(null),
+        backgroundUrl ? loadImage(backgroundUrl) : Promise.resolve(null)
+      ]);
+      const blobs: Blob[] = [];
+      for (const item of selectedEquipment) {
+        const scanUrl = new URL(
+          `/${locale}/equipment/${encodeURIComponent(item.qrToken)}`,
+          window.location.origin
+        ).toString();
+        const label = rotateLabelCanvas(await renderLabelCanvas({
+          item,
+          scanUrl,
+          widthMm: labelWidthMm,
+          heightMm: labelHeightMm,
+          layout,
+          includeName,
+          includeUid,
+          logo,
+          logoPlacement,
+          background,
+          backgroundOpacity
+        }), labelRotation);
+        blobs.push(await canvasBlob(label));
+      }
+      await printLabelImages(blobs, outputWidthMm, outputHeightMm);
+    } catch {
+      setMessage({ kind: "error", text: t("printError") });
+    } finally {
+      setExporting(null);
+    }
+  }
+
   const logoTop = layout ? (layout.paddingMm / labelHeightMm) * 100 : 0;
   const qrTop = layout
     ? ((layout.paddingMm + layout.logoSlotMm) / labelHeightMm) * 100
@@ -635,7 +748,7 @@ export default function EquipmentQrSheetBuilder({
     ? ((layout.paddingMm + layout.logoSlotMm + layout.qrSizeMm + layout.textBlockGapMm + layout.nameSlotMm + layout.nameUidGapMm) / labelHeightMm) * 100
     : 0;
   const previewTextSizeCqw = layout
-    ? ((layout.textSizePt * (25.4 / 72)) / labelWidthMm) * 100
+    ? ((layout.nameTextSizePt * (25.4 / 72)) / labelWidthMm) * 100
     : 0;
   const previewUidTextSizeCqw = layout
     ? ((layout.uidTextSizePt * (25.4 / 72)) / labelWidthMm) * 100
@@ -717,7 +830,7 @@ export default function EquipmentQrSheetBuilder({
   }
 
   return (
-    <div className={`relative grid items-start gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(20rem,0.85fr)] lg:pb-0 xl:grid-cols-[minmax(0,0.9fr)_minmax(24rem,1.1fr)] ${mobilePreviewExpanded ? "pb-[22rem]" : "pb-24"}`}>
+    <div className={`relative grid items-start gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(20rem,0.85fr)] lg:pb-0 xl:grid-cols-[minmax(0,0.9fr)_minmax(24rem,1.1fr)] ${mobilePreviewExpanded ? "pb-[25rem]" : "pb-24"}`}>
       <div className="flex min-w-0 flex-col gap-6">
         <section className="ui-panel p-5 sm:p-6">
           <div className="flex items-start gap-3">
@@ -725,7 +838,10 @@ export default function EquipmentQrSheetBuilder({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="font-display text-[1.375rem] font-semibold tracking-[-0.02em] text-fg">{t("selectTitle")}</h2>
-                <span className="font-meta text-xs text-accent">{t("selectedCount", { count: selectedEquipment.length })}</span>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="font-meta text-xs text-accent">{t("selectedCount", { count: selectedEquipment.length })}</span>
+                  {equipment.length > 0 && <Link href={{ pathname: "/dashboard/equipment/new", query: { returnTo: "qr-labels" } }} className={buttonClasses({ size: "compact" })}>{t("addEquipment")}</Link>}
+                </div>
               </div>
               <p className="ui-pretty mt-1 text-sm leading-6 text-fg-subtle">{t("selectHint")}</p>
             </div>
@@ -739,7 +855,7 @@ export default function EquipmentQrSheetBuilder({
             <Button size="compact" variant="ghost" onClick={() => setSelectedIds(new Set())} disabled={selectedEquipment.length === 0}>{t("clearSelection")}</Button>
           </div>
           {equipment.length === 0 ? (
-            <div className="mt-5 rounded-xl border border-dashed border-border-strong bg-control p-5 text-center"><p className="text-sm text-fg-subtle">{t("emptyInventory")}</p><Link href="/dashboard/equipment/new" className={buttonClasses({ variant: "primary", className: "mt-4" })}>{t("addEquipment")}</Link></div>
+            <div className="mt-5 rounded-xl border border-dashed border-border-strong bg-control p-5 text-center"><p className="text-sm text-fg-subtle">{t("emptyInventory")}</p><Link href={{ pathname: "/dashboard/equipment/new", query: { returnTo: "qr-labels" } }} className={buttonClasses({ variant: "primary", className: "mt-4" })}>{t("addEquipment")}</Link></div>
           ) : filteredEquipment.length === 0 ? (
             <p className="mt-5 rounded-lg bg-control p-4 text-center text-sm text-fg-subtle">{t("noMatches")}</p>
           ) : (
@@ -776,13 +892,12 @@ export default function EquipmentQrSheetBuilder({
                       <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{t("includeNameHint")}</span>
                     </span>
                   </label>
-                  <div className={`mt-3 border-t border-border pt-3 ${includeName || includeUid ? "" : "opacity-50"}`}>
+                  <div className={`mt-3 border-t border-border pt-3 ${includeName ? "" : "opacity-50"}`}>
                     <div className="flex items-center justify-between gap-3">
-                      <label htmlFor="qr-label-text-size" className="text-xs font-semibold text-fg-muted">{t("textSize")}</label>
-                      <output htmlFor="qr-label-text-size" className="font-meta text-xs text-fg-subtle">{t("textSizeValue", { size: textSizeInput || "—" })}</output>
+                      <label htmlFor="qr-label-name-text-size" className="text-xs font-semibold text-fg-muted">{t("nameTextSize")}</label>
+                      <output htmlFor="qr-label-name-text-size" className="font-meta text-xs text-fg-subtle">{t("textSizeValue", { size: nameTextSizeInput || "—" })}</output>
                     </div>
-                    <input id="qr-label-text-size" type="range" min={QR_LABEL_MIN_TEXT_SIZE_PT} max={QR_LABEL_MAX_TEXT_SIZE_PT} step="1" value={textSizeInput} disabled={!includeName && !includeUid} onChange={(event) => setTextSizeInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
-                    <p className="mt-1 text-xs leading-5 text-fg-subtle">{t("textSizeHint")}</p>
+                    <input id="qr-label-name-text-size" type="range" min={QR_LABEL_MIN_TEXT_SIZE_PT} max={QR_LABEL_MAX_TEXT_SIZE_PT} step="1" value={nameTextSizeInput} disabled={!includeName} onChange={(event) => setNameTextSizeInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
                   </div>
                   <label className="mt-3 flex min-h-12 cursor-pointer items-start gap-3 border-t border-border pt-3">
                     <input type="checkbox" checked={includeUid} onChange={(event) => setIncludeUid(event.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]" />
@@ -791,6 +906,13 @@ export default function EquipmentQrSheetBuilder({
                       <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">{t("includeUidHint")}</span>
                     </span>
                   </label>
+                  <div className={`mt-3 border-t border-border pt-3 ${includeUid ? "" : "opacity-50"}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <label htmlFor="qr-label-uid-text-size" className="text-xs font-semibold text-fg-muted">{t("uidTextSize")}</label>
+                      <output htmlFor="qr-label-uid-text-size" className="font-meta text-xs text-fg-subtle">{t("textSizeValue", { size: uidTextSizeInput || "—" })}</output>
+                    </div>
+                    <input id="qr-label-uid-text-size" type="range" min={QR_LABEL_MIN_TEXT_SIZE_PT} max={QR_LABEL_MAX_TEXT_SIZE_PT} step="1" value={uidTextSizeInput} disabled={!includeUid} onChange={(event) => setUidTextSizeInput(event.target.value)} className="mt-2 h-8 w-full cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed" />
+                  </div>
                 </div>
                 <div className={`rounded-lg border border-border bg-surface p-3 ${logoUrl ? "" : "opacity-60"}`}>
                   <label className={`flex min-h-12 items-start gap-3 ${logoUrl ? "cursor-pointer" : "cursor-not-allowed"}`}>
@@ -905,6 +1027,7 @@ export default function EquipmentQrSheetBuilder({
           <div className="grid gap-2 sm:grid-cols-2">
             <Button variant="primary" className="w-full" disabled={Boolean(exporting) || !layout || selectedEquipment.length === 0} onClick={downloadPdf}>{exporting === "pdf" ? t("preparingPdf") : t("downloadPdf", { count: selectedEquipment.length })}</Button>
             <Button className="w-full" disabled={Boolean(exporting) || !layout || selectedEquipment.length === 0} onClick={downloadPng}>{exporting === "png" ? t("preparingPng") : t("downloadPng", { count: selectedEquipment.length })}</Button>
+            <Button className="w-full sm:col-span-2" disabled={Boolean(exporting) || !layout || selectedEquipment.length === 0} onClick={printLabels}>{exporting === "print" ? t("preparingPrint") : t("printLabels", { count: selectedEquipment.length })}</Button>
           </div>
           <p className="mt-3 hidden text-center text-xs leading-5 text-fg-subtle lg:block">{t("printHint")}</p>
           <div aria-live="polite" className="mt-3 min-h-6">{message && <p className={`rounded-lg border px-3 py-2 text-sm ${message.kind === "success" ? "border-success-border bg-success-surface text-success" : "border-danger-border bg-danger-surface text-danger"}`}>{message.text}</p>}</div>
@@ -941,6 +1064,7 @@ export default function EquipmentQrSheetBuilder({
             <div className="mt-1 grid grid-cols-2 gap-2">
               <Button variant="primary" size="compact" className="w-full" disabled={Boolean(exporting) || !layout || selectedEquipment.length === 0} onClick={downloadPdf}>{exporting === "pdf" ? t("preparingShort") : t("mobileDownloadPdf")}</Button>
               <Button size="compact" className="w-full" disabled={Boolean(exporting) || !layout || selectedEquipment.length === 0} onClick={downloadPng}>{exporting === "png" ? t("preparingShort") : t("mobileDownloadPng")}</Button>
+              <Button size="compact" className="col-span-2 w-full" disabled={Boolean(exporting) || !layout || selectedEquipment.length === 0} onClick={printLabels}>{exporting === "print" ? t("preparingShort") : t("mobilePrint")}</Button>
             </div>
             <div aria-live="polite" className="mt-2">{message && <p className={`rounded-lg border px-2 py-1.5 text-xs ${message.kind === "success" ? "border-success-border bg-success-surface text-success" : "border-danger-border bg-danger-surface text-danger"}`}>{message.text}</p>}</div>
           </div>
