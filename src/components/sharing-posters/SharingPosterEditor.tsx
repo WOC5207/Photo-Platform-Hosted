@@ -10,9 +10,11 @@ import {
   SHARING_POSTER_GLASS_DEFAULTS,
   SHARING_POSTER_MAX_CREDIT_LINES,
   SHARING_POSTER_METADATA_KINDS,
+  SHARING_POSTER_WHOLE_GLASS_DEFAULTS,
   legacyTextGapPercent,
   moveSharingPosterCreditLine,
   sharingPosterCreditLabels,
+  sharingPosterFit,
   sharingPosterCreditLines,
   sharingPosterCreditMetadataValue,
   sharingPosterMetadataFromPhotos,
@@ -88,7 +90,7 @@ export default function SharingPosterEditor({
   );
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [saveCycle, setSaveCycle] = useState(0);
-  const [metrics, setMetrics] = useState<SharingPosterRenderResult>({ rectangles: [], footerTooTall: false, wrappedLineCount: 0 });
+  const [metrics, setMetrics] = useState<SharingPosterRenderResult>({ rectangles: [], photoRects: [], footerTooTall: false, wrappedLineCount: 0 });
   const [exportState, setExportState] = useState<"idle" | "preparing" | "ready" | "error">("idle");
   const [prepared, setPrepared] = useState<{ blob: Blob; url: string; filename: string; signature: string } | null>(null);
   const [notice, setNotice] = useState("");
@@ -117,6 +119,7 @@ export default function SharingPosterEditor({
     ratioSuggestion.fresh && ratioSuggestion.suggestion?.switchSuggested
       ? ratioSuggestion.suggestion.best.ratio
       : null;
+  const fit = sharingPosterFit(composition.style);
   const detectingSubjects = photos.some((photo) => photo.source?.subjectState === "pending");
   const pixelSize = sharingPosterPixelSize(composition);
   const unresolved = photos.filter((photo) => !photo.source);
@@ -257,6 +260,21 @@ export default function SharingPosterEditor({
         ? { ...entry, crop: { ...entry.crop, [axis]: clamped } }
         : { ...entry, [axis === "x" ? "focalX" : "focalY"]: clamped }
     );
+  }
+
+  /** Whole photographs leave space in their frames, which a solid fill would turn back into boxes, so they bring the glass with them. */
+  function setPhotoFit(mode: "fill" | "whole") {
+    setComposition((current) => ({
+      ...current,
+      style: {
+        ...current.style,
+        fit: mode,
+        background:
+          mode === "whole" && current.style.background?.mode !== "glass"
+            ? { mode: "glass", ...SHARING_POSTER_WHOLE_GLASS_DEFAULTS }
+            : current.style.background
+      }
+    }));
   }
 
   function setCropMode(photo: SharingPosterResolvedPhoto, mode: "auto" | "manual") {
@@ -524,6 +542,10 @@ export default function SharingPosterEditor({
                   <span className="flex justify-between"><span>{t("visualWeight")}</span><span className="font-meta">{selectedPhoto.composition.weight}</span></span>
                   <input type="range" min="1" max="5" step="1" value={selectedPhoto.composition.weight} onChange={(event) => updatePhoto(selectedPhoto.photoId, (photo) => ({ ...photo, weight: Number(event.target.value) }))} className="min-h-11 accent-accent" />
                 </label>
+                {fit === "whole" ? (
+                  <p className="mt-4 text-xs leading-5 text-fg-subtle">{t("wholePhotoNoCrop")}</p>
+                ) : (
+                  <>
                 <div className="mt-4 grid gap-2">
                   <span className="text-sm font-semibold text-fg-muted">{t("cropMode")}</span>
                   <div role="group" aria-label={t("cropMode")} className="grid grid-cols-2 gap-2">
@@ -542,6 +564,8 @@ export default function SharingPosterEditor({
                       <label className="grid gap-1 text-sm font-semibold text-fg-muted">{t("cropVertical")}<input type="number" min="0" max="100" value={Math.round(cropValue(selectedPhoto).y * 100)} onChange={(event) => setCropAxis(selectedPhoto, "y", Number(event.target.value) / 100)} className={fieldClasses} /></label>
                     </div>
                     <p className="mt-2 text-xs text-fg-subtle">{t("cropHint")}</p>
+                  </>
+                )}
                   </>
                 )}
               </div>
@@ -566,8 +590,19 @@ export default function SharingPosterEditor({
             <SharingPosterRatioSuggestion
               state={ratioSuggestion}
               detecting={detectingSubjects}
+              whole={fit === "whole"}
               onApply={(ratio) => setComposition((current) => ({ ...current, ratio: { width: ratio.width, height: ratio.height } }))}
             />
+            <div className="mt-5 grid gap-3">
+              <span className="text-sm font-semibold text-fg-muted">{t("photoFit")}</span>
+              <div role="group" aria-label={t("photoFit")} className="grid grid-cols-2 gap-2">
+                {(["whole", "fill"] as const).map((mode) => {
+                  const active = fit === mode;
+                  return <button key={mode} type="button" aria-pressed={active} onClick={() => setPhotoFit(mode)} className={`min-h-11 rounded-lg border px-2 text-sm font-semibold ${active ? "border-accent bg-accent-surface text-accent-strong" : "border-border-strong bg-raised text-fg-muted"}`}>{t(mode === "whole" ? "photoFitWhole" : "photoFitFill")}</button>;
+                })}
+              </div>
+              <p className="text-sm leading-6 text-fg-subtle">{t(fit === "whole" ? "photoFitWholeHint" : "photoFitFillHint")}</p>
+            </div>
             <div className="mt-5 grid gap-4">
               <RangeField label={t("outerMargin")} value={composition.style.marginPercent} min={0} max={12} step={0.25} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, marginPercent: value } }))} />
               <RangeField label={t("photoGap")} value={composition.style.gapPercent} min={0} max={5} step={0.1} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, gapPercent: value } }))} />
@@ -626,7 +661,7 @@ export default function SharingPosterEditor({
             {cnNeedsReview && <p role="alert" className="mt-3 text-sm text-warning">{t("cnReviewRequired")}</p>}
             {!printsCredits && <p className="mt-3 text-sm text-fg-subtle">{t("creditsEmptyHint")}</p>}
             {metrics.footerTooTall && <p role="alert" className="mt-3 text-sm text-warning">{t("footerTooTall")}</p>}
-            {metrics.rectangles.some((rect) => { const photo = photos.find((candidate) => candidate.photoId === rect.id)?.source; const scale = pixelSize.width / 900; return photo ? rect.width * scale > photo.width || rect.height * scale > photo.height : false; }) && <p className="mt-3 text-sm text-warning">{t("upscaleWarning")}</p>}
+            {metrics.photoRects.some((rect) => { const photo = photos.find((candidate) => candidate.photoId === rect.id)?.source; const scale = pixelSize.width / 900; return photo ? rect.width * scale > photo.width || rect.height * scale > photo.height : false; }) && <p className="mt-3 text-sm text-warning">{t("upscaleWarning")}</p>}
             <div className="mt-4 flex flex-wrap gap-2">
               <Button variant="primary" disabled={!canExport || exportState === "preparing"} onClick={() => void prepareExport()}>{exportState === "preparing" ? t("preparing") : t("prepareExport")}</Button>
               {prepared && <a href={prepared.url} download={prepared.filename} className={buttonClasses()}>{t("download")}</a>}

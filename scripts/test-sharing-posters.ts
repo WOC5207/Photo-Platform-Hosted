@@ -9,6 +9,7 @@ import {
   moveSharingPosterCreditLine,
   parseSharingPosterComposition,
   sharingPosterCompositionSchema,
+  sharingPosterFit,
   sharingPosterCreditLabel,
   sharingPosterCreditLines,
   sharingPosterCreditMetadataValue,
@@ -31,7 +32,9 @@ import {
 } from "../src/lib/sharingPosterGlass";
 import {
   calculateSharingPosterLayout,
+  containFrame,
   coverCropFromAnchor,
+  gatherAlignment,
   coverCropSource,
   cropRectToAnchor,
   legacyFocalToAnchor,
@@ -925,6 +928,94 @@ assert.equal(
   assert.equal(none.footerTooTall, false);
   const legacyNone = sharingPosterFooterGeometry({ width: 1000, height: 1250, lineCount: 0, marginPercent: 2.5, footerTextPercent: 1.8 });
   assert.equal(legacyNone.photoArea.height, 1250 - 50);
+}
+
+// Whole-photo fit: new posters show every photograph uncropped over glass;
+// saved posters without the setting keep their crop.
+{
+  const fresh = defaultSharingPosterComposition("en", "Photographer", [{ id: "a" }]);
+  assert.equal(fresh.style.fit, "whole");
+  assert.equal(fresh.style.background?.mode, "glass");
+  assert.equal(sharingPosterFit(fresh.style), "whole");
+  const reparsed = parseSharingPosterComposition(JSON.parse(JSON.stringify(fresh)), fallback);
+  assert.equal(reparsed.style.fit, "whole");
+  const { fit: _fit, ...legacyStyle } = fresh.style;
+  const legacy = parseSharingPosterComposition({ ...fresh, style: legacyStyle }, fallback);
+  assert.equal(legacy.style.fit, undefined);
+  assert.equal(sharingPosterFit(legacy.style), "fill");
+  assert.equal(
+    sharingPosterCompositionSchema.safeParse({ ...fresh, style: { ...fresh.style, fit: "stretch" } }).success,
+    false
+  );
+
+  // A portrait in a landscape frame is centred at full height; a landscape in
+  // a portrait frame at full width. Neither escapes its frame.
+  const frame = { x: 10, y: 20, width: 300, height: 200 };
+  const portrait = containFrame(2000, 3000, frame);
+  assert.ok(Math.abs(portrait.height - 200) < 1e-9);
+  assert.ok(Math.abs(portrait.width - 200 * (2 / 3)) < 1e-9);
+  assert.ok(Math.abs(portrait.x + portrait.width / 2 - (frame.x + frame.width / 2)) < 1e-9);
+  assert.equal(portrait.y, frame.y);
+  const landscape = containFrame(3000, 2000, { x: 0, y: 0, width: 200, height: 300 });
+  assert.ok(Math.abs(landscape.width - 200) < 1e-9);
+  assert.ok(Math.abs(landscape.y - (300 - 200 * (2 / 3)) / 2) < 1e-9);
+  const same = containFrame(4000, 4000, { x: 5, y: 5, width: 100, height: 100 });
+  assert.deepEqual(same, { x: 5, y: 5, width: 100, height: 100 });
+
+  // Frames left of / above the middle push their photograph toward it; a
+  // frame spanning the middle centres it.
+  const photoArea = { x: 0, y: 0, width: 1000, height: 1000 };
+  assert.deepEqual(gatherAlignment({ x: 0, y: 0, width: 500, height: 1000 }, photoArea), { x: 1, y: 0.5 });
+  assert.deepEqual(gatherAlignment({ x: 500, y: 500, width: 500, height: 500 }, photoArea), { x: 0, y: 0 });
+  const pushed = containFrame(2000, 3000, frame, { x: 1, y: 0.5 });
+  assert.ok(Math.abs(pushed.x + pushed.width - (frame.x + frame.width)) < 1e-9);
+
+  // Whole-fit layouts tile without overlap, stay inside the area, and keep
+  // equally weighted photographs within a reasonable size of each other.
+  const shapes: Array<[number, number]> = [[2000, 3000], [3000, 2000], [2400, 2400], [2000, 3000], [3000, 2000], [1600, 900], [900, 1600]];
+  for (let count = 2; count <= shapes.length; count += 1) {
+    const items = shapes.slice(0, count).map(([width, height], index) => ({ id: `w${index}`, width, height, weight: 3 }));
+    const area = { x: 20, y: 20, width: 860, height: 980 };
+    const cells = calculateSharingPosterLayout(items, area, 6, "whole");
+    assert.equal(cells.length, count);
+    for (let i = 0; i < cells.length; i += 1) {
+      assert.ok(cells[i].x >= area.x - 1e-6 && cells[i].y >= area.y - 1e-6);
+      assert.ok(cells[i].x + cells[i].width <= area.x + area.width + 1e-6);
+      assert.ok(cells[i].y + cells[i].height <= area.y + area.height + 1e-6);
+      for (let j = i + 1; j < cells.length; j += 1) assert.equal(overlaps(cells[i], cells[j]), false);
+    }
+    const areas = cells.map((cell, index) => {
+      const placed = containFrame(items[index].width, items[index].height, cell);
+      return placed.width * placed.height;
+    });
+    assert.ok(Math.min(...areas) / Math.max(...areas) > 0.25, `whole layout of ${count} is lopsided`);
+    // Fill mode is untouched by the whole-fit options.
+    assert.deepEqual(calculateSharingPosterLayout(items, area, 6), calculateSharingPosterLayout(items, area, 6, "fill"));
+  }
+
+  // Whole photographs cannot clip a subject, so the solver ignores it.
+  const subjectPhoto: PosterLayoutSource = {
+    photoId: "s",
+    composition: { weight: 3, focalX: 0.5, focalY: 0.5, crop: { mode: "auto" } },
+    source: { width: 2000, height: 3000, subject: { x: 0.5, y: 0.3, box: { x: 0.3, y: 0.1, width: 0.4, height: 0.6 } } }
+  };
+  assert.notEqual(posterLayoutItems([subjectPhoto])[0].subject, null);
+  assert.equal(posterLayoutItems([subjectPhoto], "whole")[0].subject, null);
+
+  // The ratio comparison for whole photographs measures how much of each
+  // frame is filled, counts no subjects, and keeps every photograph in view.
+  const mixed: PosterLayoutSource[] = [
+    subjectPhoto,
+    { photoId: "l", composition: { weight: 3, focalX: 0.5, focalY: 0.5 }, source: { width: 3000, height: 2000, subject: null } },
+    { photoId: "q", composition: { weight: 3, focalX: 0.5, focalY: 0.5 }, source: { width: 2000, height: 2000, subject: null } }
+  ];
+  const style = { marginPercent: 2.5, gapPercent: 0.65, footerTextPercent: 1.8, textGapPercent: 2.5 };
+  const wholeReport = evaluatePosterRatio({ width: 4, height: 5 }, mixed, { ...style, fit: "whole" }, 2);
+  assert.equal(wholeReport.subjects, 0);
+  assert.equal(wholeReport.subjectShown, null);
+  assert.ok(wholeReport.shown > 0 && wholeReport.shown <= 1);
+  const fillReport = evaluatePosterRatio({ width: 4, height: 5 }, mixed, style, 2);
+  assert.ok(wholeReport.photoShare <= fillReport.photoShare + 1e-9);
 }
 
 console.log("Sharing poster layout and composition tests passed.");

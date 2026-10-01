@@ -399,7 +399,18 @@
     "share": "Share",
     "shareError": "The device could not open its share sheet. Download remains available.",
     "exportReady": "The file is ready to download or share.",
-    "exportError": "The poster could not be prepared. Check the photographs and try again."
+    "exportError": "The poster could not be prepared. Check the photographs and try again.",
+    "ratioSuggestionBetterWhole": "{ratio} leaves less empty space around these photographs.",
+    "ratioSuggestionCurrentWhole": "No other common ratio leaves less empty space around these photographs.",
+    "ratioSuggestionFilled": "Frames filled by photographs: {shown}%",
+    "ratioSuggestionFilledCompare": "Frames filled by photographs: {shown}%, against {current}% now",
+    "ratioSuggestionHintWhole": "Every photograph is shown whole, so the common ratios are compared by how much of each frame its photograph fills in the layout each one produces.",
+    "photoFit": "Photo fit",
+    "photoFitWhole": "Whole photo",
+    "photoFitFill": "Fill frame (crop)",
+    "photoFitWholeHint": "Every photograph is shown in full, never cropped. The space around and between them is filled with a gradient of their colours when the background is liquid glass.",
+    "photoFitFillHint": "Each photograph is cropped to fill its frame. Drag a photograph in the preview to move its crop.",
+    "wholePhotoNoCrop": "This poster shows every photograph whole, so there is no crop to adjust. Switch Photo fit to Fill frame in Layout to crop."
   },
   "equipment": {
     "searchEquipment": "Search inventory",

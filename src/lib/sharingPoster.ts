@@ -78,6 +78,21 @@ export const SHARING_POSTER_GLASS_DEFAULTS = {
 } as const;
 
 /**
+ * The glass a new whole-photo poster starts with: lightly frosted, so the
+ * colour around each photograph reads as a continuation of it rather than a
+ * pale mount.
+ */
+export const SHARING_POSTER_WHOLE_GLASS_DEFAULTS = {
+  blurPercent: 3,
+  tintOpacity: 0.25
+} as const;
+
+/** How a poster draws its photographs; absent is the original crop. */
+export function sharingPosterFit(style: { fit?: "fill" | "whole" }): "fill" | "whole" {
+  return style.fit ?? "fill";
+}
+
+/**
  * What a credit line says: a person, the gear, or event details, printed as
  * "Title: value"; or "custom", the owner's own text printed as it is.
  */
@@ -147,7 +162,12 @@ const compositionBaseSchema = z.object({
     // are absent.
     /** Gap between the photo area and the credits, as a percentage of width. */
     textGapPercent: z.number().min(0).max(8).optional(),
-    background: sharingPosterBackgroundSchema.optional()
+    background: sharingPosterBackgroundSchema.optional(),
+    /**
+     * "whole" shows every photograph uncropped inside its frame; "fill" crops
+     * to cover it. Absent means "fill", how posters were drawn before.
+     */
+    fit: z.enum(["fill", "whole"]).optional()
   }),
   photos: z
     .array(sharingPosterPhotoSchema)
@@ -294,7 +314,10 @@ export function defaultSharingPosterComposition(
       textColor: "#211d18",
       footerTextPercent: 1.8,
       textGapPercent: 2.5,
-      background: { mode: "solid" }
+      // New posters keep every photograph whole and let the glass gradient
+      // fill the space around them, so no frame edge reads as a hard box.
+      background: { mode: "glass", ...SHARING_POSTER_WHOLE_GLASS_DEFAULTS },
+      fit: "whole"
     },
     photos: photoIds
       .filter(({ id }) => id && !seen.has(id) && seen.add(id))

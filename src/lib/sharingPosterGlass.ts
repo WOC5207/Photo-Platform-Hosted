@@ -61,6 +61,8 @@ export interface GlassBackgroundOptions {
   /** The editor's softness control, 0.5..8. */
   blurPercent: number;
   tintOpacity: number;
+  /** Soft drop shadows under the frames; on unless false. */
+  shadows?: boolean;
 }
 
 /** Longest side of the sample each frame's crop is reduced to. */
@@ -662,7 +664,7 @@ export function paintGlassBackground(
   sheen.addColorStop(1, "rgba(255, 255, 255, 0)");
   context.fillStyle = sheen;
   context.fillRect(0, 0, width, height);
-  const shadow = shadowLayer(width, height, rectangles);
+  const shadow = options.shadows === false ? null : shadowLayer(width, height, rectangles);
   if (shadow) context.drawImage(shadow, 0, 0, width, height);
   const tile = grain();
   const pattern = tile ? context.createPattern(tile, "repeat") : null;

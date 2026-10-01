@@ -399,7 +399,18 @@
     "share": "分享",
     "shareError": "设备无法打开分享菜单，仍可使用下载。",
     "exportReady": "文件已准备好，可以下载或分享。",
-    "exportError": "无法准备海报。请检查照片后重试。"
+    "exportError": "无法准备海报。请检查照片后重试。",
+    "ratioSuggestionBetterWhole": "{ratio} 让这组照片周围的留白更少。",
+    "ratioSuggestionCurrentWhole": "没有其他常用比例能让这组照片周围的留白更少。",
+    "ratioSuggestionFilled": "照片占画框比例：{shown}%",
+    "ratioSuggestionFilledCompare": "照片占画框比例：{shown}%（当前 {current}%）",
+    "ratioSuggestionHintWhole": "每张照片都完整显示，因此按各常用比例生成的排版，比较每张照片占满其画框的程度。",
+    "photoFit": "照片适配",
+    "photoFitWhole": "完整照片",
+    "photoFitFill": "填满画框（裁切）",
+    "photoFitWholeHint": "每张照片都完整显示，不做裁切。背景为流体玻璃时，照片四周和之间的空隙会以照片颜色的渐变填充。",
+    "photoFitFillHint": "每张照片会被裁切以填满画框。在预览中拖动照片可以调整裁切位置。",
+    "wholePhotoNoCrop": "这张海报完整显示每张照片，因此无需调整裁切。如需裁切，请在“版式”中将照片适配改为“填满画框”。"
   },
   "equipment": {
     "searchEquipment": "搜索库存",

@@ -2,6 +2,7 @@ import { homePhotoWeightScale } from "@/lib/homePhotoWeight";
 import {
   SUBJECT_CLIP_WEIGHT,
   calculateSharingPosterLayout,
+  containFrame,
   posterLayoutItems,
   resolvePosterCrop,
   sharingPosterFooterGeometry,
@@ -33,6 +34,10 @@ import {
  * trades one against the other behind the owner's back. Among such ratios the
  * cost above decides, which prefers layouts that crop every photograph evenly
  * and give the photographs more of the poster.
+ *
+ * A poster showing whole photographs crops nothing, so there `shown` is the
+ * share of each frame its photograph fills and no subjects are counted: the
+ * suggestion is then the ratio that leaves the least empty space around them.
  */
 
 export interface PosterRatio {
@@ -70,13 +75,17 @@ export interface PosterRatioStyle {
   gapPercent: number;
   footerTextPercent: number;
   textGapPercent?: number;
+  fit?: "fill" | "whole";
 }
 
 export interface PosterRatioReport {
   ratio: PosterRatio;
   /** Lower is better. */
   cost: number;
-  /** Layout-weighted share of each photograph that stays in view, 0..1. */
+  /**
+   * Layout-weighted share of each photograph that stays in view, 0..1; for
+   * whole photographs, the share of each frame the photograph fills.
+   */
   shown: number;
   /** Photographs with a detected subject box. */
   subjects: number;
@@ -164,7 +173,13 @@ export function evaluatePosterRatio(
     textGapPercent: style.textGapPercent
   });
   const gap = (width * style.gapPercent) / 100;
-  const rectangles = calculateSharingPosterLayout(posterLayoutItems(photos), geometry.photoArea, gap);
+  const whole = style.fit === "whole";
+  const rectangles = calculateSharingPosterLayout(
+    posterLayoutItems(photos, whole ? "whole" : "fill"),
+    geometry.photoArea,
+    gap,
+    whole ? "whole" : "fill"
+  );
 
   let totalWeight = 0;
   let cropCost = 0;
@@ -179,6 +194,15 @@ export function evaluatePosterRatio(
     const source = photo?.source;
     if (!photo || !source || source.width <= 0 || source.height <= 0) continue;
     const weight = homePhotoWeightScale(photo.composition.weight);
+    if (whole) {
+      const placed = containFrame(source.width, source.height, rect);
+      const filled = Math.min(1, (placed.width * placed.height) / Math.max(1e-6, rect.width * rect.height));
+      totalWeight += weight;
+      shownSum += filled * weight;
+      cropCost += -Math.log(Math.max(0.01, filled)) * weight;
+      photoArea += placed.width * placed.height;
+      continue;
+    }
     const crop = resolvePosterCrop(
       photo.composition,
       source.subject,

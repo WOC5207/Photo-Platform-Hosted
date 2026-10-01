@@ -1,7 +1,9 @@
 import type { SharingPosterComposition, SharingPosterResolvedPhoto } from "@/lib/sharingPoster";
-import { sharingPosterCreditLines } from "@/lib/sharingPoster";
+import { sharingPosterCreditLines, sharingPosterFit } from "@/lib/sharingPoster";
 import {
   calculateSharingPosterLayout,
+  containFrame,
+  gatherAlignment,
   posterLayoutItems,
   resolvePosterCrop,
   sharingPosterFooterGeometry,
@@ -15,7 +17,13 @@ import { paintGlassBackground, withAlpha } from "@/lib/sharingPosterGlass";
 export { sharingPosterFooterGeometry, type SharingPosterFooterGeometry } from "@/lib/sharingPosterLayout";
 
 export interface SharingPosterRenderResult {
+  /** The layout's frames. */
   rectangles: PosterLayoutRect[];
+  /**
+   * Where each photograph is drawn: its frame when cropped to fill, the
+   * centred whole photograph inside it otherwise.
+   */
+  photoRects: PosterLayoutRect[];
   footerTooTall: boolean;
   wrappedLineCount: number;
 }
@@ -83,17 +91,36 @@ export function renderSharingPoster(
     footerTextPercent: style.footerTextPercent,
     textGapPercent: style.textGapPercent
   });
+  const fit = sharingPosterFit(style);
   const rectangles =
     options.rectangles ??
-    calculateSharingPosterLayout(posterLayoutItems(photos), geometry.photoArea, gap);
+    calculateSharingPosterLayout(posterLayoutItems(photos, fit), geometry.photoArea, gap, fit);
 
-  // Resolve every frame's crop up front: the glass background takes its
-  // colours from exactly what each frame shows, so both use the same window.
+  // Resolve every photograph's crop and placement up front: the glass
+  // background takes its colours from exactly what each photograph shows and
+  // flows out from where it is drawn, so all three use the same values. A
+  // whole photograph is placed from the gallery's dimensions when known, so
+  // the preview rendition and the full one land on the same rectangle.
   const crops = new Map<string, PosterRect>();
+  const photoRects: PosterLayoutRect[] = [];
   for (const rect of rectangles) {
     const resolved = photos.find((photo) => photo.photoId === rect.id);
     const image = images.get(rect.id);
-    if (resolved?.source && image?.complete && image.naturalWidth > 0) {
+    const loaded = Boolean(resolved?.source && image?.complete && image.naturalWidth > 0);
+    if (fit === "whole" && resolved?.source) {
+      const sourceWidth = resolved.source.width > 0 ? resolved.source.width : image?.naturalWidth ?? 1;
+      const sourceHeight = resolved.source.height > 0 ? resolved.source.height : image?.naturalHeight ?? 1;
+      photoRects.push({
+        ...containFrame(sourceWidth, sourceHeight, rect, gatherAlignment(rect, geometry.photoArea)),
+        id: rect.id
+      });
+      if (image && loaded) {
+        crops.set(rect.id, { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight });
+      }
+      continue;
+    }
+    photoRects.push(rect);
+    if (resolved?.source && image && loaded) {
       crops.set(
         rect.id,
         resolvePosterCrop(
@@ -110,17 +137,20 @@ export function renderSharingPoster(
 
   const glass =
     style.background?.mode === "glass" &&
-    paintGlassBackground(context, width, height, rectangles, crops, images, {
+    paintGlassBackground(context, width, height, photoRects, crops, images, {
       colour: style.backgroundColor,
       blurPercent: style.background.blurPercent,
-      tintOpacity: style.background.tintOpacity
+      tintOpacity: style.background.tintOpacity,
+      // Shadows lift a frame off the glass; around a whole photograph they
+      // would draw the very box the gradient is there to dissolve.
+      shadows: fit === "fill"
     });
   if (!glass) {
     context.fillStyle = style.backgroundColor;
     context.fillRect(0, 0, width, height);
   }
 
-  for (const rect of rectangles) {
+  for (const rect of photoRects) {
     const image = images.get(rect.id);
     const crop = crops.get(rect.id);
     context.save();
@@ -147,7 +177,7 @@ export function renderSharingPoster(
       context.fillText(options.unavailableLabel ?? "Image unavailable", rect.x + gap + 4, rect.y + gap + 4);
     }
     context.restore();
-    if (options.subjectMarkerPhotoId === rect.id && image && crop) {
+    if (fit === "fill" && options.subjectMarkerPhotoId === rect.id && image && crop) {
       const resolved = photos.find((photo) => photo.photoId === rect.id);
       const subject = resolved?.composition.crop?.mode === "auto" ? resolved.source?.subject : null;
       if (subject) {
@@ -169,7 +199,7 @@ export function renderSharingPoster(
         context.restore();
       }
     }
-    if (glass) {
+    if (glass && fit === "fill") {
       // Glass hides the frame boundary, so lift each frame with the same faint
       // inset line the site uses on image frames.
       context.save();
@@ -197,6 +227,7 @@ export function renderSharingPoster(
   context.restore();
   return {
     rectangles,
+    photoRects,
     footerTooTall: geometry.footerTooTall,
     wrappedLineCount: lines.length
   };
