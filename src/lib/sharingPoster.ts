@@ -68,7 +68,13 @@ export const sharingPosterBackgroundSchema = z.discriminatedUnion("mode", [
      */
     blurPercent: z.number().min(0.5).max(8),
     /** How strongly `backgroundColor` frosts the gradient. */
-    tintOpacity: z.number().min(0).max(0.9)
+    tintOpacity: z.number().min(0).max(0.9),
+    /**
+     * How far the colour beside each stretch of a photograph's edge follows
+     * that stretch rather than the side's average: 0 is one colour per side,
+     * as before this existed (and when absent), 1 follows the edge fully.
+     */
+    local: z.number().min(0).max(1).optional()
   })
 ]);
 export type SharingPosterBackground = z.infer<typeof sharingPosterBackgroundSchema>;
@@ -76,7 +82,8 @@ export type SharingPosterBackground = z.infer<typeof sharingPosterBackgroundSche
 /** Values applied when an owner switches a poster to the glass background. */
 export const SHARING_POSTER_GLASS_DEFAULTS = {
   blurPercent: 3,
-  tintOpacity: 0.55
+  tintOpacity: 0.55,
+  local: 0.6
 } as const;
 
 /**
@@ -86,10 +93,57 @@ export const SHARING_POSTER_GLASS_DEFAULTS = {
  */
 export const SHARING_POSTER_WHOLE_GLASS_DEFAULTS = {
   blurPercent: 3,
-  tintOpacity: 0.25
+  tintOpacity: 0.25,
+  local: 0.6
 } as const;
 
 export type SharingPosterFit = "fill" | "whole" | "collage";
+
+export const SHARING_POSTER_MAX_LAYERS = 4;
+export const SHARING_POSTER_LAYER_TOKEN = /^posterlayer[a-f0-9]{32}$/;
+export const SHARING_POSTER_LAYER_MAX_SCALE = 4;
+
+/**
+ * An image the owner uploaded and placed on the poster: a logo, a watermark,
+ * a texture. `x` and `y` are its centre as fractions of the poster, `scale`
+ * its width as a fraction of the poster's width. "back" layers sit on the
+ * background under the photographs, "front" ones over everything.
+ */
+export const sharingPosterLayerSchema = z.object({
+  id: z.string().min(1).max(40),
+  token: z.string().regex(SHARING_POSTER_LAYER_TOKEN),
+  width: z.number().int().min(1).max(8192),
+  height: z.number().int().min(1).max(8192),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  scale: z.number().min(0.02).max(SHARING_POSTER_LAYER_MAX_SCALE),
+  opacity: z.number().min(0).max(1),
+  placement: z.enum(["front", "back"])
+});
+export type SharingPosterLayer = z.infer<typeof sharingPosterLayerSchema>;
+
+/**
+ * The scale at which a layer covers the whole poster: at least its width, and
+ * tall enough to reach top and bottom, within the largest scale allowed.
+ */
+export function coverSharingPosterLayerScale(
+  layer: Pick<SharingPosterLayer, "width" | "height">,
+  ratio: { width: number; height: number }
+): number {
+  const tall = (ratio.height / ratio.width) * (layer.width / Math.max(1, layer.height));
+  return Math.min(SHARING_POSTER_LAYER_MAX_SCALE, Math.max(1, tall));
+}
+
+/** A dragged layer's centre snaps to the poster's centre line within `threshold` (a fraction). */
+export function snapSharingPosterLayerCentre(value: number, threshold: number): { value: number; snapped: boolean } {
+  const clamped = Math.min(1, Math.max(0, value));
+  return Math.abs(clamped - 0.5) <= threshold ? { value: 0.5, snapped: true } : { value: clamped, snapped: false };
+}
+
+/** Where a poster serves an uploaded layer from; only its owner can read it. */
+export function sharingPosterLayerUrl(token: string): string {
+  return `/api/dashboard/sharing-posters/layers/${token}.webp`;
+}
 
 /** How a poster draws its photographs; absent is the original crop. */
 export function sharingPosterFit(style: { fit?: SharingPosterFit }): SharingPosterFit {
@@ -191,8 +245,19 @@ const compositionBaseSchema = z.object({
      * left edge, 0.5 centred, 1 flush with their right edge. Absent is 0, the
      * original left-aligned credits.
      */
-    creditsX: z.number().min(0).max(1).optional()
+    creditsX: z.number().min(0).max(1).optional(),
+    /**
+     * Feathered photograph edges: how far each edge fades into the
+     * background, as a percentage of the photograph's shorter drawn side.
+     * Absent or 0 is a hard edge.
+     */
+    featherPercent: z.number().min(0).max(25).optional()
   }),
+  layers: z
+    .array(sharingPosterLayerSchema)
+    .max(SHARING_POSTER_MAX_LAYERS)
+    .refine((layers) => new Set(layers.map((layer) => layer.id)).size === layers.length, "duplicate_layer")
+    .optional(),
   photos: z
     .array(sharingPosterPhotoSchema)
     .max(SHARING_POSTER_MAX_PHOTOS)

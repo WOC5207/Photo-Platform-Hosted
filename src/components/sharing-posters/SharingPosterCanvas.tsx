@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  SharingPosterComposition,
-  SharingPosterResolvedPhoto
+import {
+  snapSharingPosterLayerCentre,
+  type SharingPosterComposition,
+  type SharingPosterResolvedPhoto
 } from "@/lib/sharingPoster";
 import {
   loadPosterImages,
+  loadPosterLayerImages,
   renderSharingPoster,
   type SharingPosterRenderResult
 } from "@/lib/sharingPosterCanvas";
@@ -25,6 +27,9 @@ export default function SharingPosterCanvas({
   onSelectPhoto,
   onCropChange,
   onCreditsMove,
+  selectedLayerId,
+  onSelectLayer,
+  onLayerMove,
   onRenderMetrics,
   ariaLabel,
   unavailableLabel
@@ -36,6 +41,10 @@ export default function SharingPosterCanvas({
   onCropChange: (id: string, crop: { mode: "manual"; x: number; y: number }) => void;
   /** The credits were dragged to `x` (0 left edge, 0.5 centre, 1 right edge of the photographs). */
   onCreditsMove: (x: number) => void;
+  selectedLayerId: string | null;
+  onSelectLayer: (id: string | null) => void;
+  /** An image layer was dragged so its centre sits at `x`, `y` (fractions of the poster). */
+  onLayerMove: (id: string, x: number, y: number) => void;
   onRenderMetrics: (result: SharingPosterRenderResult) => void;
   ariaLabel: string;
   unavailableLabel: string;
@@ -45,6 +54,11 @@ export default function SharingPosterCanvas({
   const textRef = useRef<SharingPosterRenderResult["text"]>(null);
   const textDragRef = useRef<{ pointerId: number; x: number; startPosition: number; travel: number } | null>(null);
   const [textGuide, setTextGuide] = useState<0 | 0.5 | 1 | null>(null);
+  const layerRectsRef = useRef<PosterLayoutRect[]>([]);
+  const layerDragRef = useRef<{ pointerId: number; id: string; x: number; y: number; startX: number; startY: number } | null>(null);
+  const [layerGuides, setLayerGuides] = useState<{ vertical: boolean; horizontal: boolean } | null>(null);
+  const [layerImages, setLayerImages] = useState<Map<string, HTMLImageElement>>(new Map());
+  const layerTokens = [...new Set((composition.layers ?? []).map((layer) => layer.token))].join("|");
   const cacheRef = useRef<{ key: string; rectangles: PosterLayoutRect[] } | null>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -94,6 +108,18 @@ export default function SharingPosterCanvas({
   }, [photos.map((photo) => `${photo.photoId}:${photo.source?.previewUrl ?? ""}`).join("|")]);
 
   useEffect(() => {
+    let cancelled = false;
+    void loadPosterLayerImages(composition.layers).then((loaded) => {
+      if (!cancelled) setLayerImages(loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Reload only when the set of uploaded images changes, not on every move.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layerTokens]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
@@ -104,13 +130,17 @@ export default function SharingPosterCanvas({
       rectangles: cached,
       unavailableLabel,
       subjectMarkerPhotoId: selectedPhotoId,
-      textGuide
+      textGuide,
+      layerImages,
+      selectedLayerId,
+      layerGuides
     });
     rectanglesRef.current = result.rectangles;
+    layerRectsRef.current = result.layerRects;
     textRef.current = result.text;
     cacheRef.current = { key: layoutKey, rectangles: result.rectangles };
     onRenderMetrics(result);
-  }, [composition, photos, images, selectedPhotoId, layoutKey, onRenderMetrics, unavailableLabel, textGuide]);
+  }, [composition, photos, images, selectedPhotoId, layoutKey, onRenderMetrics, unavailableLabel, textGuide, layerImages, selectedLayerId, layerGuides]);
 
   function point(event: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current!;
@@ -134,8 +164,30 @@ export default function SharingPosterCanvas({
     );
   }
 
+  function inside(p: { x: number; y: number }, rect: PosterRect): boolean {
+    return p.x >= rect.x && p.x <= rect.x + rect.width && p.y >= rect.y && p.y <= rect.y + rect.height;
+  }
+
+  /** The topmost image layer under `p`; one behind the photographs only where no photograph covers it. */
+  function layerAt(p: { x: number; y: number }): string | null {
+    const placement = new Map((composition.layers ?? []).map((layer) => [layer.id, layer.placement]));
+    const hits = [...layerRectsRef.current].reverse().filter((rect) => inside(p, rect));
+    const front = hits.find((rect) => placement.get(rect.id) === "front");
+    if (front) return front.id;
+    if (overText(p) || rectanglesRef.current.some((rect) => inside(p, rect))) return null;
+    return hits[0]?.id ?? null;
+  }
+
   function handlePointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
     const p = point(event);
+    const layerId = layerAt(p);
+    const layer = composition.layers?.find((candidate) => candidate.id === layerId);
+    if (layer) {
+      onSelectLayer(layer.id);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      layerDragRef.current = { pointerId: event.pointerId, id: layer.id, x: p.x, y: p.y, startX: layer.x, startY: layer.y };
+      return;
+    }
     const text = textRef.current;
     if (text && overText(p)) {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -183,6 +235,17 @@ export default function SharingPosterCanvas({
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
+    const layerDrag = layerDragRef.current;
+    if (layerDrag && layerDrag.pointerId === event.pointerId) {
+      const canvas = canvasRef.current!;
+      const p = point(event);
+      // Snap within about 2% of the poster's width of either centre line.
+      const x = snapSharingPosterLayerCentre(layerDrag.startX + (p.x - layerDrag.x) / canvas.width, 0.02);
+      const y = snapSharingPosterLayerCentre(layerDrag.startY + (p.y - layerDrag.y) / canvas.height, (0.02 * canvas.width) / canvas.height);
+      setLayerGuides(x.snapped || y.snapped ? { vertical: x.snapped, horizontal: y.snapped } : null);
+      onLayerMove(layerDrag.id, Math.round(x.value * 10000) / 10000, Math.round(y.value * 10000) / 10000);
+      return;
+    }
     const textDrag = textDragRef.current;
     if (textDrag && textDrag.pointerId === event.pointerId) {
       const p = point(event);
@@ -194,7 +257,8 @@ export default function SharingPosterCanvas({
       return;
     }
     if (!dragRef.current) {
-      event.currentTarget.style.cursor = overText(point(event)) ? "ew-resize" : "";
+      const p = point(event);
+      event.currentTarget.style.cursor = layerAt(p) ? "move" : overText(p) ? "ew-resize" : "";
     }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
@@ -213,6 +277,10 @@ export default function SharingPosterCanvas({
   }
 
   function endDrag(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (layerDragRef.current?.pointerId === event.pointerId) {
+      layerDragRef.current = null;
+      setLayerGuides(null);
+    }
     if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
     if (textDragRef.current?.pointerId === event.pointerId) {
       textDragRef.current = null;

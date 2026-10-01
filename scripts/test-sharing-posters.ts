@@ -5,7 +5,9 @@ import {
   SHARING_POSTER_MAX_EDGE,
   SHARING_POSTER_MAX_PIXELS,
   applySharingPosterSizeRank,
+  coverSharingPosterLayerScale,
   defaultSharingPosterComposition,
+  snapSharingPosterLayerCentre,
   legacyTextGapPercent,
   moveSharingPosterCreditLine,
   parseSharingPosterComposition,
@@ -20,12 +22,14 @@ import {
   type SharingPosterCreditKind,
   type SharingPosterCreditLine
 } from "../src/lib/sharingPoster";
-import { sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
+import { featherStops, featherWidth, posterLayerRect, sharingPosterFooterGeometry } from "../src/lib/sharingPosterCanvas";
 import {
   GLASS_FIELD_WIDTH,
   computeGlassField,
   computeGlassShadow,
+  glassEdgeStrips,
   glassGrainTile,
+  stripColour,
   glassPaletteFromPixels,
   glassPixelWeight,
   oklabToSrgb,
@@ -374,6 +378,38 @@ const field = computeGlassField(posterW, posterH, pair, 3);
   let worst = 0;
   for (let i = 0; i < field.rgba.length; i += 1) worst = Math.max(worst, Math.abs(field.rgba[i] - nudged.rgba[i]));
   assert.ok(worst <= 4, `field moved ${worst} levels for ±4 of pixel noise`);
+}
+
+// Local colour: a photograph red on its left half and blue on its right.
+// Without it, the margin above is one colour all along; with it, the margin
+// above the red half is redder than the margin above the blue half.
+{
+  const split = glassPaletteFromPixels(fill(60, 40, (x) => (x < 30 ? RED : BLUE)), 60, 40)!;
+  const frames = [{ rect: { x: 200, y: 300, width: 600, height: 400 }, palette: split }];
+  const red = srgbToOklab(...RED);
+  const lean = (local: number) => {
+    const localField = computeGlassField(posterW, posterH, frames, 3, GLASS_FIELD_WIDTH, local);
+    const leftAbove = labDistance(fieldLab(localField, posterW, 300, 260), red);
+    const rightAbove = labDistance(fieldLab(localField, posterW, 700, 260), red);
+    return rightAbove - leftAbove;
+  };
+  assert.ok(lean(1) > lean(0) + 0.02, `local colour ${lean(1)} vs side average ${lean(0)}`);
+  assert.ok(lean(1) > 0.05, `the margin above the red half is redder (${lean(1)})`);
+  // Absent and 0 are the gradient as it was.
+  assert.deepEqual(computeGlassField(posterW, posterH, pair, 3, GLASS_FIELD_WIDTH, 0).rgba, field.rgba);
+
+  // Strips run along each side; at 0 every cell is the side's average.
+  const flat = glassEdgeStrips(split, 0);
+  for (const colour of flat.top) assert.deepEqual(colour, split.edges.top);
+  const strips = glassEdgeStrips(split, 1);
+  assert.equal(strips.top.length, split.gridColumns);
+  assert.equal(strips.left.length, split.gridRows);
+  assert.ok(labDistance(strips.top[0], red) < labDistance(strips.top[strips.top.length - 1], red));
+  // Between cell centres the colour is interpolated, and clamps at the ends.
+  assert.deepEqual(stripColour(strips.top, 0), strips.top[0]);
+  assert.deepEqual(stripColour(strips.top, 1), strips.top[strips.top.length - 1]);
+  const middle = stripColour(strips.top, 0.5);
+  assert.ok(labDistance(middle, strips.top[0]) > 0 && labDistance(middle, strips.top[strips.top.length - 1]) > 0);
 }
 
 // More softness carries each frame's colour further, so close to the red frame
@@ -1207,6 +1243,54 @@ assert.equal(
       assert.ok(drawn(largest.id) > drawn(smallest.id), `${fit} draws the photograph ranked first larger than the one ranked last (shift ${shift})`);
     }
   }
+}
+
+// Feathered edges: a smooth ramp from transparent to opaque at both ends.
+{
+  assert.deepEqual(featherStops(0, 100), [[0, 1], [1, 1]]);
+  const stops = featherStops(20, 100);
+  assert.deepEqual(stops[0], [0, 0]);
+  assert.deepEqual(stops[stops.length - 1], [1, 0]);
+  assert.ok(stops.every(([offset], index) => index === 0 || offset >= stops[index - 1][0]), "offsets never go backwards");
+  assert.ok(Math.abs(stops[8][0] - 0.2) < 1e-9 && stops[8][1] === 1, "opaque once the feather is crossed");
+  // A feather wider than half the length meets in the middle.
+  const wide = featherStops(80, 100);
+  assert.ok(Math.abs(wide[8][0] - 0.5) < 1e-9);
+  assert.equal(featherWidth({ x: 0, y: 0, width: 400, height: 300 }, 10), 30);
+  assert.equal(featherWidth({ x: 0, y: 0, width: 400, height: 300 }, undefined), 0);
+}
+
+// Image layers: placed by centre and width, covering, snapping, and the schema.
+{
+  const layer = { id: "layer-1", token: `posterlayer${"a".repeat(32)}`, width: 400, height: 200, x: 0.5, y: 0.25, scale: 0.5, opacity: 0.8, placement: "front" as const };
+  assert.deepEqual(posterLayerRect(layer, 1000, 800), { id: "layer-1", x: 250, y: 75, width: 500, height: 250 });
+  // Cover a 4:5 poster with a 2:1 image: tall enough means 2.5 times its width.
+  const cover = coverSharingPosterLayerScale(layer, { width: 4, height: 5 });
+  const covered = posterLayerRect({ ...layer, x: 0.5, y: 0.5, scale: cover }, 400, 500);
+  assert.ok(covered.x <= 0 && covered.y <= 1e-9 && covered.x + covered.width >= 400 && covered.y + covered.height >= 500 - 1e-9);
+  assert.equal(coverSharingPosterLayerScale({ width: 100, height: 400 }, { width: 4, height: 5 }), 1);
+  assert.deepEqual(snapSharingPosterLayerCentre(0.51, 0.02), { value: 0.5, snapped: true });
+  assert.deepEqual(snapSharingPosterLayerCentre(0.6, 0.02), { value: 0.6, snapped: false });
+  assert.deepEqual(snapSharingPosterLayerCentre(1.3, 0.02), { value: 1, snapped: false });
+
+  const base = defaultSharingPosterComposition("en", "P");
+  assert.equal(base.layers, undefined, "a new poster has no layers");
+  assert.equal(base.style.featherPercent, undefined);
+  assert.equal(base.style.background?.mode === "glass" && base.style.background.local, 0.6, "new posters start with local colour");
+  const withLayers = { ...base, layers: [layer], style: { ...base.style, featherPercent: 6 } };
+  const reparsed = parseSharingPosterComposition(JSON.parse(JSON.stringify(withLayers)), base);
+  assert.deepEqual(reparsed.layers, [layer]);
+  assert.equal(reparsed.style.featherPercent, 6);
+  for (const bad of [
+    { ...layer, token: "../../etc/passwd" },
+    { ...layer, token: "posterlayerZZ" },
+    { ...layer, scale: 0 },
+    { ...layer, placement: "middle" }
+  ]) {
+    assert.equal(sharingPosterCompositionSchema.safeParse({ ...withLayers, layers: [bad] }).success, false, JSON.stringify(bad));
+  }
+  assert.equal(sharingPosterCompositionSchema.safeParse({ ...withLayers, layers: [layer, layer] }).success, false, "layer ids are unique");
+  assert.equal(sharingPosterCompositionSchema.safeParse({ ...withLayers, layers: Array.from({ length: 5 }, (_, i) => ({ ...layer, id: `l${i}` })) }).success, false);
 }
 
 console.log("Sharing poster layout and composition tests passed.");

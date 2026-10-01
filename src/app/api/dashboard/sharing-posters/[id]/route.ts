@@ -13,6 +13,7 @@ import {
   validateSharingPosterPhotoOwnership
 } from "@/lib/sharingPosterData";
 import { ownerName } from "@/lib/owner";
+import { discardUnusedSharingPosterLayers, sharingPosterLayerTokens } from "@/lib/sharingPosterLayers";
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +101,9 @@ export async function PATCH(
       { status: exists ? 409 : 404 }
     );
   }
+  const kept = new Set(parsed.data.layers?.map((layer) => layer.token) ?? []);
+  const dropped = sharingPosterLayerTokens(current.composition).filter((token) => !kept.has(token));
+  if (dropped.length > 0) await discardUnusedSharingPosterLayers(user.id, dropped).catch(() => {});
   const project = await prisma.sharingPoster.findFirst({
     where: { id, ownerId: user.id },
     select: { revision: true, updatedAt: true }
@@ -117,7 +121,13 @@ export async function DELETE(
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
+  const poster = await prisma.sharingPoster.findFirst({
+    where: { id, ownerId: user.id },
+    select: { composition: true }
+  });
   const deleted = await prisma.sharingPoster.deleteMany({ where: { id, ownerId: user.id } });
   if (!deleted.count) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const tokens = sharingPosterLayerTokens(poster?.composition);
+  if (tokens.length > 0) await discardUnusedSharingPosterLayers(user.id, tokens).catch(() => {});
   return NextResponse.json({ ok: true });
 }

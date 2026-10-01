@@ -31,6 +31,8 @@ import {
 } from "@/lib/sharingPoster";
 import SharingPosterCreditLayers from "@/components/sharing-posters/SharingPosterCreditLayers";
 import { posterFieldClasses as fieldClasses } from "@/components/sharing-posters/posterFieldClasses";
+import RangeField from "@/components/sharing-posters/PosterRangeField";
+import SharingPosterImageLayers from "@/components/sharing-posters/SharingPosterImageLayers";
 import type { SharingPosterRenderResult } from "@/lib/sharingPosterCanvas";
 import { legacyFocalToAnchor } from "@/lib/sharingPosterLayout";
 import { SHARING_POSTER_RATIO_PRESETS, adaptivePosterRatio, sameRatio } from "@/lib/sharingPosterRatio";
@@ -92,10 +94,11 @@ export default function SharingPosterEditor({
   );
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [saveCycle, setSaveCycle] = useState(0);
-  const [metrics, setMetrics] = useState<SharingPosterRenderResult>({ rectangles: [], photoRects: [], text: null, footerTooTall: false, wrappedLineCount: 0 });
+  const [metrics, setMetrics] = useState<SharingPosterRenderResult>({ rectangles: [], photoRects: [], layerRects: [], text: null, footerTooTall: false, wrappedLineCount: 0 });
   const [exportState, setExportState] = useState<"idle" | "preparing" | "ready" | "error">("idle");
   const [prepared, setPrepared] = useState<{ blob: Blob; url: string; filename: string; signature: string } | null>(null);
   const [notice, setNotice] = useState("");
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   // Existing projects carry an intentional snapshot. Only a brand-new empty
   // project auto-prefills while its first selection is being assembled.
   const metadataEditedRef = useRef(project.composition.photos.length > 0);
@@ -306,6 +309,17 @@ export default function SharingPosterEditor({
     }));
   }
 
+  const updateLayers = useCallback((update: (layers: NonNullable<SharingPosterComposition["layers"]>) => NonNullable<SharingPosterComposition["layers"]>) => {
+    setComposition((current) => {
+      const layers = update(current.layers ?? []);
+      return layers === current.layers ? current : { ...current, layers };
+    });
+  }, []);
+
+  const moveLayer = useCallback((id: string, x: number, y: number) => {
+    updateLayers((layers) => layers.map((layer) => (layer.id === id ? { ...layer, x, y } : layer)));
+  }, [updateLayers]);
+
   const setCreditsX = useCallback((x: number) => {
     setComposition((current) =>
       current.style.creditsX === x ? current : { ...current, style: { ...current.style, creditsX: x } }
@@ -490,15 +504,17 @@ export default function SharingPosterEditor({
     setNotice("");
     try {
       await document.fonts?.ready;
-      const { loadPosterImages, renderSharingPoster } = await import("@/lib/sharingPosterCanvas");
+      const { loadPosterImages, loadPosterLayerImages, renderSharingPoster } = await import("@/lib/sharingPosterCanvas");
       const images = await loadPosterImages(photos, "full", 2);
       if (images.size !== photos.length) throw new Error("image_load_failed");
+      const layerImages = await loadPosterLayerImages(composition.layers);
+      if (layerImages.size !== new Set(composition.layers?.map((layer) => layer.token)).size) throw new Error("layer_load_failed");
       const canvas = document.createElement("canvas");
       canvas.width = pixelSize.width;
       canvas.height = pixelSize.height;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("canvas_failed");
-      const result = renderSharingPoster(context, canvas.width, canvas.height, composition, photos, images);
+      const result = renderSharingPoster(context, canvas.width, canvas.height, composition, photos, images, { layerImages });
       if (result.footerTooTall) throw new Error("footer_too_tall");
       const mime = composition.export.format === "png" ? "image/png" : "image/jpeg";
       const blob = await canvasBlob(canvas, mime, composition.export.format === "jpeg" ? 0.92 : undefined);
@@ -584,7 +600,10 @@ export default function SharingPosterEditor({
             composition={composition}
             photos={photos}
             selectedPhotoId={selectedPhotoId}
-            onSelectPhoto={setSelectedPhotoId}
+            onSelectPhoto={(id) => { setSelectedPhotoId(id); setSelectedLayerId(null); }}
+            selectedLayerId={selectedLayerId}
+            onSelectLayer={setSelectedLayerId}
+            onLayerMove={moveLayer}
             onCropChange={(id, crop) => updatePhoto(id, (photo) => ({ ...photo, crop }))}
             onCreditsMove={setCreditsX}
             onRenderMetrics={handleMetrics}
@@ -713,6 +732,8 @@ export default function SharingPosterEditor({
                 })}
               </div>
               <p className="text-sm leading-6 text-fg-subtle">{t(fit === "collage" ? "photoFitCollageHint" : fit === "whole" ? "photoFitWholeHint" : "photoFitFillHint")}</p>
+              <RangeField label={t("featherEdges")} value={composition.style.featherPercent ?? 0} min={0} max={25} step={0.5} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, featherPercent: value } }))} />
+              <p className="text-sm leading-6 text-fg-subtle">{t("featherEdgesHint")}</p>
             </div>
             <div className="mt-5 grid gap-4">
               <RangeField label={t("outerMargin")} value={composition.style.marginPercent} min={0} max={12} step={0.25} suffix="%" onChange={(value) => setComposition((current) => ({ ...current, style: { ...current.style, marginPercent: value } }))} />
@@ -736,10 +757,19 @@ export default function SharingPosterEditor({
                     <p className="text-sm leading-6 text-fg-subtle">{t("glassHint")}</p>
                     <RangeField label={t("glassBlur")} value={composition.style.background.blurPercent} min={0.5} max={8} step={0.1} suffix="%" onChange={(value) => setComposition((current) => current.style.background?.mode === "glass" ? { ...current, style: { ...current.style, background: { ...current.style.background, blurPercent: value } } } : current)} />
                     <RangeField label={t("glassTint")} value={Math.round(composition.style.background.tintOpacity * 100)} min={0} max={90} step={5} suffix="%" onChange={(value) => setComposition((current) => current.style.background?.mode === "glass" ? { ...current, style: { ...current.style, background: { ...current.style.background, tintOpacity: value / 100 } } } : current)} />
+                    <RangeField label={t("glassLocal")} value={Math.round((composition.style.background.local ?? 0) * 100)} min={0} max={100} step={5} suffix="%" onChange={(value) => setComposition((current) => current.style.background?.mode === "glass" ? { ...current, style: { ...current.style, background: { ...current.style.background, local: value / 100 } } } : current)} />
+                    <p className="text-sm leading-6 text-fg-subtle">{t("glassLocalHint")}</p>
                   </>
                 )}
               </div>
             </div>
+            <SharingPosterImageLayers
+              layers={composition.layers ?? []}
+              ratio={composition.ratio}
+              selectedLayerId={selectedLayerId}
+              onSelect={setSelectedLayerId}
+              onChange={updateLayers}
+            />
           </section>
 
           <section role="tabpanel" hidden={activeTab !== "credits"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
@@ -795,8 +825,4 @@ export default function SharingPosterEditor({
       </div>
     </div>
   );
-}
-
-function RangeField({ label, value, min, max, step, suffix, onChange }: { label: string; value: number; min: number; max: number; step: number; suffix: string; onChange: (value: number) => void }) {
-  return <label className="grid gap-2 text-sm font-semibold text-fg-muted"><span className="flex justify-between gap-3"><span>{label}</span><span className="font-meta text-xs text-fg-subtle">{value}{suffix}</span></span><input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} className="min-h-11 accent-accent" /></label>;
 }
