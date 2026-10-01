@@ -2,6 +2,7 @@
 
 import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useRouter as useLocaleRouter } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import { createEquipment } from "@/app/[locale]/dashboard/(protected)/equipment/actions";
 import { uploadEquipmentPhoto } from "./EquipmentPhotoUploader";
@@ -9,11 +10,13 @@ import { buttonClasses } from "@/components/ui/Button";
 import { controlClasses, Field, Input, Textarea } from "@/components/ui/Field";
 import StatusMessage from "@/components/ui/StatusMessage";
 
-export default function EquipmentCreateForm({ categories }: {
+export default function EquipmentCreateForm({ categories, returnToQrLabels = false }: {
   categories: { id: string; name: string }[];
+  returnToQrLabels?: boolean;
 }) {
   const t = useTranslations("equipment");
   const router = useRouter();
+  const localeRouter = useLocaleRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<"idle" | "saved" | "partial" | "error">("idle");
@@ -33,14 +36,25 @@ export default function EquipmentCreateForm({ categories }: {
         return;
       }
       formRef.current?.reset();
+      let photoFailed = false;
       if (photo instanceof File && photo.size > 0) {
         try {
           await uploadEquipmentPhoto(created.id, photo);
         } catch {
-          setResult("partial");
-          router.refresh();
-          return;
+          photoFailed = true;
         }
+      }
+      if (returnToQrLabels) {
+        localeRouter.push({
+          pathname: "/dashboard/equipment/qr-labels",
+          query: { selected: created.id }
+        });
+        return;
+      }
+      if (photoFailed) {
+        setResult("partial");
+        router.refresh();
+        return;
       }
       setResult("saved");
       router.refresh();

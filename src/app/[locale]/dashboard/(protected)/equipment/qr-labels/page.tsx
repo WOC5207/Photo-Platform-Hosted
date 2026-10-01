@@ -9,10 +9,13 @@ import { equipmentName } from "@/lib/equipment";
 import { siteImageUrl } from "@/lib/images";
 import { getSiteSettings } from "@/lib/settings";
 
-export default async function EquipmentQrLabelsPage() {
-  const [locale, t] = await Promise.all([
+export default async function EquipmentQrLabelsPage({ searchParams }: {
+  searchParams: Promise<{ selected?: string | string[] }>;
+}) {
+  const [locale, t, params] = await Promise.all([
     getLocale(),
-    getTranslations("equipmentQrPrint")
+    getTranslations("equipmentQrPrint"),
+    searchParams
   ]);
   const user = await requireUser(locale);
   const [items, settings] = await Promise.all([
@@ -42,6 +45,10 @@ export default async function EquipmentQrLabelsPage() {
     qrToken: item.qrToken
   }));
   const categories = Array.from(new Set(equipment.map((item) => item.category)));
+  const requestedIds = new Set([params.selected ?? []].flat());
+  const initialSelectedIds = equipment
+    .filter((item) => requestedIds.has(item.id))
+    .map((item) => item.id);
 
   return (
     <div className="flex flex-col gap-8">
@@ -60,6 +67,7 @@ export default async function EquipmentQrLabelsPage() {
         categories={categories}
         locale={locale}
         logoUrl={siteImageUrl(settings.logo)}
+        initialSelectedIds={initialSelectedIds}
       />
     </div>
   );
