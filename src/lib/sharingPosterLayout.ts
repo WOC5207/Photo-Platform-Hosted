@@ -195,6 +195,32 @@ function blendShare(a: number, b: number): number {
   return first / Math.max(1e-9, first + second);
 }
 
+/**
+ * How strongly a layout is held to drawing heavier photographs larger. A size
+ * ranking promises that every step down the list is drawn smaller; aspect fit
+ * and evenness alone only nudge toward that, so each pair drawn out of order
+ * (or within a few percent of each other) costs this much per unit of log
+ * area it is off by.
+ */
+export const SIZE_ORDER_WEIGHT = 4;
+/** The smallest visible step between two differently weighted photographs: 12% more area. */
+const SIZE_ORDER_STEP = Math.log(1.12);
+
+/**
+ * The cost of heavier photographs not being drawn larger, over every pair
+ * where one is heavier than the other. Pairs of equal weight cost nothing.
+ */
+export function sizeOrderCost(first: Array<{ weight: number; logArea: number }>, second: Array<{ weight: number; logArea: number }> = first): number {
+  let cost = 0;
+  for (const a of first) {
+    for (const b of second) {
+      if (a.weight > b.weight + 1e-9) cost += Math.max(0, b.logArea - a.logArea + SIZE_ORDER_STEP);
+      else if (b.weight > a.weight + 1e-9 && second !== first) cost += Math.max(0, a.logArea - b.logArea + SIZE_ORDER_STEP);
+    }
+  }
+  return SIZE_ORDER_WEIGHT * cost;
+}
+
 function better(current: Candidate | null, next: Candidate): Candidate {
   if (!current || next.cost < current.cost - 0.000001) return next;
   return current;
@@ -235,6 +261,22 @@ export function calculateSharingPosterLayout(
   }));
 
   const totalWeightScale = prepared.reduce((sum, item) => sum + item.weightScale, 0);
+  const byId = new Map(prepared.map((item) => [item.id, item]));
+  // Only a poster whose photographs differ in weight can draw them out of
+  // order. Cropped frames already follow weight exactly (each split shares out
+  // the space by weight), so only whole photographs, whose drawn size also
+  // depends on how well they fit their frames, need the check.
+  const ranked = fit === "whole" && new Set(prepared.map((item) => item.weightScale)).size > 1;
+  /** Each photograph's weight and the log of the area it is drawn at in `rect`. */
+  const drawn = (rectangles: PosterLayoutRect[]) =>
+    rectangles.map((rect) => {
+      const item = byId.get(rect.id)!;
+      const frameAspect = Math.max(0.01, rect.width / Math.max(1e-6, rect.height));
+      const area = rect.width * rect.height * Math.min(item.imageAspect / frameAspect, frameAspect / item.imageAspect);
+      return { weight: item.weightScale, logArea: Math.log(Math.max(1e-6, area)) };
+    });
+  const orderCost = (first: PosterLayoutRect[], second: PosterLayoutRect[]) =>
+    ranked ? sizeOrderCost(drawn(first), drawn(second)) : 0;
 
   function solve(start: number, end: number, rect: PosterRect): Candidate {
     if (end - start === 1) {
@@ -286,7 +328,7 @@ export function calculateSharingPosterLayout(
           height: rect.height
         });
         best = better(best, {
-          cost: left.cost + right.cost,
+          cost: left.cost + right.cost + orderCost(left.rectangles, right.rectangles),
           rectangles: [...left.rectangles, ...right.rectangles]
         });
       }
@@ -307,7 +349,7 @@ export function calculateSharingPosterLayout(
           height: usable - firstHeight
         });
         best = better(best, {
-          cost: top.cost + bottom.cost,
+          cost: top.cost + bottom.cost + orderCost(top.rectangles, bottom.rectangles),
           rectangles: [...top.rectangles, ...bottom.rectangles]
         });
       }
@@ -596,10 +638,12 @@ export const COLLAGE_BALANCE_WEIGHT = 0.6;
 
 function collageImbalance(logShares: number[], logWeights: number[]): number {
   // Spread of ln(share / weight share): zero when every photograph's area is
-  // exactly proportional to its weight, whatever the overall scale.
+  // exactly proportional to its weight, whatever the overall scale. Heavier
+  // photographs drawn no larger than lighter ones add their order cost.
   const deviations = logShares.map((share, index) => share - logWeights[index]);
   const mean = deviations.reduce((sum, value) => sum + value, 0) / deviations.length;
-  return deviations.reduce((sum, value) => sum + (value - mean) ** 2, 0) / deviations.length;
+  const spread = deviations.reduce((sum, value) => sum + (value - mean) ** 2, 0) / deviations.length;
+  return spread + sizeOrderCost(logShares.map((logArea, index) => ({ weight: logWeights[index], logArea })));
 }
 
 function combineCollage(

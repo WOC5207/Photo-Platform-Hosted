@@ -39,6 +39,7 @@ import {
   creditLineX,
   creditsSpan,
   snapCreditsPosition,
+  sizeOrderCost,
   containFrame,
   coverCropFromAnchor,
   gatherAlignment,
@@ -1175,6 +1176,37 @@ assert.equal(
     return frame.width * frame.height;
   };
   assert.ok(area("a") > area("d"), "the photograph ranked first is drawn larger than the one ranked last");
+
+  // Only a heavier photograph drawn smaller (or barely larger) than a lighter one costs anything.
+  assert.equal(sizeOrderCost([{ weight: 3, logArea: 1 }, { weight: 3, logArea: 5 }]), 0, "equal weights carry no order");
+  assert.equal(sizeOrderCost([{ weight: 5, logArea: 3 }, { weight: 1, logArea: 1 }]), 0, "a ranking already drawn in order is free");
+  assert.ok(sizeOrderCost([{ weight: 5, logArea: 1 }, { weight: 1, logArea: 3 }]) > 0, "a ranking drawn backwards costs");
+  assert.ok(
+    sizeOrderCost([{ weight: 5, logArea: 1 }], [{ weight: 1, logArea: 3 }]) > 0 &&
+      sizeOrderCost([{ weight: 1, logArea: 3 }], [{ weight: 5, logArea: 1 }]) > 0,
+    "the cost between two groups does not depend on which comes first"
+  );
+
+  // With mixed shapes, the photograph ranked first is drawn larger than the one ranked last in both no-crop fits.
+  const shapes = [[3000, 2000], [2000, 3000], [4000, 2250], [2400, 3000], [3000, 3000]];
+  for (const fit of ["whole", "collage"] as const) {
+    for (let shift = 0; shift < shapes.length; shift += 1) {
+      const mixed = shapes.map((_, index) => {
+        const [width, height] = shapes[(index + shift) % shapes.length];
+        return { id: `m${index}`, width, height, weight: rankedSharingPosterWeight((index * 2) % shapes.length, shapes.length) };
+      });
+      const area = { x: 0, y: 0, width: 900, height: 1125 };
+      const drawn = (id: string) => {
+        const frame = calculateSharingPosterLayout(mixed, area, 6, fit).find((candidate) => candidate.id === id)!;
+        const item = mixed.find((candidate) => candidate.id === id)!;
+        const rect = fit === "whole" ? containFrame(item.width, item.height, frame) : frame;
+        return rect.width * rect.height;
+      };
+      const largest = mixed.reduce((best, item) => (item.weight > best.weight ? item : best));
+      const smallest = mixed.reduce((best, item) => (item.weight < best.weight ? item : best));
+      assert.ok(drawn(largest.id) > drawn(smallest.id), `${fit} draws the photograph ranked first larger than the one ranked last (shift ${shift})`);
+    }
+  }
 }
 
 console.log("Sharing poster layout and composition tests passed.");
