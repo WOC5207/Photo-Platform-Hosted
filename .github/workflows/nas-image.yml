@@ -12,7 +12,15 @@ permissions:
 
 jobs:
   publish:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # The `branches` filter above matches the triggering run's head branch
+    # *name*, which a fork's pull request also controls (a fork branch called
+    # "main" passes). Only publish verify runs that were pushes to this
+    # repository's own main branch.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     env:
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}

@@ -40,6 +40,9 @@ RUN DATABASE_URL="file:/tmp/build.db" \
 # ---- Stage 3: runtime -------------------------------------------------
 FROM node:26-alpine AS runner
 WORKDIR /app
+# su-exec lets the entrypoint fix volume ownership as root once, then drop to
+# the unprivileged `node` user (uid 1000) before running anything else.
+RUN apk add --no-cache su-exec
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
@@ -51,8 +54,8 @@ ENV NODE_ENV=production \
 # (no COPY for /app/public — this project has no Next.js public/ folder;
 # all photos/logo are served at runtime from the PHOTOS_DIR volume via
 # custom API routes instead)
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 
 # Prisma schema/migrations + its isolated CLI dependency tree for `migrate
 # deploy` on startup. The standalone server already contains its own traced
