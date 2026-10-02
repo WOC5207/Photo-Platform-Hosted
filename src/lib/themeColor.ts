@@ -515,3 +515,32 @@ export function themeColorStyle(value: string): SiteThemeProperties {
     themeColor: value
   });
 }
+
+/** True when any of the palette's five colors holds a valid saved value. */
+export function hasAnySitePaletteColor(colors: SiteThemeColors): boolean {
+  return Object.values(colors).some((value) => normalizeThemeColor(value));
+}
+
+/**
+ * Class and inline style for the platform's own public pages. Each mode opts
+ * in separately: a mode the administrator left empty keeps the built-in
+ * contact-sheet tokens exactly, so saving only a dark palette never shifts
+ * the light pages (and vice versa).
+ */
+export function platformThemeScope(
+  light: SiteThemeColors,
+  dark: SiteThemeColors
+): { className: string; style: SiteDualThemeProperties | undefined } {
+  const modes = (
+    [
+      ["light", light],
+      ["dark", dark]
+    ] as const
+  ).filter(([, palette]) => hasAnySitePaletteColor(palette));
+  if (modes.length === 0) return { className: "", style: undefined };
+
+  return {
+    className: modes.map(([mode]) => `platform-palette-${mode}`).join(" "),
+    style: siteDualThemeStyle(light, dark)
+  };
+}

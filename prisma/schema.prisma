@@ -336,6 +336,22 @@ model PlatformSettings {
   moderationThresholdSexual               Float?
   moderationThresholdViolence             Float?
   moderationThresholdViolenceGraphic      Float?
+  // Palette for the platform's own public pages (directory, login,
+  // registration, cosplan, public sharing poster, equipment labels). Same
+  // semantics as SiteSettings' palette: empty keeps the built-in look, and a
+  // mode with any value set gets a full contrast-checked palette. Photographer
+  // pages under /u/<username> and their booking links use the owner's own
+  // SiteSettings palette instead.
+  publicBackgroundColor                   String   @default("")
+  publicSurfaceColor                      String   @default("")
+  publicFieldColor                        String   @default("")
+  publicTextColor                         String   @default("")
+  publicThemeColor                        String   @default("")
+  publicDarkBackgroundColor               String   @default("")
+  publicDarkSurfaceColor                  String   @default("")
+  publicDarkFieldColor                    String   @default("")
+  publicDarkTextColor                     String   @default("")
+  publicDarkThemeColor                    String   @default("")
   updatedAt                               DateTime @updatedAt
 }
 

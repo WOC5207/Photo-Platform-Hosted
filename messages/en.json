@@ -1870,6 +1870,15 @@
     "bannerAria": "Platform notification",
     "dismiss": "Dismiss"
   },
+  "adminTheme": {
+    "navTitle": "Public theme",
+    "pageTitle": "Public site theme",
+    "intro": "Colours for the platform's own public pages: the photographer directory, sign-in, registration, the cosplan maker, the sharing poster maker and equipment labels. Each photographer's own pages keep the palette that photographer chooses in their site settings.",
+    "paletteTitle": "Platform palette",
+    "defaultNote": "Leave a mode empty to keep the built-in look for it. Text and button colours are checked for contrast before you can save.",
+    "saveError": "The theme could not be saved. Check that every colour is a hex value like #a44f25.",
+    "contrastSaveError": "Text would be hard to read in one of the palettes. Raise the contrast in both light and dark mode, then save again."
+  },
   "adminTiers": {
     "title": "Tiers",
     "intro": "Named storage allowances. Every account is on one; the default is what new accounts get, and what an account returns to when its tier expires.",

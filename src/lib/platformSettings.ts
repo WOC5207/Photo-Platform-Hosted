@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
+import type { SiteThemeColors, SiteThemeMode } from "@/lib/themeColor";
 
 export interface PlatformSettings {
   registrationNoticeEnabled: boolean;
@@ -24,6 +25,16 @@ export interface PlatformSettings {
   moderationThresholdSexual: number | null;
   moderationThresholdViolence: number | null;
   moderationThresholdViolenceGraphic: number | null;
+  publicBackgroundColor: string;
+  publicSurfaceColor: string;
+  publicFieldColor: string;
+  publicTextColor: string;
+  publicThemeColor: string;
+  publicDarkBackgroundColor: string;
+  publicDarkSurfaceColor: string;
+  publicDarkFieldColor: string;
+  publicDarkTextColor: string;
+  publicDarkThemeColor: string;
 }
 
 const DEFAULTS: PlatformSettings = {
@@ -47,7 +58,17 @@ const DEFAULTS: PlatformSettings = {
   moderationThresholdSelfHarmInstructions: null,
   moderationThresholdSexual: null,
   moderationThresholdViolence: null,
-  moderationThresholdViolenceGraphic: null
+  moderationThresholdViolenceGraphic: null,
+  publicBackgroundColor: "",
+  publicSurfaceColor: "",
+  publicFieldColor: "",
+  publicTextColor: "",
+  publicThemeColor: "",
+  publicDarkBackgroundColor: "",
+  publicDarkSurfaceColor: "",
+  publicDarkFieldColor: "",
+  publicDarkTextColor: "",
+  publicDarkThemeColor: ""
 };
 
 /** Platform-wide settings with usable defaults before the singleton is saved. */
@@ -62,3 +83,25 @@ export const getPlatformSettings = cache(async (): Promise<PlatformSettings> => 
       settings.registrationNoticeMode === "consent" ? "consent" : "information"
   };
 });
+
+/** The admin-chosen light and dark palettes for the platform's public pages. */
+export function platformPublicPalettes(
+  settings: PlatformSettings
+): Record<SiteThemeMode, SiteThemeColors> {
+  return {
+    light: {
+      backgroundColor: settings.publicBackgroundColor,
+      surfaceColor: settings.publicSurfaceColor,
+      fieldColor: settings.publicFieldColor,
+      textColor: settings.publicTextColor,
+      themeColor: settings.publicThemeColor
+    },
+    dark: {
+      backgroundColor: settings.publicDarkBackgroundColor,
+      surfaceColor: settings.publicDarkSurfaceColor,
+      fieldColor: settings.publicDarkFieldColor,
+      textColor: settings.publicDarkTextColor,
+      themeColor: settings.publicDarkThemeColor
+    }
+  };
+}

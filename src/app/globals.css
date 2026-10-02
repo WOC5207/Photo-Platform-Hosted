@@ -241,6 +241,94 @@
   }
 }
 
+/* The platform's own public pages (directory, login, registration, cosplan,
+   public sharing poster, equipment labels) take the administrator's palette.
+   Unlike a photographer's site, each mode opts in on its own: without its
+   class the wrapper inherits the built-in tokens above unchanged. */
+:root.light .platform-palette-light {
+  --color-page: var(--site-light-color-page);
+  --color-surface: var(--site-light-color-surface);
+  --color-surface-2: var(--site-light-color-surface-2);
+  --color-raised: var(--site-light-color-raised);
+  --color-control: var(--site-light-color-control);
+  --color-fg: var(--site-light-color-fg);
+  --color-fg-muted: var(--site-light-color-fg-muted);
+  --color-fg-subtle: var(--site-light-color-fg-subtle);
+  --color-fg-faint: var(--site-light-color-fg-faint);
+  --color-border: var(--site-light-color-border);
+  --color-border-strong: var(--site-light-color-border-strong);
+  --color-accent: var(--site-light-color-accent);
+  --color-accent-text: var(--site-light-color-accent-text);
+  --color-accent-strong: var(--site-light-color-accent-strong);
+  --color-accent-surface: var(--site-light-color-accent-surface);
+  --color-accent-fg: var(--site-light-color-accent-fg);
+  --color-control-border: color-mix(in srgb, var(--color-fg) 55%, var(--color-control));
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) .platform-palette-light {
+    --color-page: var(--site-light-color-page);
+    --color-surface: var(--site-light-color-surface);
+    --color-surface-2: var(--site-light-color-surface-2);
+    --color-raised: var(--site-light-color-raised);
+    --color-control: var(--site-light-color-control);
+    --color-fg: var(--site-light-color-fg);
+    --color-fg-muted: var(--site-light-color-fg-muted);
+    --color-fg-subtle: var(--site-light-color-fg-subtle);
+    --color-fg-faint: var(--site-light-color-fg-faint);
+    --color-border: var(--site-light-color-border);
+    --color-border-strong: var(--site-light-color-border-strong);
+    --color-accent: var(--site-light-color-accent);
+    --color-accent-text: var(--site-light-color-accent-text);
+    --color-accent-strong: var(--site-light-color-accent-strong);
+    --color-accent-surface: var(--site-light-color-accent-surface);
+    --color-accent-fg: var(--site-light-color-accent-fg);
+    --color-control-border: color-mix(in srgb, var(--color-fg) 55%, var(--color-control));
+  }
+}
+
+:root.dark .platform-palette-dark {
+  --color-page: var(--site-dark-color-page);
+  --color-surface: var(--site-dark-color-surface);
+  --color-surface-2: var(--site-dark-color-surface-2);
+  --color-raised: var(--site-dark-color-raised);
+  --color-control: var(--site-dark-color-control);
+  --color-fg: var(--site-dark-color-fg);
+  --color-fg-muted: var(--site-dark-color-fg-muted);
+  --color-fg-subtle: var(--site-dark-color-fg-subtle);
+  --color-fg-faint: var(--site-dark-color-fg-faint);
+  --color-border: var(--site-dark-color-border);
+  --color-border-strong: var(--site-dark-color-border-strong);
+  --color-accent: var(--site-dark-color-accent);
+  --color-accent-text: var(--site-dark-color-accent-text);
+  --color-accent-strong: var(--site-dark-color-accent-strong);
+  --color-accent-surface: var(--site-dark-color-accent-surface);
+  --color-accent-fg: var(--site-dark-color-accent-fg);
+  --color-control-border: color-mix(in srgb, var(--color-fg) 55%, var(--color-control));
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) .platform-palette-dark {
+    --color-page: var(--site-dark-color-page);
+    --color-surface: var(--site-dark-color-surface);
+    --color-surface-2: var(--site-dark-color-surface-2);
+    --color-raised: var(--site-dark-color-raised);
+    --color-control: var(--site-dark-color-control);
+    --color-fg: var(--site-dark-color-fg);
+    --color-fg-muted: var(--site-dark-color-fg-muted);
+    --color-fg-subtle: var(--site-dark-color-fg-subtle);
+    --color-fg-faint: var(--site-dark-color-fg-faint);
+    --color-border: var(--site-dark-color-border);
+    --color-border-strong: var(--site-dark-color-border-strong);
+    --color-accent: var(--site-dark-color-accent);
+    --color-accent-text: var(--site-dark-color-accent-text);
+    --color-accent-strong: var(--site-dark-color-accent-strong);
+    --color-accent-surface: var(--site-dark-color-accent-surface);
+    --color-accent-fg: var(--site-dark-color-accent-fg);
+    --color-control-border: color-mix(in srgb, var(--color-fg) 55%, var(--color-control));
+  }
+}
+
 * {
   scrollbar-color: var(--color-border-strong) transparent;
 }

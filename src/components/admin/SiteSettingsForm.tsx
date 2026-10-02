@@ -22,14 +22,18 @@ import {
 } from "@/app/[locale]/dashboard/(protected)/settings/actions";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import {
+  EMPTY_SITE_PALETTE,
+  PaletteFieldEditor,
+  PaletteModeSwitch,
+  PalettePublicSpecimenBody,
+  PaletteSpecimen,
+  paletteHasInvalidValue
+} from "@/components/admin/SitePaletteEditor";
+import {
   DEFAULT_SITE_DARK_PALETTE,
   DEFAULT_SITE_PALETTE,
-  effectiveSitePalette,
-  GENERATED_PALETTE_TEXT_CONTRAST,
   generateAccessibleSitePalette,
-  normalizeThemeColor,
   resolveDashboardThemeMode,
-  sitePaletteStyle,
   siteThemeMinimumContrast,
   type DashboardThemeMode,
   type SiteThemeColors,
@@ -87,66 +91,6 @@ function IndependentWidget({
         {label}
       </p>
       {children}
-    </div>
-  );
-}
-
-function PaletteColorField({
-  label,
-  hint,
-  hexLabel,
-  resetLabel,
-  value,
-  defaultValue,
-  onChange
-}: {
-  label: string;
-  hint: string;
-  hexLabel: string;
-  resetLabel: string;
-  value: string;
-  defaultValue: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-3 rounded-lg border border-border bg-surface p-3">
-      <input
-        type="color"
-        aria-label={label}
-        value={normalizeThemeColor(value) || defaultValue}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-14 cursor-pointer rounded-lg border border-border-strong bg-control p-1"
-      />
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="text-sm font-semibold text-fg">{label}</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
-              {hint}
-            </p>
-          </div>
-          {value && (
-            <Button
-              type="button"
-              size="compact"
-              variant="ghost"
-              onClick={() => onChange("")}
-            >
-              {resetLabel}
-            </Button>
-          )}
-        </div>
-        <input
-          type="text"
-          aria-label={hexLabel}
-          value={value}
-          placeholder={defaultValue}
-          maxLength={7}
-          spellCheck={false}
-          onChange={(event) => onChange(event.target.value)}
-          className="font-meta mt-2 h-10 w-full rounded-lg border border-border-strong bg-control px-3 text-xs text-fg outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-        />
-      </div>
     </div>
   );
 }
@@ -340,6 +284,19 @@ export default function SiteSettingsForm({
     });
   }
 
+  function resetPalette() {
+    setPalettes((current) => ({
+      ...current,
+      [activePaletteMode]: { ...EMPTY_SITE_PALETTE }
+    }));
+    setPaletteBeforeGeneration((current) => {
+      const next = { ...current };
+      delete next[activePaletteMode];
+      return next;
+    });
+    markDirty();
+  }
+
   function handleSettingsChange(event: FormEvent<HTMLDivElement>) {
     const target = event.target;
     if (
@@ -372,17 +329,11 @@ export default function SiteSettingsForm({
     previewTarget === "dashboard" && dashboardThemeMode === "PLATFORM"
       ? paletteDefaults
       : palette;
-  const palettePreview = effectiveSitePalette(
-    previewPalette,
-    activePaletteMode
-  );
   const paletteContrast = siteThemeMinimumContrast(
     palette,
     activePaletteMode
   );
-  const paletteHasInvalidValue = Object.values(palette).some(
-    (value) => value.trim() && !normalizeThemeColor(value)
-  );
+  const paletteInvalid = paletteHasInvalidValue(palette);
 
   return (
     <div className="flex flex-col gap-6" onChangeCapture={handleSettingsChange}>
@@ -501,32 +452,10 @@ export default function SiteSettingsForm({
                     : t("darkPaletteHint")}
                 </p>
               </div>
-              <div
-                role="group"
-                aria-label={t("paletteModeLabel")}
-                className="grid w-full grid-cols-2 rounded-lg border border-border bg-control p-1 sm:w-auto"
-              >
-                {(["light", "dark"] as const).map((mode) => {
-                  const selected = activePaletteMode === mode;
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => setActivePaletteMode(mode)}
-                      className={`min-h-10 rounded-md px-4 text-sm font-semibold transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-                        selected
-                          ? "bg-raised text-fg shadow-[0_0_0_1px_var(--color-border)]"
-                          : "text-fg-subtle hover:text-fg"
-                      }`}
-                    >
-                      {mode === "light"
-                        ? t("paletteModeLight")
-                        : t("paletteModeDark")}
-                    </button>
-                  );
-                })}
-              </div>
+              <PaletteModeSwitch
+                mode={activePaletteMode}
+                onChange={setActivePaletteMode}
+              />
             </div>
             <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
               <p className="font-meta text-[0.6875rem] uppercase tracking-[0.1em] text-fg-subtle">
@@ -560,236 +489,66 @@ export default function SiteSettingsForm({
               </div>
             </div>
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)] lg:items-start">
-              <div
-                className="overflow-hidden rounded-xl border border-border-strong bg-page"
-                style={sitePaletteStyle(previewPalette, activePaletteMode)}
-                aria-label={t("themeColorPreview")}
+              <PaletteSpecimen
+                title={initial.siteTitleEn || t("themePreviewSiteName")}
+                mode={activePaletteMode}
+                previewColors={previewPalette}
+                contrast={paletteContrast}
+                invalid={paletteInvalid}
               >
-                <div className="flex items-center justify-between border-b border-border bg-page px-4 py-3">
-                  <span className="font-display text-lg font-semibold text-fg">
-                    {initial.siteTitleEn || t("themePreviewSiteName")}
-                  </span>
-                  <span className="font-meta text-[0.6875rem] tracking-[0.14em] text-accent">
-                    01 / {t("themeColorPreviewLabel")}
-                  </span>
-                </div>
-                <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_9rem] sm:p-5">
-                  {previewTarget === "public" ? (
-                    <div className="rounded-xl border border-border bg-surface p-4">
+                {previewTarget === "public" ? (
+                  <PalettePublicSpecimenBody />
+                ) : (
+                  <div className="grid min-h-52 overflow-hidden rounded-xl border border-border bg-surface sm:grid-cols-[7.5rem_minmax(0,1fr)]">
+                    <div className="border-b border-border bg-page p-3 sm:border-b-0 sm:border-r">
+                      <p className="font-meta text-[0.625rem] uppercase tracking-[0.12em] text-accent">
+                        01 / {t("dashboardPreviewIndex")}
+                      </p>
+                      <div className="mt-3 grid grid-cols-2 gap-1 sm:grid-cols-1">
+                        <span className="rounded-md bg-accent-surface px-2 py-1.5 text-xs font-semibold text-fg">
+                          {t("dashboardPreviewNavEvents")}
+                        </span>
+                        <span className="px-2 py-1.5 text-xs text-fg-subtle">
+                          {t("dashboardPreviewNavEquipment")}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-4">
                       <p className="font-display text-xl font-semibold text-fg">
-                        {t("themePreviewTitle")}
+                        {t("dashboardPreviewTitle")}
                       </p>
                       <p className="mt-1 text-sm leading-relaxed text-fg-muted">
-                        {t("themePreviewBody")}
+                        {t("dashboardPreviewBody")}
                       </p>
-                      <label className="mt-4 block text-xs font-semibold text-fg-subtle">
-                        {t("themePreviewFieldLabel")}
-                        <span className="mt-1 block min-h-11 rounded-lg border border-border-strong bg-control px-3 py-2.5 text-sm font-normal text-fg">
-                          {t("themePreviewFieldValue")}
-                        </span>
-                      </label>
-                      <span className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg">
+                      <div className="mt-4 rounded-lg border border-border bg-control p-3">
+                        <p className="text-xs font-semibold text-fg">
+                          {t("dashboardPreviewCardTitle")}
+                        </p>
+                        <p className="mt-1 font-meta text-[0.625rem] uppercase tracking-[0.08em] text-fg-subtle">
+                          {t("dashboardPreviewCardMeta")}
+                        </p>
+                      </div>
+                      <span className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-fg">
                         {t("themeColorPreviewAction")}
                       </span>
                     </div>
-                  ) : (
-                    <div className="grid min-h-52 overflow-hidden rounded-xl border border-border bg-surface sm:grid-cols-[7.5rem_minmax(0,1fr)]">
-                      <div className="border-b border-border bg-page p-3 sm:border-b-0 sm:border-r">
-                        <p className="font-meta text-[0.625rem] uppercase tracking-[0.12em] text-accent">
-                          01 / {t("dashboardPreviewIndex")}
-                        </p>
-                        <div className="mt-3 grid grid-cols-2 gap-1 sm:grid-cols-1">
-                          <span className="rounded-md bg-accent-surface px-2 py-1.5 text-xs font-semibold text-fg">
-                            {t("dashboardPreviewNavEvents")}
-                          </span>
-                          <span className="px-2 py-1.5 text-xs text-fg-subtle">
-                            {t("dashboardPreviewNavEquipment")}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="p-4">
-                        <p className="font-display text-xl font-semibold text-fg">
-                          {t("dashboardPreviewTitle")}
-                        </p>
-                        <p className="mt-1 text-sm leading-relaxed text-fg-muted">
-                          {t("dashboardPreviewBody")}
-                        </p>
-                        <div className="mt-4 rounded-lg border border-border bg-control p-3">
-                          <p className="text-xs font-semibold text-fg">
-                            {t("dashboardPreviewCardTitle")}
-                          </p>
-                          <p className="mt-1 font-meta text-[0.625rem] uppercase tracking-[0.08em] text-fg-subtle">
-                            {t("dashboardPreviewCardMeta")}
-                          </p>
-                        </div>
-                        <span className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-fg">
-                          {t("themeColorPreviewAction")}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">
-                    {[
-                      [t("paletteCanvasShort"), palettePreview.backgroundColor],
-                      [t("paletteSurfaceShort"), palettePreview.surfaceColor],
-                      [t("paletteFieldShort"), palettePreview.fieldColor],
-                      [t("paletteTextShort"), palettePreview.textColor],
-                      [t("paletteButtonShort"), palettePreview.themeColor]
-                    ].map(([label, swatch]) => (
-                      <div
-                        key={label}
-                        className="rounded-lg border border-border bg-raised p-2"
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="mb-2 block h-5 rounded-md border border-border"
-                          style={{ backgroundColor: swatch }}
-                        />
-                        <span className="font-meta block truncate text-[0.625rem] uppercase tracking-[0.08em] text-fg-subtle">
-                          {label}
-                        </span>
-                      </div>
-                    ))}
                   </div>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface px-4 py-3 text-xs">
-                  <span className="text-fg-subtle">
-                    {t("paletteContrast", {
-                      ratio: paletteContrast.toFixed(2)
-                    })}
-                  </span>
-                  {!paletteHasInvalidValue && paletteContrast >= 4.5 ? (
-                    // The dashboard's status colours are tuned for its own
-                    // theme, not for the photographer's palette drawn here, so
-                    // the verdict uses the palette's text colour and a mark.
-                    <span className="font-semibold text-fg">
-                      <span aria-hidden="true">✓ </span>
-                      <span>
-                        {paletteContrast >= GENERATED_PALETTE_TEXT_CONTRAST
-                          ? t("paletteContrastExcellent")
-                          : t("paletteContrastPass")}
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="font-semibold text-fg">
-                      <span aria-hidden="true">✕ </span>
-                      <span>
-                        {paletteHasInvalidValue
-                          ? t("paletteInvalidColor")
-                          : t("paletteContrastFail")}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              </div>
+                )}
+              </PaletteSpecimen>
 
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-meta text-[0.6875rem] uppercase tracking-[0.1em] text-fg-subtle">
-                      {t("editingPalette", {
-                        mode:
-                          activePaletteMode === "light"
-                            ? t("paletteModeLight")
-                            : t("paletteModeDark")
-                      })}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      size="compact"
-                      onClick={generatePalette}
-                    >
-                      {t("generatePalette")}
-                    </Button>
-                    {paletteBeforeGeneration[activePaletteMode] && (
-                      <Button
-                        type="button"
-                        size="compact"
-                        variant="ghost"
-                        onClick={undoGeneratedPalette}
-                      >
-                        {t("undoGeneratedPalette")}
-                      </Button>
-                    )}
-                    {Object.values(palette).some(Boolean) && (
-                      <Button
-                        type="button"
-                        size="compact"
-                        variant="ghost"
-                        onClick={() => {
-                          setPalettes((current) => ({
-                            ...current,
-                            [activePaletteMode]: {
-                              backgroundColor: "",
-                              surfaceColor: "",
-                              fieldColor: "",
-                              textColor: "",
-                              themeColor: ""
-                            }
-                          }));
-                          setPaletteBeforeGeneration((current) => {
-                            const next = { ...current };
-                            delete next[activePaletteMode];
-                            return next;
-                          });
-                          markDirty();
-                        }}
-                      >
-                        {t("resetPalette")}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <PaletteColorField
-                  label={t("backgroundColorSection")}
-                  hint={t("backgroundColorHint")}
-                  hexLabel={t("backgroundColorHexLabel")}
-                  resetLabel={t("resetColor")}
-                  value={palette.backgroundColor}
-                  defaultValue={paletteDefaults.backgroundColor}
-                  onChange={(value) =>
-                    setPaletteColor("backgroundColor", value)
-                  }
-                />
-                <PaletteColorField
-                  label={t("surfaceColorSection")}
-                  hint={t("surfaceColorHint")}
-                  hexLabel={t("surfaceColorHexLabel")}
-                  resetLabel={t("resetColor")}
-                  value={palette.surfaceColor}
-                  defaultValue={paletteDefaults.surfaceColor}
-                  onChange={(value) => setPaletteColor("surfaceColor", value)}
-                />
-                <PaletteColorField
-                  label={t("fieldColorSection")}
-                  hint={t("fieldColorHint")}
-                  hexLabel={t("fieldColorHexLabel")}
-                  resetLabel={t("resetColor")}
-                  value={palette.fieldColor}
-                  defaultValue={paletteDefaults.fieldColor}
-                  onChange={(value) => setPaletteColor("fieldColor", value)}
-                />
-                <PaletteColorField
-                  label={t("textColorSection")}
-                  hint={t("textColorHint")}
-                  hexLabel={t("textColorHexLabel")}
-                  resetLabel={t("resetColor")}
-                  value={palette.textColor}
-                  defaultValue={paletteDefaults.textColor}
-                  onChange={(value) => setPaletteColor("textColor", value)}
-                />
-                <PaletteColorField
-                  label={t("themeColorSection")}
-                  hint={t("themeColorHint")}
-                  hexLabel={t("themeColorHexLabel")}
-                  resetLabel={t("resetColor")}
-                  value={palette.themeColor}
-                  defaultValue={paletteDefaults.themeColor}
-                  onChange={(value) => setPaletteColor("themeColor", value)}
-                />
-              </div>
+              <PaletteFieldEditor
+                mode={activePaletteMode}
+                palette={palette}
+                defaults={paletteDefaults}
+                onColorChange={setPaletteColor}
+                onGenerate={generatePalette}
+                onUndoGenerate={
+                  paletteBeforeGeneration[activePaletteMode]
+                    ? undoGeneratedPalette
+                    : undefined
+                }
+                onReset={resetPalette}
+              />
             </div>
             <div className="border-t border-border pt-5">
               <SectionHeading
@@ -1272,7 +1031,7 @@ export default function SiteSettingsForm({
             pending ||
             !dirty ||
             (activeSection === "appearance" &&
-              (paletteHasInvalidValue || paletteContrast < 4.5))
+              (paletteInvalid || paletteContrast < 4.5))
           }
           variant="primary"
           className="px-5"

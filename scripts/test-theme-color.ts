@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import {
   colorContrastRatio,
+  DEFAULT_SITE_PALETTE,
   effectiveSitePalette,
   GENERATED_PALETTE_TEXT_CONTRAST,
   generateAccessibleSitePalette,
+  hasAnySitePaletteColor,
   normalizeThemeColor,
+  platformThemeScope,
   resolveDashboardThemeMode,
   siteThemeMinimumPhotoScrimContrast,
   siteThemeMinimumContrast,
@@ -146,5 +149,32 @@ for (const mode of ["light", "dark"] as const) {
     );
   }
 }
+
+// Platform public pages: an empty mode keeps the built-in tokens untouched.
+assert.equal(hasAnySitePaletteColor(emptyPalette), false);
+assert.equal(hasAnySitePaletteColor({ ...emptyPalette, themeColor: "nope" }), false);
+assert.equal(hasAnySitePaletteColor({ ...emptyPalette, themeColor: "#0a7" }), true);
+assert.deepEqual(platformThemeScope(emptyPalette, emptyPalette), {
+  className: "",
+  style: undefined
+});
+const accentOnlyScope = platformThemeScope(
+  { ...emptyPalette, themeColor: "#1d4ed8" },
+  emptyPalette
+);
+assert.equal(accentOnlyScope.className, "platform-palette-light");
+assert.equal(accentOnlyScope.style?.["--site-light-color-accent"], "#1d4ed8");
+assert.equal(
+  accentOnlyScope.style?.["--site-light-color-page"],
+  DEFAULT_SITE_PALETTE.backgroundColor
+);
+assert.equal(
+  platformThemeScope(emptyPalette, customPalette).className,
+  "platform-palette-dark"
+);
+assert.equal(
+  platformThemeScope(customPalette, customPalette).className,
+  "platform-palette-light platform-palette-dark"
+);
 
 console.log("Theme color normalization, derivation and contrast tests passed.");
