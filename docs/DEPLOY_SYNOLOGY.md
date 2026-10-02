@@ -35,6 +35,7 @@ compatible ARM64 build, and this hasn't been tested on one.
   package installed (Package Center → search "Container Manager" → Install).
 - Enough free memory to run the containers. The defaults reserve 1.5 GB for
   the app and 768 MB for PostgreSQL; compilation happens in CI, not on the NAS.
+  On a NAS with 16 GB or more, see [Memory limits on a larger NAS](#memory-limits-on-a-larger-nas).
 - Admin access to DSM (Control Panel).
 - Optional but recommended for the domain section: a domain name you own
   (from any registrar — Namecheap, Cloudflare, GoDaddy, etc.) or a free
@@ -88,7 +89,7 @@ Either way you should end up with a folder containing `Dockerfile`,
 | `STRIP_ORIGINAL_EXIF` | `false` lets photographers choose a byte-identical Original; `true` hides that option so new stored masters use EXIF-free Archive or Balanced compression (displayed images always have EXIF stripped) |
 | `UPLOAD_MAX_MB` | Max size per uploaded photo, default `100` |
 | `IMAGE_MAX_PIXELS` | Maximum decoded pixels; keep `100000000` unless the NAS has ample memory |
-| `IMAGE_PROCESSING_CONCURRENCY` | Concurrent Sharp jobs; `1` is the recommended Synology value |
+| `IMAGE_PROCESSING_CONCURRENCY` | Concurrent Sharp jobs; `1` is the recommended Synology value, `2` on a 16 GB+ NAS |
 | `SUBJECT_DETECTION_SWEEP` | Boot-time backfill of photo subject positions for sharing posters; on by default, `false` to disable. Runs one photo at a time after the compression sweep |
 | `TRUSTED_PROXY_HOPS` | `1` for DSM's reverse proxy, or `2` when Cloudflare is also proxying traffic |
 
@@ -104,6 +105,30 @@ deployments.
 TIFF files can be small on disk but enormous when decoded. `IMAGE_MAX_PIXELS`
 is a second safety boundary for that case; files above it are rejected as
 invalid rather than being allowed to exhaust NAS memory.
+
+### Memory limits on a larger NAS
+
+The defaults suit a NAS with 4–8 GB of RAM. With 16 GB or more (for example a
+DS920+ upgraded to 20 GB), replace the memory lines in `.env` with:
+
+```dotenv
+APP_MEMORY_LIMIT="4g"
+NODE_MAX_OLD_SPACE_MB="1536"
+DB_MEMORY_LIMIT="2g"
+DB_SHARED_BUFFERS="512MB"
+DB_EFFECTIVE_CACHE_SIZE="1536MB"
+IMAGE_PROCESSING_CONCURRENCY="2"
+```
+
+That is about 6 GB for the containers, leaving the rest to DSM, other packages
+and the file cache that speeds up photo delivery. Raising the limits further
+gives no extra speed on its own: the app's memory use is set by how many image
+jobs run at once, and a 4-core NAS CPU is the bottleneck beyond two. Keep
+`NODE_MAX_OLD_SPACE_MB` well under `APP_MEMORY_LIMIT`, because Sharp's image
+buffers live outside the Node heap. `DB_SHARED_BUFFERS` and
+`DB_EFFECTIVE_CACHE_SIZE` only take effect once the current `docker-compose.yml`
+from this repository is copied to the NAS. The limits are read when a container is created, so recreate the
+project after editing `.env`; a restart is not enough.
 
 `DATABASE_URL` is **not** in `.env` — `docker-compose.yml` sets it to point at
 the database container, which is reachable only from the app.

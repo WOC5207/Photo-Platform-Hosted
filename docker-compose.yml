@@ -18,6 +18,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # Postgres only uses a larger container if told to. The fallbacks are
+    # Postgres' own defaults, so nothing changes until .env raises them
+    # alongside DB_MEMORY_LIMIT (see the larger-NAS profile in .env.example).
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${DB_SHARED_BUFFERS:-128MB}
+      - -c
+      - effective_cache_size=${DB_EFFECTIVE_CACHE_SIZE:-4GB}
     mem_limit: ${DB_MEMORY_LIMIT:-768m}
 
   app:
