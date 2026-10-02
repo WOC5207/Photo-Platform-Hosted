@@ -148,8 +148,19 @@ export function snapSharingPosterLayerCentre(value: number, threshold: number): 
 }
 
 /** Where a poster serves an uploaded layer from; only its owner can read it. */
+/**
+ * Layer images a visitor added on the public editor, by token. They never
+ * leave the browser, so they are read from object URLs instead of the
+ * dashboard route. Only the browser ever registers one.
+ */
+const localLayerUrls = new Map<string, string>();
+
+export function registerLocalSharingPosterLayer(token: string, url: string): void {
+  localLayerUrls.set(token, url);
+}
+
 export function sharingPosterLayerUrl(token: string): string {
-  return `/api/dashboard/sharing-posters/layers/${token}.webp`;
+  return localLayerUrls.get(token) ?? `/api/dashboard/sharing-posters/layers/${token}.webp`;
 }
 
 /** How a poster draws its photographs; absent is the original crop. */

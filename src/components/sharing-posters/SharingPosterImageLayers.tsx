@@ -38,13 +38,16 @@ export default function SharingPosterImageLayers({
   ratio,
   selectedLayerId,
   onSelect,
-  onChange
+  onChange,
+  upload = uploadLayer
 }: {
   layers: SharingPosterLayer[];
   ratio: { width: number; height: number };
   selectedLayerId: string | null;
   onSelect: (id: string | null) => void;
   onChange: (update: (layers: SharingPosterLayer[]) => SharingPosterLayer[]) => void;
+  /** Where an added image goes; the public editor keeps it in the browser instead. */
+  upload?: (file: File) => Promise<{ token: string; width: number; height: number }>;
 }) {
   const t = useTranslations("sharingPosters");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -57,7 +60,7 @@ export default function SharingPosterImageLayers({
     setBusy(true);
     setError("");
     try {
-      const uploaded = await uploadLayer(file);
+      const uploaded = await upload(file);
       const id = newLayerId(layers);
       onChange((current) =>
         current.length >= SHARING_POSTER_MAX_LAYERS || current.some((layer) => layer.id === id)

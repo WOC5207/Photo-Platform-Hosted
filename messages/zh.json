@@ -458,7 +458,21 @@
     "layerDragHint": "在预览中拖动即可移动，靠近海报中线时会自动吸附。",
     "layerCentre": "居中",
     "layerCover": "铺满海报",
-    "layerRemove": "移除"
+    "layerRemove": "移除",
+    "localDefaultName": "分享海报",
+    "localSaved": "已保存在此浏览器",
+    "localStartOver": "重新开始",
+    "localStartOverConfirm": "开始一张新海报？这会从此浏览器中清除当前草稿及其照片。",
+    "localPhotosHint": "添加你自己的照片、调整顺序，并在画面中拖动照片以改变裁切焦点。照片只保留在此设备上。",
+    "localCreditsHint": "每个图层是署名中的一行，按从上到下的顺序印在海报上。从菜单添加行，拖动调整顺序；修改标题可更改文字前显示的内容。相机、镜头和日期会从照片自带的信息中读取。",
+    "localSelectionEmpty": "在下方添加最多九张照片。",
+    "localAddTitle": "添加你的照片",
+    "localAddHint": "选择 JPEG、PNG 或 WebP 文件，或拖放到这里。照片在此浏览器中读取，不会上传。",
+    "localAddButton": "选择照片",
+    "localReading": "正在读取第 {done} / {total} 张…",
+    "localFull": "这张海报已有九张照片。移除一张后才能再添加。",
+    "localReadError": "{count, plural, other {# 个文件无法读取。请尝试 JPEG、PNG 或 WebP 文件。}}",
+    "localSkipped": "{count, plural, other {有 # 个文件未加入：一张海报最多九张照片。}}"
   },
   "equipment": {
     "searchEquipment": "搜索库存",
@@ -1587,7 +1601,8 @@
     "photos": "{count} 张照片",
     "visit": "访问站点",
     "login": "摄影师登录",
-    "cosplan": "制作 Cosplan 海报"
+    "cosplan": "制作 Cosplan 海报",
+    "sharingPoster": "制作分享海报"
   },
   "platform": {
     "pagination": "账户分页",
@@ -2067,5 +2082,10 @@
     "errorMismatch": "两次输入的新密码不一致。",
     "errorWrongCurrent": "当前密码不正确。",
     "errorRateLimited": "尝试次数过多，请几分钟后再试。"
+  },
+  "publicSharingPoster": {
+    "pageTitle": "分享海报制作器",
+    "pageDescription": "将最多九张你自己的照片排成一张成品图，用于 Instagram、微信及其他分享场景。照片和草稿只保存在你的浏览器中，不会上传。",
+    "directory": "摄影师目录"
   }
 }
