@@ -240,16 +240,6 @@ export async function updateSiteSettings(
   }
 
   invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
   revalidatePath("/", "layout");
   return { ok: true };
 }

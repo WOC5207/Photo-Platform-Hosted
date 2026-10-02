@@ -23,7 +23,7 @@ import {
   safeExternalHttpUrl
 } from "../src/lib/externalUrl";
 import { isTrustedMutationOrigin } from "../src/lib/requestSecurity";
-import { rateLimit } from "../src/lib/rate-limit";
+import { MAX_BUCKETS_PER_SCOPE, rateLimit } from "../src/lib/rate-limit";
 import { passwordFitsHashLimit } from "../src/lib/password";
 
 function multipartRequest(files: Array<[string, Uint8Array]>, fields = true) {
@@ -47,7 +47,7 @@ async function expectUploadError(
   expected: MultipartUploadError["code"]
 ) {
   await assert.rejects(
-    parseSingleImageMultipart(request),
+    parseSingleImageMultipart(request, "test-uploader"),
     (error) => error instanceof MultipartUploadError && error.code === expected
   );
 }
@@ -130,6 +130,13 @@ async function main() {
 
     assert.equal(rateLimit("security-test", { limit: 1, windowMs: 60_000 }), true);
     assert.equal(rateLimit("security-test", { limit: 1, windowMs: 60_000 }), false);
+    // Flooding one scope with junk keys must not lock out another scope or
+    // fresh callers in the flooded scope.
+    for (let i = 0; i <= MAX_BUCKETS_PER_SCOPE; i += 1) {
+      rateLimit(`flood-test:${i}`, { limit: 1, windowMs: 60_000 });
+    }
+    assert.equal(rateLimit("login-test:203.0.113.9", { limit: 10, windowMs: 60_000 }), true);
+    assert.equal(rateLimit("flood-test:fresh", { limit: 1, windowMs: 60_000 }), true);
 
     for (const invalid of ["", ".", "..", "../victim", "..\\victim", "a/b"]) {
       assert.throws(() => userDir(invalid), /Invalid storage owner id|escaped/);
@@ -154,7 +161,8 @@ async function main() {
 
     const bytes = new Uint8Array(256).fill(7);
     const parsed = await parseSingleImageMultipart(
-      multipartRequest([["small.jpg", bytes]])
+      multipartRequest([["small.jpg", bytes]]),
+      "test-uploader"
     );
     assert.equal(parsed.file.name, "small.jpg");
     assert.equal(parsed.file.type, "image/jpeg");

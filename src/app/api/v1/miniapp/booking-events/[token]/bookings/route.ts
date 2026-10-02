@@ -14,9 +14,11 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   return miniappRoute(request, async () => {
-    const [{ token }, identity, input] = await Promise.all([
+    // Authenticate before reading the body, so anonymous callers cannot
+    // make the server buffer and parse JSON.
+    const identity = await requireMiniAppIdentity(request);
+    const [{ token }, input] = await Promise.all([
       params,
-      requireMiniAppIdentity(request),
       parseJson(request, bookingCreateSchema)
     ]);
     const result = await createMiniProgramBooking(

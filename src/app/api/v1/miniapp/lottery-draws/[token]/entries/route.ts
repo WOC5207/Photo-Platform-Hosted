@@ -14,9 +14,9 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   return miniappRoute(request, async () => {
-    const [{ token }, identity, input] = await Promise.all([
+    const identity = await requireMiniAppIdentity(request);
+    const [{ token }, input] = await Promise.all([
       params,
-      requireMiniAppIdentity(request),
       parseJson(request, lotteryEntrySchema)
     ]);
     const result = await createMiniProgramLotteryEntry(

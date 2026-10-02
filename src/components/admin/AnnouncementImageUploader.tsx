@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { removeAnnouncementImage } from "@/app/[locale]/dashboard/(protected)/settings/actions";
+import { ConfirmForm } from "@/components/ui/ConfirmDialog";
 
 /** Compact image upload/remove control for one Announcement row's optional image. */
 export default function AnnouncementImageUploader({
@@ -50,11 +51,10 @@ export default function AnnouncementImageUploader({
             alt=""
             className="h-16 w-16 rounded-lg border border-border object-cover"
           />
-          <form
+          <ConfirmForm
             action={removeAnnouncementImage}
-            onSubmit={(event) => {
-              if (!confirm(t("confirmRemoveImage"))) event.preventDefault();
-            }}
+            message={t("confirmRemoveImage")}
+            confirmLabel={t("removeAnnouncementImage")}
           >
             <input type="hidden" name="id" value={announcementId} />
             <button
@@ -63,7 +63,7 @@ export default function AnnouncementImageUploader({
             >
               {t("removeAnnouncementImage")}
             </button>
-          </form>
+          </ConfirmForm>
         </>
       ) : (
         <label className="flex min-h-10 w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border-strong px-3 py-1.5 text-xs font-medium text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-within:ring-2 focus-within:ring-fg/40 max-sm:min-h-11">

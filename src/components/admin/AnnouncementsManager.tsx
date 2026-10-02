@@ -10,6 +10,7 @@ import {
   type AnnouncementState
 } from "@/app/[locale]/dashboard/(protected)/settings/actions";
 import AnnouncementImageUploader from "./AnnouncementImageUploader";
+import { ConfirmForm } from "@/components/ui/ConfirmDialog";
 
 export interface AdminAnnouncement {
   id: string;
@@ -122,12 +123,9 @@ export default function AnnouncementsManager({
                     {t("moveDown")} →
                   </button>
                 </form>
-                <form
+                <ConfirmForm
                   action={deleteAnnouncement}
-                  onSubmit={(e) => {
-                    if (!confirm(t("confirmDeleteAnnouncement")))
-                      e.preventDefault();
-                  }}
+                  message={t("confirmDeleteAnnouncement")}
                 >
                   <input type="hidden" name="id" value={item.id} />
                   <button
@@ -136,7 +134,7 @@ export default function AnnouncementsManager({
                   >
                     {tc("delete")}
                   </button>
-                </form>
+                </ConfirmForm>
               </div>
             </li>
           ))}

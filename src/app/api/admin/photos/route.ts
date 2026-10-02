@@ -21,10 +21,11 @@ import { getPlatformSettings } from "@/lib/platformSettings";
 import { thresholdsFromSettings } from "@/lib/moderationPolicy";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
 import {
-  MultipartUploadError,
+  multipartErrorResponse,
   parseSingleImageMultipart
 } from "@/lib/multipartUpload";
 import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
+import { EFFECTIVE_QUOTA } from "@/lib/quota";
 
 const BATCH_ID_PATTERN = /^[a-zA-Z0-9_-]{16,100}$/;
 const UPLOAD_ID_PATTERN = /^[a-f0-9]{32}$/;
@@ -283,13 +284,10 @@ export async function POST(req: NextRequest) {
 
   let upload;
   try {
-    upload = await parseSingleImageMultipart(req);
+    upload = await parseSingleImageMultipart(req, user.id);
   } catch (error) {
-    const tooLarge = error instanceof MultipartUploadError && error.code === "tooLarge";
-    return NextResponse.json(
-      { error: tooLarge ? "tooLarge" : "badRequest" },
-      { status: tooLarge ? 413 : 400 }
-    );
+    const failure = multipartErrorResponse(error);
+    return NextResponse.json(failure.body, { status: failure.status });
   }
   const form = upload.fields;
   const eventId = form.get("eventId");
@@ -729,6 +727,17 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (!alreadyFinalized) {
+    // Cheap early refusal for an account that is already full, before any
+    // Sharp or disk work. The authoritative check is in the commit below.
+    const [allowance] = await prisma.$queryRaw<{ full: boolean }[]>`
+      SELECT u."usedBytes" >= ${EFFECTIVE_QUOTA} AS full
+        FROM "User" AS u
+       WHERE u.id = ${user.id}
+    `;
+    if (allowance?.full) {
+      return NextResponse.json({ error: "quotaExceeded" }, { status: 413 });
+    }
+
     const claimed = await prisma.photo.findMany({
       where: { id: { in: photoIds }, eventId },
       select: uploadSelect
@@ -826,11 +835,17 @@ export async function PATCH(req: NextRequest) {
             0
           );
           if (finalBytes > 0) {
-            await tx.$executeRaw`
-              UPDATE "User"
-                 SET "usedBytes" = GREATEST(0, "usedBytes" + ${BigInt(finalBytes)})
-               WHERE id = ${user.id}
+            // The storage quota is charged here, so it must also be enforced
+            // here: without the WHERE check, upload → publish cycles bypass
+            // the tier allowance entirely. A refused batch stays "finalizing"
+            // and resumes once the photographer frees space.
+            const charged = await tx.$executeRaw`
+              UPDATE "User" AS u
+                 SET "usedBytes" = u."usedBytes" + ${BigInt(finalBytes)}
+               WHERE u.id = ${user.id}
+                 AND u."usedBytes" + ${BigInt(finalBytes)} <= ${EFFECTIVE_QUOTA}
             `;
+            if (charged !== 1) throw new QuotaExceededError();
           }
           if (previousBytes > 0) {
             await tx.$executeRaw`
@@ -893,6 +908,9 @@ export async function PATCH(req: NextRequest) {
     } catch (err) {
       if (err instanceof PendingBatchChangedError) {
         return NextResponse.json({ error: "pendingBatchChanged" }, { status: 409 });
+      }
+      if (err instanceof QuotaExceededError) {
+        return NextResponse.json({ error: "quotaExceeded" }, { status: 413 });
       }
       console.error("Failed to commit finalized pending photos:", err);
       return NextResponse.json({ error: "unknown" }, { status: 500 });

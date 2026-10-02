@@ -348,6 +348,26 @@ async function cancelBooking(
   return { ok: true, data: { changed: true } };
 }
 
+/**
+ * Tells photographers about bookings that were cancelled in bulk (a
+ * mini-program user deleting their account). Owner alert only: the visitor
+ * asked for the cancellation and their details are already erased.
+ */
+export async function notifyOwnersOfCancelledBookings(
+  bookingIds: string[]
+): Promise<void> {
+  if (bookingIds.length === 0) return;
+  const bookings = await prisma.booking.findMany({
+    where: { id: { in: bookingIds }, status: "cancelled" },
+    include: cancellableBookingInclude
+  });
+  await Promise.allSettled(
+    bookings.map((booking) =>
+      sendCancellationNotification({ ...booking, email: "" })
+    )
+  );
+}
+
 export async function cancelPublicBookingByToken(
   cancelToken: string
 ): Promise<CancelPublicBookingResult> {

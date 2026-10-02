@@ -8,7 +8,7 @@ import type {
   HomePhotoStreamPage,
   StreamEvent
 } from "@/lib/homePhotoStreamTypes";
-import { unstable_cache } from "next/cache";
+import { createBoundedCache } from "./boundedCache";
 
 export const HOME_PHOTO_STREAM_PAGE_SIZE = 24;
 
@@ -108,6 +108,13 @@ export async function getHomePhotoStreamPage({
   };
 }
 
+// Bounded in memory rather than unstable_cache: the cursor comes from the
+// request, and every distinct value would otherwise leave a file on disk.
+const homePhotoStreamCache = createBoundedCache<HomePhotoStreamPage>({
+  maxEntries: 500,
+  ttlMs: 20_000
+});
+
 export async function getPublicHomePhotoStreamPage(args: {
   ownerId: string;
   locale: string;
@@ -118,8 +125,7 @@ export async function getPublicHomePhotoStreamPage(args: {
     1,
     Math.min(args.pageSize ?? HOME_PHOTO_STREAM_PAGE_SIZE, 48)
   );
-  return unstable_cache(
-    () => getHomePhotoStreamPage({ ...args, pageSize: take }),
+  return homePhotoStreamCache(
     [
       "home-photo-stream",
       args.ownerId,
@@ -127,6 +133,7 @@ export async function getPublicHomePhotoStreamPage(args: {
       args.cursor ?? "first",
       String(take)
     ],
-    { revalidate: 20, tags: ["public-content", `owner:${args.ownerId}`] }
-  )();
+    ["public-content", `owner:${args.ownerId}`],
+    () => getHomePhotoStreamPage({ ...args, pageSize: take })
+  );
 }

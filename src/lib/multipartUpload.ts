@@ -11,7 +11,8 @@ const REQUEST_OVERHEAD_BYTES = 64 * 1024;
 export type MultipartUploadErrorCode =
   | "badRequest"
   | "tooLarge"
-  | "tooManyFiles";
+  | "tooManyFiles"
+  | "busy";
 
 export class MultipartUploadError extends Error {
   constructor(public readonly code: MultipartUploadErrorCode) {
@@ -25,9 +26,60 @@ export interface ParsedMultipartUpload {
   cleanup(): Promise<void>;
 }
 
+// Each upload streams up to UPLOAD_MAX_MB to disk before any per-account cap
+// can be checked, so one account may only have a few in flight at once. The
+// photo wizard sends files one at a time; this only stops parallel floods.
+const MAX_IN_FLIGHT_PER_UPLOADER = 3;
+const inFlightByUploader = new Map<string, number>();
+
+/** Maps a parse failure to the JSON error and status every upload route uses. */
+export function multipartErrorResponse(error: unknown): {
+  body: { error: "tooLarge" | "busy" | "badRequest" };
+  status: number;
+} {
+  const code = error instanceof MultipartUploadError ? error.code : null;
+  if (code === "tooLarge") return { body: { error: "tooLarge" }, status: 413 };
+  if (code === "busy") return { body: { error: "busy" }, status: 429 };
+  return { body: { error: "badRequest" }, status: 400 };
+}
+
+/**
+ * Removes temporary upload directories a previous process left behind (an
+ * OOM kill skips the per-request cleanup). Called once at boot.
+ */
+export async function sweepUploadTemp(maxAgeMs = 10 * 60 * 1000): Promise<void> {
+  const tempRoot = path.resolve(config.photosDir(), ".upload-tmp");
+  const entries = await fs.readdir(tempRoot, { withFileTypes: true }).catch(() => []);
+  const cutoff = Date.now() - maxAgeMs;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith("incoming-")) continue;
+    const dir = path.join(tempRoot, entry.name);
+    const stat = await fs.stat(dir).catch(() => null);
+    if (stat && stat.mtimeMs < cutoff) {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+
 export async function parseSingleImageMultipart(
-  request: Request
+  request: Request,
+  uploaderId: string
 ): Promise<ParsedMultipartUpload> {
+  const inFlight = inFlightByUploader.get(uploaderId) ?? 0;
+  if (inFlight >= MAX_IN_FLIGHT_PER_UPLOADER) {
+    throw new MultipartUploadError("busy");
+  }
+  inFlightByUploader.set(uploaderId, inFlight + 1);
+  try {
+    return await parseUpload(request);
+  } finally {
+    const remaining = (inFlightByUploader.get(uploaderId) ?? 1) - 1;
+    if (remaining > 0) inFlightByUploader.set(uploaderId, remaining);
+    else inFlightByUploader.delete(uploaderId);
+  }
+}
+
+async function parseUpload(request: Request): Promise<ParsedMultipartUpload> {
   const maxFileBytes = config.uploadMaxBytes();
   const declaredLength = Number(request.headers.get("content-length"));
   if (

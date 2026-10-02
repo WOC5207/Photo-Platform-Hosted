@@ -6,6 +6,7 @@ import {
   splitBookingEvent,
   type SplitEventState
 } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export interface SplitDay {
   id: string;
@@ -26,6 +27,7 @@ export default function BookingEventSplit({
 }) {
   const t = useTranslations("adminBookings");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const { confirm, dialog } = useConfirm();
   const [state, formAction, pending] = useActionState<
     SplitEventState,
     FormData
@@ -91,15 +93,21 @@ export default function BookingEventSplit({
           type="submit"
           disabled={!canSplit || pending}
           onClick={(e) => {
-            if (!confirm(t("splitConfirm", { count: selected.size }))) {
-              e.preventDefault();
-            }
+            e.preventDefault();
+            const button = e.currentTarget;
+            void confirm({
+              message: t("splitConfirm", { count: selected.size }),
+              confirmLabel: t("splitOff", { count: selected.size })
+            }).then((ok) => {
+              if (ok) button.form?.requestSubmit(button);
+            });
           }}
           className="inline-flex min-h-10 items-center justify-center rounded-lg border border-border-strong px-4 py-2 text-sm font-semibold text-fg-muted transition hover:border-fg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40 max-sm:min-h-11"
         >
           {pending ? t("splitting") : t("splitOff", { count: selected.size })}
         </button>
       </form>
+      {dialog}
     </section>
   );
 }

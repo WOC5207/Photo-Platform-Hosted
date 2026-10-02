@@ -2,7 +2,8 @@ import "server-only";
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { unstable_cache, revalidateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
+import { createBoundedCache, invalidateBoundedCaches } from "@/lib/boundedCache";
 import { prisma } from "@/lib/db";
 import { eventDir, siteDir } from "@/lib/images";
 import { moderationAllowsPublicPhoto } from "@/lib/photoVisibility";
@@ -12,12 +13,38 @@ const MEDIA_REVALIDATE_SECONDS = Math.max(
   Number.parseInt(process.env.PUBLIC_MEDIA_METADATA_TTL_SECONDS ?? "20", 10) || 20
 );
 
+const MEDIA_CACHE_MAX_ENTRIES = 5_000;
+
+type MediaMetadata = { filePath: string; size: number; etag: string };
+type PhotoMediaMetadata = MediaMetadata & {
+  ownerId: string;
+  ownerActive: boolean;
+  published: boolean;
+  pending: boolean;
+  moderationHeld: boolean;
+};
+
+const photoMediaCache = createBoundedCache<PhotoMediaMetadata | null>({
+  maxEntries: MEDIA_CACHE_MAX_ENTRIES,
+  ttlMs: MEDIA_REVALIDATE_SECONDS * 1000
+});
+const siteMediaCache = createBoundedCache<MediaMetadata | null>({
+  maxEntries: MEDIA_CACHE_MAX_ENTRIES,
+  ttlMs: MEDIA_REVALIDATE_SECONDS * 1000
+});
+const equipmentMediaCache = createBoundedCache<MediaMetadata | null>({
+  maxEntries: MEDIA_CACHE_MAX_ENTRIES,
+  ttlMs: MEDIA_REVALIDATE_SECONDS * 1000
+});
+
 function buildEtag(size: number, mtimeMs: number) {
   return `"${size.toString(16)}-${Math.trunc(mtimeMs).toString(16)}"`;
 }
 
 export async function getPhotoMediaMetadata(eventId: string, photoId: string, file: string) {
-  return unstable_cache(
+  return photoMediaCache(
+    ["public-photo-media", eventId, photoId, file],
+    ["public-media", `event:${eventId}`, `photo:${photoId}`],
     async () => {
       const photo = await prisma.photo.findFirst({
         where: { id: photoId },
@@ -44,14 +71,14 @@ export async function getPhotoMediaMetadata(eventId: string, photoId: string, fi
       } catch {
         return null;
       }
-    },
-    ["public-photo-media", eventId, photoId, file],
-    { revalidate: MEDIA_REVALIDATE_SECONDS, tags: ["public-media", `event:${eventId}`, `photo:${photoId}`] }
-  )();
+    }
+  );
 }
 
 export async function getSiteMediaMetadata(token: string, file: string) {
-  return unstable_cache(
+  return siteMediaCache(
+    ["public-site-media", token, file],
+    ["public-media", `site-image:${token}`],
     async () => {
       const image = await prisma.siteImage.findFirst({
         where: { token, purpose: { in: ["bg", "logo", "qren", "qrzh", "announcement"] } },
@@ -65,14 +92,14 @@ export async function getSiteMediaMetadata(token: string, file: string) {
       } catch {
         return null;
       }
-    },
-    ["public-site-media", token, file],
-    { revalidate: MEDIA_REVALIDATE_SECONDS, tags: ["public-media", `site-image:${token}`] }
-  )();
+    }
+  );
 }
 
 export async function getEquipmentMediaMetadata(qrToken: string) {
-  return unstable_cache(
+  return equipmentMediaCache(
+    ["public-equipment-media", qrToken],
+    ["public-media", `equipment:${qrToken}`],
     async () => {
       const item = await prisma.equipmentItem.findFirst({
         where: { qrToken, owner: { status: "active" } },
@@ -91,13 +118,12 @@ export async function getEquipmentMediaMetadata(qrToken: string) {
       } catch {
         return null;
       }
-    },
-    ["public-equipment-media", qrToken],
-    { revalidate: MEDIA_REVALIDATE_SECONDS, tags: ["public-media", `equipment:${qrToken}`] }
-  )();
+    }
+  );
 }
 
 export function invalidatePublicMedia(tags: string[] = []) {
+  invalidateBoundedCaches(["public-media", "public-content", ...tags]);
   revalidateTag("public-media");
   revalidateTag("public-content");
   for (const tag of tags) revalidateTag(tag);

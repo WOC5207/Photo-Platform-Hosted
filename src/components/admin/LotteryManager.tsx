@@ -14,6 +14,7 @@ import {
   type SpinResult
 } from "@/app/[locale]/dashboard/(protected)/bookings/lottery-actions";
 import LotteryWheel from "./LotteryWheel";
+import { ConfirmForm } from "@/components/ui/ConfirmDialog";
 
 type LotteryWinner = Extract<SpinResult, { ok: true }>["winner"];
 
@@ -393,19 +394,16 @@ function PrizeRow({
             quantity: prize.quantity
           })}
         </span>
-        <form action={deleteLotteryPrize}>
+        <ConfirmForm action={deleteLotteryPrize} message={t("confirmDeletePrize")}>
           <input type="hidden" name="prizeId" value={prize.id} />
           <button
             type="submit"
             disabled={locked}
-            onClick={(event) => {
-              if (!confirm(t("confirmDeletePrize"))) event.preventDefault();
-            }}
             className={`${btnCls} border-danger-border text-danger hover:border-danger hover:text-danger-strong`}
           >
             {tc("delete")}
           </button>
-        </form>
+        </ConfirmForm>
       </div>
     </li>
   );
@@ -439,19 +437,20 @@ function EntryManager({
                 {displayName(e)}
               </span>
               {!e.wonPrizeId && (
-                <form action={removeLotteryEntry}>
+                <ConfirmForm
+                  action={removeLotteryEntry}
+                  message={t("confirmRemoveEntry")}
+                  confirmLabel={t("removeEntryAria")}
+                >
                   <input type="hidden" name="entryId" value={e.id} />
                   <button
                     type="submit"
                     aria-label={t("removeEntryAria")}
-                    onClick={(event) => {
-                      if (!confirm(t("confirmRemoveEntry"))) event.preventDefault();
-                    }}
                     className={btnCls}
                   >
                     ×
                   </button>
-                </form>
+                </ConfirmForm>
               )}
             </li>
           ))}

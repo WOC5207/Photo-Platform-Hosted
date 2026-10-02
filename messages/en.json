@@ -946,7 +946,8 @@
     "uncreditedAck": "Publish these photos without a credit",
     "publish": "Publish {count, plural, =1 {1 photo} other {# photos}}",
     "publishing": "Publishing…",
-    "publishError": "Some photos could not be published ({published} already made it into the album). Check your connection and press Publish to retry the rest."
+    "publishError": "Some photos could not be published ({published} already made it into the album). Check your connection and press Publish to retry the rest.",
+    "publishQuotaError": "Publishing these photos would go over your storage allowance ({published} already made it into the album). Delete photos you no longer need, or ask the administrator for more space, then press Publish to retry."
   },
   "adminCredits": {
     "title": "{term}s",
@@ -1248,7 +1249,8 @@
     "priceDisplayAlreadyEnabled": "Enabled for your site",
     "priceDisplayReady": "Ready to enable",
     "enablePriceDisplay": "Enable price display",
-    "priceDisplayNoticeUnavailable": "The platform administrator must publish a responsibility notice before price display can be enabled.",
+    "priceDisplayNoticeUnavailable": "Price display isn’t available yet because the platform administrator hasn’t published its responsibility notice.",
+    "priceDisplayPublishNotice": "Publish the notice",
     "priceDisplayEnablesOnCreate": "Price display will be enabled when this event is created.",
     "reviewPriceAgreement": "Review agreement",
     "keepPriceDisplayOff": "Keep off",
@@ -1302,6 +1304,8 @@
     "contact": "Contact",
     "notes": "Notes",
     "bookedAt": "Booked at",
+    "copyBookingLink": "Copy {name}'s private booking link",
+    "bookingLinkCopied": "Booking link copied",
     "status": "Status",
     "statusConfirmed": "Confirmed",
     "statusCancelled": "Cancelled",
@@ -1490,6 +1494,7 @@
     "statusCancelled": "Cancelled",
     "cancelButton": "Cancel this booking",
     "confirmCancel": "Are you sure you want to cancel this booking?",
+    "confirmCancelWithPrize": "Are you sure you want to cancel this booking? Your prize, {prize}, will be released to other visitors.",
     "checkBookingButton": "Check your booking",
     "alreadyBooked": "Already booked?",
     "checkTitle": "Check your booking",
@@ -1500,7 +1505,9 @@
     "checkErrorRateLimited": "Too many attempts from your network. Please try again later.",
     "checkResultPrize": "You won: {prize}",
     "checkResultSpinReady": "The prize wheel is ready — open your booking to spin.",
-    "openBooking": "Open my booking"
+    "openBooking": "Open my booking",
+    "checkLinkEmailed": "For your privacy, the private link to this booking was emailed to {email}.",
+    "checkLinkUnavailable": "For your privacy, the private link only opens from the browser you booked in. Use the link from your booking confirmation, or ask the photographer to send it again."
   },
   "setup": {
     "welcomeTitle": "Welcome — let's set up your site",
@@ -1981,6 +1988,7 @@
     "noTemplatesHint": "A platform administrator needs to publish a Cosplan background before a new poster can be started.",
     "loading": "Loading poster studio…",
     "changeTemplateConfirm": "Change the background? Existing elements will be repositioned proportionally.",
+    "changeTemplate": "Change background",
     "textLayer": "Text layer",
     "newText": "New text",
     "copy": "Copy",
@@ -2081,7 +2089,11 @@
     "errorValidation": "New password must be 8–72 characters and at most 72 UTF-8 bytes.",
     "errorMismatch": "The two new passwords do not match.",
     "errorWrongCurrent": "Current password is incorrect.",
-    "errorRateLimited": "Too many attempts. Please wait a few minutes and try again."
+    "errorRateLimited": "Too many attempts. Please wait a few minutes and try again.",
+    "logoutEverywhereTitle": "Sign out everywhere",
+    "logoutEverywhereHint": "Ends every session on every device, including this one. Use it if you signed in on a shared computer or think someone else has access.",
+    "logoutEverywhere": "Sign out everywhere",
+    "logoutEverywhereConfirm": "Sign out of every device, including this one?"
   },
   "publicSharingPoster": {
     "pageTitle": "Sharing poster creator",

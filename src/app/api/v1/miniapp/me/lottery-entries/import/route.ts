@@ -11,10 +11,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   return miniappRoute(request, async () => {
-    const [identity, input] = await Promise.all([
-      requireMiniAppIdentity(request),
-      parseJson(request, lotteryImportSchema)
-    ]);
+    const identity = await requireMiniAppIdentity(request);
+    const input = await parseJson(request, lotteryImportSchema);
     const result = await importMiniProgramLotteryEntry(
       identity.identityId,
       input,

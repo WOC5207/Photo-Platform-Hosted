@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { removeSiteImage } from "@/app/[locale]/dashboard/(protected)/settings/actions";
 import StatusMessage from "@/components/ui/StatusMessage";
+import { ConfirmForm } from "@/components/ui/ConfirmDialog";
 
 type Kind = "background" | "logo" | "contactQrEn" | "contactQrZh";
 
@@ -160,11 +161,10 @@ export default function SiteImageUploader({
             alt={t("siteImagePreviewAlt")}
             className={`${previewCls} transition-opacity ${busy ? "opacity-70" : "opacity-100"}`}
           />
-          <form
+          <ConfirmForm
             action={removeSiteImage.bind(null, kind)}
-            onSubmit={(event) => {
-              if (!confirm(t("confirmRemoveImage"))) event.preventDefault();
-            }}
+            message={t("confirmRemoveImage")}
+            confirmLabel={t(L.remove)}
           >
             <button
               type="submit"
@@ -173,7 +173,7 @@ export default function SiteImageUploader({
             >
               {t(L.remove)}
             </button>
-          </form>
+          </ConfirmForm>
         </div>
       ) : (
         <p className="text-sm text-fg-subtle">{t(L.none)}</p>

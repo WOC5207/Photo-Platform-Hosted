@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { deleteSiteImageFile, resolveUploadExtension, withImageProcessingSlot } from "@/lib/images";
-import { MultipartUploadError, parseSingleImageMultipart } from "@/lib/multipartUpload";
+import { multipartErrorResponse, parseSingleImageMultipart } from "@/lib/multipartUpload";
 import { adjustReservation, releaseBytes, reserveBytes } from "@/lib/quota";
 import { rateLimit } from "@/lib/rate-limit";
 import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
@@ -28,10 +28,10 @@ export async function POST(request: NextRequest) {
 
   let upload;
   try {
-    upload = await parseSingleImageMultipart(request);
+    upload = await parseSingleImageMultipart(request, user.id);
   } catch (error) {
-    const tooLarge = error instanceof MultipartUploadError && error.code === "tooLarge";
-    return NextResponse.json({ error: tooLarge ? "tooLarge" : "badRequest" }, { status: tooLarge ? 413 : 400 });
+    const failure = multipartErrorResponse(error);
+    return NextResponse.json(failure.body, { status: failure.status });
   }
 
   try {

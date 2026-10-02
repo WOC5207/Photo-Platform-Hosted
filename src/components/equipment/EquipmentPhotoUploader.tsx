@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { removeEquipmentPhoto } from "@/app/[locale]/dashboard/(protected)/equipment/actions";
 import StatusMessage from "@/components/ui/StatusMessage";
+import { ConfirmForm } from "@/components/ui/ConfirmDialog";
 
 export async function uploadEquipmentPhoto(equipmentId: string, file: File) {
   const body = new FormData();
@@ -71,14 +72,12 @@ export default function EquipmentPhotoUploader({ equipmentId, currentUrl, name }
     {displayUrl ? <div className="flex flex-wrap items-start gap-3">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={displayUrl} alt={t("photoAlt", { name })} className={`ui-image-frame aspect-[4/3] w-40 rounded-lg object-cover ${busy ? "opacity-60" : ""}`} />
-      <form action={removeEquipmentPhoto} onSubmit={(event) => {
-        if (!confirm(t("removePhotoConfirm", { name }))) event.preventDefault();
-      }}>
+      <ConfirmForm action={removeEquipmentPhoto} message={t("removePhotoConfirm", { name })} confirmLabel={t("removePhoto")}>
         <input type="hidden" name="id" value={equipmentId} />
         <button type="submit" disabled={busy} className="min-h-10 rounded-lg border border-danger-border px-3 py-2 text-sm font-semibold text-danger disabled:opacity-50 max-sm:min-h-11">
           {t("removePhoto")}
         </button>
-      </form>
+      </ConfirmForm>
     </div> : <p className="text-sm text-fg-subtle">{t("noPhoto")}</p>}
     <label className="flex min-h-11 w-fit cursor-pointer items-center rounded-lg border border-dashed border-border-strong px-4 py-2 text-sm font-semibold text-fg-muted hover:border-accent hover:text-accent focus-within:ring-2 focus-within:ring-accent/40">
       <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/tiff,image/x-tiff,.tif,.tiff" disabled={busy} onChange={(event) => choose(event.target.files?.[0])} className="sr-only" />

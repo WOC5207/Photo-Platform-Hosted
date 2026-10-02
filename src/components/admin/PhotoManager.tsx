@@ -34,6 +34,7 @@ import type {
 } from "@/lib/moderationPolicy";
 import { moderationAllowsPublicPhoto } from "@/lib/photoVisibility";
 import type { AdminPhotoValue } from "@/lib/adminPhotoPage";
+import { ConfirmForm } from "@/components/ui/ConfirmDialog";
 
 export interface AdminPhotoCredit {
   creditName: string;
@@ -557,15 +558,10 @@ function BulkToolbar({
             </button>
           </form>
 
-          <form
+          <ConfirmForm
             action={bulkDeletePhotos}
-            onSubmit={(e) => {
-              if (!confirm(t("confirmBulkDeletePhotos", { count: selected.size }))) {
-                e.preventDefault();
-                return;
-              }
-              onClearSelection();
-            }}
+            message={t("confirmBulkDeletePhotos", { count: selected.size })}
+            onConfirmed={onClearSelection}
           >
             {selectedIds.map((id) => (
               <input key={id} type="hidden" name="photoIds" value={id} />
@@ -576,7 +572,7 @@ function BulkToolbar({
             >
               {t("bulkDeleteSelected")}
             </button>
-          </form>
+          </ConfirmForm>
         </div>
       )}
     </div>
@@ -949,12 +945,7 @@ export default function PhotoManager({
             </PhotoCardSection>
 
             <div className="flex justify-end border-t border-border pt-2">
-              <form
-                action={deletePhoto}
-                onSubmit={(e) => {
-                  if (!confirm(t("confirmDeletePhoto"))) e.preventDefault();
-                }}
-              >
+              <ConfirmForm action={deletePhoto} message={t("confirmDeletePhoto")}>
                 <input type="hidden" name="photoId" value={photo.id} />
                 <button
                   type="submit"
@@ -962,7 +953,7 @@ export default function PhotoManager({
                 >
                   {tc("delete")}
                 </button>
-              </form>
+              </ConfirmForm>
             </div>
           </li>
         ))}

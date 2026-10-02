@@ -14,6 +14,12 @@ export async function register() {
     const { sweepPendingCompression } = await import("./lib/compressionWorker");
     const { sweepPendingModeration } = await import("./lib/moderationWorker");
     const { sweepPhotoSubjects } = await import("./lib/subjectDetectionWorker");
+    const { sweepUploadTemp } = await import("./lib/multipartUpload");
+    // Temp upload directories orphaned by a crash (an OOM kill skips the
+    // per-request cleanup) would otherwise sit on the photos volume forever.
+    void sweepUploadTemp().catch((err) =>
+      console.error("Upload temp sweep failed:", err)
+    );
     // Don't block startup on the sweep; let it run in the background.
     void sweepPendingCompression().catch((err) =>
       console.error("Pending compression sweep failed:", err)

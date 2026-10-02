@@ -293,10 +293,17 @@ export default async function EditBookingEventPage({
                                         )}
                                       </p>
                                     </div>
-                                    <BookingStatusButton
-                                      bookingId={b.id}
-                                      status={b.status}
-                                    />
+                                    <div className="flex items-center gap-2">
+                                      <CopyButton
+                                        text={`${config.appBaseUrl()}/${b.locale}/my-booking/${b.cancelToken}`}
+                                        label={t("copyBookingLink", { name: b.name })}
+                                        copiedLabel={t("bookingLinkCopied")}
+                                      />
+                                      <BookingStatusButton
+                                        bookingId={b.id}
+                                        status={b.status}
+                                      />
+                                    </div>
                                   </li>
                                 ))}
                               </ul>

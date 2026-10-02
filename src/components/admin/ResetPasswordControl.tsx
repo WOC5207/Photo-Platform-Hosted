@@ -5,6 +5,7 @@ import {
   resetUserPassword,
   type ResetPasswordState
 } from "@/app/[locale]/admin/(protected)/actions";
+import { ConfirmForm } from "@/components/ui/ConfirmDialog";
 
 /**
  * Reset one account's password to a generated one.
@@ -34,11 +35,10 @@ export default function ResetPasswordControl({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <form
+      <ConfirmForm
         action={action}
-        onSubmit={(e) => {
-          if (!confirm(labels.confirm)) e.preventDefault();
-        }}
+        message={labels.confirm}
+        confirmLabel={labels.reset}
       >
         <input type="hidden" name="id" value={userId} />
         <button
@@ -47,7 +47,7 @@ export default function ResetPasswordControl({
         >
           {labels.reset}
         </button>
-      </form>
+      </ConfirmForm>
 
       {state.error && <p className="text-xs text-danger">{labels.error}</p>}
 

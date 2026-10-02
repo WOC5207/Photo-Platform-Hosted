@@ -10,7 +10,7 @@ import {
   withImageProcessingSlot,
   type SiteImageOptions
 } from "@/lib/images";
-import { MultipartUploadError, parseSingleImageMultipart } from "@/lib/multipartUpload";
+import { multipartErrorResponse, parseSingleImageMultipart } from "@/lib/multipartUpload";
 import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
 import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 
@@ -46,10 +46,10 @@ export async function POST(req: NextRequest) {
 
   let upload;
   try {
-    upload = await parseSingleImageMultipart(req);
+    upload = await parseSingleImageMultipart(req, user.id);
   } catch (error) {
-    const tooLarge = error instanceof MultipartUploadError && error.code === "tooLarge";
-    return NextResponse.json({ error: tooLarge ? "tooLarge" : "badRequest" }, { status: tooLarge ? 413 : 400 });
+    const failure = multipartErrorResponse(error);
+    return NextResponse.json(failure.body, { status: failure.status });
   }
   const form = upload.fields;
   const kind = form.get("kind");

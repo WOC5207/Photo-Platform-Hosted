@@ -14,9 +14,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   return miniappRoute(request, async () => {
-    const [{ id }, identity, input] = await Promise.all([
+    const identity = await requireMiniAppIdentity(request);
+    const [{ id }, input] = await Promise.all([
       params,
-      requireMiniAppIdentity(request),
       parseJson(request, contentReportSchema)
     ]);
     const result = await createMiniProgramContentReport(

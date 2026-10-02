@@ -14,6 +14,7 @@ import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import MyBookingDraw from "@/components/booking/MyBookingDraw";
 import EditBookingForm from "@/components/booking/EditBookingForm";
 import { cancelMyBooking } from "../../book/actions";
+import { activeWinnerWhere } from "@/lib/lottery";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function MyBookingPage({
                 include: {
                   prizes: {
                     orderBy: { sortOrder: "asc" },
-                    include: { _count: { select: { winners: true } } }
+                    include: { _count: { select: { winners: { where: activeWinnerWhere } } } }
                   }
                 }
               }
@@ -244,7 +245,13 @@ export default async function MyBookingPage({
           <input type="hidden" name="cancelToken" value={cancelToken} />
           <ConfirmSubmit
             label={t("cancelButton")}
-            confirmText={t("confirmCancel")}
+            confirmText={
+              booking.lotteryEntry?.wonPrize
+                ? t("confirmCancelWithPrize", {
+                    prize: booking.lotteryEntry.wonPrize.name
+                  })
+                : t("confirmCancel")
+            }
           />
         </form>
       )}

@@ -9,6 +9,7 @@ import {
   updatePersonalLink,
   type PersonalLinkState
 } from "@/app/[locale]/dashboard/(protected)/settings/actions";
+import { ConfirmForm } from "@/components/ui/ConfirmDialog";
 
 export interface AdminPersonalLink {
   id: string;
@@ -102,12 +103,9 @@ export default function PersonalLinksManager({
                     {t("moveDown")} →
                   </button>
                 </form>
-                <form
+                <ConfirmForm
                   action={deletePersonalLink}
-                  onSubmit={(e) => {
-                    if (!confirm(t("confirmDeletePersonalLink")))
-                      e.preventDefault();
-                  }}
+                  message={t("confirmDeletePersonalLink")}
                 >
                   <input type="hidden" name="id" value={link.id} />
                   <button
@@ -116,7 +114,7 @@ export default function PersonalLinksManager({
                   >
                     {tc("delete")}
                   </button>
-                </form>
+                </ConfirmForm>
               </div>
             </li>
           ))}

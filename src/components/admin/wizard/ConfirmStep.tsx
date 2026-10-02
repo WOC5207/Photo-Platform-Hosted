@@ -39,7 +39,7 @@ export function buildCreditGroups(
   return Array.from(groups.values());
 }
 
-export type PublishPhase = "idle" | "publishing" | "error" | "success";
+export type PublishPhase = "idle" | "publishing" | "error" | "quotaError" | "success";
 
 export default function ConfirmStep({
   queue,
@@ -145,6 +145,12 @@ export default function ConfirmStep({
       {publishPhase === "error" && (
         <p role="alert" className="text-sm font-medium text-danger">
           {tw("publishError", { published: publishedCount })}
+        </p>
+      )}
+
+      {publishPhase === "quotaError" && (
+        <p role="alert" className="text-sm font-medium text-danger">
+          {tw("publishQuotaError", { published: publishedCount })}
         </p>
       )}
 

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveUploadExtension } from "@/lib/images";
-import { MultipartUploadError, parseSingleImageMultipart } from "@/lib/multipartUpload";
+import { multipartErrorResponse, parseSingleImageMultipart } from "@/lib/multipartUpload";
 import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
 import { deleteCosplanTemplateAssets, storeCosplanForeground } from "@/lib/cosplanStorage";
 
@@ -33,10 +33,10 @@ export async function POST(
 
   let upload;
   try {
-    upload = await parseSingleImageMultipart(request);
+    upload = await parseSingleImageMultipart(request, "platform-admin");
   } catch (error) {
-    const tooLarge = error instanceof MultipartUploadError && error.code === "tooLarge";
-    return NextResponse.json({ error: tooLarge ? "tooLarge" : "badRequest" }, { status: tooLarge ? 413 : 400 });
+    const failure = multipartErrorResponse(error);
+    return NextResponse.json(failure.body, { status: failure.status });
   }
   try {
     const extension = resolveUploadExtension(upload.file);
