@@ -11,10 +11,8 @@ export const dynamic = "force-dynamic";
 
 export async function DELETE(request: Request) {
   return miniappRoute(request, async () => {
-    const [identity] = await Promise.all([
-      requireMiniAppIdentity(request),
-      parseJson(request, deleteMeSchema)
-    ]);
+    const identity = await requireMiniAppIdentity(request);
+    await parseJson(request, deleteMeSchema);
     const result = await deleteMiniProgramIdentity(
       identity.identityId,
       miniAppWriteClientIp(request)

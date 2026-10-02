@@ -24,6 +24,8 @@ import { getSiteSettings } from "@/lib/settings";
 import { acceptBookingPriceNotice } from "@/lib/bookingPriceNotice";
 import { createEventWorkspace, ensureDayChecklists, validEventDates } from "@/lib/eventWorkspace";
 
+class DayHasBookingsError extends Error {}
+
 export type BookingEventFormState = {
   error?:
     | "validation"
@@ -195,11 +197,28 @@ export async function updateBookingEvent(
         });
       }
       if (removedDayIds.length > 0) {
+        // Re-check under the slot row locks that reserveSlot takes, so a
+        // booking landing after the pre-check above cannot be silently
+        // cascade-deleted along with its day.
+        await tx.$queryRaw`
+          SELECT id FROM "TimeSlot"
+           WHERE "bookingDayId" = ANY(${removedDayIds})
+           ORDER BY id
+             FOR UPDATE
+        `;
+        const bookedNow = await tx.bookingDay.count({
+          where: {
+            id: { in: removedDayIds },
+            slots: { some: { bookings: { some: { status: "confirmed" } } } }
+          }
+        });
+        if (bookedNow > 0) throw new DayHasBookingsError();
         await tx.bookingDay.deleteMany({ where: { id: { in: removedDayIds } } });
       }
       if (existing.galleryEventId) await ensureDayChecklists(tx, user.id, existing.id, locale);
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof DayHasBookingsError) return { error: "dayHasBookings" };
     return { error: "unknown" };
   }
 

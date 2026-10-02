@@ -56,16 +56,6 @@ export async function setUserStatus(formData: FormData): Promise<void> {
     })
     .catch(() => {});
   invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
   revalidatePath("/", "layout");
 }
 

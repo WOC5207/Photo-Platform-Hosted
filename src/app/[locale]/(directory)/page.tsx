@@ -101,8 +101,8 @@ export default async function DirectoryPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
-          <Link href="/cosplan" className={buttonClasses({ variant: "primary" })}>{t("cosplan")}</Link>
-          <Link href="/sharing-poster" className={buttonClasses({ variant: "primary" })}>{t("sharingPoster")}</Link>
+          <Link href="/cosplan" className={buttonClasses({ variant: "secondary" })}>{t("cosplan")}</Link>
+          <Link href="/sharing-poster" className={buttonClasses({ variant: "secondary" })}>{t("sharingPoster")}</Link>
           <LanguageSwitcher />
           <ThemeToggle label={tc("toggleTheme")} />
           {/* The only way in for a photographer arriving at the root: every

@@ -357,7 +357,7 @@ function ProfileMenu({
         {!compact && (
           <>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold text-fg">
+              <span title={displayName || username} className="block truncate text-sm font-semibold text-fg">
                 {displayName || username}
               </span>
               <span className="block truncate text-xs text-fg-subtle">
@@ -473,7 +473,7 @@ function Brand({
           {siteTitle.trim().charAt(0).toUpperCase() || "P"}
         </span>
       )}
-      <span className={`font-display truncate font-semibold tracking-[-0.02em] ${compact ? "text-base" : "text-lg"}`}>
+      <span title={siteTitle} className={`font-display truncate font-semibold tracking-[-0.02em] ${compact ? "text-base" : "text-lg"}`}>
         {siteTitle}
       </span>
     </Link>

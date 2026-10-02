@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import { z } from "zod";
@@ -125,4 +126,21 @@ export async function changePassword(
   session.credentialVersion = credentialVersion;
   await session.save();
   return { ok: true };
+}
+
+/**
+ * Signs this account out on every device. Plain logout only clears this
+ * browser's cookie, so a copied cookie would stay valid until it expires;
+ * bumping credentialVersion invalidates every session cookie at once.
+ */
+export async function logoutEverywhere(): Promise<void> {
+  const locale = await getLocale();
+  const user = await requireUser(locale);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { credentialVersion: { increment: 1 } }
+  });
+  const session = await getSession();
+  session.destroy();
+  redirect(`/${locale}/login`);
 }

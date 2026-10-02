@@ -11,6 +11,7 @@ import {
   type CosplanSlot,
   type CosplanSlotCandidate
 } from "@/lib/cosplanTypes";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 type Labels = {
   title: string;
@@ -111,6 +112,7 @@ export default function CosplanSlotEditor({
   };
   labels: Labels;
 }) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const router = useRouter();
   const previewRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -278,10 +280,14 @@ export default function CosplanSlotEditor({
     setDetectionStatus("results");
   }
 
-  function applyDetectedCandidates(replace: boolean) {
+  async function applyDetectedCandidates(replace: boolean) {
     const chosen = candidates.filter((candidate) => selectedCandidateIds.has(candidate.id));
     if (!chosen.length) return;
-    if (replace && slots.length && !window.confirm(labels.replaceConfirm)) return;
+    if (
+      replace &&
+      slots.length &&
+      !(await confirm({ message: labels.replaceConfirm, confirmLabel: labels.replaceCandidates }))
+    ) return;
     const base = replace ? [] : [...slots];
     const additions = chosen
       .filter((candidate) => !base.some((slot) => intersectionOverUnion(candidate, slot) > 0.82))
@@ -624,11 +630,12 @@ export default function CosplanSlotEditor({
             })}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="primary" onClick={() => applyDetectedCandidates(false)} disabled={!selectedCandidateCount || slots.length >= COSPLAN_SLOT_LIMIT}>{labels.applyCandidates}</Button>
-            {slots.length > 0 && <Button variant="danger" onClick={() => applyDetectedCandidates(true)} disabled={!selectedCandidateCount}>{labels.replaceCandidates}</Button>}
+            <Button variant="primary" onClick={() => void applyDetectedCandidates(false)} disabled={!selectedCandidateCount || slots.length >= COSPLAN_SLOT_LIMIT}>{labels.applyCandidates}</Button>
+            {slots.length > 0 && <Button variant="danger" onClick={() => void applyDetectedCandidates(true)} disabled={!selectedCandidateCount}>{labels.replaceCandidates}</Button>}
           </div>
         </section>
       )}
+      {confirmDialog}
     </div>
   );
 }

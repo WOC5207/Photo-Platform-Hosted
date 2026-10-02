@@ -7,6 +7,7 @@ import { config } from "@/lib/config";
 export type MiniProgramErrorCode =
   | "API_DISABLED"
   | "INVALID_JSON"
+  | "PAYLOAD_TOO_LARGE"
   | "VALIDATION_ERROR"
   | "INVALID_CURSOR"
   | "AUTH_REQUIRED"
@@ -159,13 +160,40 @@ function zodFields(error: z.ZodError): ErrorFields {
   return fields;
 }
 
+// Every mini-program request body is a small form; nothing legitimate comes
+// close to this.
+const MAX_JSON_BODY_BYTES = 64 * 1024;
+
+async function readBoundedText(request: Request): Promise<string> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_JSON_BODY_BYTES) {
+    throw new MiniAppApiError(413, "PAYLOAD_TOO_LARGE");
+  }
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_JSON_BODY_BYTES) {
+      await reader.cancel().catch(() => {});
+      throw new MiniAppApiError(413, "PAYLOAD_TOO_LARGE");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 export async function parseJson<T>(
   request: Request,
   schema: z.ZodType<T>
 ): Promise<T> {
+  const text = await readBoundedText(request);
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(text);
   } catch {
     throw new MiniAppApiError(400, "INVALID_JSON");
   }

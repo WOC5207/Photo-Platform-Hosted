@@ -8,6 +8,8 @@ interface CursorEnvelope {
   p: Array<string | number | null>;
 }
 
+const MIN_CURSOR_SECRET_LENGTH = 32;
+
 function cursorSecret(): string {
   const secret =
     process.env.MINIAPP_CURSOR_SECRET?.trim() ||
@@ -15,6 +17,15 @@ function cursorSecret(): string {
   if (!secret) {
     throw new Error(
       "MINIAPP_CURSOR_SECRET or SESSION_SECRET is required for miniapp cursors"
+    );
+  }
+  // Same bar as SESSION_SECRET: a short HMAC key would make cursors forgeable.
+  if (
+    secret.length < MIN_CURSOR_SECRET_LENGTH ||
+    secret.toLowerCase().startsWith("change-me")
+  ) {
+    throw new Error(
+      `MINIAPP_CURSOR_SECRET must be a unique secret of at least ${MIN_CURSOR_SECRET_LENGTH} characters.`
     );
   }
   return secret;

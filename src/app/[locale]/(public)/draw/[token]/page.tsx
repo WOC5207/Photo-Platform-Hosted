@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/datetime";
 import { findAvailablePublicDraw } from "@/lib/publicLottery";
 import { getAuthorizedLotteryEntryIds } from "@/lib/visitorSession";
 import LotteryEntryForm from "@/components/booking/LotteryEntryForm";
+import { activeWinnerWhere } from "@/lib/lottery";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ export default async function LotteryEntryPage({
     prisma.lotteryPrize.findMany({
       where: { drawId: draw.id },
       orderBy: { sortOrder: "asc" },
-      include: { _count: { select: { winners: true } } }
+      include: { _count: { select: { winners: { where: activeWinnerWhere } } } }
     })
   ]);
   const prizes = storedPrizes.map((p) => ({

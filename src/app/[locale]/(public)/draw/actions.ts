@@ -49,7 +49,7 @@ export async function submitLotteryEntry(
   const d = parsed.data;
   const ip = clientIp(await headers());
   if (
-    !rateLimit(`lottery-entry:${d.drawToken}:${ip}`, {
+    !rateLimit(`lottery-entry:${ip}`, {
       limit: 30,
       windowMs: 60 * 60 * 1000
     })
@@ -81,7 +81,7 @@ export async function recoverLotteryEntry(
   const d = parsed.data;
   const ip = clientIp(await headers());
   if (
-    !rateLimit(`lottery-recover:${d.drawToken}:${ip}`, {
+    !rateLimit(`lottery-recover:${ip}`, {
       limit: 15,
       windowMs: 60 * 60 * 1000
     })

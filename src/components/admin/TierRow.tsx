@@ -7,6 +7,7 @@ import {
   updateTier,
   type DeleteTierState
 } from "@/app/[locale]/admin/(protected)/tiers/actions";
+import { ConfirmForm } from "@/components/ui/ConfirmDialog";
 
 /**
  * One tier: rename, re-limit, promote to default, delete.
@@ -121,11 +122,10 @@ export default function TierRow({
                 rather than a button that always refuses. The in-use case still
                 needs the server's answer — the count here could be stale. */}
             {!tier.isDefault && (
-              <form
+              <ConfirmForm
                 action={deleteAction}
-                onSubmit={(e) => {
-                  if (!confirm(labels.confirmDelete)) e.preventDefault();
-                }}
+                message={labels.confirmDelete}
+                confirmLabel={labels.delete}
               >
                 <input type="hidden" name="id" value={tier.id} />
                 <button
@@ -134,7 +134,7 @@ export default function TierRow({
                 >
                   {labels.delete}
                 </button>
-              </form>
+              </ConfirmForm>
             )}
           </div>
           {error && <p className="text-xs text-danger">{error}</p>}

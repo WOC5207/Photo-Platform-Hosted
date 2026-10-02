@@ -12,6 +12,7 @@ import SocialLinksEditor, {
   emptySocialLink,
   type SocialLinkValue
 } from "./SocialLinksEditor";
+import { ConfirmForm } from "@/components/ui/ConfirmDialog";
 
 export interface AdminCreditProfile {
   id: string;
@@ -61,11 +62,9 @@ function CreditProfileRow({
           </button>
         </div>
       </form>
-      <form
+      <ConfirmForm
         action={deleteCreditProfile}
-        onSubmit={(e) => {
-          if (!confirm(t("confirmDelete"))) e.preventDefault();
-        }}
+        message={t("confirmDelete")}
         className="mt-2"
       >
         <input type="hidden" name="id" value={profile.id} />
@@ -75,7 +74,7 @@ function CreditProfileRow({
         >
           {tc("delete")}
         </button>
-      </form>
+      </ConfirmForm>
     </li>
   );
 }

@@ -12,8 +12,19 @@ const securityHeaders = [
   },
   {
     key: "Content-Security-Policy",
-    value:
-      "base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
+    value: [
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      // Scripts only from this origin. Inline scripts stay allowed because
+      // Next streams its page data in them and a per-request nonce would make
+      // every page dynamic; this still blocks injected <script src> from
+      // anywhere else. Dev mode needs eval for fast refresh.
+      `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
+      // The equipment QR scanner runs its decoder in a blob: worker.
+      "worker-src 'self' blob:"
+    ].join("; ")
   },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Strict-Transport-Security", value: "max-age=31536000" }

@@ -49,8 +49,10 @@ export async function updateMyBooking(
   const d = parsed.data;
   const ip = clientIp(await headers());
   if (
-    !rateLimit(`book-update:${d.cancelToken}:${ip}`, {
-      limit: 20,
+    // Keyed on the address only: a client-chosen token in the key would let
+    // anyone mint unlimited buckets with random tokens.
+    !rateLimit(`book-update:${ip}`, {
+      limit: 40,
       windowMs: 60 * 60 * 1000
     })
   ) {

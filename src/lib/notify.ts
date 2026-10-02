@@ -111,7 +111,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
 
 // Per-kind heading / subject line / greeting, keyed by language.
 const VISITOR_KIND: Record<
-  "confirmed" | "cancelled" | "updated",
+  "confirmed" | "cancelled" | "updated" | "link",
   Record<Lang, { subject: string; heading: string; intro: (name: string) => string }>
 > = {
   confirmed: {
@@ -136,6 +136,19 @@ const VISITOR_KIND: Record<
       subject: "预约已取消",
       heading: "预约已取消",
       intro: (n) => `${n} 您好，您的预约已取消。`
+    }
+  },
+  link: {
+    en: {
+      subject: "Your booking link",
+      heading: "Your booking link",
+      intro: (n) =>
+        `Hi ${n}, someone looked up your booking on the booking page, so here is your private link to it.`
+    },
+    zh: {
+      subject: "你的预约链接",
+      heading: "你的预约链接",
+      intro: (n) => `${n} 您好，有人在预约页面查询了您的预约，这是您的预约专属链接。`
     }
   },
   updated: {
@@ -247,15 +260,15 @@ function actionHtml(action: {
 /** Build a visitor booking email in the language used for the reservation. */
 function visitorMessage(
   info: BookingNotification,
-  kind: "confirmed" | "cancelled" | "updated"
+  kind: "confirmed" | "cancelled" | "updated" | "link",
+  cancelled: boolean = kind === "cancelled"
 ): MailMessage {
   const lang = langOf(info.locale);
   const s = STRINGS[lang];
   const k = VISITOR_KIND[kind][lang];
   const slot = bookingSlotLabel(info, lang);
-  const statusText = kind === "cancelled" ? s.cancelled : s.confirmed;
-  const statusColor =
-    kind === "cancelled" ? STATUS_CANCELLED_COLOR : STATUS_CONFIRMED_COLOR;
+  const statusText = cancelled ? s.cancelled : s.confirmed;
+  const statusColor = cancelled ? STATUS_CANCELLED_COLOR : STATUS_CONFIRMED_COLOR;
 
   const rows: EmailRow[] = [
     { label: s.event, value: info.eventTitle },
@@ -538,6 +551,20 @@ export async function notifyBookingsCreated(
   }
 
   await Promise.allSettled(sends);
+}
+
+/**
+ * The "check your booking" lookup found a booking for someone who is not in
+ * the browser that made it: the private link goes to the address on file
+ * rather than to whoever typed the name and contact. Visitor only.
+ */
+export async function notifyBookingLink(
+  info: BookingNotification,
+  cancelled: boolean,
+  transport?: MailTransport
+): Promise<void> {
+  if (!info.visitorEmail.trim()) return;
+  await sendMail(visitorMessage(info, "link", cancelled), transport);
 }
 
 /** Visitor self-edit: confirm the new details and alert the photographer. */

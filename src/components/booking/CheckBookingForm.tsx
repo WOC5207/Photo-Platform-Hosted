@@ -79,7 +79,7 @@ export default function CheckBookingForm({
         <ul aria-live="polite" className="flex flex-col gap-3">
           {state.results.map((r) => (
             <li
-              key={r.cancelToken}
+              key={r.bookingId}
               className="rounded-xl border border-border bg-surface p-4"
             >
               <p className="font-semibold">{r.eventTitle}</p>
@@ -107,15 +107,25 @@ export default function CheckBookingForm({
                 </p>
               ) : null}
 
-              <Link
-                href={`/my-booking/${r.cancelToken}`}
-                className={buttonClasses({
-                  variant: "primary",
-                  className: "mt-3"
-                })}
-              >
-                {t("openBooking")}
-              </Link>
+              {r.cancelToken ? (
+                <Link
+                  href={`/my-booking/${r.cancelToken}`}
+                  className={buttonClasses({
+                    variant: "primary",
+                    className: "mt-3"
+                  })}
+                >
+                  {t("openBooking")}
+                </Link>
+              ) : r.linkEmailedTo ? (
+                <p className="mt-3 text-sm text-fg-muted">
+                  {t("checkLinkEmailed", { email: r.linkEmailedTo })}
+                </p>
+              ) : (
+                <p className="mt-3 text-sm text-fg-muted">
+                  {t("checkLinkUnavailable")}
+                </p>
+              )}
             </li>
           ))}
         </ul>

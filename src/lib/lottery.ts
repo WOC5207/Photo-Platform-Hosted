@@ -86,6 +86,17 @@ export async function deleteLotteryPrizeForOwner(
   });
 }
 
+/**
+ * Winners that still hold a unit of prize stock: self-entries, and entries
+ * whose booking is still confirmed. A cancelled booking hands its prize back,
+ * so book → spin → cancel loops cannot drain a draw. Every stock count (the
+ * spin itself, the owner's quantity check, public and owner prize lists) must
+ * use this filter so they agree.
+ */
+export const activeWinnerWhere = {
+  OR: [{ bookingId: null }, { booking: { status: "confirmed" } }]
+} satisfies Prisma.LotteryEntryWhereInput;
+
 export type SpinResult =
   | {
       ok: true;
@@ -155,14 +166,24 @@ export async function spinForEntry(
       return { ok: false, error: "not_found" } as const;
     }
 
-    const entry = await tx.lotteryEntry.findUnique({ where: { id: entryId } });
+    const entry = await tx.lotteryEntry.findUnique({
+      where: { id: entryId },
+      include: { booking: { select: { status: true } } }
+    });
     if (!entry) return { ok: false, error: "not_found" } as const;
+    // An entry tied to a booking spins only while that booking stands, on
+    // every path (web, mini-program, owner).
+    if (entry.bookingId && entry.booking?.status !== "confirmed") {
+      return { ok: false, error: "not_found" } as const;
+    }
     if (entry.wonPrizeId) return { ok: false, error: "already_spun" } as const;
 
     const prizes = await tx.lotteryPrize.findMany({ where: { drawId: entry.drawId } });
     const available: { id: string; name: string; weight: number }[] = [];
     for (const p of prizes) {
-      const wonCount = await tx.lotteryEntry.count({ where: { wonPrizeId: p.id } });
+      const wonCount = await tx.lotteryEntry.count({
+        where: { wonPrizeId: p.id, ...activeWinnerWhere }
+      });
       if (wonCount < p.quantity) available.push({ id: p.id, name: p.name, weight: p.weight });
     }
     if (available.length === 0) return { ok: false, error: "no_prizes_left" } as const;

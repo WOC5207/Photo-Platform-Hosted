@@ -59,7 +59,10 @@ export default function SharingPosterLocalPhotoPicker({
 
   return (
     <div className="space-y-5">
-      <SharingPosterSelectionTray photos={photos} onRemove={onRemove} onMove={onMove} onSelect={onSelect} emptyLabel={t("localSelectionEmpty")} />
+      {/* An empty tray only pushes the picker below the fold on phones. */}
+      <div className={photos.length === 0 ? "max-lg:hidden" : undefined}>
+        <SharingPosterSelectionTray photos={photos} onRemove={onRemove} onMove={onMove} onSelect={onSelect} emptyLabel={t("localSelectionEmpty")} />
+      </div>
 
       <div
         onDragOver={(event) => {

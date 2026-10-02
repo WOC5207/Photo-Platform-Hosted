@@ -903,6 +903,7 @@ components:
               enum:
                 - API_DISABLED
                 - INVALID_JSON
+                - PAYLOAD_TOO_LARGE
                 - VALIDATION_ERROR
                 - INVALID_CURSOR
                 - AUTH_REQUIRED
