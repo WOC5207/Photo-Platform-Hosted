@@ -664,16 +664,20 @@ export default function SiteSettingsForm({
                     // the verdict uses the palette's text colour and a mark.
                     <span className="font-semibold text-fg">
                       <span aria-hidden="true">✓ </span>
-                      {paletteContrast >= GENERATED_PALETTE_TEXT_CONTRAST
-                        ? t("paletteContrastExcellent")
-                        : t("paletteContrastPass")}
+                      <span>
+                        {paletteContrast >= GENERATED_PALETTE_TEXT_CONTRAST
+                          ? t("paletteContrastExcellent")
+                          : t("paletteContrastPass")}
+                      </span>
                     </span>
                   ) : (
                     <span className="font-semibold text-fg">
                       <span aria-hidden="true">✕ </span>
-                      {paletteHasInvalidValue
-                        ? t("paletteInvalidColor")
-                        : t("paletteContrastFail")}
+                      <span>
+                        {paletteHasInvalidValue
+                          ? t("paletteInvalidColor")
+                          : t("paletteContrastFail")}
+                      </span>
                     </span>
                   )}
                 </div>
