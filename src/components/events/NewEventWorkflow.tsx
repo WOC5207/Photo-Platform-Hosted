@@ -50,7 +50,8 @@ export default async function NewEventWorkflow({ gallery }: { gallery?: { id: st
         timeZone={settings.timeZone}
         priceDisplay={{
           enabled: settings.bookingPriceEnabled,
-          notice: bookingPriceNotice
+          notice: bookingPriceNotice,
+          noticeSettingsHref: user.role === "admin" ? "/admin/invites#booking-price-notice" : undefined
         }}
         initial={{
           galleryEventId: gallery?.id,

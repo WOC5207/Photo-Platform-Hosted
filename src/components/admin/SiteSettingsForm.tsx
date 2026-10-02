@@ -659,13 +659,18 @@ export default function SiteSettingsForm({
                     })}
                   </span>
                   {!paletteHasInvalidValue && paletteContrast >= 4.5 ? (
-                    <span className="font-semibold text-success">
+                    // The dashboard's status colours are tuned for its own
+                    // theme, not for the photographer's palette drawn here, so
+                    // the verdict uses the palette's text colour and a mark.
+                    <span className="font-semibold text-fg">
+                      <span aria-hidden="true">✓ </span>
                       {paletteContrast >= GENERATED_PALETTE_TEXT_CONTRAST
                         ? t("paletteContrastExcellent")
                         : t("paletteContrastPass")}
                     </span>
                   ) : (
-                    <span className="font-semibold text-danger">
+                    <span className="font-semibold text-fg">
+                      <span aria-hidden="true">✕ </span>
                       {paletteHasInvalidValue
                         ? t("paletteInvalidColor")
                         : t("paletteContrastFail")}

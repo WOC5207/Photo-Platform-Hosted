@@ -19,7 +19,7 @@ export default function EventLocalTimeNotice({
     >
       <span
         aria-hidden="true"
-        className="font-meta mt-0.5 text-[0.6875rem] font-semibold tracking-[0.14em] text-warning sm:shrink-0"
+        className="font-meta mt-0.5 text-[0.6875rem] font-semibold tracking-[0.14em] text-fg sm:shrink-0"
       >
         {marker}
       </span>
