@@ -1,6 +1,5 @@
 "use server";
 
-import { createHash } from "node:crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -9,6 +8,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { clientIp } from "@/lib/clientIp";
 import { rateLimit } from "@/lib/rate-limit";
+import { config } from "@/lib/config";
+import { notifyBookingLink } from "@/lib/notify";
+import { getRememberedBookingIds, rememberBookings } from "@/lib/visitorSession";
+import { bookingRecipientAllowed } from "@/lib/bookingRecipientLimit";
 import { pickText } from "@/lib/content";
 import { formatSlotRange } from "@/lib/datetime";
 import { getSiteSettings } from "@/lib/settings";
@@ -121,20 +124,10 @@ export async function createBooking(
     return { error: "rateLimited" };
   }
 
-  // A recipient-scoped bucket prevents an attacker from bypassing the IP gate
-  // with proxy churn to repeatedly mail the same person. Only a one-way digest
-  // is kept in memory; no contact information becomes a limiter key.
-  const recipientIdentity = (d.email || d.contactValue)
-    .trim()
-    .toLocaleLowerCase("en-US")
-    .replace(/\s+/g, " ");
-  const recipientDigest = createHash("sha256")
-    .update(recipientIdentity)
-    .digest("hex");
   if (
-    !rateLimit(`book-recipient:${event.id}:${recipientDigest}`, {
-      limit: 5,
-      windowMs: 60 * 60 * 1000
+    !bookingRecipientAllowed(event.id, {
+      email: d.email,
+      contactValue: d.contactValue
     })
   ) {
     return { error: "rateLimited" };
@@ -155,6 +148,7 @@ export async function createBooking(
   if (!result.ok) {
     return { error: result.error, failedSlotId: result.slotId };
   }
+  await rememberBookings(result.data.map((booking) => booking.bookingId));
   revalidatePath("/", "layout");
   if (result.data.length === 1) {
     redirect(`/${locale}/my-booking/${result.data[0].cancelToken}?new=1`);
@@ -180,8 +174,21 @@ export async function cancelMyBooking(formData: FormData): Promise<void> {
 
 // ── "Check your booking" lookup ──────────────────────────────────────────
 
+/** "jane@example.com" → "j•••@example.com", enough to recognise, not to reuse. */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!domain) return "•••";
+  return `${local.slice(0, 1)}•••@${domain}`;
+}
+
 export interface BookingLookupResult {
-  cancelToken: string;
+  // Stable list key; not a credential.
+  bookingId: string;
+  // The private manage link token, returned only for bookings made in this
+  // browser. Otherwise the link is emailed to the address on file.
+  cancelToken: string | null;
+  // Masked address the link was just emailed to, when it was.
+  linkEmailedTo: string | null;
   eventTitle: string;
   slotLabel: string;
   pricePerPerson: string;
@@ -234,6 +241,7 @@ export async function lookupMyBooking(
   const event = await prisma.bookingEvent.findUnique({
     where: { token: d.eventToken },
     include: {
+      owner: { select: { status: true } },
       lotteryDraw: { select: { token: true } },
       slots: {
         include: {
@@ -244,7 +252,9 @@ export async function lookupMyBooking(
       }
     }
   });
-  if (!event) return { error: "notFound" };
+  // A suspended photographer's booking pages are gone (see the book layout),
+  // so their bookings are not discoverable here either.
+  if (!event || event.owner.status !== "active") return { error: "notFound" };
 
   const wantName = d.name.toLowerCase();
   const wantContact = d.contactValue.toLowerCase();
@@ -265,17 +275,58 @@ export async function lookupMyBooking(
     ? Boolean(await findAvailablePublicDraw(event.lotteryDraw.token))
     : false;
 
-  const results: BookingLookupResult[] = matches.map(({ slot, booking }) => ({
-    cancelToken: booking.cancelToken,
-    eventTitle,
-    slotLabel: formatSlotRange(slot.startTime, slot.endTime),
-    pricePerPerson: settings.bookingPriceEnabled ? slot.pricePerPerson : "",
-    name: booking.name,
-    subject: booking.subject,
-    cancelled: booking.status === "cancelled",
-    lotteryLive,
-    prizeName: booking.lotteryEntry?.wonPrize?.name ?? null
-  }));
+  // A name and contact value are often public in these communities, so they
+  // are not enough to hand over the private manage link (which can cancel,
+  // move or read the booking). Only bookings made in this browser get it
+  // directly; for the rest it is emailed to the address on file.
+  const remembered = new Set(await getRememberedBookingIds());
+  const results: BookingLookupResult[] = [];
+  for (const { slot, booking } of matches) {
+    const own = remembered.has(booking.id);
+    let linkEmailedTo: string | null = null;
+    if (
+      !own &&
+      booking.email &&
+      config.isMailConfigured() &&
+      rateLimit(`book-link-mail:${booking.id}`, {
+        limit: 3,
+        windowMs: 60 * 60 * 1000
+      })
+    ) {
+      notifyBookingLink(
+        {
+          bookingId: booking.id,
+          name: booking.name,
+          subject: booking.subject,
+          contactMethod: "",
+          contactValue: booking.contactValue,
+          eventTitle: pickText(booking.locale, event.titleEn, event.titleZh),
+          slotStart: slot.startTime,
+          slotEnd: slot.endTime,
+          pricePerPerson: settings.bookingPriceEnabled ? slot.pricePerPerson : "",
+          manageUrl: `${config.appBaseUrl()}/${booking.locale}/my-booking/${booking.cancelToken}`,
+          locale: booking.locale,
+          visitorEmail: booking.email,
+          ownerEmail: ""
+        },
+        booking.status === "cancelled"
+      ).catch(() => {});
+      linkEmailedTo = maskEmail(booking.email);
+      }
+    results.push({
+      bookingId: booking.id,
+      cancelToken: own ? booking.cancelToken : null,
+      linkEmailedTo,
+      eventTitle,
+      slotLabel: formatSlotRange(slot.startTime, slot.endTime),
+      pricePerPerson: settings.bookingPriceEnabled ? slot.pricePerPerson : "",
+      name: booking.name,
+      subject: booking.subject,
+      cancelled: booking.status === "cancelled",
+      lotteryLive,
+      prizeName: booking.lotteryEntry?.wonPrize?.name ?? null
+    });
+  }
 
   return { results };
 }

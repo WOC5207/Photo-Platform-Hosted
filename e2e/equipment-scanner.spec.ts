@@ -217,7 +217,9 @@ test("scanner resolves images, adds items, updates inventory and protects owners
     await publicPage.reload();
     await expect(publicPage.getByText("qr-photographer", { exact: true })).toHaveCount(0);
     await prisma.equipmentItem.update({ where: { id: item.id }, data: { photoToken: "", serialNumber: "" } });
-    expect((await anonymous.request.get(publicPhoto)).status()).toBe(404);
+    // A direct database edit skips cache invalidation, so the photo may be
+    // served until the metadata TTL (1 s in CI) runs out.
+    await expect.poll(async () => (await anonymous.request.get(publicPhoto)).status(), { timeout: 5_000 }).toBe(404);
     await publicPage.reload();
     await expect(publicPage.getByRole("img", { name: item.name })).toHaveCount(0);
     expect((await anonymous.request.get("/en/equipment/not-a-valid-token")).status()).toBe(404);

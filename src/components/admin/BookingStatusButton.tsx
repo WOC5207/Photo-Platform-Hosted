@@ -6,6 +6,7 @@ import {
   setBookingStatus,
   type BookingStatusState
 } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export default function BookingStatusButton({
   bookingId,
@@ -15,6 +16,7 @@ export default function BookingStatusButton({
   status: string;
 }) {
   const t = useTranslations("adminBookings");
+  const { confirm, dialog } = useConfirm();
   const [state, formAction, pending] = useActionState<
     BookingStatusState,
     FormData
@@ -31,9 +33,15 @@ export default function BookingStatusButton({
         type="submit"
         disabled={pending}
         onClick={(event) => {
-          if (isConfirmed && !confirm(t("confirmCancelBooking"))) {
-            event.preventDefault();
-          }
+          if (!isConfirmed) return;
+          event.preventDefault();
+          const button = event.currentTarget;
+          void confirm({
+            message: t("confirmCancelBooking"),
+            confirmLabel: t("cancelBooking")
+          }).then((ok) => {
+            if (ok) button.form?.requestSubmit(button);
+          });
         }}
         className="inline-flex min-h-10 items-center rounded-lg border border-border-strong px-3 py-2 text-xs font-semibold text-fg-muted transition hover:border-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-50 max-sm:min-h-11"
       >
@@ -44,6 +52,7 @@ export default function BookingStatusButton({
           {t("restoreSlotFull")}
         </span>
       )}
+      {dialog}
     </form>
   );
 }

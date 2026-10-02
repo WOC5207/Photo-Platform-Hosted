@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { Link } from "@/i18n/navigation";
 import Button, { buttonClasses } from "@/components/ui/Button";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export interface SharingPosterProjectSummary {
   id: string;
@@ -53,6 +54,7 @@ export function NewSharingPosterButton({ label }: { label?: string }) {
 
 export default function SharingPosterProjectList({ projects }: { projects: SharingPosterProjectSummary[] }) {
   const t = useTranslations("sharingPosters");
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -78,7 +80,7 @@ export default function SharingPosterProjectList({ projects }: { projects: Shari
   }
 
   async function remove(id: string, name: string) {
-    if (!confirm(t("deleteConfirm", { name }))) return;
+    if (!(await confirm({ message: t("deleteConfirm", { name }), confirmLabel: t("delete") }))) return;
     setBusyId(id);
     setError(false);
     try {
@@ -123,6 +125,7 @@ export default function SharingPosterProjectList({ projects }: { projects: Shari
           </li>
         ))}
       </ul>
+      {confirmDialog}
     </div>
   );
 }

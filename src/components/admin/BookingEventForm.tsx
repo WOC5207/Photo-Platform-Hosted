@@ -60,6 +60,8 @@ export default function BookingEventForm({
       body: string;
       version: number;
     };
+    /** Where the platform administrator publishes the notice; admins only. */
+    noticeSettingsHref?: string;
   };
 }) {
   const t = useTranslations("adminBookings");
@@ -237,11 +239,10 @@ export default function BookingEventForm({
               <span className="rounded-md bg-accent-surface px-2.5 py-1.5 text-xs font-semibold text-accent-strong">
                 {t("priceDisplayReady")}
               </span>
-            ) : (
+            ) : priceNoticeAvailable ? (
               <Button
                 type="button"
                 variant="secondary"
-                disabled={!priceNoticeAvailable}
                 onClick={() => {
                   setPriceNoticeAcknowledged(false);
                   setPriceNoticeOpen(true);
@@ -249,7 +250,7 @@ export default function BookingEventForm({
               >
                 {t("enablePriceDisplay")}
               </Button>
-            )}
+            ) : null}
           </div>
 
           <input
@@ -264,11 +265,21 @@ export default function BookingEventForm({
           />
 
           {!priceDisplay.enabled && !priceNoticeAvailable && (
-            <div className="mt-4">
-              <StatusMessage kind="error">
-                {t("priceDisplayNoticeUnavailable")}
-              </StatusMessage>
-            </div>
+            <p className="mt-4 text-sm leading-relaxed text-fg-muted">
+              {/* Nothing the photographer can fix: a quiet note, not an error. */}
+              {t("priceDisplayNoticeUnavailable")}
+              {priceDisplay.noticeSettingsHref && (
+                <>
+                  {" "}
+                  <Link
+                    href={priceDisplay.noticeSettingsHref}
+                    className="font-semibold text-accent-text underline underline-offset-4 hover:text-accent"
+                  >
+                    {t("priceDisplayPublishNotice")}
+                  </Link>
+                </>
+              )}
+            </p>
           )}
 
           {!priceDisplay.enabled && priceEnableRequested && (
@@ -392,7 +403,7 @@ export default function BookingEventForm({
               readOnly={!visitorEditsEnabled}
               defaultValue={initial.visitorEditCutoffHours}
               className={`${inputCls} w-28 ${
-                visitorEditsEnabled ? "" : "cursor-not-allowed opacity-55"
+                visitorEditsEnabled ? "" : "cursor-not-allowed border-dashed text-fg-subtle"
               }`}
             />
             <span className="text-fg-subtle">{t("hours")}</span>

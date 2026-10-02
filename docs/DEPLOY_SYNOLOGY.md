@@ -95,8 +95,9 @@ Either way you should end up with a folder containing `Dockerfile`,
 Uploads stream to a bounded temporary file and stop immediately after the
 configured byte limit. Photo compression runs server-side and one file at a time to keep NAS memory
 usage predictable. A pending photo temporarily stores the exact source, one
-Archive/Balanced comparison and the three gallery sizes; all of them count
-toward the account quota until **Create** removes the unselected master. Archive
+Archive/Balanced comparison and the three gallery sizes; they count toward the
+pending-disk cap (`PENDING_MAX_MB`), and **Publish** charges the final files to
+the account quota, refusing a batch that would go over the allowance. Archive
 uses more CPU and disk than Balanced because it retains up to a 6000px long
 edge. Balanced (4096px) is the default and is the better choice for most NAS
 deployments.

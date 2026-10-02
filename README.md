@@ -141,8 +141,9 @@ Balanced (4096px) is the default; Archive (6000px) uses more CPU and storage.
 `IMAGE_MAX_PIXELS` also rejects compressed TIFF files whose decoded dimensions
 would be unsafe even though the original file is below 100 MB.
 While a photo is pending, its exact source, one comparison candidate and the
-three gallery renditions all count toward quota until **Create** removes the
-unselected master.
+three gallery renditions count toward a separate pending-disk cap
+(`PENDING_MAX_MB`), not the account quota. **Publish** charges the final files
+to the account quota and refuses the batch if it would go over the allowance.
 
 Photo moderation is off by default. When enabled by a platform administrator,
 the first moderation request is made only after **Publish** commits. New photos

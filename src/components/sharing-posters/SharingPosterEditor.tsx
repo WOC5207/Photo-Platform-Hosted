@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import { useRouter } from "@/i18n/navigation";
@@ -41,6 +41,7 @@ import { SHARING_POSTER_RATIO_PRESETS, adaptivePosterRatio, sameRatio } from "@/
 import SharingPosterRatioSuggestion, {
   usePosterRatioSuggestion
 } from "@/components/sharing-posters/SharingPosterRatioSuggestion";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 const SharingPosterCanvas = dynamic(
   () => import("@/components/sharing-posters/SharingPosterCanvas"),
@@ -101,6 +102,7 @@ export default function SharingPosterEditor({
 }) {
   const isPublic = mode === "public";
   const t = useTranslations("sharingPosters");
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const locale = useLocale();
   const router = useRouter();
   const [name, setName] = useState(project.name);
@@ -119,6 +121,10 @@ export default function SharingPosterEditor({
   const [prepared, setPrepared] = useState<{ blob: Blob; url: string; filename: string; signature: string } | null>(null);
   const [notice, setNotice] = useState("");
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  // On phones the keyboard takes half the screen; while a text field has
+  // focus the pinned preview shrinks and the tab bar steps aside so the field
+  // stays visible.
+  const [typing, setTyping] = useState(false);
   // Existing projects carry an intentional snapshot. Only a brand-new empty
   // project auto-prefills while its first selection is being assembled.
   const metadataEditedRef = useRef(project.composition.photos.length > 0);
@@ -501,7 +507,7 @@ export default function SharingPosterEditor({
   }
 
   async function refreshMetadata() {
-    if (!confirm(t("refreshMetadataConfirm"))) return;
+    if (!(await confirm({ message: t("refreshMetadataConfirm"), confirmLabel: t("refreshFromGallery") }))) return;
     setNotice("");
     try {
       const response = await fetch(`/api/dashboard/sharing-posters/${encodeURIComponent(project.id)}/metadata?locale=${locale}`, { cache: "no-store" });
@@ -584,7 +590,7 @@ export default function SharingPosterEditor({
 
   /** The public editor's only way to drop its draft: there is no project list to delete it from. */
   async function startOver() {
-    if (!confirm(t("localStartOverConfirm"))) return;
+    if (!(await confirm({ message: t("localStartOverConfirm"), confirmLabel: t("localStartOver") }))) return;
     const { clearLocalPosterDraft } = await import("@/components/sharing-posters/localSharingPoster");
     await clearLocalPosterDraft().catch(() => {});
     window.location.reload();
@@ -596,6 +602,17 @@ export default function SharingPosterEditor({
     saving: t("saving"),
     error: t("saveError"),
     conflict: t("saveConflict")
+  };
+
+  const handleFieldFocus = (event: FocusEvent<HTMLElement>) => {
+    const target = event.target;
+    if (!isTextEntry(target) || !window.matchMedia("(max-width: 1023px)").matches) return;
+    setTyping(true);
+    // Wait for the preview to shrink before measuring where the field is.
+    window.setTimeout(() => target.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
+  };
+  const handleFieldBlur = (event: FocusEvent<HTMLElement>) => {
+    if (!isTextEntry(event.relatedTarget)) setTyping(false);
   };
 
   const tabButtons = (
@@ -641,7 +658,7 @@ export default function SharingPosterEditor({
       )}
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(22rem,0.85fr)_minmax(28rem,1.15fr)]">
-        <section aria-label={t("preview")} className="sticky top-16 z-20 flex max-h-[48dvh] items-center justify-center overflow-auto rounded-xl border border-border bg-surface-2 p-3 lg:order-2 lg:top-6 lg:max-h-[calc(100dvh-4rem)] lg:p-6">
+        <section aria-label={t("preview")} className={`sticky ${isPublic ? "top-2" : "top-16"} z-20 ${photos.length === 0 ? "max-lg:hidden" : ""} ${typing ? "max-lg:max-h-[22dvh] max-lg:p-2 max-lg:[&_canvas]:max-h-[18dvh]" : "max-h-[48dvh]"} flex items-center justify-center overflow-auto rounded-xl border border-border bg-surface-2 p-3 lg:order-2 lg:top-6 lg:max-h-[calc(100dvh-4rem)] lg:p-6`}>
           <SharingPosterCanvas
             composition={composition}
             photos={photos}
@@ -658,12 +675,12 @@ export default function SharingPosterEditor({
           />
         </section>
 
-        <aside className="flex min-w-0 flex-col gap-4 lg:order-1">
+        <aside onFocus={handleFieldFocus} onBlur={handleFieldBlur} className="flex min-w-0 flex-col gap-4 lg:order-1">
           {/* On phones the tabs are a bar pinned to the bottom of the screen.
               Bottom-sticky only pins an element whose place in the flow is
               still below the screen, so it is laid out last; first, it scrolled
               up over the pinned preview. The DOM keeps it before the panels. */}
-          <div className="sticky bottom-0 z-30 order-last bg-page pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:static lg:order-first lg:p-0">{tabButtons}</div>
+          <div className={`sticky bottom-0 z-30 order-last ${typing ? "max-lg:hidden" : ""} bg-page pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:static lg:order-first lg:p-0`}>{tabButtons}</div>
 
           <section role="tabpanel" hidden={activeTab !== "photos"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
             <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("photosTitle")}</h2>
@@ -884,6 +901,16 @@ export default function SharingPosterEditor({
           </section>
         </aside>
       </div>
+      {confirmDialog}
     </div>
   );
+}
+
+const NON_TEXT_INPUTS = new Set(["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"]);
+
+/** Whether focusing this element brings up an on-screen keyboard. */
+function isTextEntry(element: EventTarget | null): element is HTMLElement {
+  if (element instanceof HTMLTextAreaElement) return true;
+  if (element instanceof HTMLInputElement) return !NON_TEXT_INPUTS.has(element.type);
+  return element instanceof HTMLElement && element.isContentEditable;
 }

@@ -1,7 +1,10 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { createPublicBooking } from "@/lib/publicBookingService";
-import { cancelPublicBookingForIdentity } from "@/lib/publicBookingService";
+import {
+  cancelPublicBookingForIdentity,
+  notifyOwnersOfCancelledBookings
+} from "@/lib/publicBookingService";
 import { prisma } from "@/lib/db";
 import { decodeCursor, encodeCursor } from "@/lib/miniapp/cursor";
 import { invalidCursor } from "@/lib/miniapp/http";
@@ -21,6 +24,8 @@ import {
 } from "@/lib/publicLotteryEntryService";
 import { findAvailablePublicDraw } from "@/lib/publicLottery";
 import { rateLimit } from "@/lib/rate-limit";
+import { bookingRecipientAllowed } from "@/lib/bookingRecipientLimit";
+import { activeWinnerWhere } from "@/lib/lottery";
 import {
   DEFAULT_TIME_ZONE,
   isNaiveDateTimePast
@@ -103,6 +108,19 @@ const miniProgramBookingInclude = {
   }
 } satisfies Prisma.BookingInclude;
 
+/**
+ * Bookings the mini-program may show or act on: the photographer must be
+ * active and have opted in. Turning the switch off (or suspension) hides the
+ * whole API surface, including bookings already linked to an identity.
+ */
+const miniProgramVisibleBookingWhere = {
+  timeSlot: {
+    bookingEvent: {
+      owner: { status: "active", settings: { is: { miniappEnabled: true } } }
+    }
+  }
+} satisfies Prisma.BookingWhereInput;
+
 type MiniProgramBooking = Prisma.BookingGetPayload<{
   include: typeof miniProgramBookingInclude;
 }>;
@@ -116,7 +134,11 @@ async function findMiniProgramBooking(
   bookingId: string
 ): Promise<MiniProgramBookingData | null> {
   const booking = await prisma.booking.findFirst({
-    where: { id: bookingId, wechatIdentityId: identityId },
+    where: {
+      id: bookingId,
+      wechatIdentityId: identityId,
+      ...miniProgramVisibleBookingWhere
+    },
     include: miniProgramBookingInclude
   });
   return booking ? bookingData(booking) : null;
@@ -128,15 +150,6 @@ export async function createMiniProgramBooking(
   input: MiniProgramBookingInput,
   ip: string
 ): Promise<MiniProgramServiceResult<MiniProgramBookingData>> {
-  if (
-    !miniProgramWriteAllowed(`booking:create:${eventToken}`, identityId, ip, {
-      limit: 30,
-      windowMs: 60 * 60 * 1000
-    })
-  ) {
-    return { ok: false, error: "rateLimited" };
-  }
-
   const event = await prisma.bookingEvent.findUnique({
     where: { token: eventToken },
     select: {
@@ -161,6 +174,21 @@ export async function createMiniProgramBooking(
   }
   if (!event.open || !event.owner.settings.bookingEnabled) {
     return { ok: false, error: "closed" };
+  }
+
+  // Limits are keyed on the resolved event, never the client's token, so
+  // random tokens cannot mint unlimited limiter buckets.
+  if (
+    !miniProgramWriteAllowed(`booking:create:${event.id}`, identityId, ip, {
+      limit: 30,
+      windowMs: 60 * 60 * 1000
+    }) ||
+    !bookingRecipientAllowed(event.id, {
+      email: input.email,
+      contactValue: input.contactValue
+    })
+  ) {
+    return { ok: false, error: "rateLimited" };
   }
 
   const slot = await prisma.timeSlot.findFirst({
@@ -227,6 +255,7 @@ export async function listMiniProgramBookings(
   const bookings = await prisma.booking.findMany({
     where: {
       wechatIdentityId: identityId,
+      ...miniProgramVisibleBookingWhere,
       ...(cursor
         ? {
             OR: [
@@ -274,6 +303,8 @@ export async function cancelMiniProgramBooking(
   ) {
     return { ok: false, error: "rateLimited" };
   }
+  const visible = await findMiniProgramBooking(identityId, bookingId);
+  if (!visible) return { ok: false, error: "notFound" };
   const cancelled = await cancelPublicBookingForIdentity(
     identityId,
     bookingId
@@ -309,8 +340,8 @@ export async function importMiniProgramBooking(
     const bookingId = rows[0]?.id;
     if (!bookingId) return { ok: false, error: "notFound" } as const;
 
-    const booking = await tx.booking.findUnique({
-      where: { id: bookingId },
+    const booking = await tx.booking.findFirst({
+      where: { id: bookingId, ...miniProgramVisibleBookingWhere },
       include: { lotteryEntry: true }
     });
     if (!booking) return { ok: false, error: "notFound" } as const;
@@ -400,7 +431,7 @@ export async function readMiniProgramLottery(
     prisma.lotteryPrize.findMany({
       where: { drawId: draw.id },
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-      include: { _count: { select: { winners: true } } }
+      include: { _count: { select: { winners: { where: activeWinnerWhere } } } }
     }),
     identityId
       ? prisma.lotteryEntry.findFirst({
@@ -461,7 +492,7 @@ export async function createMiniProgramLotteryEntry(
   ip: string
 ): Promise<MiniProgramServiceResult<MiniProgramLotteryEntryData>> {
   if (
-    !miniProgramWriteAllowed(`lottery:enter:${drawToken}`, identityId, ip, {
+    !miniProgramWriteAllowed("lottery:enter", identityId, ip, {
       limit: 30,
       windowMs: 60 * 60 * 1000
     })
@@ -686,7 +717,8 @@ export async function deleteMiniProgramIdentity(
     return { ok: false, error: "rateLimited" };
   }
 
-  return prisma.$transaction(async (tx) => {
+  let cancelledBookingIds: string[] = [];
+  const result = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`
       SELECT id FROM "WeChatIdentity" WHERE id = ${identityId} FOR UPDATE
     `;
@@ -747,6 +779,7 @@ export async function deleteMiniProgramIdentity(
         where: { id: { in: futureConfirmedIds }, status: "confirmed" },
         data: { status: "cancelled" }
       });
+      cancelledBookingIds = futureConfirmedIds;
     }
 
     const lotteryEntries = await tx.lotteryEntry.findMany({
@@ -781,4 +814,10 @@ export async function deleteMiniProgramIdentity(
       }
     } as const;
   });
+  // After commit, so a rolled-back deletion never alerts anyone. The freed
+  // slots would otherwise reopen without the photographer knowing.
+  if (result.ok) {
+    notifyOwnersOfCancelledBookings(cancelledBookingIds).catch(() => {});
+  }
+  return result;
 }

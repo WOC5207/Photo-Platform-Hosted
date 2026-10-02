@@ -3,7 +3,7 @@ import { cache } from "react";
 import { notFound } from "next/navigation";
 import type { User } from "@prisma/client";
 import { prisma } from "./db";
-import { unstable_cache } from "next/cache";
+import { createBoundedCache } from "./boundedCache";
 
 /**
  * Resolves which user's site a public request is for.
@@ -27,20 +27,26 @@ export const findOwner = cache(async (username: string): Promise<User | null> =>
 
 export type PublicOwner = Pick<User, "id" | "username" | "displayName" | "status">;
 
+const publicOwnerCache = createBoundedCache<PublicOwner | null>({
+  maxEntries: 5_000,
+  ttlMs: 20_000
+});
+
 /** Public-only cross-request lookup. Internal and security-sensitive code uses
- * findOwner directly, independent of Next's incremental-cache context. */
+ * findOwner directly. Bounded in memory: the key is a URL segment anyone can
+ * vary. */
 export async function findPublicOwner(username: string): Promise<PublicOwner | null> {
-  return unstable_cache(
+  return publicOwnerCache(
+    ["public-owner", username],
+    ["public-content", `username:${username}`],
     async () => {
       const user = await prisma.user.findUnique({
         where: { username },
         select: { id: true, username: true, displayName: true, status: true }
       });
       return user && user.status === "active" ? user : null;
-    },
-    ["public-owner", username],
-    { revalidate: 20, tags: ["public-content", `username:${username}`] }
-  )();
+    }
+  );
 }
 
 /** The owner, or a 404 — for pages whose entire content is theirs. */

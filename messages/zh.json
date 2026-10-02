@@ -946,7 +946,8 @@
     "uncreditedAck": "确认不带署名发布这些照片",
     "publish": "发布 {count} 张照片",
     "publishing": "发布中…",
-    "publishError": "部分照片发布失败（已有 {published} 张进入相册）。请检查网络后再次点击发布以重试其余照片。"
+    "publishError": "部分照片发布失败（已有 {published} 张进入相册）。请检查网络后再次点击发布以重试其余照片。",
+    "publishQuotaError": "发布这些照片会超出你的存储空间（已有 {published} 张发布到相册）。请删除不需要的照片，或联系管理员增加空间，然后再次点击发布。"
   },
   "adminCredits": {
     "title": "{term}管理",
@@ -1248,7 +1249,8 @@
     "priceDisplayAlreadyEnabled": "已为你的网站启用",
     "priceDisplayReady": "准备启用",
     "enablePriceDisplay": "启用价格展示",
-    "priceDisplayNoticeUnavailable": "平台管理员必须先发布交易责任须知，才能启用价格展示。",
+    "priceDisplayNoticeUnavailable": "价格展示暂不可用：平台管理员尚未发布交易责任须知。",
+    "priceDisplayPublishNotice": "发布须知",
     "priceDisplayEnablesOnCreate": "创建此预约活动时将同时启用价格展示。",
     "reviewPriceAgreement": "查看协议",
     "keepPriceDisplayOff": "保持关闭",
@@ -1302,6 +1304,8 @@
     "contact": "联系方式",
     "notes": "备注",
     "bookedAt": "预约时间",
+    "copyBookingLink": "复制 {name} 的预约专属链接",
+    "bookingLinkCopied": "已复制预约链接",
     "status": "状态",
     "statusConfirmed": "已确认",
     "statusCancelled": "已取消",
@@ -1490,6 +1494,7 @@
     "statusCancelled": "已取消",
     "cancelButton": "取消该预约",
     "confirmCancel": "确定要取消该预约吗？",
+    "confirmCancelWithPrize": "确定要取消该预约吗？你抽中的奖品「{prize}」将释放给其他访客。",
     "checkBookingButton": "查询我的预约",
     "alreadyBooked": "已经预约？",
     "checkTitle": "查询我的预约",
@@ -1500,7 +1505,9 @@
     "checkErrorRateLimited": "你所在网络的请求过多，请稍后再试。",
     "checkResultPrize": "你中奖了：{prize}",
     "checkResultSpinReady": "转盘已就绪——打开预约即可抽奖。",
-    "openBooking": "打开我的预约"
+    "openBooking": "打开我的预约",
+    "checkLinkEmailed": "为保护隐私，本预约的专属链接已发送到 {email}。",
+    "checkLinkUnavailable": "为保护隐私，专属链接只能在预约时使用的浏览器中直接打开。请使用预约确认页面中的链接，或联系摄影师重新发送。"
   },
   "setup": {
     "welcomeTitle": "欢迎——让我们来设置你的网站",
@@ -1981,6 +1988,7 @@
     "noTemplatesHint": "平台管理员发布 Cosplan 背景后即可开始制作新海报。",
     "loading": "正在加载海报工作台…",
     "changeTemplateConfirm": "更换背景？现有元素会按比例重新定位。",
+    "changeTemplate": "更换背景",
     "textLayer": "文字图层",
     "newText": "新文字",
     "copy": "副本",
@@ -2081,7 +2089,11 @@
     "errorValidation": "新密码须为 8–72 个字符，且不超过 72 个 UTF-8 字节。",
     "errorMismatch": "两次输入的新密码不一致。",
     "errorWrongCurrent": "当前密码不正确。",
-    "errorRateLimited": "尝试次数过多，请几分钟后再试。"
+    "errorRateLimited": "尝试次数过多，请几分钟后再试。",
+    "logoutEverywhereTitle": "在所有设备上退出",
+    "logoutEverywhereHint": "结束所有设备上的登录会话（包括当前设备）。如果你曾在公用电脑上登录，或怀疑他人能访问你的账户，请使用此功能。",
+    "logoutEverywhere": "在所有设备上退出",
+    "logoutEverywhereConfirm": "确定在所有设备（包括当前设备）上退出吗？"
   },
   "publicSharingPoster": {
     "pageTitle": "分享海报制作器",

@@ -15,6 +15,7 @@ import CreditsStep from "./CreditsStep";
 import ConfirmStep, { buildCreditGroups, type PublishPhase } from "./ConfirmStep";
 import { btnCls, formatBytes, primaryBtnCls } from "./ui";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 export default function PhotoWizard({
   eventId,
@@ -39,16 +40,20 @@ export default function PhotoWizard({
   const tw = useTranslations("photoWizard");
   const tc = useTranslations("common");
 
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const queue = usePendingUploadQueue({
     eventId,
     initialPendingPhotos,
     uploadMaxBytes,
     confirmRemoveReady: (name) =>
-      window.confirm(t("removePendingFileConfirm", { name })),
+      confirm({ message: t("removePendingFileConfirm", { name }) }),
     confirmClear: (count, totalBytes) =>
-      window.confirm(
-        t("clearPendingQueueConfirm", { count, size: formatBytes(totalBytes) })
-      )
+      confirm({
+        message: t("clearPendingQueueConfirm", {
+          count,
+          size: formatBytes(totalBytes)
+        })
+      })
   });
 
   const [stepIndex, setStepIndex] = useState(0);
@@ -273,7 +278,7 @@ export default function PhotoWizard({
     setPublishPhase("publishing");
     queue.setLocked(true);
     let published = publishedCount;
-    let failed = false;
+    let failed: false | "error" | "quotaError" = false;
     try {
       // Sequential, one PATCH per credit group: each call is idempotent for
       // its exact id set, so a retry after a mid-sequence failure simply
@@ -284,8 +289,8 @@ export default function PhotoWizard({
           group.credits,
           commentByPhoto
         );
-        if (!ok) {
-          failed = true;
+        if (ok !== true) {
+          failed = ok === "quotaExceeded" ? "quotaError" : "error";
           break;
         }
         published += group.items.length;
@@ -295,7 +300,7 @@ export default function PhotoWizard({
     }
     setPublishedCount(published);
     if (failed) {
-      setPublishPhase("error");
+      setPublishPhase(failed);
       return;
     }
     setPublishPhase("success");
@@ -400,6 +405,7 @@ export default function PhotoWizard({
           </button>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

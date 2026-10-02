@@ -3,7 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
-import { ensureLotteryDraw } from "@/lib/lottery";
+import { ensureLotteryDraw, activeWinnerWhere } from "@/lib/lottery";
 import { getSiteSettings } from "@/lib/settings";
 import { pickText } from "@/lib/content";
 import { Link } from "@/i18n/navigation";
@@ -54,7 +54,7 @@ export default async function LotteryPage({
           entries: { orderBy: { createdAt: "asc" } },
           prizes: {
             orderBy: { sortOrder: "asc" },
-            include: { _count: { select: { winners: true } } }
+            include: { _count: { select: { winners: { where: activeWinnerWhere } } } }
           }
         }
       }

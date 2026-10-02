@@ -13,6 +13,7 @@ import {
   findOwnedPrize
 } from "@/lib/ownership";
 import {
+  activeWinnerWhere,
   deleteLotteryPrizeForOwner,
   ensureLotteryDraw,
   spinForEntry,
@@ -197,7 +198,7 @@ export async function updateLotteryPrize(
       return { error: "validation" } satisfies LotteryPrizeState;
     }
     const winnerCount = await tx.lotteryEntry.count({
-      where: { wonPrizeId: lockedPrize.id }
+      where: { wonPrizeId: lockedPrize.id, ...activeWinnerWhere }
     });
     if (parsed.data.quantity < winnerCount) {
       return {

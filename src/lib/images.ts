@@ -26,22 +26,37 @@ function imagePipeline(input: ImageInput) {
   });
 }
 
-let activeImageJobs = 0;
-const imageJobWaiters: Array<() => void> = [];
+export class ProcessingQueueFullError extends Error {}
 
-export async function withImageProcessingSlot<T>(work: () => Promise<T>): Promise<T> {
-  const limit = config.imageProcessingConcurrency();
-  if (activeImageJobs >= limit) {
-    await new Promise<void>((resolve) => imageJobWaiters.push(resolve));
-  }
-  activeImageJobs += 1;
-  try {
-    return await work();
-  } finally {
-    activeImageJobs -= 1;
-    imageJobWaiters.shift()?.();
-  }
+function createProcessingSlot(limit: () => number, maxWaiting = Infinity) {
+  let active = 0;
+  const waiters: Array<() => void> = [];
+  return async function withSlot<T>(work: () => Promise<T>): Promise<T> {
+    if (active >= limit()) {
+      if (waiters.length >= maxWaiting) throw new ProcessingQueueFullError();
+      await new Promise<void>((resolve) => waiters.push(resolve));
+    }
+    active += 1;
+    try {
+      return await work();
+    } finally {
+      active -= 1;
+      waiters.shift()?.();
+    }
+  };
 }
+
+/** Sharp work for signed-in tenants' uploads. */
+export const withImageProcessingSlot = createProcessingSlot(() =>
+  config.imageProcessingConcurrency()
+);
+
+/**
+ * Sharp work that anonymous visitors can trigger (the Cosplan character image
+ * proxy). Kept apart so a flood of public requests can never queue in front of
+ * tenants' uploads, and bounded so the backlog fails fast instead of growing.
+ */
+export const withPublicImageImportSlot = createProcessingSlot(() => 1, 8);
 
 export const ALLOWED_UPLOAD_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",

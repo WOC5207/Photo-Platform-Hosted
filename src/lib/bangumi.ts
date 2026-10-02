@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { cosplanCharacterCacheDir, trimCharacterCache } from "@/lib/cosplanStorage";
 import { config } from "@/lib/config";
-import { withImageProcessingSlot } from "@/lib/images";
+import { withPublicImageImportSlot } from "@/lib/images";
 
 const API_ROOT = "https://api.bgm.tv/v0";
 const USER_AGENT = "Photo-Platform-Hosted/2.0 (Cosplan; https://github.com/WOC5207/Photo-Platform-Hosted)";
@@ -130,7 +130,7 @@ async function importBangumiCharacterImage(characterId: number): Promise<string>
   const input = await downloadCharacterImage(characterId);
   const tempPath = path.join(dir, `.${characterId}-${randomUUID()}.tmp`);
   try {
-    await withImageProcessingSlot(() =>
+    await withPublicImageImportSlot(() =>
       sharp(input, { failOn: "warning", limitInputPixels: Math.min(config.imageMaxPixels(), 25_000_000), pages: 1 })
         .rotate()
         .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })

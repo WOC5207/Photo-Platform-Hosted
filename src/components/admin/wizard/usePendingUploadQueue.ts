@@ -209,8 +209,11 @@ export interface PendingUploadQueue {
     batch: (QueuedFile & { photoId: string })[],
     credits: AssignedCredit[],
     comments: Record<string, string>
-  ) => Promise<boolean>;
+  ) => Promise<FinalizeBatchResult>;
 }
+
+/** true on success; "quotaExceeded" when publishing would pass the allowance. */
+export type FinalizeBatchResult = true | false | "quotaExceeded";
 
 /**
  * The durable pending-upload queue behind the photo wizard. Transport
@@ -229,8 +232,8 @@ export function usePendingUploadQueue({
   eventId: string;
   initialPendingPhotos: PendingPhotoValue[];
   uploadMaxBytes: number;
-  confirmRemoveReady: (name: string) => boolean;
-  confirmClear: (count: number, totalBytes: number) => boolean;
+  confirmRemoveReady: (name: string) => Promise<boolean>;
+  confirmClear: (count: number, totalBytes: number) => Promise<boolean>;
 }): PendingUploadQueue {
   const router = useRouter();
   const batchIdRef = useRef<string | null>(null);
@@ -762,7 +765,7 @@ export function usePendingUploadQueue({
     // in-flight transfer, which is merely cancelled).
     if (
       (item.state === "ready" || item.state === "awaiting") &&
-      !confirmRemoveReady(item.name)
+      !(await confirmRemoveReady(item.name))
     ) {
       return;
     }
@@ -820,7 +823,7 @@ export function usePendingUploadQueue({
       (sum, item) => sum + (item.pendingBytes ?? item.fileBytes ?? 0),
       0
     );
-    if (!confirmClear(files.length, bytes)) return;
+    if (!(await confirmClear(files.length, bytes))) return;
     setClearing(true);
     setDiscardError(false);
     const snapshot = files;
@@ -943,7 +946,7 @@ export function usePendingUploadQueue({
     batch: (QueuedFile & { photoId: string })[],
     credits: AssignedCredit[],
     comments: Record<string, string>
-  ): Promise<boolean> {
+  ): Promise<FinalizeBatchResult> {
     if (batch.length === 0) return true;
     // Only carry non-empty comments for this batch's photos.
     const batchComments: Record<string, string> = {};
@@ -970,6 +973,12 @@ export function usePendingUploadQueue({
         // retry resolves the common "commit succeeded, response was lost"
         // case without applying credits twice.
       }
+    }
+    if (response?.status === 413) {
+      const body = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      if (body?.error === "quotaExceeded") return "quotaExceeded";
     }
     if (!response || !response.ok) return false;
 

@@ -13,6 +13,9 @@ import PersonalLinksManager from "@/components/admin/PersonalLinksManager";
 import AnnouncementsManager from "@/components/admin/AnnouncementsManager";
 import ProfileForm from "@/components/dashboard/ProfileForm";
 import ChangePasswordForm from "@/components/dashboard/ChangePasswordForm";
+import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
+import SectionHeading from "@/components/ui/SectionHeading";
+import { logoutEverywhere } from "../account/actions";
 import type { SiteSettingsSection } from "./actions";
 import { supportedTimeZones } from "@/lib/timeZone";
 import { getPlatformSettings } from "@/lib/platformSettings";
@@ -213,6 +216,18 @@ export default async function SiteSettingsPage({
                 errorRateLimited: ta("errorRateLimited")
               }}
             />
+            <section className="rounded-xl border border-border bg-surface p-4 sm:p-5">
+              <SectionHeading
+                title={ta("logoutEverywhereTitle")}
+                description={ta("logoutEverywhereHint")}
+              />
+              <form action={logoutEverywhere} className="mt-4">
+                <ConfirmSubmit
+                  label={ta("logoutEverywhere")}
+                  confirmText={ta("logoutEverywhereConfirm")}
+                />
+              </form>
+            </section>
           </div>
         }
       />

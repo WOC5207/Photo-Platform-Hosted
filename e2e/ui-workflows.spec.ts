@@ -5,6 +5,17 @@ import { sealData } from "iron-session";
 import sharp from "sharp";
 import { prisma } from "@/lib/db";
 
+/** Answers the app's own confirmation dialog, which replaced window.confirm(). */
+async function answerConfirm(page: Page, accept: boolean) {
+  const dialog = page.getByRole("dialog").last();
+  await expect(dialog).toBeVisible();
+  await (accept
+    ? dialog.getByRole("button").last()
+    : dialog.getByRole("button", { name: "Cancel", exact: true })
+  ).click();
+  await expect(dialog).toBeHidden();
+}
+
 const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.ADMIN_USERNAME;
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD;
 const userUsername = process.env.E2E_USER_USERNAME;
@@ -497,20 +508,20 @@ test.describe.serial("management workflows", () => {
       checklistItem.getByRole("checkbox", { name: new RegExp(`^${equipmentName}`) })
     ).toHaveCount(0);
 
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Delete checklist" }).click();
+    await answerConfirm(page, true);
     await expect(page).toHaveURL(/\/dashboard\/preparation\/equipment$/);
     await expect(page.getByRole("heading", { name: checklistName, exact: true })).toHaveCount(0);
     await page.goto("/en/dashboard/equipment");
     await expect(inventoryCard).toContainText("Broken");
-    page.once("dialog", (dialog) => dialog.accept());
     await inventoryCard.getByRole("button", { name: "Delete", exact: true }).click();
+    await answerConfirm(page, true);
     await expect(page.getByRole("heading", { name: equipmentName, exact: true })).toHaveCount(0);
     await page
       .getByRole("link", { name: "Equipment categories", exact: true })
       .click();
-    page.once("dialog", (dialog) => dialog.accept());
     await categoryRow.getByRole("button", { name: "Delete", exact: true }).click();
+    await answerConfirm(page, true);
     await expect(categoryRow).toHaveCount(0);
   });
 
@@ -551,8 +562,8 @@ test.describe.serial("management workflows", () => {
     await expect(page).toHaveURL(new RegExp(`/en/u/[^/]+/gallery/${slug}$`));
 
     await page.goto(editUrl);
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Delete event" }).click();
+    await answerConfirm(page, true);
     await expect(page).toHaveURL(/\/en\/dashboard\/events$/);
     await prisma.bookingEvent.delete({ where: { id: bookingId } });
   });
@@ -786,15 +797,15 @@ test.describe.serial("management workflows", () => {
       "100"
     );
 
-    page.once("dialog", (dialog) => dialog.dismiss());
     await page
       .getByRole("button", { name: "Remove first.png from the pending upload queue" })
       .click();
+    await answerConfirm(page, false);
     await expect(page.getByText("3 photos queued")).toBeVisible();
-    page.once("dialog", (dialog) => dialog.accept());
     await page
       .getByRole("button", { name: "Remove first.png from the pending upload queue" })
       .click();
+    await answerConfirm(page, true);
     await expect(page.getByText("2 photos queued")).toBeVisible();
     await picker.setInputFiles({ name: "first.png", mimeType: "image/png", buffer: png });
     await expect(page.getByText("3 photos queued")).toBeVisible();
@@ -1049,8 +1060,8 @@ test.describe.serial("management workflows", () => {
     ).toBeVisible({ timeout: 10_000 });
 
     await page.goto(editUrl);
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Delete event" }).click();
+    await answerConfirm(page, true);
     await expect(page).toHaveURL(/\/en\/dashboard\/events$/);
     await prisma.bookingEvent.delete({ where: { id: bookingId } });
   });
@@ -1187,8 +1198,8 @@ test.describe.serial("management workflows", () => {
     await expect(sentItem.getByTestId("dismissed-count")).toHaveText(
       /Dismissed by 1 of \d+/
     );
-    page.once("dialog", (dialog) => dialog.accept());
     await sentItem.getByRole("button", { name: "Delete" }).click();
+    await answerConfirm(page, true);
     await expect(sentItem).toHaveCount(0);
   });
 
@@ -1695,8 +1706,8 @@ test.describe.serial("management workflows", () => {
       await page
         .getByRole("radio", { name: new RegExp(titleA) })
         .check();
-      page.once("dialog", (dialog) => dialog.accept());
       await page.getByRole("button", { name: /Merge into/ }).click();
+      await answerConfirm(page, true);
 
       // Redirected to A's page, now spanning both days (two tabs); B is gone.
       await page.waitForURL(new RegExp(`/dashboard/bookings/${eventAId}$`));
@@ -1717,8 +1728,8 @@ test.describe.serial("management workflows", () => {
         .click();
       await page.waitForURL(/section=advanced/);
       await page.getByRole("checkbox", { name: /12/ }).check({ force: true });
-      page.once("dialog", (dialog) => dialog.accept());
       await page.getByRole("button", { name: /Split off/ }).click();
+      await answerConfirm(page, true);
       // Split redirects to the *new* event; wait for an id different from A's
       // (A's page already matches a generic booking-URL pattern).
       await page.waitForURL((url) => {

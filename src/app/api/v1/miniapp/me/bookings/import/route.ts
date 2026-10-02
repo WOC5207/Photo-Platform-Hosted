@@ -11,10 +11,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   return miniappRoute(request, async () => {
-    const [identity, { cancelToken }] = await Promise.all([
-      requireMiniAppIdentity(request),
-      parseJson(request, bookingImportSchema)
-    ]);
+    const identity = await requireMiniAppIdentity(request);
+    const { cancelToken } = await parseJson(request, bookingImportSchema);
     const result = await importMiniProgramBooking(
       identity.identityId,
       cancelToken,

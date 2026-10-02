@@ -45,7 +45,7 @@ export default function BookingPriceNoticeForm({
   }, [state]);
 
   return (
-    <section className="rounded-xl border border-border bg-surface p-4 sm:p-5">
+    <section id="booking-price-notice" className="scroll-mt-20 rounded-xl border border-border bg-surface p-4 sm:p-5">
       <div>
         <h2 className="text-lg font-semibold">{labels.title}</h2>
         <p className="mt-1 text-sm leading-relaxed text-fg-subtle">

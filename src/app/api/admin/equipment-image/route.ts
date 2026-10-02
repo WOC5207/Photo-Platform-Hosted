@@ -7,7 +7,7 @@ import {
   resolveUploadExtension,
   withImageProcessingSlot
 } from "@/lib/images";
-import { MultipartUploadError, parseSingleImageMultipart } from "@/lib/multipartUpload";
+import { multipartErrorResponse, parseSingleImageMultipart } from "@/lib/multipartUpload";
 import { adjustReservation, releaseBytes, reserveBytes } from "@/lib/quota";
 import { isTrustedMutationOrigin } from "@/lib/requestSecurity";
 import { discardSiteImage } from "@/lib/siteImages";
@@ -30,10 +30,10 @@ export async function POST(req: NextRequest) {
 
   let upload;
   try {
-    upload = await parseSingleImageMultipart(req);
+    upload = await parseSingleImageMultipart(req, user.id);
   } catch (error) {
-    const tooLarge = error instanceof MultipartUploadError && error.code === "tooLarge";
-    return NextResponse.json({ error: tooLarge ? "tooLarge" : "badRequest" }, { status: tooLarge ? 413 : 400 });
+    const failure = multipartErrorResponse(error);
+    return NextResponse.json(failure.body, { status: failure.status });
   }
 
   try {
