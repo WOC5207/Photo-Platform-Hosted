@@ -458,7 +458,21 @@
     "layerDragHint": "Drag it in the preview to move it. It snaps to the poster's centre lines.",
     "layerCentre": "Centre",
     "layerCover": "Cover poster",
-    "layerRemove": "Remove"
+    "layerRemove": "Remove",
+    "localDefaultName": "Sharing poster",
+    "localSaved": "Saved in this browser",
+    "localStartOver": "Start over",
+    "localStartOverConfirm": "Start a new poster? This clears the current draft and its photographs from this browser.",
+    "localPhotosHint": "Add your own photographs, reorder the sequence, then drag a photograph inside its frame to reposition the crop. They stay on this device.",
+    "localCreditsHint": "Each layer is one line of the credits, printed in order from the top. Add lines from the menu, drag them to reorder, and edit a title to change what prints before its text. Camera, lens and date are read from your photographs where they carry them.",
+    "localSelectionEmpty": "Add up to nine photographs below.",
+    "localAddTitle": "Add your photographs",
+    "localAddHint": "Choose JPEG, PNG or WebP files, or drop them here. They are read in this browser and never uploaded.",
+    "localAddButton": "Choose photographs",
+    "localReading": "Reading {done} of {total}…",
+    "localFull": "This poster already has nine photographs. Remove one to add another.",
+    "localReadError": "{count, plural, =1 {One file could not be read. Try a JPEG, PNG or WebP file.} other {# files could not be read. Try JPEG, PNG or WebP files.}}",
+    "localSkipped": "{count, plural, =1 {One file was left out: a poster holds up to nine photographs.} other {# files were left out: a poster holds up to nine photographs.}}"
   },
   "equipment": {
     "searchEquipment": "Search inventory",
@@ -1587,7 +1601,8 @@
     "photos": "{count, plural, =1 {# photo} other {# photos}}",
     "visit": "Visit site",
     "login": "Log in",
-    "cosplan": "Create a Cosplan poster"
+    "cosplan": "Create a Cosplan poster",
+    "sharingPoster": "Create a sharing poster"
   },
   "platform": {
     "pagination": "Account pages",
@@ -2067,5 +2082,10 @@
     "errorMismatch": "The two new passwords do not match.",
     "errorWrongCurrent": "Current password is incorrect.",
     "errorRateLimited": "Too many attempts. Please wait a few minutes and try again."
+  },
+  "publicSharingPoster": {
+    "pageTitle": "Sharing poster creator",
+    "pageDescription": "Arrange up to nine of your own photographs into a finished image for Instagram, WeChat and other sharing destinations. Your photographs and draft stay in this browser and are never uploaded.",
+    "directory": "Photographer directory"
   }
 }

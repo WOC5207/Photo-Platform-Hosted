@@ -9,6 +9,7 @@ import Button, { buttonClasses } from "@/components/ui/Button";
 import {
   SHARING_POSTER_GLASS_DEFAULTS,
   SHARING_POSTER_MAX_CREDIT_LINES,
+  SHARING_POSTER_MAX_PHOTOS,
   SHARING_POSTER_METADATA_KINDS,
   SHARING_POSTER_SHADOW_DEFAULTS,
   SHARING_POSTER_WHOLE_GLASS_DEFAULTS,
@@ -49,8 +50,18 @@ const SharingPosterPhotoPicker = dynamic(
   () => import("@/components/sharing-posters/SharingPosterPhotoPicker"),
   { ssr: false }
 );
+const SharingPosterLocalPhotoPicker = dynamic(
+  () => import("@/components/sharing-posters/SharingPosterLocalPhotoPicker"),
+  { ssr: false }
+);
 
 type EditorTab = "photos" | "layout" | "credits";
+
+/** The public editor keeps layer images in the browser; loaded only there. */
+async function addLocalLayer(file: File) {
+  const { addLocalLayer: add } = await import("@/components/sharing-posters/localSharingPoster");
+  return add(file);
+}
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 
 /** A short id that is unique among the poster's lines, readable in the stored JSON. */
@@ -74,13 +85,21 @@ function safeFilename(value: string): string {
 export default function SharingPosterEditor({
   project,
   initialPhotos,
-  events
+  events,
+  mode = "owner"
 }: {
   /** `ownerName` fills a newly added photographer line. */
   project: { id: string; name: string; revision: number; composition: SharingPosterComposition; ownerName: string };
   initialPhotos: SharingPosterResolvedPhoto[];
   events: { id: string; title: string }[];
+  /**
+   * "public" is the logged-out editor on the directory: the visitor's own
+   * photographs and layer images stay in their browser, the draft is kept in
+   * IndexedDB instead of the account, and gallery-only tools are hidden.
+   */
+  mode?: "owner" | "public";
 }) {
+  const isPublic = mode === "public";
   const t = useTranslations("sharingPosters");
   const locale = useLocale();
   const router = useRouter();
@@ -119,6 +138,10 @@ export default function SharingPosterEditor({
       })),
     [composition.photos, sourceMap]
   );
+  // Photographs added one after another from the upload picker arrive across
+  // renders, so additions read the latest list rather than a closure's.
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
   const selectedPhoto = photos.find((photo) => photo.photoId === selectedPhotoId) ?? null;
   const ratioSuggestion = usePosterRatioSuggestion(composition, photos, metrics.wrappedLineCount);
   const adaptive = composition.ratio.adaptive === true;
@@ -156,8 +179,10 @@ export default function SharingPosterEditor({
   const unresolved = photos.filter((photo) => !photo.source);
   const missingCn = photos.filter((photo) => photo.source && photo.source.creditNames.length === 0);
   const defaultCreditLabels = sharingPosterCreditLabels(composition.outputLocale);
-  // The CN review only matters when the poster prints a CN at all.
+  // The CN review only matters when the poster prints a CN at all, and only
+  // for gallery photographs: a visitor's own carry no gallery credits.
   const cnNeedsReview =
+    !isPublic &&
     missingCn.length > 0 &&
     !composition.credits.cosplayerReviewed &&
     composition.credits.lines.some((line) => line.kind === "cosplayer");
@@ -187,7 +212,7 @@ export default function SharingPosterEditor({
     (photo) => photo.composition.crop?.mode === "auto" && photo.source?.subjectState === "pending"
   );
   useEffect(() => {
-    if (!awaitingSubject) return;
+    if (!awaitingSubject || isPublic) return;
     let cancelled = false;
     let attempts = 0;
     const timer = window.setInterval(async () => {
@@ -214,7 +239,7 @@ export default function SharingPosterEditor({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [awaitingSubject, project.id, locale]);
+  }, [awaitingSubject, isPublic, project.id, locale]);
 
   useEffect(() => {
     if (currentSignature === lastSavedRef.current) return;
@@ -227,6 +252,13 @@ export default function SharingPosterEditor({
       const snapshot = currentSignatureRef.current;
       try {
         const payload = JSON.parse(snapshot) as { name: string; composition: SharingPosterComposition };
+        if (isPublic) {
+          const { saveLocalPosterDraft } = await import("@/components/sharing-posters/localSharingPoster");
+          await saveLocalPosterDraft(payload);
+          lastSavedRef.current = snapshot;
+          setSaveState(currentSignatureRef.current === snapshot ? "saved" : "dirty");
+          return;
+        }
         const response = await fetch(`/api/dashboard/sharing-posters/${encodeURIComponent(project.id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -249,7 +281,7 @@ export default function SharingPosterEditor({
       }
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [currentSignature, name, project.id, saveCycle, saveState]);
+  }, [currentSignature, isPublic, name, project.id, saveCycle, saveState]);
 
   useEffect(() => {
     if (!prepared || prepared.signature === currentSignature) return;
@@ -358,11 +390,15 @@ export default function SharingPosterEditor({
   }
 
   function addPhoto(source: SharingPosterPhotoValue) {
-    if (composition.photos.some((photo) => photo.photoId === source.id) || composition.photos.length >= 9) return;
+    const current = photosRef.current;
+    if (current.some((photo) => photo.photoId === source.id) || current.length >= SHARING_POSTER_MAX_PHOTOS) return;
     const entry = { photoId: source.id, weight: source.homeWeight, focalX: 0.5, focalY: 0.5, crop: { mode: "auto" as const } };
-    setSourceMap((current) => new Map(current).set(source.id, source));
-    const nextResolved = [...photos, { photoId: source.id, composition: entry, source }];
-    setComposition((current) => ({ ...current, photos: [...current.photos, entry] }));
+    setSourceMap((sources) => new Map(sources).set(source.id, source));
+    const nextResolved = [...current, { photoId: source.id, composition: entry, source }];
+    photosRef.current = nextResolved;
+    setComposition((value) =>
+      value.photos.length >= SHARING_POSTER_MAX_PHOTOS ? value : { ...value, photos: [...value.photos, entry] }
+    );
     setSelectedPhotoId(source.id);
     syncMetadata(nextResolved);
   }
@@ -546,8 +582,16 @@ export default function SharingPosterEditor({
     }
   }
 
+  /** The public editor's only way to drop its draft: there is no project list to delete it from. */
+  async function startOver() {
+    if (!confirm(t("localStartOverConfirm"))) return;
+    const { clearLocalPosterDraft } = await import("@/components/sharing-posters/localSharingPoster");
+    await clearLocalPosterDraft().catch(() => {});
+    window.location.reload();
+  }
+
   const saveLabels: Record<SaveState, string> = {
-    saved: t("saved"),
+    saved: t(isPublic ? "localSaved" : "saved"),
     dirty: t("unsaved"),
     saving: t("saving"),
     error: t("saveError"),
@@ -575,7 +619,7 @@ export default function SharingPosterEditor({
     <div className="space-y-5">
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0 flex-1">
-          <Link href="/dashboard/sharing-posters" className="mb-2 inline-flex min-h-10 items-center text-sm font-semibold text-fg-subtle hover:text-accent">← {t("backToProjects")}</Link>
+          {!isPublic && <Link href="/dashboard/sharing-posters" className="mb-2 inline-flex min-h-10 items-center text-sm font-semibold text-fg-subtle hover:text-accent">← {t("backToProjects")}</Link>}
           <label className="block">
             <span className="sr-only">{t("projectName")}</span>
             <input value={name} required aria-invalid={!name.trim()} maxLength={120} onChange={(event) => setName(event.target.value)} className="font-display w-full border-0 bg-transparent p-0 text-3xl font-semibold tracking-[-0.03em] text-fg outline-none focus-visible:ring-2 focus-visible:ring-accent/30" />
@@ -585,6 +629,7 @@ export default function SharingPosterEditor({
         <div className="flex items-center gap-2">
           <p role={saveState === "error" || saveState === "conflict" ? "alert" : "status"} className={`font-meta text-xs ${saveState === "error" || saveState === "conflict" ? "text-danger" : saveState === "saving" || saveState === "dirty" ? "text-accent" : "text-success"}`}>{saveLabels[saveState]}</p>
           {saveState === "error" && <Button size="compact" onClick={() => { setSaveState("dirty"); setSaveCycle((value) => value + 1); }}>{t("retry")}</Button>}
+          {isPublic && <Button size="compact" onClick={() => void startOver()}>{t("localStartOver")}</Button>}
         </div>
       </div>
 
@@ -622,7 +667,7 @@ export default function SharingPosterEditor({
 
           <section role="tabpanel" hidden={activeTab !== "photos"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
             <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("photosTitle")}</h2>
-            <p className="mt-1 text-sm leading-6 text-fg-subtle">{t("photosHint")}</p>
+            <p className="mt-1 text-sm leading-6 text-fg-subtle">{t(isPublic ? "localPhotosHint" : "photosHint")}</p>
             {photos.length > 1 && (
               <div className="mt-4 rounded-xl border border-border bg-raised p-4">
                 <h3 className="font-semibold">{t("photoSizes")}</h3>
@@ -698,7 +743,13 @@ export default function SharingPosterEditor({
                 )}
               </div>
             )}
-            <div className="mt-5"><SharingPosterPhotoPicker locale={locale} events={events} photos={photos} onAdd={addPhoto} onRemove={removePhoto} onMove={movePhoto} onSelect={setSelectedPhotoId} /></div>
+            <div className="mt-5">
+              {isPublic ? (
+                <SharingPosterLocalPhotoPicker photos={photos} onAdd={addPhoto} onRemove={removePhoto} onMove={movePhoto} onSelect={setSelectedPhotoId} />
+              ) : (
+                <SharingPosterPhotoPicker locale={locale} events={events} photos={photos} onAdd={addPhoto} onRemove={removePhoto} onMove={movePhoto} onSelect={setSelectedPhotoId} />
+              )}
+            </div>
           </section>
 
           <section role="tabpanel" hidden={activeTab !== "layout"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
@@ -778,11 +829,12 @@ export default function SharingPosterEditor({
               selectedLayerId={selectedLayerId}
               onSelect={setSelectedLayerId}
               onChange={updateLayers}
+              upload={isPublic ? addLocalLayer : undefined}
             />
           </section>
 
           <section role="tabpanel" hidden={activeTab !== "credits"} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("creditsTitle")}</h2><p className="mt-1 text-sm leading-6 text-fg-subtle">{t("creditsHint")}</p></div><Button size="compact" onClick={() => void refreshMetadata()}>{t("refreshFromGallery")}</Button></div>
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">{t("creditsTitle")}</h2><p className="mt-1 text-sm leading-6 text-fg-subtle">{t(isPublic ? "localCreditsHint" : "creditsHint")}</p></div>{!isPublic && <Button size="compact" onClick={() => void refreshMetadata()}>{t("refreshFromGallery")}</Button>}</div>
             <div className="mt-5">
               <SharingPosterCreditLayers
                 lines={composition.credits.lines}

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import sharp from "sharp";
+import { parseJpegExif } from "../src/lib/localPhotoExif";
 import {
   SHARING_POSTER_CREDIT_LABEL_MAX,
   SHARING_POSTER_MAX_CREDIT_LINES,
@@ -1308,4 +1310,35 @@ assert.equal(
   assert.equal(sharingPosterCompositionSchema.safeParse({ ...withLayers, layers: Array.from({ length: 5 }, (_, i) => ({ ...layer, id: `l${i}` })) }).success, false);
 }
 
-console.log("Sharing poster layout and composition tests passed.");
+// The public editor reads camera, lens and date from a visitor's own JPEG in
+// the browser, without exif-reader; it must agree with what the camera wrote.
+async function testLocalPhotoExif() {
+  const jpeg = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#808080" } })
+    .jpeg()
+    .withExif({
+      IFD0: { Make: "Canon", Model: "Canon EOS R5" },
+      IFD2: { DateTimeOriginal: "2026:09:14 15:02:11", LensModel: "RF24-70mm F2.8 L IS USM" }
+    })
+    .toBuffer();
+  const bytes = jpeg.buffer.slice(jpeg.byteOffset, jpeg.byteOffset + jpeg.byteLength) as ArrayBuffer;
+  assert.deepEqual(parseJpegExif(bytes), {
+    cameraModel: "Canon EOS R5",
+    lensModel: "RF24-70mm F2.8 L IS USM",
+    takenDate: "2026-09-14"
+  });
+  const bare = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#808080" } }).png().toBuffer();
+  assert.deepEqual(parseJpegExif(bare.buffer.slice(bare.byteOffset, bare.byteOffset + bare.byteLength) as ArrayBuffer), { cameraModel: "", lensModel: "", takenDate: "" });
+  const makeOnly = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#808080" } })
+    .jpeg()
+    .withExif({ IFD0: { Make: "SONY", Model: "ILCE-7M4" } })
+    .toBuffer();
+  assert.equal(parseJpegExif(makeOnly.buffer.slice(makeOnly.byteOffset, makeOnly.byteOffset + makeOnly.byteLength) as ArrayBuffer).cameraModel, "SONY ILCE-7M4");
+}
+
+testLocalPhotoExif().then(
+  () => console.log("Sharing poster layout and composition tests passed."),
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  }
+);
