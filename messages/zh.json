@@ -468,6 +468,7 @@
     "localSelectionEmpty": "在下方添加最多九张照片。",
     "localAddTitle": "添加你的照片",
     "localAddHint": "选择 JPEG、PNG 或 WebP 文件，或拖放到这里。照片在此浏览器中读取，不会上传。",
+    "localAddIosHint": "点按 ✓ 后，选择器会在设备准备照片时停留片刻，完成后自动关闭。",
     "localAddButton": "选择照片",
     "localReading": "正在读取第 {done} / {total} 张…",
     "localFull": "这张海报已有九张照片。移除一张后才能再添加。",

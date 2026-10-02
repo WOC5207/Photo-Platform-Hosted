@@ -468,6 +468,7 @@
     "localSelectionEmpty": "Add up to nine photographs below.",
     "localAddTitle": "Add your photographs",
     "localAddHint": "Choose JPEG, PNG or WebP files, or drop them here. They are read in this browser and never uploaded.",
+    "localAddIosHint": "After you tap ✓, the picker stays open while your device prepares the photographs, then closes by itself.",
     "localAddButton": "Choose photographs",
     "localReading": "Reading {done} of {total}…",
     "localFull": "This poster already has nine photographs. Remove one to add another.",

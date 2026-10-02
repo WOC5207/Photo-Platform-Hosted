@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import Button from "@/components/ui/Button";
 import SharingPosterSelectionTray from "@/components/sharing-posters/SharingPosterSelectionTray";
@@ -10,6 +10,13 @@ import {
   type SharingPosterPhotoValue,
   type SharingPosterResolvedPhoto
 } from "@/lib/sharingPoster";
+
+// iPadOS reports itself as a Mac, so a touch screen gives it away.
+function isAppleTouchDevice() {
+  return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+const noSubscription = () => () => {};
 
 /**
  * The public editor's picker: the visitor's own photographs, read in the
@@ -34,6 +41,9 @@ export default function SharingPosterLocalPhotoPicker({
   const [failed, setFailed] = useState(0);
   const [skipped, setSkipped] = useState(0);
   const [dragging, setDragging] = useState(false);
+  // iOS converts each photo to JPEG before its picker closes, and the page
+  // gets nothing until then, so say beforehand that the wait is expected.
+  const appleTouch = useSyncExternalStore(noSubscription, isAppleTouchDevice, () => false);
   const room = SHARING_POSTER_MAX_PHOTOS - photos.length;
 
   async function add(files: File[]) {
@@ -96,6 +106,7 @@ export default function SharingPosterLocalPhotoPicker({
             void add(files);
           }}
         />
+        {appleTouch && <p className="max-w-md text-xs leading-5 text-fg-subtle">{t("localAddIosHint")}</p>}
         {room <= 0 && <p className="text-xs text-fg-subtle">{t("localFull")}</p>}
       </div>
       {progress && <p role="status" className="text-sm text-fg-subtle">{t("localReading", { done: progress.done, total: progress.total })}</p>}
