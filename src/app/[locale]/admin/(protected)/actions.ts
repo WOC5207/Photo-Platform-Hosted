@@ -16,6 +16,7 @@ import {
 } from "@/lib/images";
 import { reconcileQuota } from "@/lib/quota";
 import { generateTemporaryPassword, setPassword } from "@/lib/password";
+import { siteThemeMinimumContrast, THEME_COLOR_PATTERN } from "@/lib/themeColor";
 
 /**
  * Platform administration. Unlike the dashboard actions — which are scoped to
@@ -310,6 +311,79 @@ export async function saveRegistrationNotice(
         registrationNoticeVersion
       }
     });
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export type PublicThemeState = {
+  error?: "validation" | "themeContrast";
+  ok?: boolean;
+};
+
+// Empty (built-in look) or a #rgb / #rrggbb hex colour.
+const paletteColor = z.string().trim().regex(THEME_COLOR_PATTERN);
+const publicThemeSchema = z.object({
+  publicBackgroundColor: paletteColor,
+  publicSurfaceColor: paletteColor,
+  publicFieldColor: paletteColor,
+  publicTextColor: paletteColor,
+  publicThemeColor: paletteColor,
+  publicDarkBackgroundColor: paletteColor,
+  publicDarkSurfaceColor: paletteColor,
+  publicDarkFieldColor: paletteColor,
+  publicDarkTextColor: paletteColor,
+  publicDarkThemeColor: paletteColor
+});
+
+/**
+ * The palette for the platform's own public pages. Photographer pages are not
+ * affected: they read their owner's SiteSettings palette.
+ */
+export async function savePublicTheme(
+  _prev: PublicThemeState,
+  formData: FormData
+): Promise<PublicThemeState> {
+  await guard();
+  const parsed = publicThemeSchema.safeParse(
+    Object.fromEntries(
+      Object.keys(publicThemeSchema.shape).map((key) => [
+        key,
+        formData.get(key) ?? ""
+      ])
+    )
+  );
+  if (!parsed.success) return { error: "validation" };
+
+  const data = parsed.data;
+  const lightContrast = siteThemeMinimumContrast(
+    {
+      backgroundColor: data.publicBackgroundColor,
+      surfaceColor: data.publicSurfaceColor,
+      fieldColor: data.publicFieldColor,
+      textColor: data.publicTextColor,
+      themeColor: data.publicThemeColor
+    },
+    "light"
+  );
+  const darkContrast = siteThemeMinimumContrast(
+    {
+      backgroundColor: data.publicDarkBackgroundColor,
+      surfaceColor: data.publicDarkSurfaceColor,
+      fieldColor: data.publicDarkFieldColor,
+      textColor: data.publicDarkTextColor,
+      themeColor: data.publicDarkThemeColor
+    },
+    "dark"
+  );
+  if (lightContrast < 4.5 || darkContrast < 4.5) {
+    return { error: "themeContrast" };
+  }
+
+  await prisma.platformSettings.upsert({
+    where: { id: "platform" },
+    create: { id: "platform", ...data },
+    update: data
   });
   revalidatePath("/", "layout");
   return { ok: true };

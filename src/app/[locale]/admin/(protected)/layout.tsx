@@ -60,6 +60,11 @@ export default async function PlatformAdminLayout({
       icon: "cosplan"
     },
     {
+      href: "/admin/appearance",
+      label: t("adminTheme.navTitle"),
+      icon: "appearance"
+    },
+    {
       href: "/admin/moderation",
       label: t("adminModeration.navTitle"),
       icon: "moderation"

@@ -31,7 +31,8 @@ export type ManagementIcon =
   | "health"
   | "moderation"
   | "notifications"
-  | "cosplan";
+  | "cosplan"
+  | "appearance";
 
 export interface ManagementNavItem {
   href: string;
@@ -184,6 +185,12 @@ function NavigationIcon({ name }: { name: ManagementIcon }) {
       <>
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <path d="m5 17 4.5-5 3.5 3 2.5-2.5L19 17M8 8h.01" />
+      </>
+    ),
+    appearance: (
+      <>
+        <path d="M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.4A4.6 4.6 0 0 0 22 9.8C22 6 17.5 3 12 3Z" />
+        <path d="M7.5 10.5h.01M10.5 7h.01M15 7.5h.01" />
       </>
     )
   };

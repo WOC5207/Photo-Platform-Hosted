@@ -91,5 +91,7 @@ export default function InlineTextEditor({ layer, value, onChange, onFinish, chi
       <Button id="cosplan-text-cancel" onPointerDown={(event) => event.preventDefault()} onClick={() => finish(false)}>{t("cancelText")}</Button>
       <Button id="cosplan-text-done" variant="primary" onPointerDown={(event) => event.preventDefault()} onClick={() => finish(true)}>{t("doneText")}</Button>
     </div>
-  </section>, document.body);
+  </section>,
+  // Inside the page's theme scope when it has one, like Dialog.
+  document.querySelector<HTMLElement>("[data-dialog-portal-root]") ?? document.body);
 }
