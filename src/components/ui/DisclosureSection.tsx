@@ -38,13 +38,13 @@ export default function DisclosureSection({
     <details
       ref={detailsRef}
       open={defaultOpen}
-      className={`ui-section group rounded-xl border border-border bg-surface ${className}`}
+      className={`group rounded-xl border border-border bg-surface ${className}`}
     >
       <summary
         className={`${desktopOpen ? "lg:hidden" : ""} flex min-h-14 list-none items-center justify-between gap-4 px-4 py-3 sm:px-5`}
       >
         <span className="min-w-0">
-          <span className="ui-section-title block font-display text-xl font-semibold tracking-[-0.02em] text-fg">
+          <span className="block font-display text-xl font-semibold tracking-[-0.02em] text-fg">
             {title}
           </span>
           {(summary || description) && (

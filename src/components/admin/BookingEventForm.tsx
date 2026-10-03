@@ -152,7 +152,7 @@ export default function BookingEventForm({
       {showOverviewFields && <>
       <div data-tour="event-title" className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="ui-label text-fg-muted">{t("titleEn")}</span>
+          <span className="text-fg-muted">{t("titleEn")}</span>
           <input
             name="titleEn"
             defaultValue={initial.titleEn}
@@ -161,7 +161,7 @@ export default function BookingEventForm({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="ui-label text-fg-muted">{t("titleZh")}</span>
+          <span className="text-fg-muted">{t("titleZh")}</span>
           <input
             name="titleZh"
             defaultValue={initial.titleZh}
@@ -182,7 +182,7 @@ export default function BookingEventForm({
       </EventLocalTimeNotice>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="ui-label text-fg-muted">{t("location")}</span>
+        <span className="text-fg-muted">{t("location")}</span>
         <input
           name="location"
           defaultValue={initial.location}
@@ -193,7 +193,7 @@ export default function BookingEventForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="ui-label text-fg-muted">{t("descriptionEn")}</span>
+          <span className="text-fg-muted">{t("descriptionEn")}</span>
           <textarea
             name="descriptionEn"
             defaultValue={initial.descriptionEn}
@@ -203,7 +203,7 @@ export default function BookingEventForm({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="ui-label text-fg-muted">{t("descriptionZh")}</span>
+          <span className="text-fg-muted">{t("descriptionZh")}</span>
           <textarea
             name="descriptionZh"
             defaultValue={initial.descriptionZh}
@@ -391,7 +391,7 @@ export default function BookingEventForm({
         </div>
 
         <label className="mt-4 flex max-w-sm flex-col gap-1 text-sm">
-          <span className="ui-label text-fg-muted">{t("visitorEditCutoffLabel")}</span>
+          <span className="text-fg-muted">{t("visitorEditCutoffLabel")}</span>
           <div className="flex items-center gap-2">
             <input
               name="visitorEditCutoffHours"

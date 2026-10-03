@@ -12,16 +12,16 @@ export default function PageHeader({
   index?: string;
 }) {
   return (
-    <header className="ui-page-header flex flex-col gap-5 border-b border-border pb-6 md:flex-row md:items-end md:justify-between">
+    <header className="flex flex-col gap-5 border-b border-border pb-6 md:flex-row md:items-end md:justify-between">
       <div className="flex min-w-0 gap-4">
         <span
           aria-hidden="true"
-          className="ui-page-index font-meta mt-1 text-[0.6875rem] font-semibold tracking-[0.18em] text-accent"
+          className="font-meta mt-1 text-[0.6875rem] font-semibold tracking-[0.18em] text-accent"
         >
           {index}
         </span>
         <div className="min-w-0">
-          <h1 className="ui-page-title font-display ui-balance text-[2rem] font-semibold leading-[1.15] tracking-[-0.035em] text-fg [overflow-wrap:anywhere] sm:text-[2.5rem]">
+          <h1 className="font-display ui-balance text-[2rem] font-semibold leading-[1.15] tracking-[-0.035em] text-fg [overflow-wrap:anywhere] sm:text-[2.5rem]">
             {title}
           </h1>
           {description && (

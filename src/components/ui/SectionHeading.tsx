@@ -14,19 +14,18 @@ export default function SectionHeading({
   const Heading = as;
 
   return (
-    <div className="ui-section flex flex-wrap items-start justify-between gap-4">
+    <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="flex min-w-0 gap-3">
         <span
           aria-hidden="true"
-          className="ui-section-mark mt-1 h-5 w-0.5 shrink-0 rounded-full bg-accent"
+          className="mt-1 h-5 w-0.5 shrink-0 rounded-full bg-accent"
         />
         <div>
         <Heading
           className={
-            "ui-section-title " +
-            (as === "h2"
+            as === "h2"
               ? "font-display ui-balance text-xl font-semibold leading-tight tracking-[-0.02em]"
-              : "text-sm font-semibold tracking-[-0.01em]")
+              : "text-sm font-semibold tracking-[-0.01em]"
           }
         >
           {title}

@@ -68,8 +68,6 @@ interface ManagementShellProps {
   isAdmin: boolean;
   logoutAction: () => Promise<void>;
   themeStyle?: CSSProperties;
-  /** "archive" switches the workspace to the archive design language. */
-  ui?: "archive";
 }
 
 function routeIsActive(pathname: string, item: ManagementNavItem): boolean {
@@ -262,7 +260,7 @@ function ManagementNavigation({
   onNavigate?: () => void;
 }) {
   return (
-    <nav className="ui-nav flex flex-col gap-1">
+    <nav className="flex flex-col gap-1">
       {navigation.map((item) => {
         const active = routeIsActive(pathname, item);
         return (
@@ -271,7 +269,7 @@ function ManagementNavigation({
             href={item.href}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
-            className={`ui-nav-link relative flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 lg:min-h-10 ${
+            className={`relative flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 lg:min-h-10 ${
               active
                 ? "bg-accent-surface text-accent-strong before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent"
                 : "text-fg-muted hover:bg-surface-2 hover:text-fg"
@@ -482,7 +480,7 @@ function Brand({
           {siteTitle.trim().charAt(0).toUpperCase() || "P"}
         </span>
       )}
-      <span title={siteTitle} className={`ui-brand-title font-display truncate font-semibold tracking-[-0.02em] ${compact ? "text-base" : "text-lg"}`}>
+      <span title={siteTitle} className={`font-display truncate font-semibold tracking-[-0.02em] ${compact ? "text-base" : "text-lg"}`}>
         {siteTitle}
       </span>
     </Link>
@@ -501,8 +499,7 @@ export default function ManagementShell({
   publicSiteHref,
   isAdmin,
   logoutAction,
-  themeStyle,
-  ui
+  themeStyle
 }: ManagementShellProps) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -575,8 +572,7 @@ export default function ManagementShell({
 
   return (
     <div
-      data-ui={ui}
-      className={`ui-shell ${themeStyle ? "site-dual-theme " : ""}min-h-dvh bg-page text-fg lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]`}
+      className={`${themeStyle ? "site-dual-theme " : ""}min-h-dvh bg-page text-fg lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]`}
       style={themeStyle}
     >
       <aside className="sticky top-0 hidden h-dvh flex-col border-r border-border bg-page p-4 lg:flex">
@@ -591,10 +587,6 @@ export default function ManagementShell({
         <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
           <ManagementNavigation navigation={navigation} pathname={pathname} />
         </div>
-        <p aria-hidden="true" className="ui-archive-only font-meta mt-4 items-center gap-2 px-3 text-[0.625rem] tracking-[0.14em] text-fg-subtle">
-          <i className="h-1.5 w-1.5 rounded-full bg-success" />
-          ARCHIVE ONLINE
-        </p>
         <div className="mt-4 border-t border-border pt-4">
           <Link href={publicSiteHref} className="mb-3 flex min-h-11 items-center justify-between rounded-lg px-3 text-sm font-semibold text-fg-muted hover:bg-surface hover:text-fg">
             {labels.viewSite}<span aria-hidden="true">↗</span>

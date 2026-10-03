@@ -54,19 +54,19 @@ export default function NotificationComposer({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="ui-label text-fg-muted">{t("titleEn")}</span>
+          <span className="text-fg-muted">{t("titleEn")}</span>
           <input name="titleEn" maxLength={300} className={inputCls} />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="ui-label text-fg-muted">{t("titleZh")}</span>
+          <span className="text-fg-muted">{t("titleZh")}</span>
           <input name="titleZh" maxLength={300} className={inputCls} />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="ui-label text-fg-muted">{t("bodyEn")}</span>
+          <span className="text-fg-muted">{t("bodyEn")}</span>
           <textarea name="bodyEn" rows={4} maxLength={5000} className={inputCls} />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="ui-label text-fg-muted">{t("bodyZh")}</span>
+          <span className="text-fg-muted">{t("bodyZh")}</span>
           <textarea name="bodyZh" rows={4} maxLength={5000} className={inputCls} />
         </label>
       </div>

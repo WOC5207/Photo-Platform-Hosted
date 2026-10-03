@@ -1139,14 +1139,7 @@
     "announcementValidationError": "Please enter a title.",
     "confirmDeleteAnnouncement": "Delete this announcement?",
     "moveUp": "Move earlier",
-    "moveDown": "Move later",
-    "uiStyleTitle": "Interface style",
-    "uiStyleGroupHint": "Choose between the classic interface and the archive design from the 3D album.",
-    "uiStyleSwitch": "Archive interface",
-    "uiStyleHint": "Sharp archive panels, numbered files, monospace labels and ink buttons, on your dashboard and your public site, booking pages included. Visitors see the style you choose. Your colours stay the same.",
-    "uiStyleArchiveOn": "Archive interface is on",
-    "uiStyleClassicOn": "Classic interface is on",
-    "uiStyleError": "Couldn't switch the interface. Try again."
+    "moveDown": "Move later"
   },
   "adminStorage": {
     "title": "Resource monitor",

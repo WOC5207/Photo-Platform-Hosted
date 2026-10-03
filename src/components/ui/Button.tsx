@@ -29,8 +29,6 @@ export function buttonClasses({
   className?: string;
 } = {}): string {
   return [
-    // ui-button hooks let the archive interface restyle every shared button.
-    `ui-button ui-button--${variant}`,
     "inline-flex items-center justify-center gap-2 rounded-lg border font-semibold tracking-[-0.01em]",
     "transition-[color,background-color,border-color,opacity,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-page",

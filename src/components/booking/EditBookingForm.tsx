@@ -74,7 +74,7 @@ export default function EditBookingForm({
             {t("editSchedule")}
           </legend>
           <label className="flex flex-col gap-1 text-sm">
-            <span className="ui-label text-fg-muted">{t("timeLabel")}</span>
+            <span className="text-fg-muted">{t("timeLabel")}</span>
             <select
               name="targetSlotId"
               defaultValue={currentSlotId}
@@ -97,7 +97,7 @@ export default function EditBookingForm({
             {t("editDetails")}
           </legend>
           <label className="flex flex-col gap-1 text-sm">
-            <span className="ui-label text-fg-muted">{t("name")} *</span>
+            <span className="text-fg-muted">{t("name")} *</span>
             <input
               name="name"
               required
@@ -119,7 +119,7 @@ export default function EditBookingForm({
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            <span className="ui-label text-fg-muted">{t("contactValue")} *</span>
+            <span className="text-fg-muted">{t("contactValue")} *</span>
             <input
               name="contactValue"
               required
@@ -129,7 +129,7 @@ export default function EditBookingForm({
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            <span className="ui-label text-fg-muted">{t("email")}</span>
+            <span className="text-fg-muted">{t("email")}</span>
             <input
               name="email"
               type="email"
@@ -140,7 +140,7 @@ export default function EditBookingForm({
             />
           </label>
           <label className="col-span-full flex flex-col gap-1 text-sm">
-            <span className="ui-label text-fg-muted">{t("notes")}</span>
+            <span className="text-fg-muted">{t("notes")}</span>
             <textarea
               name="notes"
               rows={3}

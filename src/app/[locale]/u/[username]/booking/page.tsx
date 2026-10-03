@@ -57,7 +57,7 @@ export default async function BookingListPage({
       {events.length === 0 ? (
         <p className="py-16 text-center text-fg-subtle">{t("listEmpty")}</p>
       ) : (
-        <ul className="ui-file-list flex flex-col gap-4">
+        <ul className="flex flex-col gap-4">
           {events.map((event) => {
             const remaining = event.slots.reduce(
               (n, s) => n + Math.max(0, s.capacity - s._count.bookings),
@@ -72,7 +72,7 @@ export default async function BookingListPage({
               <li key={event.id}>
                 <Link
                   href={`/book/${event.token}`}
-                  className="ui-file flex flex-col gap-2 rounded-xl border border-border bg-surface p-5 transition hover:border-border-strong"
+                  className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5 transition hover:border-border-strong"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
