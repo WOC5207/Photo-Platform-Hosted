@@ -72,7 +72,7 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
           id: slot.id,
           column,
           row: r,
-          kicker: slot.price ? tb("pricePerPersonDisplay", { price: slot.price }) : d.label,
+          kicker: slot.price,
           main: `${slot.start}–${slot.end}`,
           detail: [slot.description],
           left: slot.remaining,
@@ -149,10 +149,14 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
       setStep("slots");
       return true;
     }
-    if (k === "ArrowLeft") moveDay(-1);
-    else if (k === "ArrowRight") moveDay(1);
-    else if (k === "ArrowUp") moveRow(-1);
-    else if (k === "ArrowDown") moveRow(1);
+    // A one-day schedule lays its slots across lanes: ←/→ step along them.
+    const lanes = scene?.columns() ?? 1;
+    if (k === "ArrowLeft" || k === "ArrowRight") {
+      const delta = k === "ArrowLeft" ? -1 : 1;
+      if (lanes > 1) moveRow(delta);
+      else moveDay(delta);
+    } else if (k === "ArrowUp") moveRow(-lanes);
+    else if (k === "ArrowDown") moveRow(lanes);
     else if (k === "/") review();
     else if (k === "Enter" && !isInteractive(target)) toggle(focused);
     else return false;
@@ -170,8 +174,12 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
         setRow(tile.row);
       }
     } else if (input.kind === "wheel") moveRow(input.direction);
-    else if (input.x !== 0) moveDay(input.x);
-    else moveRow(input.y);
+    else {
+      const lanes = scene?.columns() ?? 1;
+      if (input.x === 0) moveRow(input.y * lanes);
+      else if (lanes > 1) moveRow(input.x);
+      else moveDay(input.x);
+    }
   });
 
   const errorMessage = state.error

@@ -59,7 +59,7 @@ export interface Board {
   /** Stamp booked tiles with their labels, then file them away. */
   stamp(ids: string[], labels: string[]): void;
   clearStamps(): void;
-  /** Columns the events board lays its cards in, for arrow keys. */
+  /** Columns the events board lays its cards in, or lanes per day on a schedule, for arrow keys. */
   columns(): number;
   settle(): void;
   setHover(index: number): void;
@@ -74,7 +74,7 @@ const FOV = 30;
 const ELEVATION = MathUtils.degToRad(7);
 const SPEC = {
   events: { w: 3.1, h: 1.78, gx: 0.36, gy: 0.36, header: 0, texW: 768 },
-  slots: { w: 2.05, h: 0.9, gx: 0.3, gy: 0.2, header: 0.7, texW: 512 }
+  slots: { w: 2.05, h: 0.74, gx: 0.3, gy: 0.18, header: 0.7, texW: 512 }
 } as const;
 const DEPTH = 0.07;
 const TRAY_SCALE = 0.46;
@@ -171,6 +171,9 @@ export function createBoard(context: {
   let columnCount = 1;
   let gridColumns = 1;
   let rowCount = 1;
+  // A schedule with fewer days than the board frames spreads each day's
+  // slots across several lanes, so a one-day event fills the board.
+  let lanes = 1;
   const panX = spring(0);
   const panY = spring(0);
 
@@ -190,37 +193,64 @@ export function createBoard(context: {
     c.fillStyle = full ? muted() : palette.accent;
     c.fillRect(0, 0, Math.round(w * 0.018), h);
     c.textBaseline = "alphabetic";
-    const big = variant === "events";
-    let y = pad + (big ? 30 : 26);
+    if (variant === "slots") paintSlot(c, tile, w, h, pad, full);
+    else paintEvent(c, tile, w, h, pad, full);
+    tile.texture.needsUpdate = true;
+  }
+
+  function lamps(c: CanvasRenderingContext2D, tile: Tile, x: number, y: number, size: number, gap: number, max: number) {
+    const shown = Math.min(tile.data.total, max);
+    const lit = Math.min(tile.data.left, shown);
+    for (let i = 0; i < shown; i++) {
+      c.fillStyle = i < lit ? palette.accent : palette.dark ? "rgba(255,255,255,0.12)" : "rgba(28,26,22,0.12)";
+      c.fillRect(x + i * (size + gap), y, size, size);
+    }
+  }
+
+  // A slot: the time large, places left beside it, price and note under it.
+  function paintSlot(c: CanvasRenderingContext2D, tile: Tile, w: number, h: number, pad: number, full: boolean) {
+    const x = pad + 10;
+    c.font = `600 24px ${palette.fontMeta}`;
+    const status = tile.data.status.toUpperCase();
+    const statusW = c.measureText(status).width;
     c.fillStyle = full ? muted() : palette.accent;
-    c.font = `600 ${big ? 26 : 24}px ${palette.fontMeta}`;
-    c.fillText(fitText(c, tile.data.kicker.toUpperCase(), w - pad * 2), pad + 8, y);
-    y += big ? 66 : 54;
+    c.fillText(status, w - pad - statusW, 66);
     c.fillStyle = full ? muted() : ink();
-    c.font = `${big ? 800 : 600} ${big ? 56 : 50}px ${big ? palette.fontSans : palette.fontMeta}`;
-    c.fillText(fitText(c, big ? tile.data.main.toUpperCase() : tile.data.main, w - pad * 2), pad + 8, y);
+    c.font = `700 46px ${palette.fontSans}`;
+    c.fillText(fitText(c, tile.data.main, w - x - pad - statusW - 16), x, 70);
+    const note = [tile.data.kicker, ...tile.data.detail].filter(Boolean).join(" · ");
+    if (note) {
+      c.fillStyle = muted();
+      c.font = `500 23px ${palette.fontSans}`;
+      c.fillText(fitText(c, note, w - x - pad), x, 112);
+    }
+    lamps(c, tile, x, h - pad - 14, 14, 6, 12);
+  }
+
+  // An event: dates, title, place and blurb, with a lamp per place left.
+  function paintEvent(c: CanvasRenderingContext2D, tile: Tile, w: number, h: number, pad: number, full: boolean) {
+    let y = pad + 30;
+    c.fillStyle = full ? muted() : palette.accent;
+    c.font = `600 26px ${palette.fontMeta}`;
+    c.fillText(fitText(c, tile.data.kicker.toUpperCase(), w - pad * 2), pad + 8, y);
+    y += 66;
+    c.fillStyle = full ? muted() : ink();
+    c.font = `800 56px ${palette.fontSans}`;
+    c.fillText(fitText(c, tile.data.main.toUpperCase(), w - pad * 2), pad + 8, y);
     c.fillStyle = muted();
-    c.font = `400 ${big ? 26 : 22}px ${palette.fontSans}`;
-    for (const line of tile.data.detail.slice(0, big ? 2 : 1)) {
+    c.font = `400 26px ${palette.fontSans}`;
+    for (const line of tile.data.detail.slice(0, 2)) {
       if (!line) continue;
-      y += big ? 40 : 32;
+      y += 40;
       c.fillText(fitText(c, line, w - pad * 2), pad + 8, y);
     }
-    // Seat lamps along the bottom, lit for the places left.
-    const lampsShown = Math.min(tile.data.total, big ? 16 : 10);
-    const lit = Math.min(tile.data.left, lampsShown);
-    const lamp = big ? 22 : 18;
-    const gap = big ? 9 : 7;
+    const lamp = 22;
     const base = h - pad - lamp;
-    for (let i = 0; i < lampsShown; i++) {
-      c.fillStyle = i < lit ? palette.accent : palette.dark ? "rgba(255,255,255,0.12)" : "rgba(28,26,22,0.12)";
-      c.fillRect(pad + 8 + i * (lamp + gap), base, lamp, lamp);
-    }
+    lamps(c, tile, pad + 8, base, lamp, 9, 16);
     c.fillStyle = full ? muted() : ink();
-    c.font = `600 ${big ? 24 : 21}px ${palette.fontMeta}`;
+    c.font = `600 24px ${palette.fontMeta}`;
     const status = tile.data.status.toUpperCase();
     c.fillText(status, w - pad - c.measureText(status).width, base + lamp - 2);
-    tile.texture.needsUpdate = true;
   }
 
   function paintStamp(tile: Tile) {
@@ -289,7 +319,7 @@ export function createBoard(context: {
 
   // -------------------------------------------------------------- layout --
   function cell(tile: BoardTile) {
-    if (variant === "slots") return { col: tile.column, row: tile.row };
+    if (variant === "slots") return { col: tile.column * lanes + (tile.row % lanes), row: Math.floor(tile.row / lanes) };
     return { col: tile.row % gridColumns, row: Math.floor(tile.row / gridColumns) };
   }
 
@@ -313,7 +343,8 @@ export function createBoard(context: {
 
   function relayout() {
     gridColumns = variant === "events" ? (layoutFor(width, height) === "portrait" ? 1 : 2) : 1;
-    columnCount = variant === "slots" ? Math.max(1, headerLabels.length) : gridColumns;
+    lanes = variant === "slots" ? Math.max(1, Math.floor(framedColumns() / Math.max(1, headerLabels.length))) : 1;
+    columnCount = variant === "slots" ? Math.max(1, headerLabels.length) * lanes : gridColumns;
     rowCount = Math.max(1, ...list.map((t) => cell(t.data).row + 1));
     // Nothing open: no empty board behind the panel's notice.
     panel.visible = rail.visible = headers.visible = list.length > 0;
@@ -326,7 +357,7 @@ export function createBoard(context: {
     rail.position.set(panel.position.x, 0.35 - 0.025, 0.02);
     headerMeshes.forEach((entry, i) => {
       entry.mesh.scale.set(spec.w, 0.42, 1);
-      entry.mesh.position.set(i * (spec.w + spec.gx), -0.26, 0.004);
+      entry.mesh.position.set(i * lanes * (spec.w + spec.gx), -0.26, 0.004);
     });
   }
 
@@ -355,7 +386,8 @@ export function createBoard(context: {
     body.castShadow = !lowPower;
     const canvas = document.createElement("canvas");
     canvas.width = spec.texW;
-    canvas.height = Math.round((spec.texW * spec.h) / spec.w);
+    // Matches the face plane below, so text isn't stretched.
+    canvas.height = Math.round((spec.texW * (spec.h - 0.04)) / (spec.w - 0.04));
     const texture = makeTexture(canvas, renderer);
     const face = new MeshStandardMaterial({ map: texture, roughness: 0.5 });
     const front = new Mesh(unit, face);
@@ -666,7 +698,7 @@ export function createBoard(context: {
       }
       invalidate();
     },
-    columns: () => (variant === "events" ? gridColumns : 1),
+    columns: () => (variant === "events" ? gridColumns : lanes),
     settle() {
       frame();
       const pan = panTargets();
