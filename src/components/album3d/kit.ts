@@ -59,6 +59,20 @@ export function photoTexture(image: HTMLImageElement, renderer: WebGLRenderer, p
   return texture;
 }
 
+// Every key light that may cast shadows, so a quality drop can turn them off.
+const shadowLights = new Set<DirectionalLight>();
+let shadowsOn = true;
+
+/** Shadows on or off for every scene, now and for scenes built later. */
+export function setShadows(on: boolean) {
+  shadowsOn = on;
+  for (const light of shadowLights) light.castShadow = on;
+}
+
+export function forgetShadowLights() {
+  shadowLights.clear();
+}
+
 // Reference studio lighting: a room environment plus warm key, cool fill
 // and a hemisphere, generated for this renderer.
 export function addLighting(renderer: WebGLRenderer, scene: Scene, shadows: boolean) {
@@ -75,7 +89,8 @@ export function addLighting(renderer: WebGLRenderer, scene: Scene, shadows: bool
   const fill = new DirectionalLight("#ffffff", 0.6);
   fill.position.set(7, 8, -10);
   if (shadows) {
-    key.castShadow = true;
+    key.castShadow = shadowsOn;
+    shadowLights.add(key);
     key.shadow.mapSize.set(2048, 2048);
     key.shadow.normalBias = 0.035;
     key.shadow.bias = -0.0003;

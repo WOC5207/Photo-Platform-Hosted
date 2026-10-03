@@ -4,6 +4,7 @@ import {
   BufferAttribute,
   Color,
   CylinderGeometry,
+  FramebufferTexture,
   Fog,
   Group,
   InstancedMesh,
@@ -11,19 +12,21 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  OrthographicCamera,
   PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
   Raycaster,
   Scene,
   SRGBColorSpace,
+  ShaderMaterial,
   Vector2,
   Vector3,
   WebGLRenderer,
   type IUniform
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { addLighting, fitText, loadImage, makeTexture, photoTexture } from "./kit";
+import { addLighting, fitText, forgetShadowLights, loadImage, makeTexture, photoTexture, setShadows } from "./kit";
 import { createCarousel, type Carousel, type CarouselCard } from "./carousel";
 import { createLightTable, type LightTable, type TablePrint } from "./lightTable";
 import type { Board } from "./board";
@@ -125,6 +128,11 @@ export interface EngineOptions {
   onCard: (index: number, open: boolean) => void;
   /** A print on the light table was tapped, or the wheel moved the focus. */
   onPrint: (index: number, open: boolean) => void;
+  /**
+   * The scene can't carry on well: "slow" once frames stay slow at the lowest
+   * quality, "lost" when the browser dropped WebGL and didn't give it back.
+   */
+  onTrouble: (kind: "slow" | "lost") => void;
 }
 
 export interface ArchiveEngine {
@@ -446,6 +454,22 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let reduced = options.reducedMotion;
   const lowPower = options.lowPower;
 
+  // Quality tiers, dropped one at a time while frames run slow: 0 has
+  // shadows and up to 2x pixels, 1 no shadows and 1.5x, 2 1x and no idle
+  // drift. Phones and small screens start at 1.
+  let tier = lowPower ? 1 : 0;
+  const TIER_PIXELS = [2, 1.5, 1];
+  const TIER_SLOW_MS = [20, 26, 45];
+  setShadows(tier === 0);
+  // Shown on the canvas for checking a device in the browser's inspector.
+  canvas.dataset.tier = String(tier);
+  // Stage wipes and WebGL context loss (see below); declared early because
+  // invalidate() reads them during setup.
+  let wipe = 1;
+  let rendered = false;
+  let lost = false;
+  let lostTimer = 0;
+
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -709,6 +733,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
 
   function closeStudy() {
     if (mode !== "study") return;
+    snapshot();
     leaveStudy();
     mode = "field";
     snapCamera = true;
@@ -728,6 +753,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   /** Switch the rendered stage, tidying up the one being left. */
   function enter(next: typeof mode) {
     if (mode === next) return false;
+    snapshot();
+    settleUntil = performance.now() + 1000;
     if (mode === "study") leaveStudy();
     if (mode === "carousel") carousel?.setHover(-1);
     if (mode === "table") table?.setHover(-1);
@@ -761,6 +788,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     return ready.then((module) => {
       if (disposed || token !== stageToken) return null;
       const switching = stage !== module;
+      if (switching && mode === "stage") snapshot();
       stage = module;
       if (enter("stage") || switching) module.settle();
       invalidate();
@@ -806,7 +834,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const rect = canvas.parentElement?.getBoundingClientRect();
     width = Math.max(1, Math.round(rect?.width ?? canvas.clientWidth));
     height = Math.max(1, Math.round(rect?.height ?? canvas.clientHeight));
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.5 : 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXELS[tier]));
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     studyCamera.aspect = width / height;
@@ -824,7 +852,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let raf = 0;
   let last = 0;
   function invalidate() {
-    if (!raf) raf = requestAnimationFrame(frame);
+    if (!raf && !lost) raf = requestAnimationFrame(frame);
   }
 
   const dummy = new Object3D();
@@ -881,7 +909,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (pulses.length) moving = true;
     pulseGain = MathUtils.lerp(pulseGain, detailTarget ? 0 : 1, 1 - Math.exp(-dt * 8));
     // Idle breathing after 2.5 s, on full-power devices only.
-    const idle = !lowPower && !reduced && !detailTarget && detail < 0.01 && (overviewTarget || clock - lastInteraction > 2.5);
+    const idle = !lowPower && tier < 2 && !reduced && !detailTarget && detail < 0.01 && (overviewTarget || clock - lastInteraction > 2.5);
     idleGain = MathUtils.lerp(idleGain, idle ? 1 : 0, 1 - Math.exp(-dt * (idle ? 0.8 : 4)));
     if (idleGain > 1e-3) moving = true;
     else idleGain = 0;
@@ -1028,31 +1056,142 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     return moving;
   }
 
+  /** The scene and camera on screen now. */
+  function view(): [Scene, PerspectiveCamera] {
+    if (mode === "carousel" && carousel) return [carousel.scene, carousel.camera];
+    if (mode === "table" && table) return [table.scene, table.camera];
+    if (mode === "stage" && stage) return [stage.scene, stage.camera];
+    if (mode === "study") return [study, studyCamera];
+    return [field, camera];
+  }
+
   function frame(now: number) {
     raf = 0;
-    const dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60;
+    const ms = last ? now - last : 0;
+    const dt = last ? Math.min(0.05, ms / 1000) : 1 / 60;
     last = now;
     clock = now / 1000;
     let moving: boolean;
-    if (mode === "carousel" && carousel) {
-      moving = carousel.step(dt);
-      renderer.render(carousel.scene, carousel.camera);
-    } else if (mode === "table" && table) {
-      moving = table.step(dt);
-      renderer.render(table.scene, table.camera);
-    } else if (mode === "stage" && stage) {
-      moving = stage.step(dt);
-      renderer.render(stage.scene, stage.camera);
-    } else if (mode === "study") {
-      moving = stepStudy(dt);
-      renderer.render(study, studyCamera);
-    } else {
-      moving = stepField(dt);
-      renderer.render(field, camera);
+    if (mode === "carousel" && carousel) moving = carousel.step(dt);
+    else if (mode === "table" && table) moving = table.step(dt);
+    else if (mode === "stage" && stage) moving = stage.step(dt);
+    else if (mode === "study") moving = stepStudy(dt);
+    else moving = stepField(dt);
+    renderer.render(...view());
+    rendered = true;
+    if (wipe < 1) {
+      wipe = reduced ? 1 : Math.min(1, wipe + dt / WIPE_SECONDS);
+      wipeUniforms.progress.value = smooth(wipe);
+      renderer.autoClear = false;
+      renderer.render(wipeScene, wipeCamera);
+      renderer.autoClear = true;
+      moving = true;
     }
+    if (ms) measure(ms, now);
     if (moving) invalidate();
     else last = 0;
   }
+
+  // ------------------------------------------------------------- quality --
+  let samples = 0;
+  let sampleMs = 0;
+  let slowReported = false;
+  // Shader compiles and texture uploads stall the first frames of a stage.
+  let settleUntil = performance.now() + 2000;
+  /** Average frame times while things move; a slow run drops a tier. */
+  function measure(ms: number, now: number) {
+    if (document.hidden || now < settleUntil) {
+      samples = sampleMs = 0;
+      return;
+    }
+    // A stalled frame counts as 250 ms, so one long task can't decide alone.
+    samples += 1;
+    sampleMs += Math.min(ms, 250);
+    if (samples < 40 && (samples < 6 || sampleMs < 1500)) return;
+    const average = sampleMs / samples;
+    samples = sampleMs = 0;
+    if (average <= TIER_SLOW_MS[tier]) return;
+    if (tier < 2) {
+      tier += 1;
+      canvas.dataset.tier = String(tier);
+      setShadows(false);
+      resize();
+      settleUntil = now + 500;
+    } else if (!slowReported) {
+      slowReported = true;
+      options.onTrouble("slow");
+    }
+  }
+
+  // --------------------------------------------------------- transitions --
+  // Moving between stages wipes the old stage's last frame away along a
+  // diagonal with an accent edge, instead of cutting. Reduced motion cuts.
+  const WIPE_SECONDS = 0.5;
+  let wipeTexture: FramebufferTexture | null = null;
+  const bufferSize = new Vector2();
+  const wipeUniforms = { map: { value: null as FramebufferTexture | null }, progress: { value: 1 }, edge: { value: new Color() } };
+  const wipeScene = new Scene();
+  const wipeCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const wipeQuad = new Mesh(
+    new PlaneGeometry(2, 2),
+    new ShaderMaterial({
+      uniforms: wipeUniforms,
+      depthTest: false,
+      depthWrite: false,
+      vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+      fragmentShader: `
+        uniform sampler2D map;
+        uniform float progress;
+        uniform vec3 edge;
+        varying vec2 vUv;
+        void main() {
+          float k = vUv.x * 0.82 + (1.0 - vUv.y) * 0.18 - (progress * 1.3 - 0.15);
+          if (k < 0.0) discard;
+          vec3 old = texture2D(map, vUv).rgb;
+          float band = 1.0 - smoothstep(0.0, 0.012, k);
+          float shade = 1.0 - smoothstep(0.0, 0.08, k);
+          gl_FragColor = vec4(mix(old * (1.0 - shade * 0.18), edge, band), 1.0);
+        }`
+    })
+  );
+  wipeQuad.frustumCulled = false;
+  wipeScene.add(wipeQuad);
+
+  /** Keep the frame on screen now, to wipe away once the next stage draws. */
+  function snapshot() {
+    if (reduced || !rendered || lost) return;
+    renderer.render(...view());
+    renderer.getDrawingBufferSize(bufferSize);
+    if (!wipeTexture || wipeTexture.image.width !== bufferSize.x || wipeTexture.image.height !== bufferSize.y) {
+      wipeTexture?.dispose();
+      wipeTexture = new FramebufferTexture(bufferSize.x, bufferSize.y);
+    }
+    renderer.copyFramebufferToTexture(wipeTexture);
+    wipeUniforms.map.value = wipeTexture;
+    wipeUniforms.edge.value.setStyle(palette.accent, SRGBColorSpace).convertLinearToSRGB();
+    wipe = 0;
+    invalidate();
+  }
+
+  // ---------------------------------------------------------- context loss --
+  // Mobile Safari drops WebGL under memory pressure. three.js keeps the
+  // context restorable; if it isn't back soon, the site offers the classic page.
+  function onContextLost() {
+    lost = true;
+    cancelAnimationFrame(raf);
+    raf = 0;
+    lostTimer = window.setTimeout(() => options.onTrouble("lost"), 3000);
+  }
+  function onContextRestored() {
+    lost = false;
+    clearTimeout(lostTimer);
+    wipeTexture?.dispose();
+    wipeTexture = null;
+    wipe = 1;
+    resize();
+  }
+  canvas.addEventListener("webglcontextlost", onContextLost);
+  canvas.addEventListener("webglcontextrestored", onContextRestored);
 
   // ------------------------------------------------------------- pointers --
   const raycaster = new Raycaster();
@@ -1322,6 +1461,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     dispose() {
       disposed = true;
       cancelAnimationFrame(raf);
+      clearTimeout(lostTimer);
+      canvas.removeEventListener("webglcontextlost", onContextLost);
+      canvas.removeEventListener("webglcontextrestored", onContextRestored);
+      wipeTexture?.dispose();
+      wipeQuad.geometry.dispose();
+      (wipeQuad.material as ShaderMaterial).dispose();
+      forgetShadowLights();
       cancelAnimationFrame(hoverFrame);
       observer.disconnect();
       canvas.removeEventListener("pointerdown", onPointerDown);

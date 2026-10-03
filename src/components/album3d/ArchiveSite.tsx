@@ -18,7 +18,7 @@ import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
 
 export type { ArchiveColumn, ArchiveFile, ArchivePrint } from "./types";
 
-type EngineStatus = "loading" | "ready" | "unsupported";
+type EngineStatus = "loading" | "ready" | "unsupported" | "lost";
 type Mode = "archive" | "detail" | "study" | "table" | "photo" | "booking";
 type MotionPreference = "system" | "reduced" | "full";
 type ThemePreference = "system" | "light" | "dark";
@@ -179,6 +179,8 @@ export default function ArchiveSite({
   const carouselScreen = !missing && (screen.kind === "photographers" || screen.kind === "photographer");
 
   const [status, setStatus] = useState<EngineStatus>("loading");
+  // Frames stayed slow at the lowest quality: offer the classic page once.
+  const [slow, setSlow] = useState(false);
   const [selected, setSelected] = useState(() => {
     if (fileIndex >= 0) return fileIndex;
     if (columnIndex >= 0) return columns[columnIndex].fileIndexes[0] ?? 0;
@@ -428,7 +430,8 @@ export default function ArchiveSite({
             };
           }),
           onCard: (index, open) => handlers.current.onCard(index, open),
-          onPrint: (index, open) => handlers.current.onPrint(index, open)
+          onPrint: (index, open) => handlers.current.onPrint(index, open),
+          onTrouble: (kind) => (kind === "lost" ? setStatus("lost") : setSlow(true))
         });
         engineRef.current = engine;
         setStatus("ready");
@@ -1230,10 +1233,22 @@ export default function ArchiveSite({
         </footer>
       )}
 
-      {status === "unsupported" && mode !== "booking" && (
+      {slow && (
+        <div role="status" className="absolute bottom-24 left-1/2 z-30 flex w-max max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-3 border border-border-strong bg-page/95 px-4 py-3 text-sm">
+          {t("slowNotice")}
+          <button type="button" onClick={() => leaveFor("classic", classicTwin(pathname))} className="font-semibold underline underline-offset-4">
+            {t("unsupportedClassic")}
+          </button>
+          <button type="button" onClick={() => setSlow(false)} className="text-fg-muted underline underline-offset-4">
+            {t("slowKeep")}
+          </button>
+        </div>
+      )}
+
+      {(status === "unsupported" || status === "lost") && mode !== "booking" && (
         <div className="absolute inset-0 z-20 overflow-y-auto bg-page px-4 pb-10 pt-32 sm:px-8">
           <div className="mx-auto max-w-4xl">
-            <h2 className="text-xl font-bold">{t("unsupportedTitle")}</h2>
+            <h2 className="text-xl font-bold">{t(status === "lost" ? "lostTitle" : "unsupportedTitle")}</h2>
             <p className="mt-1 text-sm text-fg-muted">{t("unsupportedHint")}</p>
             <button
               type="button"
