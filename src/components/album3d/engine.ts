@@ -1,6 +1,9 @@
 import {
+  ACESFilmicToneMapping,
   BoxGeometry,
+  BufferAttribute,
   CanvasTexture,
+  ClampToEdgeWrapping,
   Color,
   CylinderGeometry,
   DirectionalLight,
@@ -8,34 +11,52 @@ import {
   Group,
   HemisphereLight,
   InstancedMesh,
-  Material,
   MathUtils,
   Mesh,
   MeshStandardMaterial,
   Object3D,
-  OrthographicCamera,
   PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
+  PMREMGenerator,
   Raycaster,
   Scene,
   SRGBColorSpace,
   Texture,
   Vector2,
   Vector3,
-  WebGLRenderer
+  WebGLRenderer,
+  type IUniform
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import {
+  columnStrength,
+  damp,
+  idleWave,
+  nearestOccurrence,
+  selectionWave,
+  settled,
+  settlingWave,
+  smooth,
+  spring,
+  wrap,
+  type Spring
+} from "./motion";
 
 /**
- * The three.js side of the 3D album: an isometric field of archive bars with
- * one upright panel per album, and a 360° study of a single album whose prints
- * can be pulled apart and stacked back together.
+ * The three.js side of the 3D album, built on the RhineLabUI archive
+ * (https://github.com/LBEILC/RhineLabUI, MIT, Copyright (c) 2026 LBEILC): its
+ * card proportions, long-lens camera, studio lighting and selection motion,
+ * with each archive card carrying an album instead of a lore file.
  *
- * Everything here is imperative and React-free. The page component owns which
- * album is selected and tells the engine; the engine only reports picks,
- * swipes and wheel steps back. It renders on demand: nothing is drawn while
- * the scene is at rest, which is most of the time on a phone.
+ * Two views share one renderer. The archive is a looping field of cards
+ * (columns are photographers, rows are their albums) where the selected card
+ * lifts a little in preview and rises out for the detail view, its frosted
+ * cover clearing to show the album cover. The study is a 360° view of one
+ * album's cassette that can be taken apart along its thickness.
+ *
+ * It renders on demand: nothing is drawn while everything is at rest.
  */
 
 export interface EnginePrint {
@@ -50,11 +71,10 @@ export interface EngineFile {
   column: number;
   title: string;
   owner: string;
-  meta: string;
   prints: EnginePrint[];
 }
 
-/** Palette tokens, already resolved to `rgb(r g b)` strings. */
+/** Palette tokens, resolved to `rgb()` strings. */
 export interface EnginePalette {
   page: string;
   surface: string;
@@ -63,100 +83,83 @@ export interface EnginePalette {
   fg: string;
   subtle: string;
   accent: string;
+  dark: boolean;
   fontMeta: string;
   fontSans: string;
 }
+
+export type EngineMove = { axis: "file" | "column"; direction: 1 | -1 };
 
 export interface EngineOptions {
   files: EngineFile[];
   columns: number[][];
   palette: EnginePalette;
   reducedMotion: boolean;
-  compact: boolean;
-  /** Text printed on panels and the album's file card. */
+  /** Phones and other coarse pointers: no shadows, no idle drift. */
+  lowPower: boolean;
+  /** Printed on labels. */
   archiveLabel: string;
   onPick: (fileIndex: number) => void;
   onOpen: (fileIndex: number) => void;
-  onStep: (axis: "file" | "column", direction: 1 | -1) => void;
+  onStep: (move: EngineMove) => void;
 }
 
 export interface ArchiveEngine {
-  select(fileIndex: number): void;
-  openObject(fileIndex: number): void;
-  closeObject(): void;
+  /** The file next to the selected card on the endless grid; select it next. */
+  neighbour(move: EngineMove): number;
+  select(fileIndex: number, move?: EngineMove): void;
+  setDetail(detail: boolean): void;
+  openStudy(fileIndex: number): void;
+  closeStudy(): void;
   setExploded(exploded: boolean): void;
+  setClear(clear: boolean): void;
   resetView(): void;
   setPalette(palette: EnginePalette): void;
-  setCompact(compact: boolean): void;
   dispose(): void;
 }
 
-// Field layout, in world units.
-const COLUMN_SPACING = 4.4;
-const FILE_SPACING = 1;
-const ROW_SPACING = FILE_SPACING / 2;
-const BAR_DEPTH = 0.36;
-const PANEL_W = 2.4;
-const PANEL_H = 3.2;
-const PANEL_D = 0.1;
-/** Panels sit in the gap between two bar rows. */
-const PANEL_Z_OFFSET = ROW_SPACING / 2;
-const PANEL_TILT = -0.5;
-const CAMERA_OFFSET = new Vector3(-11, 10.5, 14);
+// Reference geometry, in world units.
+const CARD_W = 5;
+const CARD_H = 3.7;
+const CARD_D = 0.31;
+const COLUMN_SPACING = 5.2;
+const ROW_SPACING = 0.62;
+const BASE_Y = -4.6;
+const SLOT_Z = -2.17;
+const ROW_ORIGIN = 12;
+const PREVIEW_LIFT = 0.4;
+const DETAIL_LIFT = 4.05;
+const HOVER_LIFT = 0.28;
+const MAX_ROTATION = 0.8;
+const PHOTO_W = 4.25;
+const PHOTO_H = 3.0;
 
-// Panel face texture, in pixels (3:4 like the panel).
-const FACE_W = 360;
-const FACE_H = 480;
-const FACE_CACHE = 14;
+// Reference camera: a long lens, 59° azimuth and 19° elevation in the
+// archive, turning to an almost frontal view of the raised card.
+const direction = (yawDeg: number, elevationDeg: number) => {
+  const yaw = MathUtils.degToRad(yawDeg);
+  const elevation = MathUtils.degToRad(elevationDeg);
+  return new Vector3(
+    -Math.sin(yaw) * Math.cos(elevation),
+    Math.sin(elevation),
+    Math.cos(yaw) * Math.cos(elevation)
+  );
+};
+const ARCHIVE_DIRECTION = direction(59, 19);
+const DETAIL_DIRECTION = new Vector3(-0.277, 0.238, 0.931).normalize();
+const ARCHIVE_AIM = new Vector3(-1.091, -0.045, 0.481);
+const ARCHIVE_DISTANCE = 140;
+const DETAIL_DISTANCE = 72;
+const ARCHIVE_SPAN = 7.33;
+const DETAIL_SPAN = 5.9;
+const DESKTOP_DETAIL_SPAN = 7.6;
 
-// Album study.
-const PRINT_MAX = 3;
-const BOARD = 3.7;
-const STACK_GAP = 0.032;
-const EXPLODE_GAP = 0.6;
+// Study view.
+const STUDY_HOME = new Vector3(7.2, 3.8, 12);
+const STUDY_EXPLODED = new Vector3(9.8, 4.6, 14.5);
 
-type Damped = { value: number; goal: number };
-
-interface Panel {
-  index: number;
-  mesh: Mesh;
-  x: number;
-  z: number;
-  y: Damped;
-  tilt: Damped;
-  face: { texture: CanvasTexture; material: MeshStandardMaterial; image: HTMLImageElement | null } | null;
-  lastUsed: number;
-}
-
-interface PrintPlate {
-  mesh: Mesh;
-  pos: { x: Damped; y: Damped; z: Damped; ry: Damped };
-  delayUntil: number;
-  texture: Texture | null;
-  /** Swaps in the larger rendition; set until it has been asked for. */
-  sharpen: (() => void) | null;
-}
-
-function damped(value: number): Damped {
-  return { value, goal: value };
-}
-
-/** Moves toward the goal frame-rate independently; true while still moving. */
-function stepDamped(d: Damped, factor: number): boolean {
-  const delta = d.goal - d.value;
-  if (Math.abs(delta) < 1e-4) {
-    d.value = d.goal;
-    return false;
-  }
-  d.value += delta * factor;
-  return true;
-}
-
-function seeded(seed: number) {
-  let s = seed % 2147483647;
-  if (s <= 0) s += 2147483646;
-  return () => (s = (s * 16807) % 2147483647) / 2147483647;
-}
+type Cell = { lane: number; row: number };
+const cellKey = (c: Cell) => `${c.lane}:${c.row}`;
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -168,31 +171,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Draws `image` into the rectangle like CSS object-fit: cover. */
-function drawCover(
-  ctx: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  x: number,
-  y: number,
-  w: number,
-  h: number
-) {
-  const scale = Math.max(w / image.naturalWidth, h / image.naturalHeight);
-  const sw = w / scale;
-  const sh = h / scale;
-  ctx.drawImage(
-    image,
-    (image.naturalWidth - sw) / 2,
-    (image.naturalHeight - sh) / 2,
-    sw,
-    sh,
-    x,
-    y,
-    w,
-    h
-  );
-}
-
 function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
   if (ctx.measureText(text).width <= maxWidth) return text;
   let end = text.length;
@@ -200,534 +178,564 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number):
   return `${text.slice(0, end)}…`;
 }
 
-function fileCode(n: number): string {
+function fileCode(n: number) {
   return `NO.${String(n).padStart(3, "0")}`;
 }
 
-export function createArchiveEngine(
-  canvas: HTMLCanvasElement,
-  options: EngineOptions
-): ArchiveEngine {
+/** The card body: origin at the bottom centre, darkening toward its base. */
+function cardGeometry() {
+  const geometry = new BoxGeometry(CARD_W, CARD_H, CARD_D, 1, 6, 1);
+  geometry.translate(0, CARD_H / 2, 0);
+  const position = geometry.getAttribute("position");
+  const colors = new Float32Array(position.count * 3);
+  const low = new Color(0.4, 0.3, 0.2);
+  const high = new Color(1, 0.98, 0.94);
+  const mixed = new Color();
+  for (let i = 0; i < position.count; i++) {
+    const t = smooth((position.getY(i) / CARD_H - 0.1) / 0.9);
+    mixed.copy(low).lerp(high, 0.35 + 0.65 * t);
+    colors.set([mixed.r, mixed.g, mixed.b], i * 3);
+  }
+  geometry.setAttribute("color", new BufferAttribute(colors, 3));
+  return geometry;
+}
+
+function makeTexture(canvas: HTMLCanvasElement, renderer: WebGLRenderer) {
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  return texture;
+}
+
+function photoTexture(image: HTMLImageElement, renderer: WebGLRenderer, planeAspect: number) {
+  const texture = new Texture(image);
+  texture.colorSpace = SRGBColorSpace;
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  texture.wrapS = texture.wrapT = ClampToEdgeWrapping;
+  // Cover crop onto the plane.
+  const imageAspect = image.naturalWidth / Math.max(1, image.naturalHeight);
+  if (imageAspect > planeAspect) {
+    texture.repeat.set(planeAspect / imageAspect, 1);
+    texture.offset.set((1 - texture.repeat.x) / 2, 0);
+  } else {
+    texture.repeat.set(1, imageAspect / planeAspect);
+    texture.offset.set(0, (1 - texture.repeat.y) / 2);
+  }
+  texture.needsUpdate = true;
+  return texture;
+}
+
+/**
+ * One album cassette, front to back: fasteners, a frosted optical cover with
+ * its label, the print stack, a substrate with the light guide, and the
+ * carrier. Origin at the bottom centre; `layout` moves the parts along the
+ * thickness axis.
+ */
+interface Cassette {
+  group: Group;
+  parts: { screws: Group; cover: Group; prints: Mesh[]; substrate: Group; carrier: Mesh };
+  clarity: IUniform<number>;
+  setPhoto(index: number, image: HTMLImageElement): void;
+  layout(explode: number, printOffsets?: number[]): void;
+  dispose(): void;
+}
+
+function buildCassette(
+  renderer: WebGLRenderer,
+  palette: EnginePalette,
+  archiveLabel: string,
+  carrierMaterial: MeshStandardMaterial,
+  carrierGeometry: BoxGeometry,
+  file: EngineFile,
+  prints: EnginePrint[]
+): Cassette {
+  const owned: { dispose(): void }[] = [];
+  const own = <T extends { dispose(): void }>(thing: T) => {
+    owned.push(thing);
+    return thing;
+  };
+  const color = (css: string) => new Color().setStyle(css, SRGBColorSpace);
+  const group = new Group();
+  const front = CARD_D / 2;
+
+  const carrier = new Mesh(carrierGeometry, carrierMaterial);
+  group.add(carrier);
+
+  // Substrate and its amber light guide.
+  const substrate = new Group();
+  const plate = new Mesh(
+    own(new BoxGeometry(CARD_W - 0.24, CARD_H - 0.24, 0.02)),
+    own(new MeshStandardMaterial({ color: color(palette.raised), roughness: 0.8 }))
+  );
+  plate.position.y = CARD_H / 2;
+  const guideMaterial = own(new MeshStandardMaterial({ color: color(palette.accent), roughness: 0.35, metalness: 0.15 }));
+  guideMaterial.emissive.copy(guideMaterial.color).multiplyScalar(0.18);
+  // The guide sits a hair from the cover in the reference; offset the depth
+  // test rather than the geometry so it never stripes at grazing angles.
+  guideMaterial.polygonOffset = true;
+  guideMaterial.polygonOffsetFactor = -1;
+  guideMaterial.polygonOffsetUnits = -2;
+  const guide = new Mesh(own(new BoxGeometry(0.07, CARD_H - 0.42, 0.03)), guideMaterial);
+  guide.position.set(-CARD_W / 2 + 0.2, CARD_H / 2, 0.02);
+  substrate.add(plate, guide);
+  group.add(substrate);
+
+  // Prints: the first fills the window, the rest fit inside it.
+  const photoMaterials: MeshStandardMaterial[] = [];
+  const photoAspects: number[] = [];
+  const printEdge = own(new MeshStandardMaterial({ color: 0xfbf8f2, roughness: 0.7 }));
+  const printMeshes = prints.map((print, j) => {
+    const aspect = print.width / Math.max(1, print.height);
+    let w = PHOTO_W;
+    let h = PHOTO_H;
+    if (j > 0) {
+      if (aspect > PHOTO_W / PHOTO_H) h = PHOTO_W / aspect;
+      else w = PHOTO_H * aspect;
+    }
+    const face = own(new MeshStandardMaterial({ color: color(palette.control), roughness: 0.62 }));
+    photoMaterials.push(face);
+    photoAspects.push(w / h);
+    const mesh = new Mesh(own(new BoxGeometry(w, h, 0.006)), [printEdge, printEdge, printEdge, printEdge, face, printEdge]);
+    mesh.position.set(0.12, CARD_H / 2 + 0.02, 0);
+    group.add(mesh);
+    return mesh;
+  });
+
+  // Frosted cover; clarity sweeps it clear from the top down.
+  const clarity: IUniform<number> = { value: 0 };
+  const coverCanvas = document.createElement("canvas");
+  coverCanvas.width = 1000;
+  coverCanvas.height = 740;
+  const coverMap = own(makeTexture(coverCanvas, renderer));
+  const coverMaterial = own(
+    new MeshStandardMaterial({ map: coverMap, transparent: true, roughness: 0.32, depthWrite: false })
+  );
+  coverMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.uClarity = clarity;
+    shader.fragmentShader = `uniform float uClarity;\n${shader.fragmentShader}`.replace(
+      "#include <color_fragment>",
+      `#include <color_fragment>
+      float sweep = uClarity * 1.3 - 0.15;
+      float frost = smoothstep(sweep - 0.12, sweep + 0.12, 1.0 - vMapUv.y);
+      diffuseColor.a *= mix(0.05, 0.88, frost);`
+    );
+  };
+  coverMaterial.customProgramCacheKey = () => "album-archive-cover";
+  const cover = new Group();
+  const coverPlane = new Mesh(own(new PlaneGeometry(CARD_W - 0.06, CARD_H - 0.06)), coverMaterial);
+  coverPlane.position.y = CARD_H / 2;
+  coverPlane.renderOrder = 2;
+  const labelCanvas = document.createElement("canvas");
+  labelCanvas.width = 512;
+  labelCanvas.height = 220;
+  const labelMap = own(makeTexture(labelCanvas, renderer));
+  const label = new Mesh(
+    own(new PlaneGeometry(1.1, 0.473)),
+    own(new MeshStandardMaterial({ map: labelMap, roughness: 0.55 }))
+  );
+  // The reference prints its label top left; here it sits in the bottom
+  // corner so it covers as little of the photograph as possible.
+  label.position.set(-CARD_W / 2 + 0.92, 0.62, 0.004);
+  label.renderOrder = 3;
+  cover.add(coverPlane, label);
+  group.add(cover);
+
+  // Fasteners at the four corners.
+  const screws = new Group();
+  const screwMaterial = own(new MeshStandardMaterial({ color: color(palette.subtle), roughness: 0.3, metalness: 0.6 }));
+  const screwGeometry = own(new CylinderGeometry(0.075, 0.075, 0.03, 16));
+  for (const [x, y] of [
+    [-CARD_W / 2 + 0.22, 0.22],
+    [CARD_W / 2 - 0.22, 0.22],
+    [-CARD_W / 2 + 0.22, CARD_H - 0.22],
+    [CARD_W / 2 - 0.22, CARD_H - 0.22]
+  ]) {
+    const screw = new Mesh(screwGeometry, screwMaterial);
+    screw.rotation.x = Math.PI / 2;
+    screw.position.set(x, y, 0);
+    screws.add(screw);
+  }
+  group.add(screws);
+
+  // Engraved circuit lines and the hatch block, as on the reference cover.
+  const c = coverCanvas.getContext("2d") as CanvasRenderingContext2D;
+  const w = coverCanvas.width;
+  const h = coverCanvas.height;
+  c.fillStyle = "#f7f4ef";
+  c.fillRect(0, 0, w, h);
+  c.strokeStyle = "rgba(90, 80, 68, 0.35)";
+  c.lineWidth = 2;
+  c.beginPath();
+  c.moveTo(70, 210);
+  c.lineTo(70, h - 140);
+  c.lineTo(120, h - 90);
+  c.lineTo(w - 330, h - 90);
+  c.moveTo(w - 70, 120);
+  c.lineTo(w - 70, h - 200);
+  c.lineTo(w - 110, h - 160);
+  c.stroke();
+  c.fillStyle = "rgba(90, 80, 68, 0.4)";
+  for (let i = 0; i < 12; i++) {
+    c.save();
+    c.translate(w - 300 + i * 13, h - 70);
+    c.rotate(-0.35);
+    c.fillRect(0, -18, 3, 36);
+    c.restore();
+  }
+
+  const l = labelCanvas.getContext("2d") as CanvasRenderingContext2D;
+  l.fillStyle = "#f9f7f2";
+  l.fillRect(0, 0, 512, 220);
+  l.strokeStyle = "rgba(30, 28, 24, 0.25)";
+  l.strokeRect(1, 1, 510, 218);
+  l.fillStyle = "#1c1a16";
+  l.font = `600 30px ${palette.fontSans}`;
+  l.fillText(fitText(l, archiveLabel.toUpperCase(), 330), 26, 52);
+  l.fillRect(390, 26, 90, 12);
+  l.font = `600 18px ${palette.fontSans}`;
+  l.fillText("INFO", 420, 64);
+  l.font = `500 70px ${palette.fontSans}`;
+  l.fillText(fileCode(file.number), 24, 160);
+  l.font = `500 22px ${palette.fontSans}`;
+  l.fillStyle = "#5a5349";
+  l.fillText(fitText(l, file.title, 380), 26, 200);
+  // An aperture mark where the reference prints its infinity sign.
+  l.strokeStyle = "#1c1a16";
+  l.lineWidth = 5;
+  for (const r of [24, 9]) {
+    l.beginPath();
+    l.arc(452, 136, r, 0, Math.PI * 2);
+    l.stroke();
+  }
+
+  function layout(explode: number, printOffsets?: number[]) {
+    const n = printMeshes.length;
+    const at = (assembled: number, exploded: number) => MathUtils.lerp(assembled, exploded, explode);
+    const printTop = front + 0.024 + n * 0.004;
+    const explodedPrintTop = 0.3 + Math.max(0, n - 1) * 0.42;
+    carrier.position.z = at(0, -1.5);
+    substrate.position.z = at(front + 0.01, -0.55);
+    printMeshes.forEach((mesh, j) => {
+      const depth = n - 1 - j;
+      mesh.position.z = printOffsets?.[j] ?? at(front + 0.024 + depth * 0.004, 0.3 + depth * 0.42);
+    });
+    cover.position.z = at(printTop + 0.012, explodedPrintTop + 0.95);
+    screws.position.z = at(printTop + 0.028, explodedPrintTop + 1.85);
+  }
+  layout(0);
+
+  return {
+    group,
+    parts: { screws, cover, prints: printMeshes, substrate, carrier },
+    clarity,
+    setPhoto(index, image) {
+      const material = photoMaterials[index];
+      if (!material) return;
+      material.map?.dispose();
+      material.map = photoTexture(image, renderer, photoAspects[index]);
+      material.color.set(0xffffff);
+      material.needsUpdate = true;
+    },
+    layout,
+    dispose() {
+      for (const material of photoMaterials) material.map?.dispose();
+      for (const thing of owned) thing.dispose();
+    }
+  };
+}
+
+export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOptions): ArchiveEngine {
   const { files, columns } = options;
   let palette = options.palette;
-  let compact = options.compact;
-  const reducedMotion = options.reducedMotion;
+  const reduced = options.reducedMotion;
+  const lowPower = options.lowPower;
 
-  const renderer = new WebGLRenderer({
-    canvas,
-    antialias: true,
-    powerPreference: "high-performance"
-  });
+  const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
   renderer.outputColorSpace = SRGBColorSpace;
-  const shadows = !compact;
-  renderer.shadowMap.enabled = shadows;
+  renderer.toneMapping = ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = !lowPower;
   renderer.shadowMap.type = PCFShadowMap;
+
+  // Reference studio lighting: a room environment plus warm key, cool fill
+  // and a hemisphere, generated for this renderer.
+  function addLighting(scene: Scene, shadows: boolean) {
+    const pmrem = new PMREMGenerator(renderer);
+    const room = new RoomEnvironment();
+    const environment = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
+    pmrem.dispose();
+    scene.environment = environment;
+    scene.environmentIntensity = 0.48;
+    const hemi = new HemisphereLight("#fffaf5", "#b4a18c", 0.65);
+    const key = new DirectionalLight("#fff7ed", 1.4);
+    key.position.set(-6, 14, -5);
+    const fill = new DirectionalLight("#ffffff", 0.6);
+    fill.position.set(7, 8, -10);
+    if (shadows) {
+      key.castShadow = true;
+      key.shadow.mapSize.set(2048, 2048);
+      key.shadow.normalBias = 0.035;
+      key.shadow.bias = -0.0003;
+      Object.assign(key.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 80 });
+    }
+    scene.add(hemi, key, key.target, fill);
+    return { environment, hemi, key };
+  }
 
   // ---------------------------------------------------------------- field --
   const field = new Scene();
-  field.fog = new Fog(0xffffff, 20, 46);
-  const fieldCamera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 120);
+  field.fog = new Fog(0xeae5e1, 22, 47);
+  const camera = new PerspectiveCamera(3, 16 / 9, 5, 300);
+  const cameraAim = ARCHIVE_AIM.clone();
+  camera.position.copy(ARCHIVE_AIM).addScaledVector(ARCHIVE_DIRECTION, ARCHIVE_DISTANCE);
+  camera.lookAt(cameraAim);
+  const fieldLights = addLighting(field, !lowPower);
 
-  const hemi = new HemisphereLight(0xffffff, 0xffffff, 1.9);
-  field.add(hemi);
-  const sun = new DirectionalLight(0xffffff, 2.1);
-  sun.castShadow = shadows;
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.bias = -0.0006;
-  sun.shadow.normalBias = 0.02;
-  sun.shadow.radius = 4;
-  Object.assign(sun.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16, near: 1, far: 60 });
-  field.add(sun, sun.target);
-  const sunOffset = new Vector3(-12, 16, 4);
+  const cardGeo = cardGeometry();
+  const cardMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0 });
+  const MAX_INSTANCES = 2600;
+  const cards = new InstancedMesh(cardGeo, cardMaterial, MAX_INSTANCES);
+  cards.castShadow = !lowPower;
+  cards.receiveShadow = !lowPower;
+  cards.frustumCulled = false;
+  const screwGeo = new CylinderGeometry(0.07, 0.07, 0.03, 12);
+  screwGeo.rotateX(Math.PI / 2);
+  const screwMaterial = new MeshStandardMaterial({ roughness: 0.35, metalness: 0.5 });
+  const cardScrews = new InstancedMesh(screwGeo, screwMaterial, MAX_INSTANCES);
+  cardScrews.frustumCulled = false;
+  field.add(cards, cardScrews);
+  let instanceCells: Cell[] = [];
 
-  const groundMaterial = new MeshStandardMaterial({ roughness: 1 });
-  const ground = new Mesh(new PlaneGeometry(400, 400), groundMaterial);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = shadows;
-  field.add(ground);
-
-  // Bars run along X in rows along Z; panels stand in the gaps between rows.
+  // Files lie on an endless grid: lanes wrap over photographers and rows wrap
+  // over that photographer's albums.
   const columnCount = Math.max(1, columns.length);
-  const deepest = Math.max(1, ...columns.map((c) => c.length));
-  const margin = compact ? 10 : 15;
-  const xMin = -margin;
-  const xMax = (columnCount - 1) * COLUMN_SPACING + margin;
-  const zMin = -margin;
-  const zMax = (deepest - 1) * FILE_SPACING + margin;
-  const random = seeded(20261003);
-  const bars: { x: number; z: number; length: number; height: number }[] = [];
-  for (let z = zMin; z <= zMax; z += ROW_SPACING) {
-    let x = xMin + random() * 2;
-    while (x < xMax) {
-      const length = 1.4 + random() * 5.2;
-      // Smooth terraces with a little per-bar noise, like a filled drawer.
-      const terrace = 0.5 + 0.22 * Math.sin(x * 0.21 + z * 0.13) + 0.16 * Math.sin(z * 0.37 - x * 0.08);
-      const height = MathUtils.clamp(terrace + (random() - 0.5) * 0.22, 0.22, 0.95);
-      bars.push({ x: x + length / 2, z, length, height });
-      x += length + 0.06 + random() * 0.22;
-    }
-  }
-
-  const barMaterial = new MeshStandardMaterial({ roughness: 0.82 });
-  const barMesh = new InstancedMesh(new BoxGeometry(1, 1, 1), barMaterial, bars.length);
-  const dotMaterial = new MeshStandardMaterial({ roughness: 0.4, metalness: 0.2 });
-  const dotGeometry = new CylinderGeometry(0.038, 0.038, 0.02, 10);
-  const dotMesh = new InstancedMesh(dotGeometry, dotMaterial, bars.length);
-  const dummy = new Object3D();
-  let dotCount = 0;
-  bars.forEach((bar, i) => {
-    dummy.position.set(bar.x, bar.height / 2, bar.z);
-    dummy.rotation.set(0, 0, 0);
-    dummy.scale.set(bar.length, bar.height, BAR_DEPTH);
-    dummy.updateMatrix();
-    barMesh.setMatrixAt(i, dummy.matrix);
-    if (bar.length > 2.2) {
-      dummy.position.set(bar.x + bar.length / 2 - 0.3, bar.height + 0.01, bar.z);
-      dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      dotMesh.setMatrixAt(dotCount++, dummy.matrix);
-    }
-  });
-  dotMesh.count = dotCount;
-  barMesh.castShadow = shadows;
-  barMesh.receiveShadow = shadows;
-  field.add(barMesh, dotMesh);
-
-  // One upright panel per album. Its front face is drawn on demand.
-  // Two material slots instead of BoxGeometry's six: everything but the
-  // front face shares one, which halves the draw calls per panel.
-  const panelGeometry = new BoxGeometry(PANEL_W, PANEL_H, PANEL_D);
-  panelGeometry.clearGroups();
-  panelGeometry.addGroup(0, 24, 0);
-  panelGeometry.addGroup(24, 6, 1);
-  panelGeometry.addGroup(30, 6, 0);
-  const panelEdge = new MeshStandardMaterial({ roughness: 0.55 });
-  const restY = (rank: number) => {
-    // Top edge height for a panel `rank` files away from the selection.
-    const top = rank === 0 ? PANEL_H + 1.7 : rank === 1 ? 1.15 : rank === 2 ? 0.9 : 0.68;
-    return top - PANEL_H / 2;
+  const fileAt = ({ lane, row }: Cell) => {
+    const list = columns[wrap(lane, columnCount)] ?? [];
+    return list.length ? list[wrap(row - ROW_ORIGIN, list.length)] : 0;
   };
-  const panels: Panel[] = files.map((file, index) => {
-    const column = columns[file.column] ?? [];
-    const slot = column.indexOf(index);
-    const mesh = new Mesh(panelGeometry, [panelEdge, panelEdge]);
-    const x = file.column * COLUMN_SPACING;
-    const z = slot * FILE_SPACING + PANEL_Z_OFFSET;
-    mesh.position.set(x, restY(9), z);
-    mesh.castShadow = shadows;
-    mesh.receiveShadow = shadows;
-    mesh.userData.fileIndex = index;
-    field.add(mesh);
-    return { index, mesh, x, z, y: damped(restY(9)), tilt: damped(0), face: null, lastUsed: 0 };
-  });
+  const homeCell = (index: number): Cell => {
+    const file = files[index];
+    const list = columns[file?.column ?? 0] ?? [];
+    return { lane: file?.column ?? 0, row: ROW_ORIGIN + Math.max(0, list.indexOf(index)) };
+  };
 
-  // ---------------------------------------------------------------- study --
-  const study = new Scene();
-  const studyCamera = new PerspectiveCamera(32, 1, 0.1, 100);
-  const studyHome = new Vector3(2.6, 1.2, 10.5);
-  const studyExplodedHome = new Vector3(9.6, 3.6, 11);
-  studyCamera.position.copy(studyHome);
-  const studyHemi = new HemisphereLight(0xffffff, 0xffffff, 2);
-  const studyKey = new DirectionalLight(0xffffff, 1.8);
-  studyKey.position.set(-4, 6, 8);
-  const studyRim = new DirectionalLight(0xffffff, 0.8);
-  studyRim.position.set(6, 2, -6);
-  study.add(studyHemi, studyKey, studyRim);
-  const studyGroup = new Group();
-  study.add(studyGroup);
+  let selectedIndex = -1;
+  let selectedCell: Cell = homeCell(0);
+  let pendingCell: Cell | null = null;
+  const lift = spring(0);
+  const shoulder = spring(selectedCell.row);
+  const laneFocus = spring(selectedCell.lane);
+  const trackX = spring(selectedCell.lane * COLUMN_SPACING);
+  const rail = spring(SLOT_Z - selectedCell.row * ROW_SPACING);
+  const rotation = spring(0);
+  let targetRotation = 0;
+  const outgoing = new Map<string, { cell: Cell; lift: Spring }>();
+  const hoverLifts = new Map<string, number>();
+  let hoverCell: Cell | null = null;
+  let pulses: { row: number; lane: number; time: number }[] = [];
+  let pulseGain = 1;
+  let idleGain = 0;
+  let lastInteraction = 0;
+  let detailTarget = false;
+  let detail = 0;
+  let clarityTarget = 0;
+  let clock = performance.now() / 1000;
 
-  const controls = new OrbitControls(studyCamera, canvas);
-  controls.enabled = false;
-  controls.enableDamping = !reducedMotion;
-  controls.dampingFactor = 0.08;
-  controls.minDistance = 4;
-  controls.maxDistance = 22;
-  controls.keyPanSpeed = 14;
-
-  let boardMesh: Mesh | null = null;
-  let boardTextures: Texture[] = [];
-  let boardZ = damped(0);
-  let plates: PrintPlate[] = [];
-  let studyFile = -1;
-  let exploded = false;
-  let cameraGoal: Vector3 | null = null;
-  let studyToken = 0;
-
-  // ------------------------------------------------------------- palette --
-  const toColor = (css: string) => new Color().setStyle(css, SRGBColorSpace);
-
-  function applyPalette() {
-    const page = toColor(palette.page);
-    renderer.setClearColor(page);
-    field.background = page;
-    (field.fog as Fog).color.copy(page);
-    study.background = page;
-    groundMaterial.color.copy(page).offsetHSL(0, 0, -0.025);
-    barMaterial.color.copy(toColor(palette.surface));
-    panelEdge.color.copy(toColor(palette.raised));
-    dotMaterial.color.copy(toColor(palette.subtle)).lerp(toColor(palette.surface), 0.35);
-    const sky = toColor(palette.raised).lerp(new Color(0xffffff), 0.6);
-    hemi.color.copy(sky);
-    hemi.groundColor.copy(page).offsetHSL(0, 0, -0.12);
-    studyHemi.color.copy(sky);
-    studyHemi.groundColor.copy(page).offsetHSL(0, 0, -0.1);
-    for (const panel of panels) if (panel.face) drawFace(panel);
-    if (studyFile >= 0) rebuildBoardTexture();
+  // The selected card is a full cassette; every other card is an instance.
+  let selected: Cassette | null = null;
+  let selectedToken = 0;
+  let sharpenSelected: (() => void) | null = null;
+  function buildSelected(index: number) {
+    selected?.group.removeFromParent();
+    selected?.dispose();
+    const file = files[index];
+    const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, cardGeo, file, file.prints.slice(0, 1));
+    cassette.parts.carrier.castShadow = !lowPower;
+    field.add(cassette.group);
+    selected = cassette;
+    const token = ++selectedToken;
+    const cover = file.prints[0];
+    sharpenSelected = null;
+    if (!cover) return;
+    const show = (image: HTMLImageElement) => {
+      if (token !== selectedToken) return;
+      cassette.setPhoto(0, image);
+      invalidate();
+    };
+    const sharpen = () => loadImage(cover.med).then(show).catch(() => undefined);
+    // The larger rendition only matters once the card is raised.
+    loadImage(cover.thumb)
+      .then((image) => {
+        show(image);
+        if (detailTarget) sharpen();
+        else if (token === selectedToken) sharpenSelected = sharpen;
+      })
+      .catch(() => undefined);
   }
 
-  // ---------------------------------------------------------- panel faces --
-  function drawFace(panel: Panel) {
-    const face = panel.face;
-    if (!face) return;
-    const file = files[panel.index];
-    const ctx = face.texture.image.getContext("2d") as CanvasRenderingContext2D;
-    const w = FACE_W;
-    const h = FACE_H;
-    ctx.fillStyle = palette.raised;
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = palette.accent;
-    ctx.globalAlpha = 0.9;
-    ctx.fillRect(0, 0, 12, h);
-    ctx.globalAlpha = 1;
-
-    const px = 36;
-    const py = 30;
-    const pw = w - px - 26;
-    const ph = Math.round(h * 0.66);
-    ctx.fillStyle = palette.control;
-    ctx.fillRect(px, py, pw, ph);
-    if (face.image) drawCover(ctx, face.image, px, py, pw, ph);
-    ctx.strokeStyle = palette.subtle;
-    ctx.globalAlpha = 0.35;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
-    ctx.globalAlpha = 1;
-
-    const labelTop = py + ph + 26;
-    ctx.fillStyle = palette.subtle;
-    ctx.font = `600 11px ${palette.fontMeta}`;
-    ctx.fillText(fitText(ctx, options.archiveLabel.toUpperCase(), pw), px, labelTop);
-    ctx.fillStyle = palette.fg;
-    ctx.font = `700 34px ${palette.fontMeta}`;
-    ctx.fillText(fileCode(file.number), px, labelTop + 40);
-    ctx.font = `600 17px ${palette.fontSans}`;
-    ctx.fillText(fitText(ctx, file.title, pw), px, labelTop + 70);
-    ctx.fillStyle = palette.subtle;
-    ctx.font = `500 13px ${palette.fontSans}`;
-    ctx.fillText(fitText(ctx, file.owner, pw), px, labelTop + 92);
-
-    // Ruler ticks and corner screws.
-    ctx.globalAlpha = 0.45;
-    for (let i = 0; i < 14; i++) ctx.fillRect(w - 26 - i * 6, h - 30, 2, i % 5 === 0 ? 12 : 7);
-    for (const [cx, cy] of [[24, 16], [w - 14, 16], [24, h - 14], [w - 14, h - 14]]) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-      ctx.fill();
+  function select(index: number, move?: EngineMove) {
+    if (!files[index]) return;
+    lastInteraction = clock;
+    let cell: Cell;
+    const nextRow = { lane: selectedCell.lane, row: selectedCell.row + (move?.direction ?? 0) };
+    if (pendingCell && fileAt(pendingCell) === index) cell = pendingCell;
+    else if (move?.axis === "file" && fileAt(nextRow) === index) cell = nextRow;
+    else {
+      const home = homeCell(index);
+      const period = Math.max(1, (columns[files[index].column] ?? [index]).length);
+      const lane = move?.axis === "column" && wrap(selectedCell.lane + move.direction, columnCount) === home.lane
+        ? selectedCell.lane + move.direction
+        : nearestOccurrence(home.lane, selectedCell.lane, columnCount);
+      cell = { lane, row: nearestOccurrence(home.row, selectedCell.row, period) };
     }
-    ctx.globalAlpha = 1;
-    face.texture.needsUpdate = true;
-  }
-
-  let clock = 0;
-  function ensureFace(panel: Panel) {
-    panel.lastUsed = ++clock;
-    if (panel.face) return;
-    const surface = document.createElement("canvas");
-    surface.width = FACE_W;
-    surface.height = FACE_H;
-    const texture = new CanvasTexture(surface);
-    texture.colorSpace = SRGBColorSpace;
-    texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-    const material = new MeshStandardMaterial({ map: texture, roughness: 0.62 });
-    panel.face = { texture, material, image: null };
-    (panel.mesh.material as Material[])[1] = material;
-    drawFace(panel);
-    const cover = files[panel.index].prints[0];
-    if (cover) {
-      loadImage(cover.thumb)
-        .then((image) => {
-          if (!panel.face) return;
-          panel.face.image = image;
-          drawFace(panel);
-          invalidate();
-        })
-        .catch(() => undefined);
+    pendingCell = null;
+    const first = selectedIndex < 0;
+    const changed = cell.lane !== selectedCell.lane || cell.row !== selectedCell.row;
+    if (changed) {
+      if (lift.value > 1e-3) outgoing.set(cellKey(selectedCell), { cell: selectedCell, lift: { ...lift } });
+      const back = outgoing.get(cellKey(cell));
+      outgoing.delete(cellKey(cell));
+      lift.value = back?.lift.value ?? 0;
+      lift.velocity = back?.lift.velocity ?? 0;
+      rotation.value = rotation.velocity = targetRotation = 0;
+      if (!reduced) {
+        pulses.push({ ...cell, time: clock });
+        pulses = pulses.slice(-6);
+      }
     }
-    // Keep GPU memory flat on long archives: forget the least recent faces.
-    const live = panels.filter((p) => p.face);
-    if (live.length > FACE_CACHE) {
-      live.sort((a, b) => a.lastUsed - b.lastUsed);
-      for (const stale of live.slice(0, live.length - FACE_CACHE)) releaseFace(stale);
+    selectedCell = cell;
+    if (first) {
+      // Arrive settled: no sweep across the archive on page load.
+      shoulder.value = cell.row;
+      laneFocus.value = cell.lane;
+      trackX.value = cell.lane * COLUMN_SPACING;
+      rail.value = SLOT_Z - cell.row * ROW_SPACING;
     }
-  }
-
-  function releaseFace(panel: Panel) {
-    if (!panel.face) return;
-    panel.face.texture.dispose();
-    panel.face.material.dispose();
-    panel.face = null;
-    (panel.mesh.material as Material[])[1] = panelEdge;
-  }
-
-  // ------------------------------------------------------------ selection --
-  let selected = -1;
-  const cameraTarget = { x: damped(0), y: damped(0), z: damped(0) };
-  let mode: "field" | "study" = "field";
-
-  function frameOffset(): { x: number; y: number } {
-    // Where the selected panel sits on screen, in NDC: left of the info
-    // column on wide screens, above the info sheet on phones.
-    return compact ? { x: 0, y: 0.3 } : { x: -0.32, y: 0.02 };
-  }
-
-  const tmpRight = new Vector3();
-  const tmpUp = new Vector3();
-  function aimAt(panel: Panel) {
-    const center = new Vector3(panel.x, restY(0), panel.z);
-    const offset = frameOffset();
-    fieldCamera.updateMatrixWorld();
-    tmpRight.setFromMatrixColumn(fieldCamera.matrixWorld, 0);
-    tmpUp.setFromMatrixColumn(fieldCamera.matrixWorld, 1);
-    const halfW = (fieldCamera.right - fieldCamera.left) / 2;
-    const halfH = (fieldCamera.top - fieldCamera.bottom) / 2;
-    center.addScaledVector(tmpRight, -offset.x * halfW);
-    center.addScaledVector(tmpUp, -offset.y * halfH);
-    cameraTarget.x.goal = center.x;
-    cameraTarget.y.goal = center.y;
-    cameraTarget.z.goal = center.z;
-  }
-
-  function select(fileIndex: number) {
-    const panel = panels[fileIndex];
-    if (!panel) return;
-    const firstSelection = selected < 0;
-    selected = fileIndex;
-    const file = files[fileIndex];
-    const column = columns[file.column] ?? [];
-    const slot = column.indexOf(fileIndex);
-    for (const other of panels) {
-      const otherFile = files[other.index];
-      const rank =
-        otherFile.column === file.column
-          ? Math.abs((columns[otherFile.column] ?? []).indexOf(other.index) - slot)
-          : 9;
-      other.y.goal = restY(rank);
-      other.tilt.goal = rank === 0 ? PANEL_TILT : 0;
-      if (rank <= 2) ensureFace(other);
+    if (changed || index !== selectedIndex) {
+      selectedIndex = index;
+      buildSelected(index);
     }
-    aimAt(panel);
-    if (firstSelection || reducedMotion) snapField();
     invalidate();
   }
 
-  function snapField() {
-    for (const p of panels) {
-      p.y.value = p.y.goal;
-      p.tilt.value = p.tilt.goal;
+  function setDetail(next: boolean) {
+    detailTarget = next;
+    lastInteraction = clock;
+    if (next) {
+      sharpenSelected?.();
+      sharpenSelected = null;
+    } else {
+      targetRotation = 0;
+      clarityTarget = 0;
     }
-    cameraTarget.x.value = cameraTarget.x.goal;
-    cameraTarget.y.value = cameraTarget.y.goal;
-    cameraTarget.z.value = cameraTarget.z.goal;
+    invalidate();
+  }
+
+  // -------------------------------------------------------------- framing --
+  let width = 1;
+  let height = 1;
+
+  /** The reference's viewport framing for desktop, compact and portrait. */
+  function framing(d: number) {
+    const aspect = width / height;
+    const portrait = aspect < 1.05;
+    const compact = !portrait && width < 1100;
+    // Wide screens keep the raised card clear of the text on either side,
+    // so it is framed a little smaller and nearer the middle than the
+    // reference's 5.9 span at 550 x 560.
+    const detailSpan = portrait || compact ? DETAIL_SPAN : DESKTOP_DETAIL_SPAN;
+    const baseSpan = ARCHIVE_SPAN + (detailSpan - ARCHIVE_SPAN) * d;
+    const portraitDetailSpan = Math.max(6.3 / aspect, (3.7 * height) / Math.max(100, 0.54 * height - 156));
+    const span = portrait
+      ? Math.max(baseSpan, 8.4 / aspect + (portraitDetailSpan - 8.4 / aspect) * d)
+      : Math.max(baseSpan, (baseSpan * (16 / 9)) / aspect);
+    return {
+      span,
+      portrait,
+      previewY: portrait ? 0.34 : 0.5,
+      detailX: portrait ? 0.5 : compact ? 0.27 : 0.375,
+      detailY: portrait ? 0.27 + 34 / height : compact ? 0.49 : 0.535
+    };
   }
 
   // ---------------------------------------------------------------- study --
-  function rebuildBoardTexture() {
-    if (!boardMesh || studyFile < 0) return;
-    for (const t of boardTextures) t.dispose();
-    const file = files[studyFile];
-    const size = 512;
-    const make = (draw: (ctx: CanvasRenderingContext2D) => void) => {
-      const surface = document.createElement("canvas");
-      surface.width = size;
-      surface.height = size;
-      const ctx = surface.getContext("2d") as CanvasRenderingContext2D;
-      ctx.fillStyle = palette.raised;
-      ctx.fillRect(0, 0, size, size);
-      ctx.fillStyle = palette.accent;
-      ctx.fillRect(0, 0, 16, size);
-      draw(ctx);
-      const texture = new CanvasTexture(surface);
-      texture.colorSpace = SRGBColorSpace;
-      texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-      return texture;
-    };
-    const front = make((ctx) => {
-      ctx.fillStyle = palette.subtle;
-      ctx.globalAlpha = 0.5;
-      for (let i = 0; i < 22; i++) ctx.fillRect(size - 40 - i * 7, size - 34, 2, i % 5 === 0 ? 14 : 8);
-      ctx.globalAlpha = 1;
-      ctx.font = `700 22px ${palette.fontMeta}`;
-      ctx.fillText(fileCode(file.number), 40, 52);
-    });
-    const back = make((ctx) => {
-      const x = 52;
-      ctx.fillStyle = palette.subtle;
-      ctx.font = `600 15px ${palette.fontMeta}`;
-      ctx.fillText(fitText(ctx, options.archiveLabel.toUpperCase(), size - 100), x, 74);
-      ctx.fillStyle = palette.fg;
-      ctx.font = `700 64px ${palette.fontMeta}`;
-      ctx.fillText(fileCode(file.number), x, 160);
-      ctx.font = `600 30px ${palette.fontSans}`;
-      ctx.fillText(fitText(ctx, file.title, size - 100), x, 228);
-      ctx.fillStyle = palette.subtle;
-      ctx.font = `500 22px ${palette.fontSans}`;
-      ctx.fillText(fitText(ctx, file.owner, size - 100), x, 268);
-      ctx.fillText(fitText(ctx, file.meta, size - 100), x, 302);
-      ctx.globalAlpha = 0.35;
-      ctx.fillRect(x, 340, size - 100, 1);
-      ctx.globalAlpha = 1;
-    });
-    // The back is seen mirrored from behind; flip it so it reads.
-    back.repeat.x = -1;
-    back.offset.x = 1;
-    boardTextures = [front, back];
-    const materials = boardMesh.material as MeshStandardMaterial[];
-    materials[4].map = front;
-    materials[5].map = back;
-    materials[4].needsUpdate = true;
-    materials[5].needsUpdate = true;
-  }
+  const study = new Scene();
+  study.fog = new Fog(0xeae5e1, 10, 30);
+  const studyCamera = new PerspectiveCamera(34, 1, 0.3, 120);
+  studyCamera.position.copy(STUDY_HOME);
+  const studyLights = addLighting(study, false);
+  const controls = new OrbitControls(studyCamera, canvas);
+  controls.enabled = false;
+  controls.enableDamping = !reduced;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 5;
+  controls.maxDistance = 28;
+  controls.keyPanSpeed = 14;
+  let studyCassette: Cassette | null = null;
+  let studyFile = -1;
+  let studyToken = 0;
+  let sharpeners: (() => void)[] = [];
+  const explode = spring(0);
+  let exploded = false;
+  let studyClear = true;
+  let cameraGoal: Vector3 | null = null;
+  let mode: "field" | "study" = "field";
 
-  function clearStudy() {
-    studyToken += 1;
-    for (const plate of plates) {
-      plate.texture?.dispose();
-      for (const m of plate.mesh.material as Material[]) m.dispose();
-      plate.mesh.geometry.dispose();
-    }
-    plates = [];
-    if (boardMesh) {
-      for (const m of boardMesh.material as Material[]) m.dispose();
-      boardMesh.geometry.dispose();
-      boardMesh = null;
-    }
-    for (const t of boardTextures) t.dispose();
-    boardTextures = [];
-    studyGroup.clear();
-    studyFile = -1;
-  }
-
-  function layoutPlates(now: number) {
-    const n = plates.length;
-    const spread = (n - 1) * EXPLODE_GAP;
-    boardZ.goal = exploded ? -spread / 2 - 0.55 : 0;
-    plates.forEach((plate, j) => {
-      const depth = n - 1 - j;
-      if (exploded) {
-        plate.pos.z.goal = depth * EXPLODE_GAP - spread / 2 + 0.2;
-        plate.pos.x.goal = (j - (n - 1) / 2) * -0.16;
-        plate.pos.y.goal = Math.sin(j * 1.3) * 0.12;
-        plate.pos.ry.goal = 0;
-      } else {
-        plate.pos.z.goal = 0.1 + depth * STACK_GAP;
-        plate.pos.x.goal = 0;
-        plate.pos.y.goal = 0;
-        plate.pos.ry.goal = 0;
-      }
-      // Stagger so the stack peels from the front when opening and settles
-      // from the back when closing.
-      plate.delayUntil = reducedMotion ? 0 : now + (exploded ? j : depth) * 45;
-    });
-  }
-
-  function openObject(fileIndex: number) {
-    const file = files[fileIndex];
-    if (!file) return;
-    clearStudy();
-    const token = studyToken;
-    studyFile = fileIndex;
-    exploded = false;
-    mode = "study";
-
-    const boardMaterials = [0, 1, 2, 3, 4, 5].map(
-      (i) =>
-        new MeshStandardMaterial({
-          color: i >= 4 ? 0xffffff : toColor(palette.raised),
-          roughness: 0.5
-        })
-    );
-    boardMesh = new Mesh(new BoxGeometry(BOARD, BOARD, 0.14), boardMaterials);
-    studyGroup.add(boardMesh);
-    rebuildBoardTexture();
-    boardZ = damped(0);
-
-    plates = file.prints.map((print, j) => {
-      const aspect = print.width / Math.max(1, print.height);
-      const w = aspect >= 1 ? PRINT_MAX : PRINT_MAX * aspect;
-      const h = aspect >= 1 ? PRINT_MAX / aspect : PRINT_MAX;
-      const edge = new MeshStandardMaterial({ color: toColor(palette.raised), roughness: 0.7 });
-      const face = new MeshStandardMaterial({ color: toColor(palette.control), roughness: 0.55 });
-      const back = new MeshStandardMaterial({ color: toColor(palette.surface), roughness: 0.8 });
-      const mesh = new Mesh(new BoxGeometry(w, h, 0.022), [edge, edge, edge, edge, face, back]);
-      const depth = file.prints.length - 1 - j;
-      // A hand-stacked pile is never perfectly square.
-      mesh.rotation.z = j === 0 ? 0 : (Math.sin(j * 12.9898) * 0.5) * 0.035;
-      studyGroup.add(mesh);
-      const plate: PrintPlate = {
-        mesh,
-        pos: { x: damped(0), y: damped(0), z: damped(0.1 + depth * STACK_GAP), ry: damped(0) },
-        delayUntil: 0,
-        texture: null,
-        sharpen: null
-      };
+  function buildStudy(index: number) {
+    studyCassette?.group.removeFromParent();
+    studyCassette?.dispose();
+    const file = files[index];
+    const token = ++studyToken;
+    const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, cardGeo, file, file.prints);
+    cassette.group.position.y = -CARD_H / 2;
+    cassette.clarity.value = studyClear ? 1 : 0;
+    study.add(cassette.group);
+    studyCassette = cassette;
+    sharpeners = [];
+    file.prints.forEach((print, j) => {
       const show = (image: HTMLImageElement) => {
         if (token !== studyToken) return;
-        // Always a fresh texture: GPU storage is immutable once uploaded and
-        // cannot grow from the thumbnail to the larger rendition.
-        const texture = new Texture(image);
-        texture.colorSpace = SRGBColorSpace;
-        texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-        texture.needsUpdate = true;
-        plate.texture?.dispose();
-        plate.texture = texture;
-        face.color.set(0xffffff);
-        face.map = texture;
-        face.needsUpdate = true;
+        cassette.setPhoto(j, image);
         invalidate();
       };
-      // Only the front print is fully visible while the stack is closed, so
-      // the rest start as thumbnails and sharpen when the stack is opened.
-      plate.sharpen = () => {
-        plate.sharpen = null;
-        loadImage(print.med).then(show).catch(() => undefined);
-      };
-      if (j === 0) plate.sharpen();
-      else loadImage(print.thumb).then(show).catch(() => undefined);
-      return plate;
+      // Only the front print is fully visible while assembled; the others
+      // start as thumbnails and sharpen when the cassette is taken apart.
+      if (j === 0 || exploded) loadImage(print.med).then(show).catch(() => undefined);
+      else {
+        loadImage(print.thumb).then(show).catch(() => undefined);
+        sharpeners.push(() => loadImage(print.med).then(show).catch(() => undefined));
+      }
     });
-    layoutPlates(0);
+  }
 
-    studyCamera.position.copy(studyHome);
+  function openStudy(index: number) {
+    if (!files[index]) return;
+    studyFile = index;
+    exploded = false;
+    explode.value = explode.velocity = 0;
+    buildStudy(index);
+    mode = "study";
+    studyCamera.position.copy(STUDY_HOME);
     controls.target.set(0, 0, 0);
     cameraGoal = null;
     controls.enabled = true;
     controls.listenToKeyEvents(window);
     controls.update();
-    canvas.style.touchAction = "none";
     invalidate();
   }
 
-  function closeObject() {
+  function closeStudy() {
     if (mode !== "study") return;
     mode = "field";
     controls.enabled = false;
     controls.stopListenToKeyEvents();
-    clearStudy();
-    invalidate();
-  }
-
-  function setExploded(next: boolean) {
-    if (mode !== "study") return;
-    exploded = next;
-    if (exploded) for (const plate of plates) plate.sharpen?.();
-    layoutPlates(performance.now());
-    cameraGoal = (exploded ? studyExplodedHome : studyHome).clone();
-    invalidate();
-  }
-
-  function resetView() {
-    if (mode !== "study") return;
-    cameraGoal = (exploded ? studyExplodedHome : studyHome).clone();
+    studyToken += 1;
+    studyCassette?.group.removeFromParent();
+    studyCassette?.dispose();
+    studyCassette = null;
+    studyFile = -1;
+    snapCamera = true;
     invalidate();
   }
 
@@ -736,88 +744,257 @@ export function createArchiveEngine(
   });
   controls.addEventListener("change", () => invalidate());
 
-  // ---------------------------------------------------------- sizing/loop --
-  let width = 1;
-  let height = 1;
+  // ------------------------------------------------------------- palette --
+  const toColor = (css: string) => new Color().setStyle(css, SRGBColorSpace);
+  function applyPalette() {
+    const page = toColor(palette.page);
+    renderer.setClearColor(page);
+    for (const scene of [field, study]) {
+      scene.background = page;
+      (scene.fog as Fog).color.copy(page);
+      scene.environmentIntensity = palette.dark ? 0.22 : 0.48;
+    }
+    const card = palette.dark
+      ? toColor(palette.raised).lerp(toColor(palette.surface), 0.3)
+      : toColor(palette.raised).lerp(page, 0.25);
+    cardMaterial.color.copy(card);
+    screwMaterial.color.copy(toColor(palette.subtle)).lerp(card, 0.3);
+    for (const lights of [fieldLights, studyLights]) {
+      lights.hemi.intensity = palette.dark ? 0.35 : 0.65;
+      lights.key.intensity = palette.dark ? 1.1 : 1.4;
+    }
+    if (selectedIndex >= 0) buildSelected(selectedIndex);
+    if (studyFile >= 0) buildStudy(studyFile);
+  }
+
+  // --------------------------------------------------------------- sizing --
+  let snapCamera = true;
   function resize() {
     const rect = canvas.parentElement?.getBoundingClientRect();
     width = Math.max(1, Math.round(rect?.width ?? canvas.clientWidth));
     height = Math.max(1, Math.round(rect?.height ?? canvas.clientHeight));
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, compact ? 1.5 : 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.5 : 2));
     renderer.setSize(width, height, false);
-    const aspect = width / height;
-    // Show a little more of the field on narrow screens so a whole panel fits.
-    const viewHeight = compact ? Math.max(9.5, 5.2 / aspect) : 9;
-    fieldCamera.top = viewHeight / 2;
-    fieldCamera.bottom = -viewHeight / 2;
-    fieldCamera.left = (-viewHeight * aspect) / 2;
-    fieldCamera.right = (viewHeight * aspect) / 2;
-    fieldCamera.updateProjectionMatrix();
-    studyCamera.aspect = aspect;
-    studyCamera.fov = aspect < 0.8 ? 46 : 32;
+    camera.aspect = width / height;
+    studyCamera.aspect = width / height;
+    studyCamera.fov = width / height < 0.8 ? 52 : 34;
     studyCamera.updateProjectionMatrix();
-    if (selected >= 0) {
-      aimAt(panels[selected]);
-      cameraTarget.x.value = cameraTarget.x.goal;
-      cameraTarget.y.value = cameraTarget.y.goal;
-      cameraTarget.z.value = cameraTarget.z.goal;
-    }
+    snapCamera = true;
     invalidate();
   }
 
+  // ----------------------------------------------------------------- loop --
   let raf = 0;
   let last = 0;
   function invalidate() {
     if (!raf) raf = requestAnimationFrame(frame);
   }
 
+  const dummy = new Object3D();
+  const worldUp = new Vector3(0, 1, 0);
+  const right = new Vector3();
+  const up = new Vector3();
+  const viewDirection = new Vector3();
+  const aim = new Vector3();
+  const detailAim = new Vector3();
+  const cardPosition = new Vector3();
+  const cameraPosition = new Vector3();
+  const origin = new Vector3();
+
+  function height3(row: number, lane: number) {
+    const ridge = settlingWave(row - shoulder.value) * columnStrength(lane, laneFocus.value);
+    let ripple = 0;
+    for (const p of pulses) ripple += selectionWave(Math.hypot(row - p.row, (lane - p.lane) * 2.2), clock - p.time);
+    const breathing = idleGain > 0 ? idleWave(row, lane, clock) * idleGain : 0;
+    return ridge + MathUtils.clamp(ripple, -0.6, 0.6) * pulseGain + breathing;
+  }
+
+  function stepField(dt: number): boolean {
+    let moving = false;
+    const rate = (r: number) => (reduced ? 35 : r);
+    const railTarget = SLOT_Z - selectedCell.row * ROW_SPACING;
+    damp(shoulder, selectedCell.row, rate(5), dt);
+    damp(laneFocus, selectedCell.lane, rate(4), dt);
+    damp(trackX, selectedCell.lane * COLUMN_SPACING, rate(3.7), dt);
+    damp(rail, railTarget, rate(3.7), dt);
+    damp(rotation, targetRotation, rate(9), dt);
+    // Turn back to face the slot before descending, as the reference does.
+    const liftTarget = detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
+    damp(lift, liftTarget, rate(4.2), dt);
+    moving ||= !settled(shoulder, selectedCell.row) || !settled(laneFocus, selectedCell.lane);
+    moving ||= !settled(trackX, selectedCell.lane * COLUMN_SPACING) || !settled(rail, railTarget);
+    moving ||= !settled(lift, liftTarget) || !settled(rotation, targetRotation);
+
+    for (const [key, o] of outgoing) {
+      damp(o.lift, 0, rate(4.5), dt);
+      if (settled(o.lift, 0)) outgoing.delete(key);
+      else moving = true;
+    }
+    const hoverKey = hoverCell ? cellKey(hoverCell) : null;
+    if (hoverKey && !hoverLifts.has(hoverKey)) hoverLifts.set(hoverKey, 0);
+    for (const [key, value] of hoverLifts) {
+      const target = key === hoverKey ? HOVER_LIFT : 0;
+      const next = reduced ? target : MathUtils.lerp(value, target, 1 - Math.exp(-dt * 14));
+      if (Math.abs(next - target) > 1e-3) moving = true;
+      if (target === 0 && next < 1e-3) hoverLifts.delete(key);
+      else hoverLifts.set(key, next);
+    }
+
+    pulses = pulses.filter((p) => clock - p.time < 3.2);
+    if (pulses.length) moving = true;
+    pulseGain = MathUtils.lerp(pulseGain, detailTarget ? 0 : 1, 1 - Math.exp(-dt * 8));
+    // Idle breathing after 2.5 s, on full-power devices only.
+    const idle = !lowPower && !reduced && !detailTarget && detail < 0.01 && clock - lastInteraction > 2.5;
+    idleGain = MathUtils.lerp(idleGain, idle ? 1 : 0, 1 - Math.exp(-dt * (idle ? 0.8 : 4)));
+    if (idleGain > 1e-3) moving = true;
+    else idleGain = 0;
+
+    const detailGoal = detailTarget
+      ? smooth((lift.value - 0.8) / 2.4)
+      : smooth((lift.value - PREVIEW_LIFT) / (DETAIL_LIFT - PREVIEW_LIFT));
+    detail = reduced ? detailGoal : MathUtils.lerp(detail, detailGoal, 1 - Math.exp(-dt * 10));
+    if (Math.abs(detail - detailGoal) > 1e-3) moving = true;
+    else detail = detailGoal;
+
+    // The cover clears once the card is fully up, from the top down.
+    if (detailTarget && detail > 0.78 && lift.value > 3.3) clarityTarget = 1;
+    if (selected) {
+      const c = selected.clarity;
+      const next = reduced ? clarityTarget : MathUtils.lerp(c.value, clarityTarget, 1 - Math.exp(-dt * (clarityTarget ? 1.8 : 9)));
+      if (Math.abs(next - clarityTarget) > 1e-3) {
+        c.value = next;
+        moving = true;
+      } else c.value = clarityTarget;
+    }
+
+    // Lay out the visible window of the endless grid.
+    const f = framing(detail);
+    const lanesHalf = Math.min(6, Math.ceil((f.span * 1.15) / COLUMN_SPACING) + 2);
+    const rowsHalf = Math.min(46, Math.ceil((f.span * 2.6) / ROW_SPACING) + 6);
+    const centerLane = Math.round(trackX.value / COLUMN_SPACING);
+    const centerRow = Math.round((SLOT_Z - rail.value) / ROW_SPACING);
+    let count = 0;
+    instanceCells = [];
+    // Nearest first (the camera sits on the -x, +z side), so the depth test
+    // rejects the hidden faces of the dense stack instead of shading them.
+    for (let lane = centerLane - lanesHalf; lane <= centerLane + lanesHalf; lane++) {
+      for (let row = centerRow + rowsHalf; row >= centerRow - rowsHalf && count < MAX_INSTANCES; row--) {
+        if (lane === selectedCell.lane && row === selectedCell.row) continue;
+        const key = `${lane}:${row}`;
+        const x = lane * COLUMN_SPACING - trackX.value;
+        const y = BASE_Y + height3(row, lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0);
+        const z = row * ROW_SPACING + rail.value;
+        dummy.position.set(x, y, z);
+        dummy.updateMatrix();
+        cards.setMatrixAt(count, dummy.matrix);
+        dummy.position.set(x + CARD_W / 2 - 0.24, y + CARD_H - 0.2, z + CARD_D / 2);
+        dummy.updateMatrix();
+        cardScrews.setMatrixAt(count, dummy.matrix);
+        instanceCells.push({ lane, row });
+        count += 1;
+      }
+    }
+    cards.count = cardScrews.count = count;
+    cards.instanceMatrix.needsUpdate = true;
+    cardScrews.instanceMatrix.needsUpdate = true;
+
+    cardPosition.set(
+      selectedCell.lane * COLUMN_SPACING - trackX.value,
+      BASE_Y + height3(selectedCell.row, selectedCell.lane) + lift.value,
+      selectedCell.row * ROW_SPACING + rail.value
+    );
+    if (selected) {
+      selected.group.position.copy(cardPosition);
+      selected.group.rotation.y = rotation.value;
+    }
+
+    // The camera holds still in the archive (the array moves under it), then
+    // turns toward the raised card and keeps it at the framing anchor.
+    viewDirection.copy(ARCHIVE_DIRECTION).lerp(DETAIL_DIRECTION, detail).normalize();
+    const distance = MathUtils.lerp(ARCHIVE_DISTANCE, DETAIL_DISTANCE, detail);
+    right.crossVectors(worldUp, viewDirection).normalize();
+    up.crossVectors(viewDirection, right).normalize();
+    const pixelScale = height / f.span;
+    if (f.portrait) {
+      aim.set(0, BASE_Y + settlingWave(0) + PREVIEW_LIFT + CARD_H / 2, SLOT_Z);
+      aim.addScaledVector(up, ((f.previewY - 0.5) * height) / pixelScale);
+    } else aim.copy(ARCHIVE_AIM);
+    detailAim.copy(cardPosition).setY(cardPosition.y + CARD_H / 2);
+    detailAim.addScaledVector(right, ((0.5 - f.detailX) * width) / pixelScale);
+    detailAim.addScaledVector(up, ((f.detailY - 0.5) * height) / pixelScale);
+    aim.lerp(detailAim, detail);
+    cameraPosition.copy(aim).addScaledVector(viewDirection, distance);
+    const blend = reduced || snapCamera ? 1 : 1 - Math.exp(-dt * 5);
+    snapCamera = false;
+    camera.position.lerp(cameraPosition, blend);
+    cameraAim.lerp(aim, blend);
+    camera.lookAt(cameraAim);
+    const fov = MathUtils.radToDeg(2 * Math.atan(f.span / (2 * distance)));
+    camera.fov = MathUtils.lerp(camera.fov, fov, blend);
+    camera.updateProjectionMatrix();
+    if (camera.position.distanceTo(cameraPosition) > 1e-3 || Math.abs(camera.fov - fov) > 1e-5) moving = true;
+    const fog = field.fog as Fog;
+    const rendered = camera.position.distanceTo(cameraAim);
+    fog.near = rendered + MathUtils.lerp(5, -1, detail);
+    fog.far = rendered + MathUtils.lerp(25, 12, detail);
+    fieldLights.key.position.set(cameraAim.x - 6, cameraAim.y + 14, cameraAim.z - 5);
+    fieldLights.key.target.position.copy(cameraAim);
+    return moving;
+  }
+
+  function stepStudy(dt: number): boolean {
+    let moving = false;
+    const target = exploded ? 1 : 0;
+    damp(explode, target, reduced ? 35 : 3.6, dt);
+    if (!settled(explode, target)) moving = true;
+    if (studyCassette) {
+      const n = studyCassette.parts.prints.length;
+      // Prints peel off one after another rather than as a block.
+      const offsets = studyCassette.parts.prints.map((_, j) => {
+        const depth = n - 1 - j;
+        const t = reduced
+          ? explode.value
+          : MathUtils.clamp(explode.value * (1 + n * 0.06) - (exploded ? j : depth) * 0.06, 0, 1);
+        return MathUtils.lerp(CARD_D / 2 + 0.024 + depth * 0.004, 0.3 + depth * 0.42, smooth(t));
+      });
+      studyCassette.layout(explode.value, offsets);
+      // Keep the exploded stack centred on the orbit target.
+      const front = 0.3 + Math.max(0, n - 1) * 0.42 + 1.85;
+      studyCassette.group.position.z = MathUtils.lerp(0, -(front - 1.5) / 2, explode.value);
+      const c = studyCassette.clarity;
+      const goalClarity = studyClear ? 1 : 0;
+      c.value = reduced ? goalClarity : MathUtils.lerp(c.value, goalClarity, 1 - Math.exp(-dt * 6));
+      if (Math.abs(c.value - goalClarity) > 1e-3) moving = true;
+      else c.value = goalClarity;
+    }
+    if (cameraGoal) {
+      const k = reduced ? 1 : 1 - Math.exp(-dt * 5.5);
+      studyCamera.position.lerp(cameraGoal, k);
+      controls.target.lerp(origin, k);
+      if (studyCamera.position.distanceTo(cameraGoal) < 0.01) cameraGoal = null;
+      moving = true;
+    }
+    if (controls.update()) moving = true;
+    const fog = study.fog as Fog;
+    const distance = studyCamera.position.distanceTo(controls.target);
+    fog.near = distance - 1;
+    fog.far = distance + 12;
+    return moving;
+  }
+
   function frame(now: number) {
     raf = 0;
     const dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60;
     last = now;
-    const factor = reducedMotion ? 1 : 1 - Math.exp(-dt * 9);
-    let moving = false;
-
+    clock = now / 1000;
+    let moving: boolean;
     if (mode === "field") {
-      moving = stepDamped(cameraTarget.x, factor) || moving;
-      moving = stepDamped(cameraTarget.y, factor) || moving;
-      moving = stepDamped(cameraTarget.z, factor) || moving;
-      const target = new Vector3(cameraTarget.x.value, cameraTarget.y.value, cameraTarget.z.value);
-      fieldCamera.position.copy(target).add(CAMERA_OFFSET);
-      fieldCamera.lookAt(target);
-      sun.position.copy(target).add(sunOffset);
-      sun.target.position.copy(target);
-      for (const panel of panels) {
-        const a = stepDamped(panel.y, factor);
-        const b = stepDamped(panel.tilt, factor);
-        if (a || b) moving = true;
-        panel.mesh.position.y = panel.y.value;
-        panel.mesh.rotation.y = panel.tilt.value;
-      }
-      renderer.render(field, fieldCamera);
+      moving = stepField(dt);
+      renderer.render(field, camera);
     } else {
-      const plateFactor = reducedMotion ? 1 : 1 - Math.exp(-dt * 7);
-      moving = stepDamped(boardZ, plateFactor) || moving;
-      if (boardMesh) boardMesh.position.z = boardZ.value;
-      for (const plate of plates) {
-        if (now < plate.delayUntil) {
-          moving = true;
-          continue;
-        }
-        for (const d of Object.values(plate.pos)) moving = stepDamped(d, plateFactor) || moving;
-        plate.mesh.position.set(plate.pos.x.value, plate.pos.y.value, plate.pos.z.value);
-        plate.mesh.rotation.y = plate.pos.ry.value;
-      }
-      if (cameraGoal) {
-        studyCamera.position.lerp(cameraGoal, reducedMotion ? 1 : factor);
-        controls.target.lerp(new Vector3(), reducedMotion ? 1 : factor);
-        if (studyCamera.position.distanceTo(cameraGoal) < 0.01) cameraGoal = null;
-        moving = true;
-      }
-      if (controls.update()) moving = true;
+      moving = stepStudy(dt);
       renderer.render(study, studyCamera);
     }
-
     if (moving) invalidate();
     else last = 0;
   }
@@ -825,20 +1002,50 @@ export function createArchiveEngine(
   // ------------------------------------------------------------- pointers --
   const raycaster = new Raycaster();
   const pointer = new Vector2();
-  let down: { x: number; y: number; t: number; id: number } | null = null;
+  let down: { x: number; y: number; t: number; id: number; rotation: number } | null = null;
+  let hoverFrame = 0;
 
-  function panelAt(clientX: number, clientY: number): number {
+  function pick(clientX: number, clientY: number): { cell: Cell; selected: boolean } | null {
     const rect = canvas.getBoundingClientRect();
     pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-    raycaster.setFromCamera(pointer, fieldCamera);
-    const hits = raycaster.intersectObjects(panels.map((p) => p.mesh), false);
-    const hit = hits.find((h) => h.object.position.y + PANEL_H / 2 > 0.3);
-    return hit ? (hit.object.userData.fileIndex as number) : -1;
+    raycaster.setFromCamera(pointer, camera);
+    const targets: Object3D[] = [cards];
+    if (selected) targets.push(selected.group);
+    const hit = raycaster.intersectObjects(targets, true)[0];
+    if (!hit) return null;
+    if (hit.object === cards && hit.instanceId !== undefined) {
+      const cell = instanceCells[hit.instanceId];
+      return cell ? { cell, selected: false } : null;
+    }
+    return { cell: selectedCell, selected: true };
   }
 
   function onPointerDown(e: PointerEvent) {
     if (mode !== "field") return;
-    down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+    down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, rotation: targetRotation };
+    if (detailTarget) canvas.setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e: PointerEvent) {
+    if (mode !== "field") return;
+    if (down && down.id === e.pointerId && detailTarget && lift.value > 3.3) {
+      // Drag to inspect the raised card, within the reference's ±0.8 rad.
+      targetRotation = MathUtils.clamp(down.rotation + (e.clientX - down.x) * 0.006, -MAX_ROTATION, MAX_ROTATION);
+      lastInteraction = clock;
+      invalidate();
+      return;
+    }
+    if (e.pointerType !== "mouse" || detailTarget || hoverFrame) return;
+    hoverFrame = requestAnimationFrame(() => {
+      hoverFrame = 0;
+      const hit = pick(e.clientX, e.clientY);
+      canvas.style.cursor = hit ? "pointer" : "";
+      const next = hit && !hit.selected ? hit.cell : null;
+      if (next?.lane !== hoverCell?.lane || next?.row !== hoverCell?.row) {
+        hoverCell = next;
+        invalidate();
+      }
+    });
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -847,42 +1054,48 @@ export function createArchiveEngine(
     const dy = e.clientY - down.y;
     const elapsed = performance.now() - down.t;
     down = null;
+    if (detailTarget || e.type === "pointercancel") return;
     if (Math.hypot(dx, dy) < 8 && elapsed < 600) {
-      const hit = panelAt(e.clientX, e.clientY);
-      if (hit < 0) return;
-      if (hit === selected) options.onOpen(hit);
-      else options.onPick(hit);
+      const hit = pick(e.clientX, e.clientY);
+      if (!hit) return;
+      if (hit.selected) options.onOpen(selectedIndex);
+      else {
+        pendingCell = hit.cell;
+        options.onPick(fileAt(hit.cell));
+      }
       return;
     }
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < 36) return;
-    if (Math.abs(dx) > Math.abs(dy)) options.onStep("column", dx < 0 ? 1 : -1);
-    else options.onStep("file", dy < 0 ? 1 : -1);
+    // Reference swipe rules: 36 px, a clear main direction, within 1.4 s.
+    const major = Math.max(Math.abs(dx), Math.abs(dy));
+    const minor = Math.min(Math.abs(dx), Math.abs(dy));
+    if (major < 36 || major < minor * 1.3 || elapsed > 1400) return;
+    if (Math.abs(dx) > Math.abs(dy)) options.onStep({ axis: "column", direction: dx < 0 ? 1 : -1 });
+    else options.onStep({ axis: "file", direction: dy < 0 ? 1 : -1 });
   }
 
-  let hoverFrame = 0;
-  function onPointerMove(e: PointerEvent) {
-    if (mode !== "field" || e.pointerType !== "mouse" || hoverFrame) return;
-    hoverFrame = requestAnimationFrame(() => {
-      hoverFrame = 0;
-      canvas.style.cursor = panelAt(e.clientX, e.clientY) >= 0 ? "pointer" : "";
-    });
+  function onPointerLeave() {
+    if (!hoverCell) return;
+    hoverCell = null;
+    invalidate();
   }
 
   let wheelAt = 0;
   function onWheel(e: WheelEvent) {
     if (mode !== "field") return;
     e.preventDefault();
+    if (detailTarget) return;
     const now = performance.now();
     if (now - wheelAt < 260 || Math.abs(e.deltaY) < 4) return;
     wheelAt = now;
-    options.onStep("file", e.deltaY > 0 ? 1 : -1);
+    options.onStep({ axis: "file", direction: e.deltaY > 0 ? 1 : -1 });
   }
 
   canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerUp);
+  canvas.addEventListener("pointerleave", onPointerLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
-
   const observer = new ResizeObserver(resize);
   if (canvas.parentElement) observer.observe(canvas.parentElement);
 
@@ -890,38 +1103,59 @@ export function createArchiveEngine(
   resize();
 
   return {
+    neighbour(move) {
+      const cell = move.axis === "file"
+        ? { lane: selectedCell.lane, row: selectedCell.row + move.direction }
+        : { lane: selectedCell.lane + move.direction, row: selectedCell.row };
+      pendingCell = cell;
+      return fileAt(cell);
+    },
     select,
-    openObject,
-    closeObject,
-    setExploded,
-    resetView,
+    setDetail,
+    openStudy,
+    closeStudy,
+    setExploded(next) {
+      if (mode !== "study") return;
+      exploded = next;
+      if (next) {
+        for (const sharpen of sharpeners) sharpen();
+        sharpeners = [];
+      }
+      cameraGoal = (exploded ? STUDY_EXPLODED : STUDY_HOME).clone();
+      invalidate();
+    },
+    setClear(next) {
+      studyClear = next;
+      invalidate();
+    },
+    resetView() {
+      if (mode !== "study") return;
+      cameraGoal = (exploded ? STUDY_EXPLODED : STUDY_HOME).clone();
+      invalidate();
+    },
     setPalette(next) {
       palette = next;
       applyPalette();
       invalidate();
-    },
-    setCompact(next) {
-      if (next === compact) return;
-      compact = next;
-      resize();
     },
     dispose() {
       cancelAnimationFrame(raf);
       cancelAnimationFrame(hoverFrame);
       observer.disconnect();
       canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerUp);
+      canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("wheel", onWheel);
       controls.stopListenToKeyEvents();
       controls.dispose();
-      clearStudy();
-      for (const panel of panels) releaseFace(panel);
-      panelGeometry.dispose();
-      barMesh.geometry.dispose();
-      dotGeometry.dispose();
-      ground.geometry.dispose();
-      for (const m of [barMaterial, dotMaterial, groundMaterial, panelEdge]) m.dispose();
+      selected?.dispose();
+      studyCassette?.dispose();
+      for (const thing of [cardGeo, screwGeo, cardMaterial, screwMaterial, fieldLights.environment, studyLights.environment])
+        thing.dispose();
+      cards.dispose();
+      cardScrews.dispose();
       renderer.dispose();
     }
   };

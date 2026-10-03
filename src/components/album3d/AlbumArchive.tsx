@@ -1,18 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
 import EmptyState from "@/components/ui/EmptyState";
 import ArchiveIndex from "./ArchiveIndex";
+import styles from "./AlbumArchive.module.css";
 import { fileCode, type ArchiveColumn, type ArchiveFile } from "./types";
-import type { ArchiveEngine, EnginePalette } from "./engine";
+import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
 
 export type { ArchiveColumn, ArchiveFile, ArchivePrint } from "./types";
 
 type EngineStatus = "loading" | "ready" | "unsupported";
+type Mode = "archive" | "detail" | "study";
 
 function webglAvailable(): boolean {
   try {
@@ -23,14 +25,14 @@ function webglAvailable(): boolean {
   }
 }
 
-/** Resolves any CSS colour (hex, rgb, oklch…) to an `rgb()` string. */
-function resolveColor(ctx: CanvasRenderingContext2D, value: string, fallback: string): string {
+/** Resolves any CSS colour (hex, rgb, oklch…) to its RGB channels. */
+function resolveColor(ctx: CanvasRenderingContext2D, value: string, fallback: string) {
   ctx.clearRect(0, 0, 1, 1);
   ctx.fillStyle = fallback;
   ctx.fillStyle = value.trim() || fallback;
   ctx.fillRect(0, 0, 1, 1);
   const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-  return `rgb(${r}, ${g}, ${b})`;
+  return { css: `rgb(${r}, ${g}, ${b})`, luminance: (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 };
 }
 
 function readPalette(element: HTMLElement): EnginePalette {
@@ -39,16 +41,17 @@ function readPalette(element: HTMLElement): EnginePalette {
   probe.width = 1;
   probe.height = 1;
   const ctx = probe.getContext("2d", { willReadFrequently: true }) as CanvasRenderingContext2D;
-  const token = (name: string, fallback: string) =>
-    resolveColor(ctx, style.getPropertyValue(name), fallback);
+  const token = (name: string, fallback: string) => resolveColor(ctx, style.getPropertyValue(name), fallback);
+  const page = token("--color-page", "#ece8e0");
   return {
-    page: token("--color-page", "#ece8e0"),
-    surface: token("--color-surface", "#f4f1ea"),
-    raised: token("--color-raised", "#faf8f3"),
-    control: token("--color-control", "#e4dfd5"),
-    fg: token("--color-fg", "#1f1b16"),
-    subtle: token("--color-fg-subtle", "#7a7064"),
-    accent: token("--color-accent", "#b98b4e"),
+    page: page.css,
+    surface: token("--color-surface", "#f4f1ea").css,
+    raised: token("--color-raised", "#faf8f3").css,
+    control: token("--color-control", "#e4dfd5").css,
+    fg: token("--color-fg", "#1f1b16").css,
+    subtle: token("--color-fg-subtle", "#7a7064").css,
+    accent: token("--color-accent", "#b98b4e").css,
+    dark: page.luminance < 0.45,
     fontMeta: style.getPropertyValue("--font-meta").trim() || "monospace",
     fontSans: style.getPropertyValue("--font-sans").trim() || "sans-serif"
   };
@@ -63,8 +66,27 @@ function isInteractive(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(target.closest("a, button, input, select, textarea"));
 }
 
+const pad = (n: number, width = 2) => String(n).padStart(width, "0");
+const wrap = (value: number, count: number) => ((value % count) + count) % count;
+
+/** Digits that roll in when they change, as the reference's counters do. */
+function Rolling({ value }: { value: string }) {
+  return (
+    <span aria-hidden="true" className="tabular-nums">
+      {value.split("").map((ch, i) => (
+        <span key={`${i}-${ch}`} className={/\d/.test(ch) ? styles.digit : undefined}>
+          {ch}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /**
- * Prototype homepage gallery as a three.js archive (see engine.ts).
+ * Prototype homepage gallery as a three.js archive (see engine.ts), laid out
+ * after RhineLabUI: an archive field with a callout beside the raised card, a
+ * detail view that lifts the card out with its document on the right, and a
+ * 360° study of the album's cassette that can be taken apart.
  *
  * Columns are photographers and files are their albums. Every control on the
  * canvas has a real button or link in the overlay, so keyboard and screen
@@ -84,51 +106,65 @@ export default function AlbumArchive({
   const engineRef = useRef<ArchiveEngine | null>(null);
   const [status, setStatus] = useState<EngineStatus>("loading");
   const [selected, setSelected] = useState(0);
-  const [mode, setMode] = useState<"field" | "study">("field");
+  const [mode, setMode] = useState<Mode>("archive");
   const [exploded, setExploded] = useState(false);
+  const [clear, setClear] = useState(true);
   const [indexOpen, setIndexOpen] = useState(false);
   const [touch, setTouch] = useState(false);
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
 
   const file = files[selected];
   const column = file ? columns[file.column] : undefined;
-  const slot = column ? column.fileIndexes.indexOf(selected) : 0;
+  const slot = column ? Math.max(0, column.fileIndexes.indexOf(selected)) : 0;
+  const ready = status === "ready";
+
+  /** Select a file; the same file again still moves to the picked card. */
+  const choose = useCallback((index: number) => {
+    if (index === selectedRef.current) engineRef.current?.select(index);
+    else setSelected(index);
+  }, []);
 
   const step = useCallback(
-    (axis: "file" | "column", direction: 1 | -1) => {
-      setSelected((current) => {
-        const currentFile = files[current];
-        if (!currentFile) return current;
-        if (axis === "file") {
-          // Wrap through the whole archive, photographer by photographer.
-          const order = columns.flatMap((c) => c.fileIndexes);
-          const at = order.indexOf(current);
-          return order[(at + direction + order.length) % order.length];
-        }
-        const from = columns[currentFile.column];
-        const to = columns[(currentFile.column + direction + columns.length) % columns.length];
-        const at = from.fileIndexes.indexOf(current);
-        return to.fileIndexes[Math.min(at, to.fileIndexes.length - 1)];
-      });
+    (axis: EngineMove["axis"], direction: EngineMove["direction"]) => {
+      const engine = engineRef.current;
+      // The scene knows which card sits next to the selected one on its
+      // endless grid; without it, walk the photographer lists instead.
+      if (engine) {
+        choose(engine.neighbour({ axis, direction }));
+        return;
+      }
+      const current = files[selectedRef.current];
+      if (!current) return;
+      const from = columns[current.column].fileIndexes;
+      const at = from.indexOf(selectedRef.current);
+      if (axis === "file") choose(from[wrap(at + direction, from.length)]);
+      else {
+        const to = columns[wrap(current.column + direction, columns.length)].fileIndexes;
+        choose(to[Math.min(at, to.length - 1)]);
+      }
     },
-    [files, columns]
+    [files, columns, choose]
   );
 
-  const openStudy = useCallback((index: number) => {
-    setSelected(index);
+  const openDetail = useCallback(
+    (index: number) => {
+      choose(index);
+      setMode("detail");
+    },
+    [choose]
+  );
+
+  const openStudy = useCallback(() => {
     setExploded(false);
     setMode("study");
   }, []);
 
-  const closeStudy = useCallback(() => {
-    setMode("field");
-    setExploded(false);
-  }, []);
-
   // Latest callbacks for the engine, which is created once.
-  const handlers = useRef({ step, openStudy, pick: setSelected });
+  const handlers = useRef({ step, openDetail, choose });
   useEffect(() => {
-    handlers.current = { step, openStudy, pick: setSelected };
-  }, [step, openStudy]);
+    handlers.current = { step, openDetail, choose };
+  }, [step, openDetail, choose]);
 
   // Create the engine once; three.js loads only after the overlay is up.
   useEffect(() => {
@@ -140,9 +176,8 @@ export default function AlbumArchive({
       return;
     }
     let disposed = false;
-    const compactQuery = window.matchMedia("(max-width: 767px)");
-    const coarse = window.matchMedia("(pointer: coarse)");
-    setTouch(coarse.matches);
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    setTouch(coarse);
 
     import("./engine")
       .then(({ createArchiveEngine }) => {
@@ -153,17 +188,16 @@ export default function AlbumArchive({
             column: f.column,
             title: f.title,
             owner: columns[f.column]?.name ?? "",
-            meta: [f.dateLabel, t("photos", { count: f.photoCount })].filter(Boolean).join(" · "),
             prints: f.prints
           })),
           columns: columns.map((c) => c.fileIndexes),
           palette: readPalette(root),
           reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-          compact: compactQuery.matches,
+          lowPower: coarse || window.innerWidth < 768,
           archiveLabel: t("archiveLabel"),
-          onPick: (index) => handlers.current.pick(index),
-          onOpen: (index) => handlers.current.openStudy(index),
-          onStep: (axis, direction) => handlers.current.step(axis, direction)
+          onPick: (index) => handlers.current.choose(index),
+          onOpen: (index) => handlers.current.openDetail(index),
+          onStep: (move) => handlers.current.step(move.axis, move.direction)
         });
         engineRef.current = engine;
         setStatus("ready");
@@ -171,9 +205,6 @@ export default function AlbumArchive({
       .catch(() => {
         if (!disposed) setStatus("unsupported");
       });
-
-    const syncCompact = () => engineRef.current?.setCompact(compactQuery.matches);
-    compactQuery.addEventListener("change", syncCompact);
 
     // Follow the theme toggle and the admin's public palette.
     const syncPalette = () => {
@@ -187,7 +218,6 @@ export default function AlbumArchive({
 
     return () => {
       disposed = true;
-      compactQuery.removeEventListener("change", syncCompact);
       scheme.removeEventListener("change", syncPalette);
       observer.disconnect();
       engineRef.current?.dispose();
@@ -198,30 +228,33 @@ export default function AlbumArchive({
   }, []);
 
   useEffect(() => {
-    if (status === "ready") engineRef.current?.select(selected);
-  }, [selected, status]);
+    if (ready) engineRef.current?.select(selected);
+  }, [selected, ready]);
 
   useEffect(() => {
     const engine = engineRef.current;
-    if (status !== "ready" || !engine) return;
-    if (mode === "study") engine.openObject(selected);
-    else engine.closeObject();
-    // Opening is keyed to the mode switch, not to later selection changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, status]);
+    if (!ready || !engine) return;
+    engine.setDetail(mode !== "archive");
+    if (mode === "study") engine.openStudy(selectedRef.current);
+    else engine.closeStudy();
+  }, [mode, ready]);
 
   useEffect(() => {
-    if (status === "ready") engineRef.current?.setExploded(exploded);
-  }, [exploded, status]);
+    if (ready && mode === "study") engineRef.current?.setExploded(exploded);
+  }, [exploded, mode, ready]);
+
+  useEffect(() => {
+    if (ready) engineRef.current?.setClear(clear);
+  }, [clear, ready]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (indexOpen || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       if (isTyping(e.target)) return;
-      if (mode === "study") {
+      if (mode !== "archive") {
         if (e.key === "Escape") {
           e.preventDefault();
-          closeStudy();
+          setMode(mode === "study" ? "detail" : "archive");
         }
         return;
       }
@@ -234,7 +267,7 @@ export default function AlbumArchive({
       };
       if (e.key === "Enter" && !isInteractive(e.target)) {
         e.preventDefault();
-        openStudy(selected);
+        setMode("detail");
         return;
       }
       const action = keys[e.key];
@@ -244,32 +277,42 @@ export default function AlbumArchive({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [indexOpen, mode, selected, step, openStudy, closeStudy]);
+  }, [indexOpen, mode, step]);
 
   if (files.length === 0 || !file || !column) {
     return (
       <main id="main-content" className="mx-auto flex min-h-dvh max-w-3xl flex-col justify-center px-4 py-10">
-        <EmptyState title={t("empty")} description={t("emptyHint")}
+        <EmptyState
+          title={t("empty")}
+          description={t("emptyHint")}
           action={<Link href="/" className="text-sm font-semibold text-accent-text underline">{t("classic")}</Link>}
         />
       </main>
     );
   }
 
-  const meta = (
-    <span className="font-meta text-[0.6875rem] uppercase tracking-[0.16em] text-fg-subtle">
-      {t("archiveLabel")} <span aria-hidden="true">/</span> {column.name}
-    </span>
-  );
+  const code = fileCode(file.number);
+  const altTitle = file.altTitle && file.altTitle !== file.title ? file.altTitle : "";
+  const parts = [
+    t("partScrews"),
+    t("partCover"),
+    t("partPrints", { count: file.prints.length }),
+    t("partSubstrate"),
+    t("partCarrier")
+  ];
+  const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle";
+  const square = "grid h-11 w-11 shrink-0 place-items-center text-2xl transition hover:bg-accent-surface";
 
   return (
-    <div ref={rootRef} className="album3d relative h-dvh w-full overflow-hidden bg-page text-fg">
+    <div ref={rootRef} className={`${styles.root} album3d relative h-dvh w-full overflow-hidden bg-page text-fg`}>
       <div
         aria-hidden="true"
-        className={`absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${status === "ready" ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${ready ? "opacity-100" : "opacity-0"}`}
       >
         <canvas ref={canvasRef} className="block h-full w-full touch-none select-none" />
       </div>
+
+      {mode !== "study" && <div aria-hidden="true" className={styles.shade} data-detail={mode === "detail"} />}
 
       {status === "loading" && (
         <p role="status" className="font-meta absolute inset-0 flex items-center justify-center text-xs uppercase tracking-[0.2em] text-fg-subtle">
@@ -277,231 +320,349 @@ export default function AlbumArchive({
         </p>
       )}
 
-      {/* Edge washes keep the overlay legible over the field. */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-page/90 to-transparent" />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 hidden w-1/2 bg-gradient-to-l from-page/85 via-page/55 to-transparent md:block" />
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-page to-transparent md:h-48 md:from-0% md:via-page/60 md:via-50% ${mode === "field" ? "h-[34rem] from-30% via-page/85 via-60%" : "h-40"}`}
-      />
-
-      <header className="absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-4 px-4 pt-4 sm:px-8 sm:pt-7 lg:px-10 lg:pt-9">
-        {mode === "field" ? (
-          <Link href="/" className="group block leading-none">
-            <span className="block text-2xl font-extrabold uppercase tracking-[-0.02em] sm:text-4xl">{t("brandTop")}</span>
-            <span className="mt-1 block text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-fg-muted sm:text-xs">{t("brandMiddle")}</span>
-            <span className="mt-1 block text-lg font-light uppercase tracking-[0.02em] sm:text-2xl">
-              {t("brandBottom")}
-            </span>
+      {mode !== "study" && (
+        <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-4 px-[var(--edge)] pt-4 wide:pt-9">
+          <Link href="/" className="pointer-events-auto block leading-none">
+            <span className="block text-xl font-extrabold uppercase tracking-[-0.02em] wide:text-4xl">{t("brandTop")}</span>
+            <span className="mt-1 block text-[0.5625rem] font-semibold uppercase tracking-[0.08em] text-fg-muted wide:text-xs">{t("brandMiddle")}</span>
+            <span className="mt-1 block text-base font-light uppercase tracking-[0.02em] wide:text-2xl">{t("brandBottom")}</span>
           </Link>
-        ) : (
-          <div className="flex items-start gap-5 sm:gap-10">
-            <button
-              type="button"
-              onClick={closeStudy}
-              className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-fg-muted transition hover:text-fg"
-            >
-              <span aria-hidden="true">←</span>
-              {t("back")}
-              <kbd className="font-meta hidden rounded border border-border-strong px-1 text-[0.5625rem] sm:inline">ESC</kbd>
-            </button>
-            <div className="hidden sm:block">
-              <p className="font-meta text-[0.625rem] uppercase tracking-[0.18em] text-fg-subtle">{t("archiveLabel")} / {t("study")}</p>
-              <p aria-hidden="true" className="mt-1 text-xl font-bold">{file.title}</p>
-              <p className="font-meta mt-1 text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
-                {fileCode(file.number)} / {column.name}
-              </p>
-            </div>
-          </div>
-        )}
-        <nav aria-label={t("brandBottom")} className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-3">
-          {mode === "field" && (
-            <button
-              type="button"
-              onClick={() => setIndexOpen(true)}
-              className="inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:bg-fg/5"
-            >
-              <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <circle cx="9.5" cy="6.5" r="4.5" />
-                <path d="m6.2 9.8-4.7 4.7" />
-              </svg>
-              <span className="hidden sm:inline">{t("index")}</span>
-              <span className="sr-only sm:hidden">{t("index")}</span>
-              <kbd className="font-meta hidden rounded border border-border-strong px-1 text-[0.625rem] font-normal sm:inline">/</kbd>
-            </button>
-          )}
-          <Link
-            href="/"
-            className="hidden min-h-10 items-center rounded-lg px-2 text-xs font-semibold uppercase tracking-[0.1em] text-fg-muted transition hover:bg-fg/5 hover:text-fg sm:inline-flex"
-          >
-            {t("classic")}
-          </Link>
-          <LanguageSwitcher />
-          <ThemeToggle label={tc("toggleTheme")} />
-        </nav>
-      </header>
-
-      <p aria-live="polite" aria-atomic="true" className="sr-only">
-        {t("announce", {
-          title: file.title,
-          owner: column.name,
-          current: slot + 1,
-          total: column.fileIndexes.length
-        })}
-      </p>
-
-      {mode === "field" ? (
-        <main id="main-content" tabIndex={-1} className="outline-none">
-          {/* The selected file. Right of the raised panel on wide screens,
-              a sheet under it on phones. */}
-          <section
-            aria-labelledby="album3d-title"
-            className="absolute inset-x-4 bottom-[8.5rem] sm:inset-x-8 md:inset-x-auto md:bottom-auto md:left-[52%] md:right-0 md:top-[40%]"
-          >
-            {meta}
-            <h1 id="album3d-title" className="mt-2 text-2xl font-bold leading-tight tracking-[-0.01em] sm:text-3xl md:pr-10 lg:text-4xl">
-              <span className="sr-only">{t("fileNumber")} {fileCode(file.number)}: </span>
-              {file.title}
-            </h1>
-            {file.altTitle && file.altTitle !== file.title && (
-              <p className="mt-1 text-sm text-fg-muted">{file.altTitle}</p>
-            )}
-            <div className="mt-4 flex items-center gap-3 md:mt-6">
-              <span aria-hidden="true" className="h-1 w-1 bg-fg" />
-              <span aria-hidden="true" className="h-px flex-1 bg-fg/40" />
-            </div>
-            <p className="mt-3 flex items-baseline justify-between gap-4 text-sm md:mt-4 md:max-w-xl md:pl-10">
-              <span className="font-medium">
-                {file.dateLabel || t("noDate")}
-                {file.location ? ` · ${file.location}` : ""}
-              </span>
-              <span className="font-meta shrink-0 text-[0.6875rem] uppercase tracking-[0.14em] text-fg-subtle">
-                {fileCode(file.number)} · {t("photos", { count: file.photoCount })}
-              </span>
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-x-8 gap-y-1 md:mt-6 md:pl-10">
+          <nav aria-label={t("brandBottom")} className="pointer-events-auto flex items-center justify-end gap-1 sm:gap-3">
+            {mode === "archive" && (
               <button
                 type="button"
-                onClick={() => openStudy(selected)}
-                disabled={status !== "ready"}
-                className="group inline-flex min-h-11 items-center gap-4 text-sm font-semibold uppercase tracking-[0.08em] disabled:opacity-40"
+                onClick={() => setIndexOpen(true)}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text"
               >
-                {t("openFile")}
-                <span aria-hidden="true" className="text-xl transition-transform group-hover:translate-x-1 motion-reduce:transition-none">→</span>
+                <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <circle cx="9.5" cy="6.5" r="4.5" />
+                  <path d="m6.2 9.8-4.7 4.7" />
+                </svg>
+                <span className="hidden sm:inline">{t("index")}</span>
+                <span className="sr-only sm:hidden">{t("index")}</span>
+                <kbd className="font-meta hidden border border-border-strong px-1 text-[0.625rem] font-normal sm:inline">/</kbd>
               </button>
-              <Link
-                href={file.href}
-                className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-fg-muted underline-offset-4 hover:text-fg hover:underline"
-              >
-                {t("viewAlbum")} <span aria-hidden="true">↗</span>
-              </Link>
-            </div>
-          </section>
-
-          {/* Navigation strip. */}
-          <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 px-4 pb-4 sm:px-8 sm:pb-6 lg:px-10">
-            <div className="shrink-0">
-              <p className="font-meta text-[0.5625rem] uppercase tracking-[0.18em] text-fg-subtle">{t("select")}</p>
-              <p className="mt-1 flex items-baseline gap-2 tabular-nums md:mt-2 md:gap-4">
-                <span className="text-3xl font-light md:text-5xl">{String(slot + 1).padStart(2, "0")}</span>
-                <span aria-hidden="true" className="text-fg-subtle">/</span>
-                <span className="text-sm text-fg-muted">{String(column.fileIndexes.length).padStart(2, "0")}</span>
-              </p>
-            </div>
-
-            <div className="hidden items-center gap-4 md:flex">
-              <button type="button" onClick={() => step("file", -1)} aria-label={t("prevFile")} className="grid h-10 w-10 place-items-center rounded-lg text-xl hover:bg-fg/5">↑</button>
-              <ol aria-hidden="true" className="flex h-6 items-end gap-2.5">
-                {column.fileIndexes.map((index, i) => (
-                  <li key={index} className={`w-px ${index === selected ? "h-6 bg-fg" : "h-3 bg-fg/30"}`} data-i={i} />
-                ))}
-              </ol>
-              <button type="button" onClick={() => step("file", 1)} aria-label={t("nextFile")} className="grid h-10 w-10 place-items-center rounded-lg text-xl hover:bg-fg/5">↓</button>
-            </div>
-
-            <div className="flex min-w-0 items-center gap-1 sm:gap-3">
-              <button type="button" onClick={() => step("file", -1)} aria-label={t("prevFile")} className="grid h-11 w-11 place-items-center rounded-lg text-lg hover:bg-fg/5 md:hidden">↑</button>
-              <button type="button" onClick={() => step("file", 1)} aria-label={t("nextFile")} className="grid h-11 w-11 place-items-center rounded-lg text-lg hover:bg-fg/5 md:hidden">↓</button>
-              {columns.length > 1 && (
-                <>
-                  <button type="button" onClick={() => step("column", -1)} aria-label={t("prevColumn")} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg hover:bg-fg/5">←</button>
-                  <div className="hidden min-w-0 sm:block">
-                    <p className="font-meta text-[0.5625rem] uppercase tracking-[0.16em] text-fg-subtle">
-                      {t("photographerCount", { current: String(file.column + 1).padStart(2, "0"), total: String(columns.length).padStart(2, "0") })}
-                    </p>
-                    <p className="truncate text-sm font-medium">{column.name}</p>
-                  </div>
-                  <button type="button" onClick={() => step("column", 1)} aria-label={t("nextColumn")} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-accent-surface text-lg hover:bg-accent/20">→</button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <p className="font-meta pointer-events-none absolute inset-x-0 bottom-1.5 hidden text-center text-[0.5625rem] uppercase tracking-[0.14em] text-fg-subtle md:block">
-            {touch ? (
-              t("hintTouch")
-            ) : (
-              <>
-                ← → {t("hintPhotographer")} <span aria-hidden="true">/</span> ↑ ↓ {t("hintAlbum")}{" "}
-                <span aria-hidden="true">/</span> ENTER {t("hintOpen")} <span aria-hidden="true">/</span> / {t("hintIndex")}
-              </>
             )}
-          </p>
-        </main>
-      ) : (
+            <LanguageSwitcher />
+            <ThemeToggle label={tc("toggleTheme")} />
+          </nav>
+        </header>
+      )}
+
+      <p aria-live="polite" aria-atomic="true" className="sr-only">
+        {t("announce", { title: file.title, owner: column.name, current: slot + 1, total: column.fileIndexes.length })}
+      </p>
+
+      {mode === "archive" && (
         <main id="main-content" tabIndex={-1} className="outline-none">
-          <div className="absolute inset-x-4 top-16 sm:hidden">
-            <p className="font-meta text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
-              {fileCode(file.number)} / {column.name}
+          <section aria-labelledby="album3d-title" className={styles.callout}>
+            <p className="font-meta text-[0.5625rem] uppercase tracking-[0.1em] text-fg-subtle sm:text-xs">
+              {t("archiveLabel")} <span aria-hidden="true" className="mx-1 sm:mx-3">／</span> {column.name}
             </p>
-            <h1 className="mt-1 text-xl font-bold">{file.title}</h1>
-          </div>
-          <p aria-hidden="true" className="pointer-events-none absolute right-4 top-20 text-5xl font-extralight text-fg/25 sm:right-10 sm:top-24 sm:text-7xl">
-            360°
-          </p>
-          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 px-4 pb-5 sm:pb-8">
-            <div className="flex w-full items-end justify-center gap-4 sm:justify-between">
-              <p className="font-meta hidden text-[0.625rem] uppercase tracking-[0.12em] text-fg-subtle sm:block sm:w-1/3">
-                {t("studyHintDrag")} · {touch ? t("studyHintPinch") : `${t("studyHintPan")} · ${t("studyHintZoom")}`}
-              </p>
-              <div className="flex flex-col items-center gap-2">
-                <div role="group" aria-label={t("study")} className="flex overflow-hidden rounded-sm border border-fg/20">
-                  <button
-                    type="button"
-                    aria-pressed={exploded}
-                    onClick={() => setExploded(true)}
-                    className={`min-h-11 px-5 text-sm font-medium transition sm:px-8 ${exploded ? "bg-fg text-page" : "bg-raised/80 hover:bg-raised"}`}
-                  >
-                    <span aria-hidden="true" className="mr-3">+</span>{t("explode")}
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={!exploded}
-                    onClick={() => setExploded(false)}
-                    className={`min-h-11 px-5 text-sm font-medium transition sm:px-8 ${!exploded ? "bg-fg text-page" : "bg-raised/80 hover:bg-raised"}`}
-                  >
-                    <span aria-hidden="true" className="mr-3">−</span>{t("reassemble")}
-                  </button>
-                </div>
-                <p role="status" className="font-meta text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
-                  {exploded ? t("exploded") : t("assembled")}
+            <button
+              type="button"
+              onClick={() => setMode("detail")}
+              disabled={!ready}
+              className="group mt-3 flex min-h-11 w-full items-center gap-2 text-left text-xl font-bold tracking-[0.01em] sm:mt-5 wide:text-[1.75rem]"
+            >
+              <span className="whitespace-nowrap">
+                {t("fileNumber").toUpperCase()}: <Rolling value={code} />
+                <span className="sr-only">{code}</span>
+              </span>
+              <span aria-hidden="true" className="ml-auto text-xl transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 wide:ml-12 wide:opacity-0 wide:group-hover:opacity-100">↗</span>
+            </button>
+            <div aria-hidden="true" className={styles.calloutRule} />
+            <div className={styles.calloutBody}>
+              <div className="mt-3 flex items-baseline justify-between gap-5 wide:mt-5">
+                <h1 id="album3d-title" className="min-w-0 text-base font-medium leading-snug sm:text-lg">
+                  {file.title}
+                  {altTitle && <span className="block text-xs font-normal text-fg-muted">{altTitle}</span>}
+                </h1>
+                <p className="font-meta shrink-0 text-[0.625rem] uppercase tracking-[0.1em] text-fg-subtle">
+                  {file.dateLabel || t("noDate")}
                 </p>
               </div>
-              <div className="hidden flex-col items-end gap-1 sm:flex sm:w-1/3">
-                <button type="button" onClick={() => engineRef.current?.resetView()} className="inline-flex min-h-10 items-center gap-2 text-sm hover:underline">
-                  {t("resetView")} <span aria-hidden="true">↺</span>
+              <div className="mt-3 flex flex-wrap items-center gap-x-10 wide:mt-12">
+                <button
+                  type="button"
+                  onClick={() => setMode("detail")}
+                  disabled={!ready}
+                  className="group inline-flex min-h-11 items-center gap-12 text-sm font-medium uppercase tracking-[0.07em] disabled:opacity-40 wide:gap-16"
+                >
+                  {t("openFile")}
+                  <span aria-hidden="true" className="text-2xl transition-transform group-hover:translate-x-2 motion-reduce:transition-none">→</span>
                 </button>
-                <Link href={file.href} className="inline-flex min-h-10 items-center gap-2 text-sm text-fg-muted hover:text-fg hover:underline">
+                <Link href={file.href} className="inline-flex min-h-11 items-center gap-2 text-sm text-fg-muted underline-offset-4 hover:text-fg hover:underline">
                   {t("viewAlbum")} <span aria-hidden="true">↗</span>
                 </Link>
               </div>
             </div>
-            <div className="flex gap-6 sm:hidden">
-              <button type="button" onClick={() => engineRef.current?.resetView()} className="min-h-11 text-sm">{t("resetView")}</button>
-              <Link href={file.href} className="inline-flex min-h-11 items-center text-sm text-fg-muted">{t("viewAlbum")} ↗</Link>
+          </section>
+
+          <div className={styles.counter}>
+            <p className={metaLabel}>{t("select")}</p>
+            <p className="mt-1 flex items-baseline gap-3 font-normal wide:mt-4 wide:gap-5">
+              <span className="text-[2.125rem] leading-none wide:text-[3.625rem]">
+                <Rolling value={pad(slot + 1)} />
+              </span>
+              <span aria-hidden="true" className="text-xl font-light text-fg-subtle wide:text-[2rem]">/</span>
+              <span className="text-sm text-fg-muted wide:text-[1.375rem]">{pad(column.fileIndexes.length)}</span>
+            </p>
+          </div>
+
+          <div className={`${styles.fileNav} items-center gap-1.5 wide:gap-8`}>
+            <button type="button" onClick={() => step("file", -1)} aria-label={t("prevFile")} className={square}>↑</button>
+            <ol className="flex h-10 items-center gap-0 wide:gap-3">
+              {column.fileIndexes.slice(0, 24).map((index, i) => (
+                <li key={index}>
+                  <button
+                    type="button"
+                    onClick={() => choose(index)}
+                    aria-label={`${fileCode(files[index]?.number ?? 0)} ${files[index]?.title ?? ""}`}
+                    aria-current={index === selected ? "true" : undefined}
+                    className="group relative block h-10 w-3.5 max-sm:w-[1.6875rem]"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`absolute left-1/2 top-1/2 w-0.5 -translate-x-1/2 -translate-y-1/2 transition-all duration-400 ${
+                        index === selected ? "h-8 bg-fg" : "h-3 bg-fg/35 group-hover:h-6 group-hover:bg-accent"
+                      }`}
+                      data-i={i}
+                    />
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <button type="button" onClick={() => step("file", 1)} aria-label={t("nextFile")} className={square}>↓</button>
+          </div>
+
+          {columns.length > 1 && (
+            <div className={`${styles.columnNav} flex items-center gap-2 wide:gap-6`}>
+              <button type="button" onClick={() => step("column", -1)} aria-label={t("prevColumn")} className={square}>←</button>
+              <div className="grid min-w-[6.25rem] gap-1 wide:min-w-36 wide:gap-2">
+                <span className="font-meta text-[0.5rem] uppercase tracking-[0.12em] text-fg-subtle wide:text-[0.625rem]">
+                  {t("photographerCount", { current: pad(file.column + 1), total: pad(columns.length) })}
+                </span>
+                <strong className="max-w-40 truncate text-[0.8125rem] font-normal wide:text-[0.9375rem]">{column.name}</strong>
+              </div>
+              <button type="button" onClick={() => step("column", 1)} aria-label={t("nextColumn")} className={square}>→</button>
+            </div>
+          )}
+
+          <p className={`${styles.hint} font-meta text-[0.625rem] uppercase tracking-[0.08em] text-fg-subtle`}>
+            {touch ? (
+              t("hintTouch")
+            ) : (
+              <>
+                ← → {t("hintPhotographer")} <span aria-hidden="true" className="mx-3">／</span> ↑ ↓ {t("hintAlbum")}
+                <span aria-hidden="true" className="mx-3">／</span> ENTER {t("hintOpen")}
+                <span aria-hidden="true" className="mx-3">／</span> / {t("hintIndex")}
+              </>
+            )}
+          </p>
+        </main>
+      )}
+
+      {mode === "detail" && (
+        <main id="main-content" tabIndex={-1} className="outline-none">
+          <button
+            type="button"
+            onClick={() => setMode("archive")}
+            className={`${styles.back} z-10 flex min-h-11 items-center gap-2 px-2 text-2xl transition hover:text-accent-text wide:gap-5 wide:px-0`}
+          >
+            <span aria-hidden="true">←</span>
+            <span className="text-[0.625rem] uppercase tracking-[0.1em] wide:text-xs">{t("archiveOverview")}</span>
+            <kbd className="font-meta ml-4 hidden border border-border-strong p-1 text-[0.625rem] text-fg-subtle wide:inline">ESC</kbd>
+          </button>
+
+          <div className={`${styles.caption} flex items-center justify-between gap-3 wide:block`}>
+            <div>
+              <p className="text-[0.9375rem] tracking-[-0.03em] sm:text-xl wide:text-[2.3rem]">{code}</p>
+              <p className="font-meta mt-1 hidden text-[0.5rem] uppercase tracking-[0.18em] text-fg-subtle sm:block wide:mt-2 wide:text-[0.625rem]">
+                {t("archiveLabel")}
+              </p>
+              <p className="font-meta mt-8 hidden text-[0.625rem] uppercase tracking-[0.1em] text-fg-subtle wide:block">
+                {t("dragToInspect")} <span aria-hidden="true" className="ml-4 text-lg">↔</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openStudy}
+              className="inline-flex min-h-11 items-center gap-4 border-fg-subtle text-sm tracking-[0.02em] transition hover:border-accent hover:text-accent-text wide:mt-6 wide:border-b wide:pb-1"
+            >
+              {t("view360")} <span aria-hidden="true" className="text-xl">↗</span>
+            </button>
+          </div>
+
+          <article aria-labelledby="album3d-detail-title" className={styles.document}>
+            <p className="flex items-center justify-between font-meta text-[0.6875rem] uppercase tracking-[0.14em]">
+              <span>{code}</span>
+              <span className="text-[0.5625rem] text-fg-subtle">{column.name}</span>
+            </p>
+            <h1 id="album3d-detail-title" className="mb-2 mt-3 text-[1.6875rem] font-bold leading-[1.12] tracking-[-0.03em] [overflow-wrap:anywhere] wide:mb-3 wide:mt-7 wide:text-[2.5rem]">
+              {file.title}
+            </h1>
+            {altTitle && <p className="text-lg wide:text-[1.4375rem]">{altTitle}</p>}
+            <div aria-hidden="true" className="mt-5 h-0.5 bg-fg wide:mt-7" />
+            <dl className="my-6 grid grid-cols-2 gap-x-10 gap-y-6 wide:my-7">
+              {[
+                [t("metaPhotographer"), column.name],
+                [t("metaDate"), file.dateLabel || t("noDate")],
+                [t("metaLocation"), file.location || t("notRecorded")],
+                [t("metaPrints"), t("photos", { count: file.photoCount })]
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt className="font-meta text-[0.5625rem] uppercase tracking-[0.08em] text-fg-subtle">{label}</dt>
+                  <dd className="mt-2 text-sm">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            {file.prints.length > 0 && (
+              <>
+                <p className={metaLabel}>{t("contactSheet")}</p>
+                <ul className="mt-3 grid grid-cols-6 gap-1.5">
+                  {file.prints.slice(0, 6).map((print, i) => (
+                    <li key={print.thumb + i} className="aspect-square overflow-hidden bg-control">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={print.thumb} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <div className="mt-7 flex items-stretch gap-3">
+              <Link
+                href={file.href}
+                className="inline-flex min-h-12 flex-1 items-center justify-between gap-4 bg-fg px-5 text-sm font-semibold uppercase tracking-[0.08em] text-page transition hover:bg-accent-text"
+              >
+                {t("viewAlbum")}
+                <span aria-hidden="true" className="text-lg">→</span>
+              </Link>
+            </div>
+            <p className="font-meta mt-5 flex justify-between text-[0.625rem] uppercase tracking-[0.1em] text-fg-subtle">
+              <span>{t("photographerCount", { current: pad(file.column + 1), total: pad(columns.length) })}</span>
+              <span>
+                {pad(slot + 1, 3)} / {pad(column.fileIndexes.length, 3)}
+              </span>
+            </p>
+          </article>
+        </main>
+      )}
+
+      {mode === "study" && (
+        <main id="main-content" tabIndex={-1} className="outline-none">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,transparent_45%,color-mix(in_srgb,var(--color-page)_38%,transparent)_85%)]" />
+          <header className={`${styles.studyHeader} pointer-events-none flex items-start`}>
+            <button
+              type="button"
+              onClick={() => setMode("detail")}
+              className="pointer-events-auto flex min-h-11 items-center gap-3 py-3 text-xl transition hover:text-accent-text wide:gap-5"
+            >
+              <span aria-hidden="true">←</span>
+              <span className="text-sm wide:text-[0.9375rem]">{t("backToFile")}</span>
+              <kbd className="font-meta ml-2 hidden border border-border-strong p-1 text-[0.625rem] text-fg-subtle wide:inline">ESC</kbd>
+            </button>
+            <div className="ml-16 hidden pt-3 wide:block">
+              <p className={metaLabel}>{t("archiveLabel")} / {t("study")}</p>
+              <h1 className="mb-2 mt-2.5 text-[1.9rem] font-semibold">{file.title}</h1>
+              <p className="font-meta text-[0.6875rem] uppercase tracking-[0.08em] text-fg-subtle">
+                {code} / {column.name}
+              </p>
+            </div>
+            <p aria-hidden="true" className="ml-auto hidden text-[3.625rem] font-light leading-none text-fg-muted wide:block">
+              360<span className="align-top text-[2rem]">°</span>
+            </p>
+          </header>
+
+          <div className="pointer-events-none absolute inset-x-[var(--edge)] top-20 wide:hidden">
+            <p className={metaLabel}>{code} / {column.name}</p>
+            <h1 aria-hidden="true" className="mt-1 text-lg font-semibold">{file.title}</h1>
+          </div>
+
+          <div role="group" aria-label={t("cover")} className={`${styles.surface} flex border border-fg/30 bg-page/70`}>
+            {([true, false] as const).map((value) => (
+              <button
+                key={String(value)}
+                type="button"
+                aria-pressed={clear === value}
+                onClick={() => setClear(value)}
+                className={`min-h-11 px-4 text-xs transition wide:px-5 wide:text-sm ${clear === value ? "bg-fg text-page" : "hover:bg-control"}`}
+              >
+                {value ? t("coverClear") : t("coverFrosted")}
+              </button>
+            ))}
+          </div>
+
+          <aside
+            aria-label={t("assembly")}
+            className={`${styles.parts} pointer-events-none transition duration-400 motion-reduce:transition-none ${exploded ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"}`}
+          >
+            <p className="font-meta mb-6 text-[0.6875rem] uppercase tracking-[0.08em] text-fg-subtle">{t("assembly")}</p>
+            <ol>
+              {parts.map((part, i) => (
+                <li key={part} className="relative mb-4 border-b border-border pb-4 pl-10 text-base">
+                  <span className="font-meta absolute left-0 top-0.5 text-[0.6875rem] text-fg-subtle">{pad(i + 1)}</span>
+                  {part}
+                </li>
+              ))}
+            </ol>
+          </aside>
+
+          <div className={`${styles.studyFooter} flex flex-col items-center gap-3 wide:flex-row wide:justify-between`}>
+            <p className="font-meta hidden w-1/4 flex-wrap gap-x-5 text-xs text-fg-subtle wide:flex">
+              <span>{t("studyHintDrag")}</span>
+              {touch ? <span>{t("studyHintPinch")}</span> : (
+                <>
+                  <span>{t("studyHintPan")}</span>
+                  <span>{t("studyHintZoom")}</span>
+                </>
+              )}
+            </p>
+            <div role="group" aria-label={t("study")} className="flex border border-fg/40 bg-page">
+              <button
+                type="button"
+                aria-pressed={exploded}
+                onClick={() => setExploded(true)}
+                className={`min-h-12 min-w-36 px-5 text-sm transition wide:min-h-[3.75rem] wide:min-w-[10.375rem] wide:text-[0.9375rem] ${exploded ? "bg-fg text-page" : "hover:bg-control"}`}
+              >
+                <span aria-hidden="true" className="mr-2.5">＋</span>
+                {t("explode")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={!exploded}
+                onClick={() => setExploded(false)}
+                className={`min-h-12 min-w-36 px-5 text-sm transition wide:min-h-[3.75rem] wide:min-w-[10.375rem] wide:text-[0.9375rem] ${!exploded ? "bg-fg text-page" : "hover:bg-control"}`}
+              >
+                <span aria-hidden="true" className="mr-2.5">−</span>
+                {t("reassemble")}
+              </button>
+            </div>
+            <div className="flex items-center gap-6 wide:w-1/4 wide:justify-end">
+              <button type="button" onClick={() => engineRef.current?.resetView()} className="inline-flex min-h-11 items-center gap-3 text-sm hover:text-accent-text">
+                {t("resetView")} <span aria-hidden="true">↺</span>
+              </button>
+              <Link href={file.href} className="inline-flex min-h-11 items-center gap-2 text-sm text-fg-muted hover:text-fg">
+                {t("viewAlbum")} <span aria-hidden="true">↗</span>
+              </Link>
             </div>
           </div>
+          <p role="status" className="font-meta absolute bottom-2 left-1/2 hidden -translate-x-1/2 text-[0.6875rem] uppercase tracking-[0.08em] text-fg-subtle wide:block">
+            {exploded ? t("exploded") : t("assembled")}
+          </p>
         </main>
+      )}
+
+      {mode !== "study" && (
+        <footer className={`${styles.footer} ${mode === "detail" ? "hidden wide:flex" : "flex"} pointer-events-none items-center justify-between gap-3 font-meta text-[0.5rem] uppercase tracking-[0.12em] text-fg-subtle wide:text-[0.625rem]`}>
+          <span className="flex items-center gap-2">
+            <i aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success" />
+            {t("connected")}
+          </span>
+          <Link href="/" className="pointer-events-auto inline-flex min-h-7 items-center hover:text-fg">
+            {t("classic")} <span aria-hidden="true" className="ml-2">↗</span>
+          </Link>
+        </footer>
       )}
 
       {status === "unsupported" && (
@@ -531,12 +692,12 @@ export default function AlbumArchive({
         columns={columns}
         onSelect={(index) => {
           setIndexOpen(false);
-          setSelected(index);
+          choose(index);
         }}
         onOpen={(index) => {
           setIndexOpen(false);
-          if (status === "ready") openStudy(index);
-          else setSelected(index);
+          if (ready) openDetail(index);
+          else choose(index);
         }}
       />
     </div>

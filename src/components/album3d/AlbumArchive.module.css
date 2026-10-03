@@ -1,0 +1,305 @@
+/*
+ * Overlay layout for the 3D archive. Positions follow RhineLabUI
+ * (https://github.com/LBEILC/RhineLabUI, src/style.css and src/responsive.css,
+ * MIT License, Copyright (c) 2026 LBEILC), whose 1920 x 1080 layout is kept
+ * as percentages. The three layouts match the engine's framing: desktop,
+ * compact (narrower than 1100px) and portrait (aspect ratio under 1.05).
+ */
+
+/* Wide screens scale the whole overlay with the viewport, as the reference
+   scales its 1920 x 1080 stage; text never drops below 13px base. */
+@media (min-width: 1100px) and (min-aspect-ratio: 105/100) {
+  :global(html):has(.root) {
+    font-size: clamp(13px, min(100vw / 120, 100vh / 67.5), 20px);
+  }
+}
+
+.root {
+  --edge: 3.75rem;
+  --rule: color-mix(in srgb, var(--color-fg) 72%, transparent);
+}
+
+/* ---------------------------------------------------------------- shade -- */
+
+.shade,
+.shade::before,
+.shade::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.shade::before,
+.shade::after {
+  content: "";
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.shade::before {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-page) 55%, transparent), transparent 38%),
+    radial-gradient(ellipse at 42% 47%, transparent 32%, color-mix(in srgb, var(--color-page) 22%, transparent) 85%);
+}
+.shade::after {
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 40%,
+    color-mix(in srgb, var(--color-page) 20%, transparent) 59%,
+    color-mix(in srgb, var(--color-page) 92%, transparent) 68%,
+    var(--color-page) 100%
+  );
+}
+.shade[data-detail="true"]::before {
+  opacity: 0;
+}
+.shade[data-detail="true"]::after {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------- archive -- */
+
+.callout {
+  position: absolute;
+  left: 50.52%;
+  top: 43.6%;
+  width: 49.48%;
+  padding-right: var(--edge);
+}
+.calloutRule {
+  position: relative;
+  height: 1px;
+  margin: 3.2rem 0 0 3.5625rem;
+  background: var(--rule);
+}
+.calloutRule::before {
+  content: "";
+  position: absolute;
+  left: -3.8125rem;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  background: var(--color-fg);
+}
+.calloutBody {
+  margin-left: 3.625rem;
+  max-width: 40.75rem;
+}
+.counter {
+  position: absolute;
+  left: var(--edge);
+  bottom: 7.1875rem;
+}
+.fileNav {
+  position: absolute;
+  left: 26.25%;
+  bottom: 8.1875rem;
+}
+.columnNav {
+  position: absolute;
+  left: 52.34%;
+  bottom: 8.1875rem;
+}
+.hint {
+  position: absolute;
+  left: 26.3%;
+  bottom: 3.75rem;
+}
+.footer {
+  position: absolute;
+  left: var(--edge);
+  right: var(--edge);
+  bottom: 1.75rem;
+}
+
+/* ---------------------------------------------------------------- detail -- */
+
+.back {
+  position: absolute;
+  left: calc(var(--edge) - 1px);
+  top: 22%;
+}
+.caption {
+  position: absolute;
+  left: var(--edge);
+  bottom: 21.8%;
+}
+.document {
+  position: absolute;
+  left: 60.1%;
+  top: 26.8%;
+  width: min(39.75rem, 33.125%);
+  max-height: calc(73.2% - 3.75rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* ----------------------------------------------------------------- study -- */
+
+.studyHeader {
+  position: absolute;
+  top: 2.875rem;
+  left: var(--edge);
+  right: var(--edge);
+}
+.surface {
+  position: absolute;
+  top: 9.375rem;
+  right: var(--edge);
+}
+.parts {
+  position: absolute;
+  top: 27.8%;
+  right: 4.375rem;
+  width: 14.375rem;
+}
+.studyFooter {
+  position: absolute;
+  left: var(--edge);
+  right: var(--edge);
+  bottom: 4rem;
+}
+
+/* ---------------------------------------------------------- rolling digits */
+
+.digit {
+  display: inline-block;
+  min-width: 1ch;
+  animation: roll-in 460ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes roll-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.55em);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .digit {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------- compact and portrait -- */
+
+@media (max-width: 1099px), (max-aspect-ratio: 105/100) {
+  .root {
+    --edge: max(20px, env(safe-area-inset-left), env(safe-area-inset-right));
+  }
+  .callout {
+    left: 53%;
+    top: 35%;
+    width: calc(47% - var(--edge));
+    padding-right: 0;
+  }
+  .calloutRule {
+    margin: 0.5rem 0 0 20px;
+  }
+  .calloutRule::before {
+    left: -24px;
+  }
+  .calloutBody {
+    margin-left: 20px;
+  }
+  .counter {
+    bottom: 61px;
+  }
+  .fileNav {
+    display: none;
+  }
+  .columnNav {
+    left: auto;
+    right: var(--edge);
+    bottom: 58px;
+  }
+  .hint {
+    display: none;
+  }
+  .footer {
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .back {
+    left: calc(var(--edge) - 8px);
+    top: 84px;
+  }
+  .caption {
+    bottom: 55px;
+  }
+  .document {
+    left: 53%;
+    top: 84px;
+    bottom: 53px;
+    width: calc(47% - var(--edge));
+    max-height: none;
+    padding: 0 3px 12px 0;
+  }
+  .studyHeader {
+    top: max(12px, env(safe-area-inset-top));
+  }
+  .surface {
+    top: max(16px, env(safe-area-inset-top));
+  }
+  .parts {
+    top: 200px;
+    right: var(--edge);
+    width: 180px;
+  }
+  .studyFooter {
+    bottom: max(28px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-aspect-ratio: 105/100) {
+  .shade::before {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-page) 45%, transparent),
+      transparent 25%,
+      transparent 46%,
+      color-mix(in srgb, var(--color-page) 80%, transparent) 65%,
+      var(--color-page) 82%
+    );
+  }
+  .shade::after {
+    background: linear-gradient(
+      180deg,
+      transparent 28%,
+      color-mix(in srgb, var(--color-page) 20%, transparent) 39%,
+      color-mix(in srgb, var(--color-page) 96%, transparent) 51%,
+      var(--color-page) 60%
+    );
+  }
+  .callout {
+    left: var(--edge);
+    top: auto;
+    bottom: 205px;
+    width: calc(100% - 2 * var(--edge));
+  }
+  .counter {
+    bottom: 58px;
+  }
+  .fileNav {
+    display: flex;
+    left: 50%;
+    bottom: 124px;
+    transform: translateX(-50%);
+  }
+  .back {
+    top: 77px;
+  }
+  .caption {
+    left: var(--edge);
+    right: var(--edge);
+    bottom: 46%;
+  }
+  .document {
+    left: var(--edge);
+    right: var(--edge);
+    width: auto;
+    top: 54%;
+    bottom: 40px;
+    padding-top: 12px;
+    border-top: 1px solid color-mix(in srgb, var(--color-fg) 30%, transparent);
+  }
+  .parts {
+    display: none;
+  }
+}

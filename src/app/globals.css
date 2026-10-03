@@ -4,6 +4,8 @@
    always win; absent either class, the OS preference decides. */
 @custom-variant dark (&:where(.dark, .dark *));
 @custom-variant light (&:where(.light, .light *));
+/* The 3D album's desktop layout (src/components/album3d). */
+@custom-variant wide (@media (min-width: 1100px) and (min-aspect-ratio: 105/100));
 
 @theme inline {
   --font-sans: var(--font-interface);
