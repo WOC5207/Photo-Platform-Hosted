@@ -1,22 +1,71 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import dynamic from "next/dynamic";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
 import EmptyState from "@/components/ui/EmptyState";
 import SiteModeSwitch, { useLeaveFor } from "@/components/SiteModeSwitch";
 import { classicTwin, parentScreen, parseScreen, screenPath, type Screen } from "@/lib/siteMode";
-import ArchiveIndex from "./ArchiveIndex";
+import { GameMenu, Hints, MENU_SCREENS, Rolling, pad, wrap, type MenuItem } from "./hud";
+import { AlbumPhotosContext } from "./AlbumPhotosFeed";
 import styles from "./ArchiveSite.module.css";
-import { fileCode, type ArchiveColumn, type ArchiveFile } from "./types";
+import { fileCode, tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile } from "./types";
 import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
 
 export type { ArchiveColumn, ArchiveFile, ArchivePrint } from "./types";
 
 type EngineStatus = "loading" | "ready" | "unsupported";
-type Mode = "archive" | "detail" | "study";
+type Mode = "archive" | "detail" | "study" | "table" | "photo";
+type MotionPreference = "system" | "reduced" | "full";
+type ThemePreference = "system" | "light" | "dark";
+
+const MOTION_KEY = "album3d-motion";
+
+// The photo screens load with their own chunk, only when visited.
+// The search overlay loads the first time it opens.
+const ArchiveIndex = dynamic(() => import("./ArchiveIndex"));
+const TableScreen = dynamic(() => import("./PhotoScreens").then((m) => m.TableScreen));
+const PhotoScreen = dynamic(() => import("./PhotoScreens").then((m) => m.PhotoScreen));
+const StudyScreen = dynamic(() => import("./StudyScreen"));
+
+function readMotion(): MotionPreference {
+  try {
+    const saved = localStorage.getItem(MOTION_KEY);
+    return saved === "reduced" || saved === "full" ? saved : "system";
+  } catch {
+    return "system";
+  }
+}
+
+function prefersReduced(preference: MotionPreference): boolean {
+  if (preference !== "system") return preference === "reduced";
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function readTheme(): ThemePreference {
+  try {
+    const saved = localStorage.getItem("theme");
+    return saved === "light" || saved === "dark" ? saved : "system";
+  } catch {
+    return "system";
+  }
+}
+
+/** Applies a theme the way ThemeToggle and the root layout's script do. */
+function applyTheme(theme: ThemePreference) {
+  const root = document.documentElement;
+  root.classList.remove("light", "dark");
+  try {
+    if (theme === "system") localStorage.removeItem("theme");
+    else localStorage.setItem("theme", theme);
+  } catch {
+    // The choice still applies for this visit.
+  }
+  if (theme !== "system") root.classList.add(theme);
+}
 
 function webglAvailable(): boolean {
   try {
@@ -68,105 +117,6 @@ function isInteractive(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(target.closest("a, button, input, select, textarea"));
 }
 
-const pad = (n: number, width = 2) => String(n).padStart(width, "0");
-const wrap = (value: number, count: number) => ((value % count) + count) % count;
-const MENU_SCREENS: Screen["kind"][] = ["title", "photographers", "photographer"];
-
-/** Digits that roll in when they change, as the reference's counters do. */
-function Rolling({ value }: { value: string }) {
-  return (
-    <span aria-hidden="true" className="tabular-nums">
-      {value.split("").map((ch, i) => (
-        <span key={`${i}-${ch}`} className={/\d/.test(ch) ? styles.digit : undefined}>
-          {ch}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-interface MenuItem {
-  key: string;
-  label: string;
-  sub?: string;
-  /** Leaves the 3D site, so it shows an outward arrow. */
-  external?: boolean;
-  run: () => void;
-}
-
-/**
- * A game-style menu: one focused item at a time, moved with the arrow keys
- * (handled by the screen) or the pointer, confirmed with Enter or a click.
- */
-function GameMenu({
-  label,
-  items,
-  focus,
-  onFocus,
-  className = ""
-}: {
-  label: string;
-  items: MenuItem[];
-  focus: number;
-  onFocus: (index: number) => void;
-  className?: string;
-}) {
-  return (
-    <ol aria-label={label} className={`grid grid-cols-[minmax(0,1fr)] gap-1 ${className}`}>
-      {items.map((item, i) => {
-        const active = i === focus;
-        return (
-          <li key={item.key} className="relative min-w-0" onMouseEnter={() => onFocus(i)}>
-            <span
-              aria-hidden="true"
-              className={`absolute left-0 top-1/2 h-9 w-[3px] -translate-y-1/2 bg-fg transition-opacity duration-200 ${active ? "opacity-100" : "opacity-0"}`}
-            />
-            <button
-              type="button"
-              data-menu-item={i}
-              aria-current={active ? "true" : undefined}
-              onFocus={() => onFocus(i)}
-              onClick={item.run}
-              className={`flex min-h-14 w-full items-center gap-4 py-2 pr-3 text-left transition-[background-color,color,padding] duration-200 motion-reduce:transition-none ${
-                active ? "bg-fg/[0.06] pl-7 text-fg" : "pl-5 text-fg-muted hover:text-fg"
-              }`}
-            >
-              <span aria-hidden="true" className="font-meta w-7 shrink-0 text-[0.6875rem] tracking-[0.14em] text-fg-subtle">
-                {pad(i + 1)}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-lg font-bold uppercase tracking-[0.02em] wide:text-[1.625rem]">{item.label}</span>
-                {item.sub && (
-                  <span className="font-meta mt-0.5 block truncate text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">{item.sub}</span>
-                )}
-              </span>
-              <span
-                aria-hidden="true"
-                className={`text-2xl transition duration-200 motion-reduce:transition-none ${active ? "translate-x-0 opacity-100" : "-translate-x-2 opacity-0"}`}
-              >
-                {item.external ? "↗" : "→"}
-              </span>
-            </button>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-function Hints({ parts, className }: { parts: ReactNode[]; className: string }) {
-  return (
-    <p className={`${className} font-meta hidden text-[0.625rem] uppercase tracking-[0.08em] text-fg-subtle sm:block`}>
-      {parts.map((part, i) => (
-        <span key={i}>
-          {i > 0 && <span aria-hidden="true" className="mx-3">／</span>}
-          {part}
-        </span>
-      ))}
-    </p>
-  );
-}
-
 /**
  * The 3D site: the platform's albums as a three.js archive (see engine.ts),
  * laid out after RhineLabUI and driven like a game menu.
@@ -199,13 +149,29 @@ export default function ArchiveSite({
   // ---------------------------------------------------------------- screen --
   const screen: Screen = parseScreen(pathname) ?? { kind: "title" };
   const columnIndex = "username" in screen ? columns.findIndex((c) => c.username === screen.username) : -1;
+  const inAlbum = screen.kind === "album" || screen.kind === "table" || screen.kind === "photo";
   const fileIndex =
-    screen.kind === "album" && columnIndex >= 0
+    inAlbum && columnIndex >= 0
       ? (columns[columnIndex].fileIndexes.find((i) => files[i]?.slug === screen.slug) ?? -1)
       : -1;
-  const missing = ("username" in screen && columnIndex < 0) || (screen.kind === "album" && fileIndex < 0);
-  const mode: Mode = screen.kind === "album" && !missing ? (screen.study ? "study" : "detail") : "archive";
+  const [album, setAlbum] = useState<AlbumPhotos | null>(null);
+  const albumHere = album && "slug" in screen && album.username === screen.username && album.slug === screen.slug ? album : null;
+  const photoIndex = screen.kind === "photo" && albumHere ? albumHere.photos.findIndex((p) => p.id === screen.photoId) : -1;
+  const missing =
+    ("username" in screen && columnIndex < 0) ||
+    (inAlbum && fileIndex < 0) ||
+    (screen.kind === "photo" && albumHere !== null && photoIndex < 0);
+  const mode: Mode = missing
+    ? "archive"
+    : screen.kind === "album"
+      ? screen.study
+        ? "study"
+        : "detail"
+      : screen.kind === "table" || screen.kind === "photo"
+        ? screen.kind
+        : "archive";
   const overview = missing || MENU_SCREENS.includes(screen.kind);
+  const carouselScreen = !missing && (screen.kind === "photographers" || screen.kind === "photographer");
 
   const [status, setStatus] = useState<EngineStatus>("loading");
   const [selected, setSelected] = useState(() => {
@@ -217,7 +183,35 @@ export default function ArchiveSite({
   const [exploded, setExploded] = useState(false);
   const [clear, setClear] = useState(true);
   const [indexOpen, setIndexOpen] = useState(false);
+  const [indexUsed, setIndexUsed] = useState(false);
+  useEffect(() => {
+    if (indexOpen) setIndexUsed(true);
+  }, [indexOpen]);
   const [touch, setTouch] = useState(false);
+  const [tableFocus, setTableFocus] = useState(0);
+  const [motion, setMotion] = useState<MotionPreference>("system");
+  const [theme, setTheme] = useState<ThemePreference>("system");
+  const [gamepad, setGamepad] = useState(false);
+  const locale = useLocale();
+  // The controller code loads once a controller connects.
+  useEffect(() => {
+    if (typeof navigator.getGamepads !== "function") return;
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    const load = () => {
+      window.removeEventListener("gamepadconnected", load);
+      import("./gamepad").then(({ watchGamepads }) => {
+        if (!cancelled) stop = watchGamepads(setGamepad);
+      });
+    };
+    if (Array.from(navigator.getGamepads()).some((p) => p?.connected)) load();
+    else window.addEventListener("gamepadconnected", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("gamepadconnected", load);
+      stop?.();
+    };
+  }, []);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
@@ -238,6 +232,19 @@ export default function ArchiveSite({
     if (screen.kind === "album" && screen.study) setExploded(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
+
+  // A photo's address puts the light table's focus on it, so Esc lands there.
+  useEffect(() => {
+    if (photoIndex >= 0) setTableFocus(photoIndex);
+  }, [photoIndex]);
+  useEffect(() => {
+    if (!albumHere) setTableFocus(0);
+  }, [albumHere]);
+
+  useEffect(() => {
+    setMotion(readMotion());
+    setTheme(readTheme());
+  }, []);
 
   // Moving between photographers in album select rewrites the address, so a
   // shared link always names the photographer on screen.
@@ -319,11 +326,59 @@ export default function ArchiveSite({
     [columns, choose]
   );
 
+  const switchPhotographer = useCallback(
+    (direction: 1 | -1) => {
+      if (columnIndex < 0 || columns.length < 2) return;
+      const next = columns[wrap(columnIndex + direction, columns.length)];
+      router.replace(screenPath({ kind: "photographer", username: next.username }), { scroll: false });
+    },
+    [columnIndex, columns, router]
+  );
+
+  /** A photographer card in the carousel: focus it, or open it once focused. */
+  const onCard = useCallback(
+    (index: number, open: boolean) => {
+      const target = wrap(index, columns.length);
+      const card = columns[target];
+      if (!card) return;
+      if (screen.kind === "photographer") {
+        if (open && target === columnIndex) go({ kind: "albumSelect", username: card.username });
+        else if (target !== columnIndex) router.replace(screenPath({ kind: "photographer", username: card.username }), { scroll: false });
+        return;
+      }
+      focusPhotographer(target);
+      if (open) go({ kind: "photographer", username: card.username });
+    },
+    [columns, screen.kind, columnIndex, go, router, focusPhotographer]
+  );
+
+  /** A print on the light table: focus it, or open its photo screen. */
+  const onPrint = useCallback(
+    (index: number, open: boolean) => {
+      if (!albumHere || albumHere.photos.length === 0 || !("slug" in screen)) return;
+      const target = Math.max(0, Math.min(albumHere.photos.length - 1, index));
+      setTableFocus(target);
+      if (open) go({ kind: "photo", username: screen.username, slug: screen.slug, photoId: albumHere.photos[target].id });
+    },
+    [albumHere, screen, go]
+  );
+
+  /** ← → on the photo screen walk the album without stacking history. */
+  const stepPhoto = useCallback(
+    (direction: 1 | -1) => {
+      if (!albumHere || screen.kind !== "photo") return;
+      const next = albumHere.photos[photoIndex + direction];
+      if (!next) return;
+      router.replace(screenPath({ ...screen, photoId: next.id }), { scroll: false });
+    },
+    [albumHere, screen, photoIndex, router]
+  );
+
   // Latest callbacks for the engine, which is created once.
-  const handlers = useRef({ step, openDetail, choose });
+  const handlers = useRef({ step, openDetail, choose, onCard, onPrint });
   useEffect(() => {
-    handlers.current = { step, openDetail, choose };
-  }, [step, openDetail, choose]);
+    handlers.current = { step, openDetail, choose, onCard, onPrint };
+  }, [step, openDetail, choose, onCard, onPrint]);
 
   // ----------------------------------------------------------------- engine --
   // Create the engine once; three.js loads only after the overlay is up.
@@ -352,12 +407,23 @@ export default function ArchiveSite({
           })),
           columns: columns.map((c) => c.fileIndexes),
           palette: readPalette(root),
-          reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+          reducedMotion: prefersReduced(readMotion()),
           lowPower: coarse || window.innerWidth < 768,
           archiveLabel: t("archiveLabel"),
           onPick: (index) => handlers.current.choose(index),
           onOpen: (index) => handlers.current.openDetail(index),
-          onStep: (move) => handlers.current.step(move.axis, move.direction)
+          onStep: (move) => handlers.current.step(move.axis, move.direction),
+          cards: columns.map((c) => {
+            const cover = files[c.fileIndexes[0]]?.prints[0];
+            return {
+              name: c.name,
+              username: c.username,
+              meta: t("rosterSub", { albums: c.fileIndexes.length, photos: c.photoCount }),
+              cover: cover ? { thumb: cover.thumb, med: cover.med } : null
+            };
+          }),
+          onCard: (index, open) => handlers.current.onCard(index, open),
+          onPrint: (index, open) => handlers.current.onPrint(index, open)
         });
         engineRef.current = engine;
         setStatus("ready");
@@ -391,14 +457,36 @@ export default function ArchiveSite({
     if (ready) engineRef.current?.select(selected);
   }, [selected, ready]);
 
+  // Which stage the scene shows: the carousel for photographers, the light
+  // table for an album's photos, the study, or the archive field.
+  const carouselFocus = screen.kind === "photographer" ? columnIndex : menuFocus;
+  const tableKey = albumHere ? `${albumHere.username}/${albumHere.slug}` : "";
   useEffect(() => {
     const engine = engineRef.current;
     if (!ready || !engine) return;
+    if (carouselScreen) {
+      engine.showCarousel(Math.max(0, carouselFocus), screen.kind === "photographer");
+      return;
+    }
+    if ((mode === "table" || mode === "photo") && albumHere) {
+      engine.showTable(tableKey, albumHere.photos, mode === "photo" ? Math.max(0, photoIndex) : tableFocus, mode === "photo");
+      return;
+    }
+    if (mode === "table" || mode === "photo") return;
+    if (mode === "study") {
+      engine.openStudy(selectedRef.current);
+      return;
+    }
+    engine.showField();
     engine.setOverview(overview);
-    engine.setDetail(mode !== "archive");
-    if (mode === "study") engine.openStudy(selectedRef.current);
-    else engine.closeStudy();
-  }, [mode, overview, ready]);
+    engine.setDetail(mode === "detail");
+    // albumHere changes only with tableKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, overview, ready, carouselScreen, carouselFocus, screen.kind, tableKey, tableFocus, photoIndex]);
+
+  useEffect(() => {
+    if (ready) engineRef.current?.setReducedMotion(prefersReduced(motion));
+  }, [motion, ready]);
 
   useEffect(() => {
     if (ready && mode === "study") engineRef.current?.setExploded(exploded);
@@ -423,8 +511,55 @@ export default function ArchiveSite({
       run: () => go({ kind: "albums" })
     },
     { key: "index", label: t("index"), sub: t("indexSubtitle"), run: () => setIndexOpen(true) },
+    { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), run: () => go({ kind: "settings" }) },
     { key: "classic", label: t("menuClassic"), sub: t("menuClassicSub"), external: true, run: () => leaveFor("classic", "/") }
   ];
+
+  // Settings change in place: Enter or → steps forward, ← steps back.
+  const cycle = <T,>(values: readonly T[], current: T, direction: number) =>
+    values[wrap(values.indexOf(current) + direction, values.length)];
+  const THEMES = ["system", "light", "dark"] as const;
+  const MOTIONS = ["system", "reduced", "full"] as const;
+  const setThemeTo = (next: ThemePreference) => {
+    applyTheme(next);
+    setTheme(next);
+  };
+  const setMotionTo = (next: MotionPreference) => {
+    try {
+      if (next === "system") localStorage.removeItem(MOTION_KEY);
+      else localStorage.setItem(MOTION_KEY, next);
+    } catch {
+      // The choice still applies for this visit.
+    }
+    setMotion(next);
+  };
+  const settings: (MenuItem & { adjust: (direction: number) => void })[] = [
+    {
+      key: "language",
+      label: t("settingLanguage"),
+      sub: t("settingLanguageSub"),
+      value: locale === "zh" ? "中文" : "English",
+      adjust: () => router.replace(pathname, { locale: locale === "zh" ? "en" : "zh", scroll: false }),
+      run: () => undefined
+    },
+    {
+      key: "theme",
+      label: t("settingTheme"),
+      sub: t("settingThemeSub"),
+      value: t(`theme_${theme}`),
+      adjust: (direction) => setThemeTo(cycle(THEMES, theme, direction)),
+      run: () => undefined
+    },
+    {
+      key: "motion",
+      label: t("settingMotion"),
+      sub: t("settingMotionSub"),
+      value: t(`motion_${motion}`),
+      adjust: (direction) => setMotionTo(cycle(MOTIONS, motion, direction)),
+      run: () => undefined
+    }
+  ];
+  for (const item of settings) item.run = () => item.adjust(1);
 
   const rosterMenu: MenuItem[] = columns.map((c, i) => ({
     key: c.username,
@@ -465,17 +600,17 @@ export default function ArchiveSite({
       ]
     : [];
 
-  const activeMenu =
-    missing ? [] : screen.kind === "title" ? titleMenu : screen.kind === "photographers" ? rosterMenu : screen.kind === "photographer" ? photographerMenu : [];
-
-  const switchPhotographer = useCallback(
-    (direction: 1 | -1) => {
-      if (columnIndex < 0 || columns.length < 2) return;
-      const next = columns[wrap(columnIndex + direction, columns.length)];
-      router.replace(screenPath({ kind: "photographer", username: next.username }), { scroll: false });
-    },
-    [columnIndex, columns, router]
-  );
+  const activeMenu: MenuItem[] = missing
+    ? []
+    : screen.kind === "title"
+      ? titleMenu
+      : screen.kind === "settings"
+        ? settings
+        : screen.kind === "photographers"
+          ? rosterMenu
+          : screen.kind === "photographer"
+            ? photographerMenu
+            : [];
 
   // -------------------------------------------------------------- keyboard --
   useEffect(() => {
@@ -498,6 +633,14 @@ export default function ArchiveSite({
         };
         if (e.key === "ArrowUp") return move(-1);
         if (e.key === "ArrowDown") return move(1);
+        // The carousel runs left to right, so ← → move it too.
+        if (screen.kind === "photographers" && e.key === "ArrowLeft") return move(-1);
+        if (screen.kind === "photographers" && e.key === "ArrowRight") return move(1);
+        if (screen.kind === "settings" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+          e.preventDefault();
+          settings[menuFocus]?.adjust(e.key === "ArrowLeft" ? -1 : 1);
+          return;
+        }
         if (screen.kind === "photographer" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
           e.preventDefault();
           switchPhotographer(e.key === "ArrowLeft" ? -1 : 1);
@@ -507,6 +650,30 @@ export default function ArchiveSite({
           e.preventDefault();
           activeMenu[menuFocus]?.run();
         }
+        return;
+      }
+      if (mode === "table" && albumHere && albumHere.photos.length > 0) {
+        const columnsAcross = tableColumns(window.innerWidth, window.innerHeight);
+        const moves: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columnsAcross, ArrowDown: columnsAcross };
+        if (e.key in moves) {
+          e.preventDefault();
+          onPrint(tableFocus + moves[e.key], false);
+        } else if (e.key === "Enter" && !isInteractive(e.target)) {
+          e.preventDefault();
+          onPrint(tableFocus, true);
+        }
+        return;
+      }
+      if (mode === "photo") {
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          stepPhoto(e.key === "ArrowLeft" ? -1 : 1);
+        }
+        return;
+      }
+      if (mode === "detail" && e.key === "Enter" && !isInteractive(e.target) && screen.kind === "album") {
+        e.preventDefault();
+        go({ kind: "table", username: screen.username, slug: screen.slug });
         return;
       }
       if (mode !== "archive") return;
@@ -529,11 +696,12 @@ export default function ArchiveSite({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [indexOpen, mode, step, back, activeMenu, menuFocus, screen.kind, missing, focusPhotographer, switchPhotographer, openDetail]);
+  }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go]);
 
   // ----------------------------------------------------------------- render --
   if (files.length === 0 || !file || !column) {
     return (
+      <AlbumPhotosContext.Provider value={setAlbum}>
       <main id="main-content" className="mx-auto flex min-h-dvh max-w-3xl flex-col justify-center px-4 py-10">
         <EmptyState
           title={t("empty")}
@@ -546,21 +714,15 @@ export default function ArchiveSite({
         />
         {children}
       </main>
+      </AlbumPhotosContext.Provider>
     );
   }
 
   const code = fileCode(file.number);
   const altTitle = file.altTitle && file.altTitle !== file.title ? file.altTitle : "";
-  const parts = [
-    t("partScrews"),
-    t("partCover"),
-    t("partPrints", { count: file.prints.length }),
-    t("partSubstrate"),
-    t("partCarrier")
-  ];
   const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle";
   const square = "grid h-11 w-11 shrink-0 place-items-center text-2xl transition hover:bg-accent-surface";
-  const albumsHere = screen.kind === "albumSelect" || (screen.kind === "album" && !missing);
+  const albumsHere = screen.kind === "albumSelect" || (inAlbum && !missing);
 
   // Where the visitor is, as a trail of links back up the screens.
   const crumbs: { label: string; href?: string }[] = [{ label: t("crumbMenu"), href: screenPath({ kind: "title" }) }];
@@ -569,14 +731,25 @@ export default function ArchiveSite({
     crumbs.push({ label: t("menuPhotographers"), href: screenPath({ kind: "photographers" }) });
     crumbs.push({ label: here.name, href: screenPath({ kind: "photographer", username: here.username }) });
     if (albumsHere) crumbs.push({ label: t("menuAlbums"), href: screenPath({ kind: "albumSelect", username: here.username }) });
-    if (screen.kind === "album") crumbs.push({ label: code, href: screen.study ? screenPath({ ...screen, study: false }) : undefined });
+    if (inAlbum && "slug" in screen) crumbs.push({ label: code, href: screenPath({ kind: "album", username: here.username, slug: screen.slug, study: false }) });
     if (screen.kind === "album" && screen.study) crumbs.push({ label: t("study") });
+    if (screen.kind === "table" || screen.kind === "photo") {
+      crumbs.push({ label: t("lightTable"), href: screenPath({ kind: "table", username: here.username, slug: screen.slug }) });
+    }
+    if (screen.kind === "photo" && photoIndex >= 0) crumbs.push({ label: t("printCount", { current: pad(photoIndex + 1), total: pad(albumHere?.photos.length ?? 0) }) });
   } else if (screen.kind === "photographers") crumbs.push({ label: t("menuPhotographers") });
+  else if (screen.kind === "settings") crumbs.push({ label: t("menuSettings") });
   crumbs[crumbs.length - 1].href = undefined;
 
   const studyHeader = mode === "study";
+  // Controller glyphs replace key names while a controller is in use.
+  const key = (name: "move" | "confirm" | "back" | "sides") =>
+    gamepad
+      ? { move: "✛", confirm: "Ⓐ", back: "Ⓑ", sides: "◀ ▶" }[name]
+      : { move: "↑ ↓", confirm: "ENTER", back: "ESC", sides: "← →" }[name];
 
   return (
+    <AlbumPhotosContext.Provider value={setAlbum}>
     <div ref={rootRef} className={`${styles.root} album3d relative h-dvh w-full overflow-hidden bg-page text-fg`}>
       <div
         aria-hidden="true"
@@ -586,7 +759,12 @@ export default function ArchiveSite({
       </div>
 
       {mode !== "study" && (
-        <div aria-hidden="true" className={styles.shade} data-detail={mode === "detail"} data-overview={overview} />
+        <div
+          aria-hidden="true"
+          className={styles.shade}
+          data-detail={mode === "detail" || mode === "photo"}
+          data-overview={overview || mode === "table"}
+        />
       )}
 
       {status === "loading" && (
@@ -659,6 +837,47 @@ export default function ArchiveSite({
         </main>
       )}
 
+      {!missing && screen.kind === "settings" && (
+        <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
+          <p className={metaLabel}>
+            {t("archiveLabel")} <span aria-hidden="true" className="mx-2">／</span> {t("menuSettings")}
+          </p>
+          <h1 className="mt-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[4.5rem]">
+            {t("settingsTitle")}
+          </h1>
+          <div aria-hidden="true" className={styles.calloutRule} />
+          <GameMenu label={t("settingsTitle")} items={settings} focus={menuFocus} onFocus={setMenuFocus} className="mt-8 wide:mt-12" />
+          <p className="font-meta mt-6 text-[0.625rem] uppercase tracking-[0.12em] text-fg-subtle">
+            {gamepad ? t("controllerOn") : t("controllerHint")}
+          </p>
+        </main>
+      )}
+
+      {mode === "table" && here && "slug" in screen && (
+        <TableScreen
+          file={file}
+          owner={here.name}
+          username={here.username}
+          album={albumHere}
+          focus={tableFocus}
+          onOpen={(index) => onPrint(index, true)}
+          onBack={back}
+          classicHref={classicTwin(pathname)}
+        />
+      )}
+
+      {mode === "photo" && here && albumHere && photoIndex >= 0 && (
+        <PhotoScreen
+          file={file}
+          owner={here.name}
+          album={albumHere}
+          index={photoIndex}
+          onStep={stepPhoto}
+          onBack={back}
+          classicHref={classicTwin(pathname)}
+        />
+      )}
+
       {!missing && screen.kind === "title" && (
         <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
           <p className={metaLabel}>
@@ -727,11 +946,23 @@ export default function ArchiveSite({
         <Hints
           className={styles.menuHint}
           parts={[
-            ...(screen.kind === "photographer" && !missing ? [`← → ${t("hintPhotographer")}`] : []),
-            `↑ ↓ ${t("hintSelect")}`,
-            `ENTER ${t("hintConfirm")}`,
-            ...(screen.kind !== "title" || missing ? [`ESC ${t("hintBack")}`] : [])
+            ...(screen.kind === "photographer" && !missing ? [`${key("sides")} ${t("hintPhotographer")}`] : []),
+            ...(screen.kind === "settings" ? [`${key("sides")} ${t("hintChange")}`] : []),
+            `${key("move")} ${t("hintSelect")}`,
+            `${key("confirm")} ${t("hintConfirm")}`,
+            ...(screen.kind !== "title" || missing ? [`${key("back")} ${t("hintBack")}`] : [])
           ]}
+        />
+      )}
+
+      {(mode === "table" || mode === "photo") && !touch && (
+        <Hints
+          className={styles.menuHint}
+          parts={
+            mode === "table"
+              ? [`${gamepad ? "✛" : "← → ↑ ↓"} ${t("hintPrint")}`, `${key("confirm")} ${t("hintOpen")}`, `${key("back")} ${t("hintBack")}`]
+              : [`${key("sides")} ${t("hintPhoto")}`, `${key("back")} ${t("hintTable")}`]
+          }
         />
       )}
 
@@ -916,10 +1147,21 @@ export default function ArchiveSite({
                 </ul>
               </>
             )}
-            <div className="mt-7 flex items-stretch gap-3">
+            <div className="mt-7 grid gap-2">
+              <Link
+                href={screenPath({ kind: "table", username: column.username, slug: file.slug })}
+                scroll={false}
+                className="inline-flex min-h-12 items-center justify-between gap-4 bg-fg px-5 text-sm font-semibold uppercase tracking-[0.08em] text-page transition hover:bg-accent-text"
+              >
+                {t("openLightTable")}
+                <span className="flex items-center gap-3">
+                  <kbd className="font-meta hidden border border-page/40 px-1 text-[0.625rem] font-normal wide:inline">{key("confirm")}</kbd>
+                  <span aria-hidden="true" className="text-lg">→</span>
+                </span>
+              </Link>
               <Link
                 href={file.href}
-                className="inline-flex min-h-12 flex-1 items-center justify-between gap-4 bg-fg px-5 text-sm font-semibold uppercase tracking-[0.08em] text-page transition hover:bg-accent-text"
+                className="inline-flex min-h-11 items-center justify-between gap-4 border border-border-strong px-5 text-sm uppercase tracking-[0.08em] transition hover:border-fg"
               >
                 {t("viewAlbum")}
                 <span aria-hidden="true" className="text-lg">↗</span>
@@ -936,107 +1178,17 @@ export default function ArchiveSite({
       )}
 
       {mode === "study" && (
-        <main id="main-content" tabIndex={-1} className="outline-none">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,transparent_45%,color-mix(in_srgb,var(--color-page)_38%,transparent)_85%)]" />
-          <header className={`${styles.studyHeader} pointer-events-none flex items-start`}>
-            <button
-              type="button"
-              onClick={back}
-              className="pointer-events-auto flex min-h-11 items-center gap-3 py-3 text-xl transition hover:text-accent-text wide:gap-5"
-            >
-              <span aria-hidden="true">←</span>
-              <span className="text-sm wide:text-[0.9375rem]">{t("backToFile")}</span>
-              <kbd className="font-meta ml-2 hidden border border-border-strong p-1 text-[0.625rem] text-fg-subtle wide:inline">ESC</kbd>
-            </button>
-            <div className="ml-16 hidden pt-3 wide:block">
-              <p className={metaLabel}>{t("archiveLabel")} / {t("study")}</p>
-              <h1 className="mb-2 mt-2.5 text-[1.9rem] font-semibold">{file.title}</h1>
-              <p className="font-meta text-[0.6875rem] uppercase tracking-[0.08em] text-fg-subtle">
-                {code} / {column.name}
-              </p>
-            </div>
-            <p aria-hidden="true" className="ml-auto hidden text-[3.625rem] font-light leading-none text-fg-muted wide:block">
-              360<span className="align-top text-[2rem]">°</span>
-            </p>
-          </header>
-
-          <div className="pointer-events-none absolute inset-x-[var(--edge)] top-20 wide:hidden">
-            <p className={metaLabel}>{code} / {column.name}</p>
-            <h1 aria-hidden="true" className="mt-1 text-lg font-semibold">{file.title}</h1>
-          </div>
-
-          <div role="group" aria-label={t("cover")} className={`${styles.surface} flex border border-fg/30 bg-page/70`}>
-            {([true, false] as const).map((value) => (
-              <button
-                key={String(value)}
-                type="button"
-                aria-pressed={clear === value}
-                onClick={() => setClear(value)}
-                className={`min-h-11 px-4 text-xs transition wide:px-5 wide:text-sm ${clear === value ? "bg-fg text-page" : "hover:bg-control"}`}
-              >
-                {value ? t("coverClear") : t("coverFrosted")}
-              </button>
-            ))}
-          </div>
-
-          <aside
-            aria-label={t("assembly")}
-            className={`${styles.parts} pointer-events-none transition duration-400 motion-reduce:transition-none ${exploded ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"}`}
-          >
-            <p className="font-meta mb-6 text-[0.6875rem] uppercase tracking-[0.08em] text-fg-subtle">{t("assembly")}</p>
-            <ol>
-              {parts.map((part, i) => (
-                <li key={part} className="relative mb-4 border-b border-border pb-4 pl-10 text-base">
-                  <span className="font-meta absolute left-0 top-0.5 text-[0.6875rem] text-fg-subtle">{pad(i + 1)}</span>
-                  {part}
-                </li>
-              ))}
-            </ol>
-          </aside>
-
-          <div className={`${styles.studyFooter} flex flex-col items-center gap-3 wide:flex-row wide:justify-between`}>
-            <p className="font-meta hidden w-1/4 flex-wrap gap-x-5 text-xs text-fg-subtle wide:flex">
-              <span>{t("studyHintDrag")}</span>
-              {touch ? <span>{t("studyHintPinch")}</span> : (
-                <>
-                  <span>{t("studyHintPan")}</span>
-                  <span>{t("studyHintZoom")}</span>
-                </>
-              )}
-            </p>
-            <div role="group" aria-label={t("study")} className="flex border border-fg/40 bg-page">
-              <button
-                type="button"
-                aria-pressed={exploded}
-                onClick={() => setExploded(true)}
-                className={`min-h-12 min-w-36 px-5 text-sm transition wide:min-h-[3.75rem] wide:min-w-[10.375rem] wide:text-[0.9375rem] ${exploded ? "bg-fg text-page" : "hover:bg-control"}`}
-              >
-                <span aria-hidden="true" className="mr-2.5">＋</span>
-                {t("explode")}
-              </button>
-              <button
-                type="button"
-                aria-pressed={!exploded}
-                onClick={() => setExploded(false)}
-                className={`min-h-12 min-w-36 px-5 text-sm transition wide:min-h-[3.75rem] wide:min-w-[10.375rem] wide:text-[0.9375rem] ${!exploded ? "bg-fg text-page" : "hover:bg-control"}`}
-              >
-                <span aria-hidden="true" className="mr-2.5">−</span>
-                {t("reassemble")}
-              </button>
-            </div>
-            <div className="flex items-center gap-6 wide:w-1/4 wide:justify-end">
-              <button type="button" onClick={() => engineRef.current?.resetView()} className="inline-flex min-h-11 items-center gap-3 text-sm hover:text-accent-text">
-                {t("resetView")} <span aria-hidden="true">↺</span>
-              </button>
-              <Link href={file.href} className="inline-flex min-h-11 items-center gap-2 text-sm text-fg-muted hover:text-fg">
-                {t("viewAlbum")} <span aria-hidden="true">↗</span>
-              </Link>
-            </div>
-          </div>
-          <p role="status" className="font-meta absolute bottom-2 left-1/2 hidden -translate-x-1/2 text-[0.6875rem] uppercase tracking-[0.08em] text-fg-subtle wide:block">
-            {exploded ? t("exploded") : t("assembled")}
-          </p>
-        </main>
+        <StudyScreen
+          file={file}
+          owner={column.name}
+          exploded={exploded}
+          clear={clear}
+          touch={touch}
+          onBack={back}
+          onExplode={setExploded}
+          onClear={setClear}
+          onReset={() => engineRef.current?.resetView()}
+        />
       )}
 
       {mode !== "study" && (
@@ -1082,22 +1234,25 @@ export default function ArchiveSite({
         </div>
       )}
 
-      <ArchiveIndex
-        open={indexOpen}
-        onClose={() => setIndexOpen(false)}
-        files={files}
-        columns={columns}
-        onSelect={(index) => {
-          setIndexOpen(false);
-          if (mode === "archive" && !overview) choose(index);
-          else openDetail(index);
-        }}
-        onOpen={(index) => {
-          setIndexOpen(false);
-          openDetail(index);
-        }}
-      />
+      {(indexOpen || indexUsed) && (
+        <ArchiveIndex
+          open={indexOpen}
+          onClose={() => setIndexOpen(false)}
+          files={files}
+          columns={columns}
+          onSelect={(index) => {
+            setIndexOpen(false);
+            if (mode === "archive" && !overview) choose(index);
+            else openDetail(index);
+          }}
+          onOpen={(index) => {
+            setIndexOpen(false);
+            openDetail(index);
+          }}
+        />
+      )}
       {children}
     </div>
+    </AlbumPhotosContext.Provider>
   );
 }

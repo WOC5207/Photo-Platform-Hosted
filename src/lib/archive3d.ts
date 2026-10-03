@@ -1,11 +1,13 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { ownerName, ownerBasePath } from "@/lib/owner";
-import { pickText } from "@/lib/content";
+import { findOwner, ownerName, ownerBasePath } from "@/lib/owner";
+import { formatCredits, pickText } from "@/lib/content";
 import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
-import type { ArchiveColumn, ArchiveFile } from "@/components/album3d/types";
+import { formatPhotoExif } from "@/lib/exif";
+import { safeExternalHttpUrl } from "@/lib/externalUrl";
+import type { AlbumPhotos, ArchiveColumn, ArchiveFile } from "@/components/album3d/types";
 
 /** Albums shown in the field. Past this the scene stops being browsable. */
 const MAX_ALBUMS = 160;
@@ -103,4 +105,62 @@ export async function loadArchive(locale: string): Promise<{ files: ArchiveFile[
   }
 
   return { files, columns };
+}
+
+/** Prints laid on the light table. Past this the classic page shows the rest. */
+const TABLE_LIMIT = 240;
+
+/**
+ * One album's public photos for the light table and the photo screen, with
+ * the same credits, comment, links and EXIF the classic lightbox shows. An
+ * unknown, unpublished or suspended album comes back empty.
+ */
+export async function loadAlbumPhotos(username: string, slug: string): Promise<AlbumPhotos> {
+  const empty = { username, slug, photos: [], more: 0 };
+  const owner = await findOwner(username);
+  if (!owner) return empty;
+  const event = await prisma.event.findFirst({
+    where: { ownerId: owner.id, slug, published: true },
+    select: { id: true }
+  });
+  if (!event) return empty;
+  const where = { eventId: event.id, ...publicPhotoWhere };
+  const [total, photos] = await Promise.all([
+    prisma.photo.count({ where }),
+    prisma.photo.findMany({
+      where,
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+      take: TABLE_LIMIT,
+      include: {
+        credits: {
+          orderBy: { sortOrder: "asc" },
+          include: { socialLinks: { orderBy: { sortOrder: "asc" } } }
+        }
+      }
+    })
+  ]);
+  return {
+    username,
+    slug,
+    more: Math.max(0, total - photos.length),
+    photos: photos.map((p) => {
+      const urls = photoUrls(event.id, p.id);
+      return {
+        id: p.id,
+        thumb: urls.thumb,
+        med: urls.med,
+        full: urls.full,
+        width: p.width,
+        height: p.height,
+        caption: formatCredits(p.credits),
+        comment: p.comment,
+        socialLinks: p.credits.flatMap((c) =>
+          c.socialLinks
+            .map((link) => ({ label: link.platform, url: safeExternalHttpUrl(link.url) }))
+            .filter((link) => link.url !== "")
+        ),
+        exif: formatPhotoExif(p)
+      };
+    })
+  };
 }

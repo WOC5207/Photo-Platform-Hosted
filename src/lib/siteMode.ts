@@ -21,9 +21,12 @@ export type Screen =
   | { kind: "title" }
   | { kind: "albums" }
   | { kind: "photographers" }
+  | { kind: "settings" }
   | { kind: "photographer"; username: string }
   | { kind: "albumSelect"; username: string }
-  | { kind: "album"; username: string; slug: string; study: boolean };
+  | { kind: "album"; username: string; slug: string; study: boolean }
+  | { kind: "table"; username: string; slug: string }
+  | { kind: "photo"; username: string; slug: string; photoId: string };
 
 const SEGMENT = /^[^/?#]+$/;
 
@@ -45,6 +48,7 @@ export function parseScreen(path: string): Screen | null {
   if (rest.length === 0) return { kind: "title" };
   if (rest.length === 1 && rest[0] === "albums") return { kind: "albums" };
   if (rest.length === 1 && rest[0] === "photographers") return { kind: "photographers" };
+  if (rest.length === 1 && rest[0] === "settings") return { kind: "settings" };
   if (rest[0] !== "u" || !rest[1] || !SEGMENT.test(rest[1])) return null;
   const username = rest[1];
   if (rest.length === 2) return { kind: "photographer", username };
@@ -53,6 +57,9 @@ export function parseScreen(path: string): Screen | null {
   const slug = rest[3];
   if (rest.length === 4) return { kind: "album", username, slug, study: false };
   if (rest.length === 5 && rest[4] === "360") return { kind: "album", username, slug, study: true };
+  if (rest[4] !== "photos") return null;
+  if (rest.length === 5) return { kind: "table", username, slug };
+  if (rest.length === 6 && SEGMENT.test(rest[5])) return { kind: "photo", username, slug, photoId: rest[5] };
   return null;
 }
 
@@ -67,12 +74,18 @@ export function screenPath(screen: Screen): string {
       return `${THREE_D_ROOT}/albums`;
     case "photographers":
       return `${THREE_D_ROOT}/photographers`;
+    case "settings":
+      return `${THREE_D_ROOT}/settings`;
     case "photographer":
       return `${THREE_D_ROOT}/u/${enc(screen.username)}`;
     case "albumSelect":
       return `${THREE_D_ROOT}/u/${enc(screen.username)}/albums`;
     case "album":
       return `${THREE_D_ROOT}/u/${enc(screen.username)}/albums/${enc(screen.slug)}${screen.study ? "/360" : ""}`;
+    case "table":
+      return `${THREE_D_ROOT}/u/${enc(screen.username)}/albums/${enc(screen.slug)}/photos`;
+    case "photo":
+      return `${THREE_D_ROOT}/u/${enc(screen.username)}/albums/${enc(screen.slug)}/photos/${enc(screen.photoId)}`;
   }
 }
 
@@ -83,6 +96,7 @@ export function parentScreen(screen: Screen): Screen | null {
       return null;
     case "albums":
     case "photographers":
+    case "settings":
       return { kind: "title" };
     case "photographer":
       return { kind: "photographers" };
@@ -92,6 +106,10 @@ export function parentScreen(screen: Screen): Screen | null {
       return screen.study
         ? { ...screen, study: false }
         : { kind: "albumSelect", username: screen.username };
+    case "table":
+      return { kind: "album", username: screen.username, slug: screen.slug, study: false };
+    case "photo":
+      return { kind: "table", username: screen.username, slug: screen.slug };
   }
 }
 
@@ -103,13 +121,17 @@ export function classicTwin(path: string): string {
     case "title":
     case "albums":
     case "photographers":
+    case "settings":
       return "/";
     case "photographer":
       return `/u/${enc(screen.username)}`;
     case "albumSelect":
       return `/u/${enc(screen.username)}/gallery`;
     case "album":
+    case "table":
       return `/u/${enc(screen.username)}/gallery/${enc(screen.slug)}`;
+    case "photo":
+      return `/u/${enc(screen.username)}/gallery/${enc(screen.slug)}?photo=${enc(screen.photoId)}`;
   }
 }
 
@@ -123,6 +145,9 @@ export function threeDTwin(path: string): string {
   if (parts[0] !== "u" || !parts[1] || !SEGMENT.test(parts[1])) return THREE_D_ROOT;
   const username = parts[1];
   if (parts[2] === "gallery" && parts[3] && parts.length === 4) {
+    // The classic lightbox opens a photo with ?photo=<id>.
+    const photoId = new URLSearchParams(path.split("?")[1]?.split("#")[0] ?? "").get("photo");
+    if (photoId && SEGMENT.test(photoId)) return screenPath({ kind: "photo", username, slug: parts[3], photoId });
     return screenPath({ kind: "album", username, slug: parts[3], study: false });
   }
   if (parts[2] === "gallery" && parts.length === 3) return screenPath({ kind: "albumSelect", username });

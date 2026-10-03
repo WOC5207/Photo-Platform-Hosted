@@ -13,10 +13,13 @@ const screens = [
   "/3d",
   "/3d/albums",
   "/3d/photographers",
+  "/3d/settings",
   "/3d/u/george",
   "/3d/u/george/albums",
   "/3d/u/george/albums/fan-expo-2026",
-  "/3d/u/george/albums/fan-expo-2026/360"
+  "/3d/u/george/albums/fan-expo-2026/360",
+  "/3d/u/george/albums/fan-expo-2026/photos",
+  "/3d/u/george/albums/fan-expo-2026/photos/cmabc123"
 ];
 for (const path of screens) {
   const screen = parseScreen(path);
@@ -30,19 +33,28 @@ assert.deepEqual(parseScreen("/3d/u/george/albums/fan-expo-2026?x=1"), {
   slug: "fan-expo-2026",
   study: false
 });
-for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/booking", "/3d/u/george/albums/a/b", "/3d/nope"]) {
+for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/booking", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope"]) {
   assert.equal(parseScreen(path), null, `${path} is not a 3D screen`);
 }
 
 // Esc walks back up the tree to the title screen.
-let screen = parseScreen("/3d/u/george/albums/fan-expo-2026/360");
-const trail: string[] = [];
-while (screen) {
-  trail.push(screenPath(screen));
-  screen = parentScreen(screen);
-}
-assert.deepEqual(trail, [
+const climb = (path: string) => {
+  let screen = parseScreen(path);
+  const trail: string[] = [];
+  while (screen) {
+    trail.push(screenPath(screen));
+    screen = parentScreen(screen);
+  }
+  return trail;
+};
+assert.deepEqual(climb("/3d/u/george/albums/fan-expo-2026/360").slice(0, 2), [
   "/3d/u/george/albums/fan-expo-2026/360",
+  "/3d/u/george/albums/fan-expo-2026"
+]);
+assert.deepEqual(climb("/3d/settings"), ["/3d/settings", "/3d"]);
+assert.deepEqual(climb("/3d/u/george/albums/fan-expo-2026/photos/cmabc123"), [
+  "/3d/u/george/albums/fan-expo-2026/photos/cmabc123",
+  "/3d/u/george/albums/fan-expo-2026/photos",
   "/3d/u/george/albums/fan-expo-2026",
   "/3d/u/george/albums",
   "/3d/u/george",
@@ -54,7 +66,8 @@ assert.deepEqual(trail, [
 const twins: [classic: string, threeD: string][] = [
   ["/u/george", "/3d/u/george"],
   ["/u/george/gallery", "/3d/u/george/albums"],
-  ["/u/george/gallery/fan-expo-2026", "/3d/u/george/albums/fan-expo-2026"]
+  ["/u/george/gallery/fan-expo-2026", "/3d/u/george/albums/fan-expo-2026"],
+  ["/u/george/gallery/fan-expo-2026?photo=cmabc123", "/3d/u/george/albums/fan-expo-2026/photos/cmabc123"]
 ];
 for (const [classic, threeD] of twins) {
   assert.equal(threeDTwin(classic), threeD, `${classic} -> 3D`);
@@ -65,6 +78,8 @@ assert.equal(threeDTwin("/cosplan"), "/3d");
 assert.equal(threeDTwin("/u/george/booking"), "/3d/u/george");
 assert.equal(classicTwin("/3d"), "/");
 assert.equal(classicTwin("/3d/albums"), "/");
+assert.equal(classicTwin("/3d/settings"), "/");
+assert.equal(classicTwin("/3d/u/george/albums/fan-expo-2026/photos"), "/u/george/gallery/fan-expo-2026");
 assert.equal(classicTwin("/3d/u/george/albums/fan-expo-2026/360"), "/u/george/gallery/fan-expo-2026");
 assert.equal(classicTwin("/somewhere"), "/");
 

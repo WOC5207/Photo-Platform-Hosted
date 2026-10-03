@@ -368,3 +368,34 @@
     display: none;
   }
 }
+
+/* ----------------------------------------------------------------- photo -- */
+
+/* Beside the raised print (see photoRect in types.ts). */
+.photoInfo {
+  position: absolute;
+  left: 68%;
+  right: var(--edge);
+  top: 22%;
+  max-height: calc(78% - 4rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+@media (max-width: 1099px) {
+  .photoInfo {
+    left: 61%;
+    top: 84px;
+    bottom: 53px;
+    max-height: none;
+  }
+}
+@media (max-aspect-ratio: 105/100) {
+  .photoInfo {
+    left: var(--edge);
+    right: var(--edge);
+    top: calc(56% + 16px);
+    bottom: 40px;
+    max-height: none;
+  }
+}

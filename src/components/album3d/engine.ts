@@ -2,14 +2,10 @@ import {
   ACESFilmicToneMapping,
   BoxGeometry,
   BufferAttribute,
-  CanvasTexture,
-  ClampToEdgeWrapping,
   Color,
   CylinderGeometry,
-  DirectionalLight,
   Fog,
   Group,
-  HemisphereLight,
   InstancedMesh,
   MathUtils,
   Mesh,
@@ -18,18 +14,18 @@ import {
   PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
-  PMREMGenerator,
   Raycaster,
   Scene,
   SRGBColorSpace,
-  Texture,
   Vector2,
   Vector3,
   WebGLRenderer,
   type IUniform
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { addLighting, fitText, loadImage, makeTexture, photoTexture } from "./kit";
+import { createCarousel, type Carousel, type CarouselCard } from "./carousel";
+import { createLightTable, type LightTable, type TablePrint } from "./lightTable";
 import {
   columnStrength,
   damp,
@@ -102,6 +98,12 @@ export interface EngineOptions {
   onPick: (fileIndex: number) => void;
   onOpen: (fileIndex: number) => void;
   onStep: (move: EngineMove) => void;
+  /** Photographer select cards, in column order. */
+  cards: CarouselCard[];
+  /** A photographer card was tapped: focus it, or open it when already focused. */
+  onCard: (index: number, open: boolean) => void;
+  /** A print on the light table was tapped, or the wheel moved the focus. */
+  onPrint: (index: number, open: boolean) => void;
 }
 
 export interface ArchiveEngine {
@@ -117,6 +119,13 @@ export interface ArchiveEngine {
   setClear(clear: boolean): void;
   resetView(): void;
   setPalette(palette: EnginePalette): void;
+  setReducedMotion(reduced: boolean): void;
+  /** Back to the archive field from the carousel, the light table or the study. */
+  showField(): void;
+  /** Photographer select; `standing` raises the focused card for its own screen. */
+  showCarousel(focus: number, standing: boolean): void;
+  /** One album's prints on the light table; `raised` lifts the focused one for the photo screen. */
+  showTable(key: string, prints: TablePrint[], focus: number, raised: boolean): void;
   dispose(): void;
 }
 
@@ -163,23 +172,6 @@ const STUDY_EXPLODED = new Vector3(9.8, 4.6, 14.5);
 type Cell = { lane: number; row: number };
 const cellKey = (c: Cell) => `${c.lane}:${c.row}`;
 
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.decoding = "async";
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = src;
-  });
-}
-
-function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
-  if (ctx.measureText(text).width <= maxWidth) return text;
-  let end = text.length;
-  while (end > 1 && ctx.measureText(`${text.slice(0, end)}…`).width > maxWidth) end -= 1;
-  return `${text.slice(0, end)}…`;
-}
-
 function fileCode(n: number) {
   return `NO.${String(n).padStart(3, "0")}`;
 }
@@ -200,31 +192,6 @@ function cardGeometry() {
   }
   geometry.setAttribute("color", new BufferAttribute(colors, 3));
   return geometry;
-}
-
-function makeTexture(canvas: HTMLCanvasElement, renderer: WebGLRenderer) {
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  return texture;
-}
-
-function photoTexture(image: HTMLImageElement, renderer: WebGLRenderer, planeAspect: number) {
-  const texture = new Texture(image);
-  texture.colorSpace = SRGBColorSpace;
-  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  texture.wrapS = texture.wrapT = ClampToEdgeWrapping;
-  // Cover crop onto the plane.
-  const imageAspect = image.naturalWidth / Math.max(1, image.naturalHeight);
-  if (imageAspect > planeAspect) {
-    texture.repeat.set(planeAspect / imageAspect, 1);
-    texture.offset.set((1 - texture.repeat.x) / 2, 0);
-  } else {
-    texture.repeat.set(1, imageAspect / planeAspect);
-    texture.offset.set(0, (1 - texture.repeat.y) / 2);
-  }
-  texture.needsUpdate = true;
-  return texture;
 }
 
 /**
@@ -449,7 +416,7 @@ function buildCassette(
 export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOptions): ArchiveEngine {
   const { files, columns } = options;
   let palette = options.palette;
-  const reduced = options.reducedMotion;
+  let reduced = options.reducedMotion;
   const lowPower = options.lowPower;
 
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
@@ -459,32 +426,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   renderer.shadowMap.enabled = !lowPower;
   renderer.shadowMap.type = PCFShadowMap;
 
-  // Reference studio lighting: a room environment plus warm key, cool fill
-  // and a hemisphere, generated for this renderer.
-  function addLighting(scene: Scene, shadows: boolean) {
-    const pmrem = new PMREMGenerator(renderer);
-    const room = new RoomEnvironment();
-    const environment = pmrem.fromScene(room, 0.04).texture;
-    room.dispose();
-    pmrem.dispose();
-    scene.environment = environment;
-    scene.environmentIntensity = 0.48;
-    const hemi = new HemisphereLight("#fffaf5", "#b4a18c", 0.65);
-    const key = new DirectionalLight("#fff7ed", 1.4);
-    key.position.set(-6, 14, -5);
-    const fill = new DirectionalLight("#ffffff", 0.6);
-    fill.position.set(7, 8, -10);
-    if (shadows) {
-      key.castShadow = true;
-      key.shadow.mapSize.set(2048, 2048);
-      key.shadow.normalBias = 0.035;
-      key.shadow.bias = -0.0003;
-      Object.assign(key.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 80 });
-    }
-    scene.add(hemi, key, key.target, fill);
-    return { environment, hemi, key };
-  }
-
   // ---------------------------------------------------------------- field --
   const field = new Scene();
   field.fog = new Fog(0xeae5e1, 22, 47);
@@ -492,7 +433,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const cameraAim = ARCHIVE_AIM.clone();
   camera.position.copy(ARCHIVE_AIM).addScaledVector(ARCHIVE_DIRECTION, ARCHIVE_DISTANCE);
   camera.lookAt(cameraAim);
-  const fieldLights = addLighting(field, !lowPower);
+  const fieldLights = addLighting(renderer, field, !lowPower);
 
   const cardGeo = cardGeometry();
   const cardMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0 });
@@ -668,7 +609,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   study.fog = new Fog(0xeae5e1, 10, 30);
   const studyCamera = new PerspectiveCamera(34, 1, 0.3, 120);
   studyCamera.position.copy(STUDY_HOME);
-  const studyLights = addLighting(study, false);
+  const studyLights = addLighting(renderer, study, false);
   const controls = new OrbitControls(studyCamera, canvas);
   controls.enabled = false;
   controls.enableDamping = !reduced;
@@ -684,7 +625,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let exploded = false;
   let studyClear = true;
   let cameraGoal: Vector3 | null = null;
-  let mode: "field" | "study" = "field";
+  let mode: "field" | "study" | "carousel" | "table" = "field";
+  let carousel: Carousel | null = null;
+  let table: LightTable | null = null;
+  const stageContext = () => ({ renderer, palette, reduced: () => reduced, lowPower, invalidate });
 
   function buildStudy(index: number) {
     studyCassette?.group.removeFromParent();
@@ -715,6 +659,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
 
   function openStudy(index: number) {
     if (!files[index]) return;
+    if (mode === "study" && studyFile === index) return;
+    if (mode !== "study") enter("study");
     studyFile = index;
     exploded = false;
     explode.value = explode.velocity = 0;
@@ -731,7 +677,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
 
   function closeStudy() {
     if (mode !== "study") return;
+    leaveStudy();
     mode = "field";
+    snapCamera = true;
+    invalidate();
+  }
+
+  function leaveStudy() {
     controls.enabled = false;
     controls.stopListenToKeyEvents();
     studyToken += 1;
@@ -739,8 +691,19 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     studyCassette?.dispose();
     studyCassette = null;
     studyFile = -1;
-    snapCamera = true;
+  }
+
+  /** Switch the rendered stage, tidying up the one being left. */
+  function enter(next: typeof mode) {
+    if (mode === next) return false;
+    if (mode === "study") leaveStudy();
+    if (mode === "carousel") carousel?.setHover(-1);
+    if (mode === "table") table?.setHover(-1);
+    mode = next;
+    canvas.style.cursor = "";
+    if (next === "field") snapCamera = true;
     invalidate();
+    return true;
   }
 
   controls.addEventListener("start", () => {
@@ -769,6 +732,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     }
     if (selectedIndex >= 0) buildSelected(selectedIndex);
     if (studyFile >= 0) buildStudy(studyFile);
+    carousel?.setPalette(palette);
+    table?.setPalette(palette);
   }
 
   // --------------------------------------------------------------- sizing --
@@ -783,6 +748,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     studyCamera.aspect = width / height;
     studyCamera.fov = width / height < 0.8 ? 52 : 34;
     studyCamera.updateProjectionMatrix();
+    carousel?.resize(width, height);
+    table?.resize(width, height);
     snapCamera = true;
     invalidate();
   }
@@ -1001,12 +968,18 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     last = now;
     clock = now / 1000;
     let moving: boolean;
-    if (mode === "field") {
-      moving = stepField(dt);
-      renderer.render(field, camera);
-    } else {
+    if (mode === "carousel" && carousel) {
+      moving = carousel.step(dt);
+      renderer.render(carousel.scene, carousel.camera);
+    } else if (mode === "table" && table) {
+      moving = table.step(dt);
+      renderer.render(table.scene, table.camera);
+    } else if (mode === "study") {
       moving = stepStudy(dt);
       renderer.render(study, studyCamera);
+    } else {
+      moving = stepField(dt);
+      renderer.render(field, camera);
     }
     if (moving) invalidate();
     else last = 0;
@@ -1033,13 +1006,58 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     return { cell: selectedCell, selected: true };
   }
 
+  /** Taps and swipes on the carousel and the light table. */
+  function stagePointerUp(e: PointerEvent, dx: number, dy: number, elapsed: number) {
+    if (e.type === "pointercancel") return;
+    const rect = canvas.getBoundingClientRect();
+    const tap = Math.hypot(dx, dy) < 8 && elapsed < 600;
+    if (mode === "carousel" && carousel) {
+      if (tap) {
+        const index = carousel.pick(e.clientX, e.clientY, rect);
+        if (index >= 0) options.onCard(index, index === carousel.focus());
+      } else if (Math.abs(dx) > 36 && Math.abs(dx) > Math.abs(dy) * 1.3 && elapsed < 1400) {
+        options.onCard(carousel.focus() + (dx < 0 ? 1 : -1), false);
+      }
+    } else if (mode === "table" && table && !tableRaised) {
+      if (tap) {
+        const index = table.pick(e.clientX, e.clientY, rect);
+        if (index >= 0) options.onPrint(index, true);
+      } else if (Math.abs(dy) > 36 && Math.abs(dy) > Math.abs(dx) * 1.3 && elapsed < 1400) {
+        options.onPrint(table.focus() + (dy < 0 ? 1 : -1) * table.columns(), false);
+      }
+    }
+  }
+
+  function stagePointerMove(e: PointerEvent) {
+    if (e.pointerType !== "mouse" || hoverFrame) return;
+    hoverFrame = requestAnimationFrame(() => {
+      hoverFrame = 0;
+      const rect = canvas.getBoundingClientRect();
+      if (mode === "carousel" && carousel) {
+        carousel.setPointer(((e.clientX - rect.left) / rect.width) * 2 - 1, ((e.clientY - rect.top) / rect.height) * 2 - 1);
+        const index = carousel.pick(e.clientX, e.clientY, rect);
+        carousel.setHover(index);
+        canvas.style.cursor = index >= 0 ? "pointer" : "";
+      } else if (mode === "table" && table) {
+        const index = tableRaised ? -1 : table.pick(e.clientX, e.clientY, rect);
+        table.setHover(index);
+        canvas.style.cursor = index >= 0 ? "pointer" : "";
+      }
+    });
+  }
+
   function onPointerDown(e: PointerEvent) {
+    if (mode === "carousel" || mode === "table") {
+      down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, rotation: 0 };
+      return;
+    }
     if (mode !== "field") return;
     down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, rotation: targetRotation };
     if (detailTarget) canvas.setPointerCapture(e.pointerId);
   }
 
   function onPointerMove(e: PointerEvent) {
+    if (mode === "carousel" || mode === "table") return stagePointerMove(e);
     if (mode !== "field") return;
     if (down && down.id === e.pointerId && detailTarget && lift.value > 3.3) {
       // Drag to inspect the raised card, within the reference's ±0.8 rad.
@@ -1062,11 +1080,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   function onPointerUp(e: PointerEvent) {
-    if (mode !== "field" || !down || down.id !== e.pointerId) return;
+    if (!down || down.id !== e.pointerId) return;
     const dx = e.clientX - down.x;
     const dy = e.clientY - down.y;
     const elapsed = performance.now() - down.t;
     down = null;
+    if (mode === "carousel" || mode === "table") return stagePointerUp(e, dx, dy, elapsed);
+    if (mode !== "field") return;
     if (detailTarget || overviewTarget || e.type === "pointercancel") return;
     if (Math.hypot(dx, dy) < 8 && elapsed < 600) {
       const hit = pick(e.clientX, e.clientY);
@@ -1087,15 +1107,28 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   function onPointerLeave() {
+    carousel?.setHover(-1);
+    carousel?.setPointer(0, 0);
+    table?.setHover(-1);
     if (!hoverCell) return;
     hoverCell = null;
     invalidate();
   }
 
   let wheelAt = 0;
+  let tableRaised = false;
   function onWheel(e: WheelEvent) {
-    if (mode !== "field") return;
+    if (mode === "study") return;
     e.preventDefault();
+    if (mode === "carousel" || mode === "table") {
+      const now = performance.now();
+      if (now - wheelAt < 260 || Math.abs(e.deltaY) < 4) return;
+      wheelAt = now;
+      const direction = e.deltaY > 0 ? 1 : -1;
+      if (mode === "carousel" && carousel) options.onCard(carousel.focus() + direction, false);
+      else if (table && !tableRaised) options.onPrint(table.focus() + direction * table.columns(), false);
+      return;
+    }
     if (detailTarget || overviewTarget) return;
     const now = performance.now();
     if (now - wheelAt < 260 || Math.abs(e.deltaY) < 4) return;
@@ -1157,6 +1190,38 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       applyPalette();
       invalidate();
     },
+    setReducedMotion(next) {
+      reduced = next;
+      controls.enableDamping = !next;
+      if (next) pulses = [];
+      invalidate();
+    },
+    showField() {
+      enter("field");
+    },
+    showCarousel(focus, standing) {
+      if (!carousel) {
+        carousel = createCarousel({ ...stageContext(), cards: options.cards });
+        carousel.resize(width, height);
+      }
+      carousel.setFocus(focus);
+      carousel.setStanding(standing);
+      if (enter("carousel")) carousel.settle();
+      invalidate();
+    },
+    showTable(key, prints, focus, raised) {
+      if (!table) {
+        table = createLightTable(stageContext());
+        table.resize(width, height);
+      }
+      table.setPrints(key, prints);
+      table.setFocus(focus);
+      table.setRaised(raised);
+      tableRaised = raised;
+      if (raised) table.setHover(-1);
+      if (enter("table")) table.settle();
+      invalidate();
+    },
     dispose() {
       cancelAnimationFrame(raf);
       cancelAnimationFrame(hoverFrame);
@@ -1171,6 +1236,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       controls.dispose();
       selected?.dispose();
       studyCassette?.dispose();
+      carousel?.dispose();
+      table?.dispose();
       for (const thing of [cardGeo, screwGeo, cardMaterial, screwMaterial, fieldLights.environment, studyLights.environment])
         thing.dispose();
       cards.dispose();
