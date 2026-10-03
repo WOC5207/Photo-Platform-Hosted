@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
@@ -11,6 +11,7 @@ import SiteModeSwitch, { useLeaveFor } from "@/components/SiteModeSwitch";
 import { classicTwin, parentScreen, parseScreen, screenPath, type Screen } from "@/lib/siteMode";
 import { GameMenu, Hints, MENU_SCREENS, Rolling, pad, wrap, type MenuItem } from "./hud";
 import { AlbumPhotosContext } from "./AlbumPhotosFeed";
+import { StageContext } from "./StageContext";
 import styles from "./ArchiveSite.module.css";
 import { fileCode, tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile } from "./types";
 import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
@@ -18,7 +19,7 @@ import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
 export type { ArchiveColumn, ArchiveFile, ArchivePrint } from "./types";
 
 type EngineStatus = "loading" | "ready" | "unsupported";
-type Mode = "archive" | "detail" | "study" | "table" | "photo";
+type Mode = "archive" | "detail" | "study" | "table" | "photo" | "booking";
 type MotionPreference = "system" | "reduced" | "full";
 type ThemePreference = "system" | "light" | "dark";
 
@@ -157,13 +158,17 @@ export default function ArchiveSite({
   const [album, setAlbum] = useState<AlbumPhotos | null>(null);
   const albumHere = album && "slug" in screen && album.username === screen.username && album.slug === screen.slug ? album : null;
   const photoIndex = screen.kind === "photo" && albumHere ? albumHere.photos.findIndex((p) => p.id === screen.photoId) : -1;
+  // Booking screens draw their own panels, from their pages (see StageContext).
+  const booking = screen.kind === "booking" || screen.kind === "book" || screen.kind === "draw";
   const missing =
-    ("username" in screen && columnIndex < 0) ||
+    ("username" in screen && columnIndex < 0 && !booking) ||
     (inAlbum && fileIndex < 0) ||
     (screen.kind === "photo" && albumHere !== null && photoIndex < 0);
   const mode: Mode = missing
     ? "archive"
-    : screen.kind === "album"
+    : booking
+      ? "booking"
+      : screen.kind === "album"
       ? screen.study
         ? "study"
         : "detail"
@@ -472,7 +477,7 @@ export default function ArchiveSite({
       engine.showTable(tableKey, albumHere.photos, mode === "photo" ? Math.max(0, photoIndex) : tableFocus, mode === "photo");
       return;
     }
-    if (mode === "table" || mode === "photo") return;
+    if (mode === "table" || mode === "photo" || mode === "booking") return;
     if (mode === "study") {
       engine.openStudy(selectedRef.current);
       return;
@@ -585,8 +590,7 @@ export default function ArchiveSite({
                 key: "booking",
                 label: t("menuBooking"),
                 sub: t("menuBookingSub"),
-                external: true,
-                run: () => router.push(`/u/${encodeURIComponent(here.username)}/booking`)
+                run: () => go({ kind: "booking", username: here.username })
               }
             ]
           : []),
@@ -698,10 +702,24 @@ export default function ArchiveSite({
     return () => window.removeEventListener("keydown", onKey);
   }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go]);
 
+  // Controller glyphs replace key names while a controller is in use.
+  const key = useCallback(
+    (name: "move" | "confirm" | "back" | "sides" | "alt") =>
+      gamepad
+        ? { move: "✛", confirm: "Ⓐ", back: "Ⓑ", sides: "◀ ▶", alt: "Ⓨ" }[name]
+        : { move: "↑ ↓", confirm: "ENTER", back: "ESC", sides: "← →", alt: "/" }[name],
+    [gamepad]
+  );
+  const stage = useMemo(
+    () => ({ engine: ready ? engineRef.current : null, go, path: screenPath, back, key, touch }),
+    [ready, go, back, key, touch]
+  );
+
   // ----------------------------------------------------------------- render --
   if (files.length === 0 || !file || !column) {
     return (
       <AlbumPhotosContext.Provider value={setAlbum}>
+      <StageContext.Provider value={stage}>
       <main id="main-content" className="mx-auto flex min-h-dvh max-w-3xl flex-col justify-center px-4 py-10">
         <EmptyState
           title={t("empty")}
@@ -714,6 +732,7 @@ export default function ArchiveSite({
         />
         {children}
       </main>
+      </StageContext.Provider>
       </AlbumPhotosContext.Provider>
     );
   }
@@ -737,19 +756,22 @@ export default function ArchiveSite({
       crumbs.push({ label: t("lightTable"), href: screenPath({ kind: "table", username: here.username, slug: screen.slug }) });
     }
     if (screen.kind === "photo" && photoIndex >= 0) crumbs.push({ label: t("printCount", { current: pad(photoIndex + 1), total: pad(albumHere?.photos.length ?? 0) }) });
+  } else if (booking) {
+    crumbs.push({ label: t("menuPhotographers"), href: screenPath({ kind: "photographers" }) });
+    crumbs.push({ label: `@${screen.username}`, href: screenPath({ kind: "photographer", username: screen.username }) });
   } else if (screen.kind === "photographers") crumbs.push({ label: t("menuPhotographers") });
+  if (booking && !missing) {
+    crumbs.push({ label: t("menuBooking"), href: screenPath({ kind: "booking", username: screen.username }) });
+    if (screen.kind !== "booking") crumbs.push({ label: t(screen.kind === "draw" ? "crumbDraw" : "crumbSchedule") });
+  }
   else if (screen.kind === "settings") crumbs.push({ label: t("menuSettings") });
   crumbs[crumbs.length - 1].href = undefined;
 
   const studyHeader = mode === "study";
-  // Controller glyphs replace key names while a controller is in use.
-  const key = (name: "move" | "confirm" | "back" | "sides") =>
-    gamepad
-      ? { move: "✛", confirm: "Ⓐ", back: "Ⓑ", sides: "◀ ▶" }[name]
-      : { move: "↑ ↓", confirm: "ENTER", back: "ESC", sides: "← →" }[name];
 
   return (
     <AlbumPhotosContext.Provider value={setAlbum}>
+    <StageContext.Provider value={stage}>
     <div ref={rootRef} className={`${styles.root} album3d relative h-dvh w-full overflow-hidden bg-page text-fg`}>
       <div
         aria-hidden="true"
@@ -764,6 +786,7 @@ export default function ArchiveSite({
           className={styles.shade}
           data-detail={mode === "detail" || mode === "photo"}
           data-overview={overview || mode === "table"}
+          data-booking={mode === "booking"}
         />
       )}
 
@@ -1207,7 +1230,7 @@ export default function ArchiveSite({
         </footer>
       )}
 
-      {status === "unsupported" && (
+      {status === "unsupported" && mode !== "booking" && (
         <div className="absolute inset-0 z-20 overflow-y-auto bg-page px-4 pb-10 pt-32 sm:px-8">
           <div className="mx-auto max-w-4xl">
             <h2 className="text-xl font-bold">{t("unsupportedTitle")}</h2>
@@ -1253,6 +1276,7 @@ export default function ArchiveSite({
       )}
       {children}
     </div>
+    </StageContext.Provider>
     </AlbumPhotosContext.Provider>
   );
 }

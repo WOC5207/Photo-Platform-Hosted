@@ -31,8 +31,10 @@ const routeBudgets = [
   { label: "Cosplan", route: "/[locale]/(directory)/cosplan/page", limitKb: 140 },
   { label: "Public sharing poster", route: "/[locale]/(directory)/sharing-poster/page", limitKb: 140 },
   // three.js loads after first paint, so only the overlay counts here. It
-  // lives in the /3d layout, which the page entry doesn't list.
-  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 135 }
+  // lives in the /3d layout, which the page entry doesn't list. The header
+  // controls (mode, language and theme switches) come as a chunk shared with
+  // the homepage, which gzips about 1 KB worse than when they were inlined.
+  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 137 }
 ];
 
 for (const budget of routeBudgets) {

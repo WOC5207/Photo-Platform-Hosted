@@ -26,7 +26,13 @@ export type Screen =
   | { kind: "albumSelect"; username: string }
   | { kind: "album"; username: string; slug: string; study: boolean }
   | { kind: "table"; username: string; slug: string }
-  | { kind: "photo"; username: string; slug: string; photoId: string };
+  | { kind: "photo"; username: string; slug: string; photoId: string }
+  | { kind: "booking"; username: string }
+  | { kind: "book"; username: string; token: string }
+  | { kind: "draw"; username: string; token: string };
+
+/** Booking and prize-draw links are opaque tokens, as on the classic pages. */
+const TOKEN = /^[a-z0-9]+$/;
 
 const SEGMENT = /^[^/?#]+$/;
 
@@ -52,6 +58,10 @@ export function parseScreen(path: string): Screen | null {
   if (rest[0] !== "u" || !rest[1] || !SEGMENT.test(rest[1])) return null;
   const username = rest[1];
   if (rest.length === 2) return { kind: "photographer", username };
+  if (rest.length === 3 && rest[2] === "booking") return { kind: "booking", username };
+  if (rest.length === 4 && (rest[2] === "book" || rest[2] === "draw") && TOKEN.test(rest[3])) {
+    return { kind: rest[2], username, token: rest[3] };
+  }
   if (rest[2] !== "albums") return null;
   if (rest.length === 3) return { kind: "albumSelect", username };
   const slug = rest[3];
@@ -86,6 +96,11 @@ export function screenPath(screen: Screen): string {
       return `${THREE_D_ROOT}/u/${enc(screen.username)}/albums/${enc(screen.slug)}/photos`;
     case "photo":
       return `${THREE_D_ROOT}/u/${enc(screen.username)}/albums/${enc(screen.slug)}/photos/${enc(screen.photoId)}`;
+    case "booking":
+      return `${THREE_D_ROOT}/u/${enc(screen.username)}/booking`;
+    case "book":
+    case "draw":
+      return `${THREE_D_ROOT}/u/${enc(screen.username)}/${screen.kind}/${enc(screen.token)}`;
   }
 }
 
@@ -110,6 +125,11 @@ export function parentScreen(screen: Screen): Screen | null {
       return { kind: "album", username: screen.username, slug: screen.slug, study: false };
     case "photo":
       return { kind: "table", username: screen.username, slug: screen.slug };
+    case "booking":
+      return { kind: "photographer", username: screen.username };
+    case "book":
+    case "draw":
+      return { kind: "booking", username: screen.username };
   }
 }
 
@@ -132,6 +152,11 @@ export function classicTwin(path: string): string {
       return `/u/${enc(screen.username)}/gallery/${enc(screen.slug)}`;
     case "photo":
       return `/u/${enc(screen.username)}/gallery/${enc(screen.slug)}?photo=${enc(screen.photoId)}`;
+    case "booking":
+      return `/u/${enc(screen.username)}/booking`;
+    case "book":
+    case "draw":
+      return `/${screen.kind}/${enc(screen.token)}`;
   }
 }
 
@@ -142,6 +167,11 @@ export function classicTwin(path: string): string {
 export function threeDTwin(path: string): string {
   const parts = segments(path);
   if (parts[0] === "3d") return path;
+  // Booking and draw links name only their token; /3d/book/<token> looks up
+  // the photographer and forwards to their address.
+  if ((parts[0] === "book" || parts[0] === "draw") && parts[1] && TOKEN.test(parts[1]) && parts.length === 2) {
+    return `${THREE_D_ROOT}/${parts[0]}/${parts[1]}`;
+  }
   if (parts[0] !== "u" || !parts[1] || !SEGMENT.test(parts[1])) return THREE_D_ROOT;
   const username = parts[1];
   if (parts[2] === "gallery" && parts[3] && parts.length === 4) {
@@ -151,6 +181,7 @@ export function threeDTwin(path: string): string {
     return screenPath({ kind: "album", username, slug: parts[3], study: false });
   }
   if (parts[2] === "gallery" && parts.length === 3) return screenPath({ kind: "albumSelect", username });
+  if (parts[2] === "booking" && parts.length === 3) return screenPath({ kind: "booking", username });
   return screenPath({ kind: "photographer", username });
 }
 

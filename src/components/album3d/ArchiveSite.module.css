@@ -58,6 +58,12 @@
       transparent 58%
     );
 }
+/* Booking boards fill the right side, so the panel's fade stops at its edge. */
+.shade[data-booking="true"]::before {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-page) 55%, transparent), transparent 22%),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-page) 92%, transparent) 30%, transparent 40%);
+}
 .shade[data-detail="true"]::before {
   opacity: 0;
 }
@@ -220,6 +226,11 @@
     top: 84px;
     width: calc(52% - var(--edge));
   }
+  .shade[data-booking="true"]::before {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--color-page) 55%, transparent), transparent 22%),
+      linear-gradient(90deg, color-mix(in srgb, var(--color-page) 92%, transparent) 44%, transparent 53%);
+  }
   .menuHint {
     bottom: 58px;
   }
@@ -308,6 +319,9 @@
       color-mix(in srgb, var(--color-page) 96%, transparent) 51%,
       var(--color-page) 60%
     );
+  }
+  .shade[data-booking="true"]::before {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--color-page) 45%, transparent), transparent 18%);
   }
   .shade[data-overview="true"]::before {
     background: linear-gradient(

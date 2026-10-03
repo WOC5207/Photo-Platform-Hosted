@@ -26,6 +26,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { addLighting, fitText, loadImage, makeTexture, photoTexture } from "./kit";
 import { createCarousel, type Carousel, type CarouselCard } from "./carousel";
 import { createLightTable, type LightTable, type TablePrint } from "./lightTable";
+import type { Board } from "./board";
+import type { Deck } from "./deck";
 import {
   columnStrength,
   damp,
@@ -86,6 +88,25 @@ export interface EnginePalette {
 
 export type EngineMove = { axis: "file" | "column"; direction: 1 | -1 };
 
+/** Taps, swipes and the wheel on the booking board or the prize deck, for the screen to act on. */
+export type StageInput =
+  | { kind: "pick"; index: number }
+  | { kind: "swipe"; x: -1 | 0 | 1; y: -1 | 0 | 1 }
+  | { kind: "wheel"; direction: 1 | -1 };
+
+/** What the engine needs from a scene module it loads on demand. */
+interface StageModule {
+  scene: Scene;
+  camera: PerspectiveCamera;
+  settle(): void;
+  setHover(index: number): void;
+  pick(clientX: number, clientY: number, rect: DOMRect): number;
+  step(dt: number): boolean;
+  resize(width: number, height: number): void;
+  setPalette(palette: EnginePalette): void;
+  dispose(): void;
+}
+
 export interface EngineOptions {
   files: EngineFile[];
   columns: number[][];
@@ -126,6 +147,12 @@ export interface ArchiveEngine {
   showCarousel(focus: number, standing: boolean): void;
   /** One album's prints on the light table; `raised` lifts the focused one for the photo screen. */
   showTable(key: string, prints: TablePrint[], focus: number, raised: boolean): void;
+  /** The booking board, loaded the first time it is shown. */
+  showBoard(): Promise<Board | null>;
+  /** The prize deck, loaded the first time it is shown. */
+  showDeck(): Promise<Deck | null>;
+  /** Where taps, swipes and the wheel on the board or the deck go. */
+  setStageHandler(handler: ((input: StageInput) => void) | null): void;
   dispose(): void;
 }
 
@@ -625,9 +652,14 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let exploded = false;
   let studyClear = true;
   let cameraGoal: Vector3 | null = null;
-  let mode: "field" | "study" | "carousel" | "table" = "field";
+  let mode: "field" | "study" | "carousel" | "table" | "stage" = "field";
   let carousel: Carousel | null = null;
   let table: LightTable | null = null;
+  // The booking board and the prize deck: loaded on demand, one shown at a time.
+  let stage: StageModule | null = null;
+  const stages: { board?: Board; deck?: Deck } = {};
+  let stageToken = 0;
+  let stageHandler: ((input: StageInput) => void) | null = null;
   const stageContext = () => ({ renderer, palette, reduced: () => reduced, lowPower, invalidate });
 
   function buildStudy(index: number) {
@@ -699,11 +731,41 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (mode === "study") leaveStudy();
     if (mode === "carousel") carousel?.setHover(-1);
     if (mode === "table") table?.setHover(-1);
+    if (mode === "stage") stage?.setHover(-1);
+    // A board or deck still loading must not take over another screen.
+    if (next !== "stage") stageToken += 1;
     mode = next;
     canvas.style.cursor = "";
     if (next === "field") snapCamera = true;
     invalidate();
     return true;
+  }
+
+  let disposed = false;
+  const loading: Partial<Record<keyof typeof stages, Promise<StageModule>>> = {};
+  /** Load (once) and show the board or the deck, unless another screen took over meanwhile. */
+  function showStage<K extends keyof typeof stages>(name: K, create: () => Promise<NonNullable<(typeof stages)[K]>>) {
+    const token = ++stageToken;
+    let ready = loading[name] as Promise<NonNullable<(typeof stages)[K]>> | undefined;
+    if (!ready) {
+      ready = create().then((module) => {
+        if (disposed) module.dispose();
+        else {
+          stages[name] = module;
+          module.resize(width, height);
+        }
+        return module;
+      });
+      loading[name] = ready as Promise<StageModule>;
+    }
+    return ready.then((module) => {
+      if (disposed || token !== stageToken) return null;
+      const switching = stage !== module;
+      stage = module;
+      if (enter("stage") || switching) module.settle();
+      invalidate();
+      return module;
+    });
   }
 
   controls.addEventListener("start", () => {
@@ -734,6 +796,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (studyFile >= 0) buildStudy(studyFile);
     carousel?.setPalette(palette);
     table?.setPalette(palette);
+    stages.board?.setPalette(palette);
+    stages.deck?.setPalette(palette);
   }
 
   // --------------------------------------------------------------- sizing --
@@ -750,6 +814,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     studyCamera.updateProjectionMatrix();
     carousel?.resize(width, height);
     table?.resize(width, height);
+    stages.board?.resize(width, height);
+    stages.deck?.resize(width, height);
     snapCamera = true;
     invalidate();
   }
@@ -974,6 +1040,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     } else if (mode === "table" && table) {
       moving = table.step(dt);
       renderer.render(table.scene, table.camera);
+    } else if (mode === "stage" && stage) {
+      moving = stage.step(dt);
+      renderer.render(stage.scene, stage.camera);
     } else if (mode === "study") {
       moving = stepStudy(dt);
       renderer.render(study, studyCamera);
@@ -1025,6 +1094,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       } else if (Math.abs(dy) > 36 && Math.abs(dy) > Math.abs(dx) * 1.3 && elapsed < 1400) {
         options.onPrint(table.focus() + (dy < 0 ? 1 : -1) * table.columns(), false);
       }
+    } else if (mode === "stage" && stage) {
+      if (tap) {
+        const index = stage.pick(e.clientX, e.clientY, rect);
+        if (index >= 0) stageHandler?.({ kind: "pick", index });
+        return;
+      }
+      const major = Math.max(Math.abs(dx), Math.abs(dy));
+      if (major < 36 || major < Math.min(Math.abs(dx), Math.abs(dy)) * 1.3 || elapsed > 1400) return;
+      if (Math.abs(dx) > Math.abs(dy)) stageHandler?.({ kind: "swipe", x: dx < 0 ? 1 : -1, y: 0 });
+      else stageHandler?.({ kind: "swipe", x: 0, y: dy < 0 ? 1 : -1 });
     }
   }
 
@@ -1042,12 +1121,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         const index = tableRaised ? -1 : table.pick(e.clientX, e.clientY, rect);
         table.setHover(index);
         canvas.style.cursor = index >= 0 ? "pointer" : "";
+      } else if (mode === "stage" && stage) {
+        const index = stage.pick(e.clientX, e.clientY, rect);
+        stage.setHover(index);
+        canvas.style.cursor = index >= 0 ? "pointer" : "";
       }
     });
   }
 
   function onPointerDown(e: PointerEvent) {
-    if (mode === "carousel" || mode === "table") {
+    if (mode === "carousel" || mode === "table" || mode === "stage") {
       down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, rotation: 0 };
       return;
     }
@@ -1057,7 +1140,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   function onPointerMove(e: PointerEvent) {
-    if (mode === "carousel" || mode === "table") return stagePointerMove(e);
+    if (mode === "carousel" || mode === "table" || mode === "stage") return stagePointerMove(e);
     if (mode !== "field") return;
     if (down && down.id === e.pointerId && detailTarget && lift.value > 3.3) {
       // Drag to inspect the raised card, within the reference's ±0.8 rad.
@@ -1085,7 +1168,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const dy = e.clientY - down.y;
     const elapsed = performance.now() - down.t;
     down = null;
-    if (mode === "carousel" || mode === "table") return stagePointerUp(e, dx, dy, elapsed);
+    if (mode === "carousel" || mode === "table" || mode === "stage") return stagePointerUp(e, dx, dy, elapsed);
     if (mode !== "field") return;
     if (detailTarget || overviewTarget || e.type === "pointercancel") return;
     if (Math.hypot(dx, dy) < 8 && elapsed < 600) {
@@ -1110,6 +1193,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     carousel?.setHover(-1);
     carousel?.setPointer(0, 0);
     table?.setHover(-1);
+    stage?.setHover(-1);
     if (!hoverCell) return;
     hoverCell = null;
     invalidate();
@@ -1120,11 +1204,15 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   function onWheel(e: WheelEvent) {
     if (mode === "study") return;
     e.preventDefault();
-    if (mode === "carousel" || mode === "table") {
+    if (mode === "carousel" || mode === "table" || mode === "stage") {
       const now = performance.now();
       if (now - wheelAt < 260 || Math.abs(e.deltaY) < 4) return;
       wheelAt = now;
       const direction = e.deltaY > 0 ? 1 : -1;
+      if (mode === "stage") {
+        stageHandler?.({ kind: "wheel", direction });
+        return;
+      }
       if (mode === "carousel" && carousel) options.onCard(carousel.focus() + direction, false);
       else if (table && !tableRaised) options.onPrint(table.focus() + direction * table.columns(), false);
       return;
@@ -1222,7 +1310,17 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (enter("table")) table.settle();
       invalidate();
     },
+    showBoard() {
+      return showStage("board", () => import("./board").then((m) => m.createBoard(stageContext())));
+    },
+    showDeck() {
+      return showStage("deck", () => import("./deck").then((m) => m.createDeck(stageContext())));
+    },
+    setStageHandler(handler) {
+      stageHandler = handler;
+    },
     dispose() {
+      disposed = true;
       cancelAnimationFrame(raf);
       cancelAnimationFrame(hoverFrame);
       observer.disconnect();
@@ -1238,6 +1336,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       studyCassette?.dispose();
       carousel?.dispose();
       table?.dispose();
+      stages.board?.dispose();
+      stages.deck?.dispose();
       for (const thing of [cardGeo, screwGeo, cardMaterial, screwMaterial, fieldLights.environment, studyLights.environment])
         thing.dispose();
       cards.dispose();
