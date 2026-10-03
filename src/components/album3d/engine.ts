@@ -109,6 +109,8 @@ export interface ArchiveEngine {
   neighbour(move: EngineMove): number;
   select(fileIndex: number, move?: EngineMove): void;
   setDetail(detail: boolean): void;
+  /** Title and menu screens: pull back and let the field idle behind the HUD. */
+  setOverview(overview: boolean): void;
   openStudy(fileIndex: number): void;
   closeStudy(): void;
   setExploded(exploded: boolean): void;
@@ -539,6 +541,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let lastInteraction = 0;
   let detailTarget = false;
   let detail = 0;
+  let overviewTarget = false;
+  let overview = 0;
   let clarityTarget = 0;
   let clock = performance.now() / 1000;
 
@@ -819,7 +823,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     damp(rail, railTarget, rate(3.7), dt);
     damp(rotation, targetRotation, rate(9), dt);
     // Turn back to face the slot before descending, as the reference does.
-    const liftTarget = detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
+    const liftTarget = overviewTarget ? 0 : detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
     damp(lift, liftTarget, rate(4.2), dt);
     moving ||= !settled(shoulder, selectedCell.row) || !settled(laneFocus, selectedCell.lane);
     moving ||= !settled(trackX, selectedCell.lane * COLUMN_SPACING) || !settled(rail, railTarget);
@@ -844,7 +848,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (pulses.length) moving = true;
     pulseGain = MathUtils.lerp(pulseGain, detailTarget ? 0 : 1, 1 - Math.exp(-dt * 8));
     // Idle breathing after 2.5 s, on full-power devices only.
-    const idle = !lowPower && !reduced && !detailTarget && detail < 0.01 && clock - lastInteraction > 2.5;
+    const idle = !lowPower && !reduced && !detailTarget && detail < 0.01 && (overviewTarget || clock - lastInteraction > 2.5);
     idleGain = MathUtils.lerp(idleGain, idle ? 1 : 0, 1 - Math.exp(-dt * (idle ? 0.8 : 4)));
     if (idleGain > 1e-3) moving = true;
     else idleGain = 0;
@@ -867,10 +871,17 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       } else c.value = clarityTarget;
     }
 
+    // Menus pull the camera back so the field reads as a backdrop.
+    const overviewGoal = overviewTarget ? 1 : 0;
+    overview = reduced ? overviewGoal : MathUtils.lerp(overview, overviewGoal, 1 - Math.exp(-dt * 3));
+    if (Math.abs(overview - overviewGoal) > 1e-3) moving = true;
+    else overview = overviewGoal;
+
     // Lay out the visible window of the endless grid.
     const f = framing(detail);
-    const lanesHalf = Math.min(6, Math.ceil((f.span * 1.15) / COLUMN_SPACING) + 2);
-    const rowsHalf = Math.min(46, Math.ceil((f.span * 2.6) / ROW_SPACING) + 6);
+    const span = f.span * (1 + 0.85 * overview);
+    const lanesHalf = Math.min(8, Math.ceil((span * 1.15) / COLUMN_SPACING) + 2);
+    const rowsHalf = Math.min(46, Math.ceil((span * 2.6) / ROW_SPACING) + 6);
     const centerLane = Math.round(trackX.value / COLUMN_SPACING);
     const centerRow = Math.round((SLOT_Z - rail.value) / ROW_SPACING);
     let count = 0;
@@ -914,7 +925,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const distance = MathUtils.lerp(ARCHIVE_DISTANCE, DETAIL_DISTANCE, detail);
     right.crossVectors(worldUp, viewDirection).normalize();
     up.crossVectors(viewDirection, right).normalize();
-    const pixelScale = height / f.span;
+    const pixelScale = height / span;
     if (f.portrait) {
       aim.set(0, BASE_Y + settlingWave(0) + PREVIEW_LIFT + CARD_H / 2, SLOT_Z);
       aim.addScaledVector(up, ((f.previewY - 0.5) * height) / pixelScale);
@@ -923,20 +934,22 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     detailAim.addScaledVector(right, ((0.5 - f.detailX) * width) / pixelScale);
     detailAim.addScaledVector(up, ((f.detailY - 0.5) * height) / pixelScale);
     aim.lerp(detailAim, detail);
+    // Leave the left side of wide screens to the menu.
+    if (!f.portrait) aim.addScaledVector(right, (-0.17 * width * overview) / pixelScale);
     cameraPosition.copy(aim).addScaledVector(viewDirection, distance);
     const blend = reduced || snapCamera ? 1 : 1 - Math.exp(-dt * 5);
     snapCamera = false;
     camera.position.lerp(cameraPosition, blend);
     cameraAim.lerp(aim, blend);
     camera.lookAt(cameraAim);
-    const fov = MathUtils.radToDeg(2 * Math.atan(f.span / (2 * distance)));
+    const fov = MathUtils.radToDeg(2 * Math.atan(span / (2 * distance)));
     camera.fov = MathUtils.lerp(camera.fov, fov, blend);
     camera.updateProjectionMatrix();
     if (camera.position.distanceTo(cameraPosition) > 1e-3 || Math.abs(camera.fov - fov) > 1e-5) moving = true;
     const fog = field.fog as Fog;
     const rendered = camera.position.distanceTo(cameraAim);
     fog.near = rendered + MathUtils.lerp(5, -1, detail);
-    fog.far = rendered + MathUtils.lerp(25, 12, detail);
+    fog.far = rendered + MathUtils.lerp(25, 12, detail) + 18 * overview;
     fieldLights.key.position.set(cameraAim.x - 6, cameraAim.y + 14, cameraAim.z - 5);
     fieldLights.key.target.position.copy(cameraAim);
     return moving;
@@ -1035,7 +1048,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       invalidate();
       return;
     }
-    if (e.pointerType !== "mouse" || detailTarget || hoverFrame) return;
+    if (e.pointerType !== "mouse" || detailTarget || overviewTarget || hoverFrame) return;
     hoverFrame = requestAnimationFrame(() => {
       hoverFrame = 0;
       const hit = pick(e.clientX, e.clientY);
@@ -1054,7 +1067,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const dy = e.clientY - down.y;
     const elapsed = performance.now() - down.t;
     down = null;
-    if (detailTarget || e.type === "pointercancel") return;
+    if (detailTarget || overviewTarget || e.type === "pointercancel") return;
     if (Math.hypot(dx, dy) < 8 && elapsed < 600) {
       const hit = pick(e.clientX, e.clientY);
       if (!hit) return;
@@ -1083,7 +1096,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   function onWheel(e: WheelEvent) {
     if (mode !== "field") return;
     e.preventDefault();
-    if (detailTarget) return;
+    if (detailTarget || overviewTarget) return;
     const now = performance.now();
     if (now - wheelAt < 260 || Math.abs(e.deltaY) < 4) return;
     wheelAt = now;
@@ -1112,6 +1125,12 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     },
     select,
     setDetail,
+    setOverview(next) {
+      overviewTarget = next;
+      if (next) hoverCell = null;
+      lastInteraction = clock;
+      invalidate();
+    },
     openStudy,
     closeStudy,
     setExploded(next) {

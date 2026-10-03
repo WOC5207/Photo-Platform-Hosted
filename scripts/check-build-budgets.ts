@@ -30,13 +30,22 @@ const routeBudgets = [
   { label: "Sharing posters", route: "/[locale]/dashboard/(protected)/sharing-posters/[id]/page", limitKb: 140 },
   { label: "Cosplan", route: "/[locale]/(directory)/cosplan/page", limitKb: 140 },
   { label: "Public sharing poster", route: "/[locale]/(directory)/sharing-poster/page", limitKb: 140 },
-  // three.js loads after first paint, so only the overlay counts here.
-  { label: "3D album", route: "/[locale]/(directory)/album-3d/page", limitKb: 135 }
+  // three.js loads after first paint, so only the overlay counts here. It
+  // lives in the /3d layout, which the page entry doesn't list.
+  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 135 }
 ];
 
 for (const budget of routeBudgets) {
-  const routeFiles = Array.from(new Set(appManifest.pages?.[budget.route] ?? []));
-  if (routeFiles.length === 0) throw new Error(`Missing build manifest route: ${budget.route}`);
+  const routes = Array.isArray(budget.route) ? budget.route : [budget.route];
+  const routeFiles = Array.from(
+    new Set(
+      routes.flatMap((route) => {
+        const entry = appManifest.pages?.[route];
+        if (!entry?.length) throw new Error(`Missing build manifest route: ${route}`);
+        return entry;
+      })
+    )
+  );
   const bytes = routeFiles.reduce(
     (sum, file) => sum + gzipSync(readFileSync(path.join(root, ".next", file))).byteLength,
     0

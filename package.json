@@ -20,6 +20,7 @@
     "test:bookingorg": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-booking-orgs.ts",
     "test:email": "tsx --conditions=react-server scripts/test-email.ts",
     "test:theme": "tsx --conditions=react-server scripts/test-theme-color.ts",
+    "test:site-mode": "tsx scripts/test-site-mode.ts",
     "test:cosplan": "tsx --conditions=react-server scripts/test-cosplan.ts",
     "test:cosplan:names": "tsx scripts/test-cosplan-names.ts",
     "test:cosplan:mobile": "tsx scripts/test-cosplan-mobile.ts",

@@ -48,11 +48,43 @@
     var(--color-page) 100%
   );
 }
+.shade[data-overview="true"]::before {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-page) 55%, transparent), transparent 30%),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-page) 94%, transparent),
+      color-mix(in srgb, var(--color-page) 78%, transparent) 34%,
+      transparent 58%
+    );
+}
 .shade[data-detail="true"]::before {
   opacity: 0;
 }
 .shade[data-detail="true"]::after {
   opacity: 1;
+}
+
+/* ------------------------------------------------------------------ menus -- */
+
+/* Title, photographer select and one photographer's menu sit left of the
+   field, which the engine's overview pose pulls back and shifts right. */
+.menuPanel {
+  position: absolute;
+  left: var(--edge);
+  top: 22%;
+  width: min(36rem, 38%);
+}
+.menuHint {
+  position: absolute;
+  left: var(--edge);
+  bottom: 3.75rem;
+}
+.roster {
+  max-height: 52vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 /* --------------------------------------------------------------- archive -- */
@@ -184,6 +216,16 @@
   .root {
     --edge: max(20px, env(safe-area-inset-left), env(safe-area-inset-right));
   }
+  .menuPanel {
+    top: 84px;
+    width: calc(52% - var(--edge));
+  }
+  .menuHint {
+    bottom: 58px;
+  }
+  .roster {
+    max-height: calc(100dvh - 22rem);
+  }
   .callout {
     left: 53%;
     top: 35%;
@@ -266,6 +308,29 @@
       color-mix(in srgb, var(--color-page) 96%, transparent) 51%,
       var(--color-page) 60%
     );
+  }
+  .shade[data-overview="true"]::before {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-page) 45%, transparent),
+      transparent 22%,
+      transparent 36%,
+      color-mix(in srgb, var(--color-page) 86%, transparent) 52%,
+      var(--color-page) 70%
+    );
+  }
+  .menuPanel {
+    top: auto;
+    bottom: 64px;
+    left: var(--edge);
+    right: var(--edge);
+    width: auto;
+  }
+  .menuHint {
+    display: none;
+  }
+  .roster {
+    max-height: 38dvh;
   }
   .callout {
     left: var(--edge);

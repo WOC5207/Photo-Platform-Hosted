@@ -9,6 +9,7 @@ export interface ArchivePrint {
 
 export interface ArchiveFile {
   id: string;
+  slug: string;
   number: number;
   column: number;
   title: string;
@@ -23,6 +24,9 @@ export interface ArchiveFile {
 export interface ArchiveColumn {
   username: string;
   name: string;
+  /** Whether the photographer's booking page is switched on. */
+  bookingEnabled: boolean;
+  photoCount: number;
   fileIndexes: number[];
 }
 

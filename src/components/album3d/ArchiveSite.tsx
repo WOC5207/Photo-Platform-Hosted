@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { Link } from "@/i18n/navigation";
+import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
 import EmptyState from "@/components/ui/EmptyState";
+import SiteModeSwitch, { useLeaveFor } from "@/components/SiteModeSwitch";
+import { classicTwin, parentScreen, parseScreen, screenPath, type Screen } from "@/lib/siteMode";
 import ArchiveIndex from "./ArchiveIndex";
-import styles from "./AlbumArchive.module.css";
+import styles from "./ArchiveSite.module.css";
 import { fileCode, type ArchiveColumn, type ArchiveFile } from "./types";
 import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
 
@@ -68,6 +70,7 @@ function isInteractive(target: EventTarget | null): boolean {
 
 const pad = (n: number, width = 2) => String(n).padStart(width, "0");
 const wrap = (value: number, count: number) => ((value % count) + count) % count;
+const MENU_SCREENS: Screen["kind"][] = ["title", "photographers", "photographer"];
 
 /** Digits that roll in when they change, as the reference's counters do. */
 function Rolling({ value }: { value: string }) {
@@ -82,31 +85,135 @@ function Rolling({ value }: { value: string }) {
   );
 }
 
+interface MenuItem {
+  key: string;
+  label: string;
+  sub?: string;
+  /** Leaves the 3D site, so it shows an outward arrow. */
+  external?: boolean;
+  run: () => void;
+}
+
 /**
- * Prototype homepage gallery as a three.js archive (see engine.ts), laid out
- * after RhineLabUI: an archive field with a callout beside the raised card, a
- * detail view that lifts the card out with its document on the right, and a
- * 360° study of the album's cassette that can be taken apart.
- *
- * Columns are photographers and files are their albums. Every control on the
- * canvas has a real button or link in the overlay, so keyboard and screen
- * reader visitors get the same archive without needing the 3D view at all.
+ * A game-style menu: one focused item at a time, moved with the arrow keys
+ * (handled by the screen) or the pointer, confirmed with Enter or a click.
  */
-export default function AlbumArchive({
+function GameMenu({
+  label,
+  items,
+  focus,
+  onFocus,
+  className = ""
+}: {
+  label: string;
+  items: MenuItem[];
+  focus: number;
+  onFocus: (index: number) => void;
+  className?: string;
+}) {
+  return (
+    <ol aria-label={label} className={`grid grid-cols-[minmax(0,1fr)] gap-1 ${className}`}>
+      {items.map((item, i) => {
+        const active = i === focus;
+        return (
+          <li key={item.key} className="relative min-w-0" onMouseEnter={() => onFocus(i)}>
+            <span
+              aria-hidden="true"
+              className={`absolute left-0 top-1/2 h-9 w-[3px] -translate-y-1/2 bg-fg transition-opacity duration-200 ${active ? "opacity-100" : "opacity-0"}`}
+            />
+            <button
+              type="button"
+              data-menu-item={i}
+              aria-current={active ? "true" : undefined}
+              onFocus={() => onFocus(i)}
+              onClick={item.run}
+              className={`flex min-h-14 w-full items-center gap-4 py-2 pr-3 text-left transition-[background-color,color,padding] duration-200 motion-reduce:transition-none ${
+                active ? "bg-fg/[0.06] pl-7 text-fg" : "pl-5 text-fg-muted hover:text-fg"
+              }`}
+            >
+              <span aria-hidden="true" className="font-meta w-7 shrink-0 text-[0.6875rem] tracking-[0.14em] text-fg-subtle">
+                {pad(i + 1)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-lg font-bold uppercase tracking-[0.02em] wide:text-[1.625rem]">{item.label}</span>
+                {item.sub && (
+                  <span className="font-meta mt-0.5 block truncate text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">{item.sub}</span>
+                )}
+              </span>
+              <span
+                aria-hidden="true"
+                className={`text-2xl transition duration-200 motion-reduce:transition-none ${active ? "translate-x-0 opacity-100" : "-translate-x-2 opacity-0"}`}
+              >
+                {item.external ? "↗" : "→"}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function Hints({ parts, className }: { parts: ReactNode[]; className: string }) {
+  return (
+    <p className={`${className} font-meta hidden text-[0.625rem] uppercase tracking-[0.08em] text-fg-subtle sm:block`}>
+      {parts.map((part, i) => (
+        <span key={i}>
+          {i > 0 && <span aria-hidden="true" className="mx-3">／</span>}
+          {part}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/**
+ * The 3D site: the platform's albums as a three.js archive (see engine.ts),
+ * laid out after RhineLabUI and driven like a game menu.
+ *
+ * It lives in the /3d layout, so the scene survives every move between
+ * screens, and each screen has its own address (see lib/siteMode): a title
+ * menu, photographer select, one photographer's menu, album select, the album
+ * file and its 360° study. Every control on the canvas has a real button or
+ * link in the overlay, so keyboard and screen reader visitors get the same
+ * archive without needing the 3D view at all.
+ */
+export default function ArchiveSite({
   files,
-  columns
+  columns,
+  children
 }: {
   files: ArchiveFile[];
   columns: ArchiveColumn[];
+  children?: ReactNode;
 }) {
   const t = useTranslations("album3d");
   const tc = useTranslations("common");
+  const router = useRouter();
+  const pathname = usePathname();
+  const leaveFor = useLeaveFor();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<ArchiveEngine | null>(null);
+
+  // ---------------------------------------------------------------- screen --
+  const screen: Screen = parseScreen(pathname) ?? { kind: "title" };
+  const columnIndex = "username" in screen ? columns.findIndex((c) => c.username === screen.username) : -1;
+  const fileIndex =
+    screen.kind === "album" && columnIndex >= 0
+      ? (columns[columnIndex].fileIndexes.find((i) => files[i]?.slug === screen.slug) ?? -1)
+      : -1;
+  const missing = ("username" in screen && columnIndex < 0) || (screen.kind === "album" && fileIndex < 0);
+  const mode: Mode = screen.kind === "album" && !missing ? (screen.study ? "study" : "detail") : "archive";
+  const overview = missing || MENU_SCREENS.includes(screen.kind);
+
   const [status, setStatus] = useState<EngineStatus>("loading");
-  const [selected, setSelected] = useState(0);
-  const [mode, setMode] = useState<Mode>("archive");
+  const [selected, setSelected] = useState(() => {
+    if (fileIndex >= 0) return fileIndex;
+    if (columnIndex >= 0) return columns[columnIndex].fileIndexes[0] ?? 0;
+    return 0;
+  });
+  const [menuFocus, setMenuFocus] = useState(0);
   const [exploded, setExploded] = useState(false);
   const [clear, setClear] = useState(true);
   const [indexOpen, setIndexOpen] = useState(false);
@@ -118,7 +225,52 @@ export default function AlbumArchive({
   const column = file ? columns[file.column] : undefined;
   const slot = column ? Math.max(0, column.fileIndexes.indexOf(selected)) : 0;
   const ready = status === "ready";
+  const here = columnIndex >= 0 ? columns[columnIndex] : undefined;
 
+  // The address picks the file: an album opens it, a photographer moves to
+  // their lane unless the selection is already in it.
+  useEffect(() => {
+    if (fileIndex >= 0) setSelected(fileIndex);
+    else if (columnIndex >= 0 && files[selectedRef.current]?.column !== columnIndex) {
+      setSelected(columns[columnIndex].fileIndexes[0] ?? 0);
+    }
+    setMenuFocus(screen.kind === "photographers" && columnIndex < 0 ? (files[selectedRef.current]?.column ?? 0) : 0);
+    if (screen.kind === "album" && screen.study) setExploded(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  // Moving between photographers in album select rewrites the address, so a
+  // shared link always names the photographer on screen.
+  useEffect(() => {
+    if (screen.kind !== "albumSelect" || !column || column.username === screen.username) return;
+    router.replace(screenPath({ kind: "albumSelect", username: column.username }), { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
+
+  // Esc walks back up the screens; a step back to where the visitor came
+  // from uses the browser's history so Forward still works.
+  const trail = useRef<string[]>([]);
+  useEffect(() => {
+    const steps = trail.current;
+    if (steps.length >= 2 && steps[steps.length - 2] === pathname) steps.pop();
+    else if (steps[steps.length - 1] !== pathname) steps.push(pathname);
+  }, [pathname]);
+
+  const go = useCallback(
+    (next: Screen) => router.push(screenPath(next), { scroll: false }),
+    [router]
+  );
+
+  const back = useCallback(() => {
+    const parent = missing ? { kind: "title" as const } : parentScreen(screen);
+    if (!parent) return;
+    const target = screenPath(parent);
+    const steps = trail.current;
+    if (steps.length >= 2 && steps[steps.length - 2] === target) router.back();
+    else router.push(target, { scroll: false });
+  }, [missing, screen, router]);
+
+  // ------------------------------------------------------------- selection --
   /** Select a file; the same file again still moves to the picked card. */
   const choose = useCallback((index: number) => {
     if (index === selectedRef.current) engineRef.current?.select(index);
@@ -149,16 +301,23 @@ export default function AlbumArchive({
 
   const openDetail = useCallback(
     (index: number) => {
+      const target = files[index];
+      if (!target) return;
       choose(index);
-      setMode("detail");
+      go({ kind: "album", username: columns[target.column].username, slug: target.slug, study: false });
     },
-    [choose]
+    [files, columns, choose, go]
   );
 
-  const openStudy = useCallback(() => {
-    setExploded(false);
-    setMode("study");
-  }, []);
+  /** Photographer select: the focused name brings its lane into view. */
+  const focusPhotographer = useCallback(
+    (index: number) => {
+      setMenuFocus(index);
+      const first = columns[index]?.fileIndexes[0];
+      if (first !== undefined) choose(first);
+    },
+    [columns, choose]
+  );
 
   // Latest callbacks for the engine, which is created once.
   const handlers = useRef({ step, openDetail, choose });
@@ -166,6 +325,7 @@ export default function AlbumArchive({
     handlers.current = { step, openDetail, choose };
   }, [step, openDetail, choose]);
 
+  // ----------------------------------------------------------------- engine --
   // Create the engine once; three.js loads only after the overlay is up.
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -223,7 +383,7 @@ export default function AlbumArchive({
       engineRef.current?.dispose();
       engineRef.current = null;
     };
-    // The archive is fixed for the life of the page.
+    // The archive is fixed for the life of the layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -234,10 +394,11 @@ export default function AlbumArchive({
   useEffect(() => {
     const engine = engineRef.current;
     if (!ready || !engine) return;
+    engine.setOverview(overview);
     engine.setDetail(mode !== "archive");
     if (mode === "study") engine.openStudy(selectedRef.current);
     else engine.closeStudy();
-  }, [mode, ready]);
+  }, [mode, overview, ready]);
 
   useEffect(() => {
     if (ready && mode === "study") engineRef.current?.setExploded(exploded);
@@ -247,17 +408,108 @@ export default function AlbumArchive({
     if (ready) engineRef.current?.setClear(clear);
   }, [clear, ready]);
 
+  // ------------------------------------------------------------------ menus --
+  const titleMenu: MenuItem[] = [
+    {
+      key: "photographers",
+      label: t("menuPhotographers"),
+      sub: t("menuPhotographersSub", { count: columns.length }),
+      run: () => go({ kind: "photographers" })
+    },
+    {
+      key: "albums",
+      label: t("menuAllAlbums"),
+      sub: t("menuAllAlbumsSub", { count: files.length }),
+      run: () => go({ kind: "albums" })
+    },
+    { key: "index", label: t("index"), sub: t("indexSubtitle"), run: () => setIndexOpen(true) },
+    { key: "classic", label: t("menuClassic"), sub: t("menuClassicSub"), external: true, run: () => leaveFor("classic", "/") }
+  ];
+
+  const rosterMenu: MenuItem[] = columns.map((c, i) => ({
+    key: c.username,
+    label: c.name,
+    sub: t("rosterSub", { albums: c.fileIndexes.length, photos: c.photoCount }),
+    run: () => {
+      focusPhotographer(i);
+      go({ kind: "photographer", username: c.username });
+    }
+  }));
+
+  const photographerMenu: MenuItem[] = here
+    ? [
+        {
+          key: "albums",
+          label: t("menuAlbums"),
+          sub: t("menuAllAlbumsSub", { count: here.fileIndexes.length }),
+          run: () => go({ kind: "albumSelect", username: here.username })
+        },
+        ...(here.bookingEnabled
+          ? [
+              {
+                key: "booking",
+                label: t("menuBooking"),
+                sub: t("menuBookingSub"),
+                external: true,
+                run: () => router.push(`/u/${encodeURIComponent(here.username)}/booking`)
+              }
+            ]
+          : []),
+        {
+          key: "classic",
+          label: t("menuClassicPage"),
+          sub: t("menuClassicPageSub"),
+          external: true,
+          run: () => leaveFor("classic", `/u/${encodeURIComponent(here.username)}`)
+        }
+      ]
+    : [];
+
+  const activeMenu =
+    missing ? [] : screen.kind === "title" ? titleMenu : screen.kind === "photographers" ? rosterMenu : screen.kind === "photographer" ? photographerMenu : [];
+
+  const switchPhotographer = useCallback(
+    (direction: 1 | -1) => {
+      if (columnIndex < 0 || columns.length < 2) return;
+      const next = columns[wrap(columnIndex + direction, columns.length)];
+      router.replace(screenPath({ kind: "photographer", username: next.username }), { scroll: false });
+    },
+    [columnIndex, columns, router]
+  );
+
+  // -------------------------------------------------------------- keyboard --
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (indexOpen || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       if (isTyping(e.target)) return;
-      if (mode !== "archive") {
-        if (e.key === "Escape") {
+      if (e.key === "Escape" || e.key === "Backspace") {
+        if (screen.kind === "title" && !missing) return;
+        e.preventDefault();
+        back();
+        return;
+      }
+      if (activeMenu.length > 0) {
+        const move = (delta: number) => {
           e.preventDefault();
-          setMode(mode === "study" ? "detail" : "archive");
+          const next = wrap(menuFocus + delta, activeMenu.length);
+          if (screen.kind === "photographers") focusPhotographer(next);
+          else setMenuFocus(next);
+          document.querySelector<HTMLElement>(`[data-menu-item="${next}"]`)?.scrollIntoView({ block: "nearest" });
+        };
+        if (e.key === "ArrowUp") return move(-1);
+        if (e.key === "ArrowDown") return move(1);
+        if (screen.kind === "photographer" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+          e.preventDefault();
+          switchPhotographer(e.key === "ArrowLeft" ? -1 : 1);
+          return;
+        }
+        if (e.key === "Enter" && !isInteractive(e.target)) {
+          e.preventDefault();
+          activeMenu[menuFocus]?.run();
         }
         return;
       }
+      if (mode !== "archive") return;
       const keys: Record<string, () => void> = {
         ArrowUp: () => step("file", -1),
         ArrowDown: () => step("file", 1),
@@ -267,7 +519,7 @@ export default function AlbumArchive({
       };
       if (e.key === "Enter" && !isInteractive(e.target)) {
         e.preventDefault();
-        setMode("detail");
+        openDetail(selectedRef.current);
         return;
       }
       const action = keys[e.key];
@@ -277,16 +529,22 @@ export default function AlbumArchive({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [indexOpen, mode, step]);
+  }, [indexOpen, mode, step, back, activeMenu, menuFocus, screen.kind, missing, focusPhotographer, switchPhotographer, openDetail]);
 
+  // ----------------------------------------------------------------- render --
   if (files.length === 0 || !file || !column) {
     return (
       <main id="main-content" className="mx-auto flex min-h-dvh max-w-3xl flex-col justify-center px-4 py-10">
         <EmptyState
           title={t("empty")}
           description={t("emptyHint")}
-          action={<Link href="/" className="text-sm font-semibold text-accent-text underline">{t("classic")}</Link>}
+          action={
+            <button type="button" onClick={() => leaveFor("classic", "/")} className="text-sm font-semibold text-accent-text underline">
+              {t("classic")}
+            </button>
+          }
         />
+        {children}
       </main>
     );
   }
@@ -302,6 +560,21 @@ export default function AlbumArchive({
   ];
   const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle";
   const square = "grid h-11 w-11 shrink-0 place-items-center text-2xl transition hover:bg-accent-surface";
+  const albumsHere = screen.kind === "albumSelect" || (screen.kind === "album" && !missing);
+
+  // Where the visitor is, as a trail of links back up the screens.
+  const crumbs: { label: string; href?: string }[] = [{ label: t("crumbMenu"), href: screenPath({ kind: "title" }) }];
+  if (screen.kind === "albums") crumbs.push({ label: t("menuAllAlbums") });
+  if (here && !missing) {
+    crumbs.push({ label: t("menuPhotographers"), href: screenPath({ kind: "photographers" }) });
+    crumbs.push({ label: here.name, href: screenPath({ kind: "photographer", username: here.username }) });
+    if (albumsHere) crumbs.push({ label: t("menuAlbums"), href: screenPath({ kind: "albumSelect", username: here.username }) });
+    if (screen.kind === "album") crumbs.push({ label: code, href: screen.study ? screenPath({ ...screen, study: false }) : undefined });
+    if (screen.kind === "album" && screen.study) crumbs.push({ label: t("study") });
+  } else if (screen.kind === "photographers") crumbs.push({ label: t("menuPhotographers") });
+  crumbs[crumbs.length - 1].href = undefined;
+
+  const studyHeader = mode === "study";
 
   return (
     <div ref={rootRef} className={`${styles.root} album3d relative h-dvh w-full overflow-hidden bg-page text-fg`}>
@@ -312,7 +585,9 @@ export default function AlbumArchive({
         <canvas ref={canvasRef} className="block h-full w-full touch-none select-none" />
       </div>
 
-      {mode !== "study" && <div aria-hidden="true" className={styles.shade} data-detail={mode === "detail"} />}
+      {mode !== "study" && (
+        <div aria-hidden="true" className={styles.shade} data-detail={mode === "detail"} data-overview={overview} />
+      )}
 
       {status === "loading" && (
         <p role="status" className="font-meta absolute inset-0 flex items-center justify-center text-xs uppercase tracking-[0.2em] text-fg-subtle">
@@ -320,15 +595,31 @@ export default function AlbumArchive({
         </p>
       )}
 
-      {mode !== "study" && (
+      {!studyHeader && (
         <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-4 px-[var(--edge)] pt-4 wide:pt-9">
-          <Link href="/" className="pointer-events-auto block leading-none">
-            <span className="block text-xl font-extrabold uppercase tracking-[-0.02em] wide:text-4xl">{t("brandTop")}</span>
-            <span className="mt-1 block text-[0.5625rem] font-semibold uppercase tracking-[0.08em] text-fg-muted wide:text-xs">{t("brandMiddle")}</span>
-            <span className="mt-1 block text-base font-light uppercase tracking-[0.02em] wide:text-2xl">{t("brandBottom")}</span>
-          </Link>
+          <div className="pointer-events-auto flex items-start gap-10">
+            <Link href={screenPath({ kind: "title" })} className="block leading-none">
+              <span className="block text-xl font-extrabold uppercase tracking-[-0.02em] wide:text-4xl">{t("brandTop")}</span>
+              <span className="mt-1 block text-[0.5625rem] font-semibold uppercase tracking-[0.08em] text-fg-muted wide:text-xs">{t("brandMiddle")}</span>
+              <span className="mt-1 block text-base font-light uppercase tracking-[0.02em] wide:text-2xl">{t("brandBottom")}</span>
+            </Link>
+            <nav aria-label={t("crumbLabel")} className="hidden pt-2 wide:block">
+              <ol className="font-meta flex flex-wrap items-center gap-x-2 text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
+                {crumbs.map((crumb, i) => (
+                  <li key={`${crumb.label}-${i}`} className="flex items-center gap-2">
+                    {i > 0 && <span aria-hidden="true">/</span>}
+                    {crumb.href ? (
+                      <Link href={crumb.href} className="hover:text-fg">{crumb.label}</Link>
+                    ) : (
+                      <span aria-current="page" className="text-fg">{crumb.label}</span>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </nav>
+          </div>
           <nav aria-label={t("brandBottom")} className="pointer-events-auto flex items-center justify-end gap-1 sm:gap-3">
-            {mode === "archive" && (
+            {mode === "archive" && !overview && (
               <button
                 type="button"
                 onClick={() => setIndexOpen(true)}
@@ -343,17 +634,115 @@ export default function AlbumArchive({
                 <kbd className="font-meta hidden border border-border-strong px-1 text-[0.625rem] font-normal sm:inline">/</kbd>
               </button>
             )}
+            <span className="hidden sm:contents">
+              <SiteModeSwitch current="3d" />
+            </span>
             <LanguageSwitcher />
             <ThemeToggle label={tc("toggleTheme")} />
           </nav>
         </header>
       )}
 
+      {/* ----------------------------------------------------- menu screens -- */}
+      {missing && (
+        <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
+          <p className={metaLabel}>{t("archiveLabel")}</p>
+          <h1 className="mt-3 text-4xl font-extrabold uppercase tracking-[-0.03em] wide:text-6xl">{t("notFoundTitle")}</h1>
+          <p className="mt-3 max-w-md text-sm text-fg-muted">{t("notFoundHint")}</p>
+          <GameMenu
+            label={t("notFoundTitle")}
+            className="mt-8"
+            focus={0}
+            onFocus={() => undefined}
+            items={[{ key: "menu", label: t("notFoundBack"), run: () => go({ kind: "title" }) }]}
+          />
+        </main>
+      )}
+
+      {!missing && screen.kind === "title" && (
+        <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
+          <p className={metaLabel}>
+            {t("archiveLabel")} <span aria-hidden="true" className="mx-2">／</span> {t("menuLabel")}
+          </p>
+          <h1 className="mt-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[4.5rem]">
+            {t("menuTitle")}
+          </h1>
+          <div aria-hidden="true" className={styles.calloutRule} />
+          <GameMenu label={t("menuLabel")} items={titleMenu} focus={menuFocus} onFocus={setMenuFocus} className="mt-8 wide:mt-12" />
+        </main>
+      )}
+
+      {!missing && screen.kind === "photographers" && (
+        <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
+          <p className={metaLabel}>
+            {t("photographerCount", { current: pad(menuFocus + 1), total: pad(columns.length) })}
+          </p>
+          <h1 className="mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[3.75rem]">
+            {t("rosterTitle")}
+          </h1>
+          <div aria-hidden="true" className={styles.calloutRule} />
+          <div className={`${styles.roster} mt-8 wide:mt-10`}>
+            <GameMenu label={t("rosterTitle")} items={rosterMenu} focus={menuFocus} onFocus={focusPhotographer} />
+          </div>
+        </main>
+      )}
+
+      {!missing && screen.kind === "photographer" && here && (
+        <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
+          <div className="flex items-center gap-3">
+            <p className={metaLabel}>
+              {t("photographerCount", { current: pad(columnIndex + 1), total: pad(columns.length) })}
+            </p>
+            {columns.length > 1 && (
+              <span className="flex">
+                <button type="button" onClick={() => switchPhotographer(-1)} aria-label={t("prevColumn")} className={square}>←</button>
+                <button type="button" onClick={() => switchPhotographer(1)} aria-label={t("nextColumn")} className={square}>→</button>
+              </span>
+            )}
+          </div>
+          <h1 className="mt-1 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[4.5rem]">
+            {here.name}
+          </h1>
+          <p className="font-meta mt-3 text-xs tracking-[0.1em] text-fg-subtle">@{here.username}</p>
+          <div aria-hidden="true" className={styles.calloutRule} />
+          <dl className="mt-6 flex gap-12">
+            {[
+              [t("statAlbums"), here.fileIndexes.length],
+              [t("statPhotos"), here.photoCount]
+            ].map(([label, value]) => (
+              <div key={String(label)}>
+                <dt className={metaLabel}>{label}</dt>
+                <dd className="mt-1 text-[2.125rem] leading-none wide:text-[3rem]">
+                  <Rolling value={pad(Number(value))} />
+                  <span className="sr-only">{value}</span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <GameMenu label={here.name} items={photographerMenu} focus={menuFocus} onFocus={setMenuFocus} className="mt-8" />
+        </main>
+      )}
+
+      {overview && (
+        <Hints
+          className={styles.menuHint}
+          parts={[
+            ...(screen.kind === "photographer" && !missing ? [`← → ${t("hintPhotographer")}`] : []),
+            `↑ ↓ ${t("hintSelect")}`,
+            `ENTER ${t("hintConfirm")}`,
+            ...(screen.kind !== "title" || missing ? [`ESC ${t("hintBack")}`] : [])
+          ]}
+        />
+      )}
+
       <p aria-live="polite" aria-atomic="true" className="sr-only">
-        {t("announce", { title: file.title, owner: column.name, current: slot + 1, total: column.fileIndexes.length })}
+        {mode === "archive" && !overview
+          ? t("announce", { title: file.title, owner: column.name, current: slot + 1, total: column.fileIndexes.length })
+          : ""}
       </p>
 
-      {mode === "archive" && (
+      {/* -------------------------------------------------- archive screens -- */}
+      {mode === "archive" && !overview && (
         <main id="main-content" tabIndex={-1} className="outline-none">
           <section aria-labelledby="album3d-title" className={styles.callout}>
             <p className="font-meta text-[0.5625rem] uppercase tracking-[0.1em] text-fg-subtle sm:text-xs">
@@ -361,8 +750,7 @@ export default function AlbumArchive({
             </p>
             <button
               type="button"
-              onClick={() => setMode("detail")}
-              disabled={!ready}
+              onClick={() => openDetail(selected)}
               className="group mt-3 flex min-h-11 w-full items-center gap-2 text-left text-xl font-bold tracking-[0.01em] sm:mt-5 wide:text-[1.75rem]"
             >
               <span className="whitespace-nowrap">
@@ -385,9 +773,8 @@ export default function AlbumArchive({
               <div className="mt-3 flex flex-wrap items-center gap-x-10 wide:mt-12">
                 <button
                   type="button"
-                  onClick={() => setMode("detail")}
-                  disabled={!ready}
-                  className="group inline-flex min-h-11 items-center gap-12 text-sm font-medium uppercase tracking-[0.07em] disabled:opacity-40 wide:gap-16"
+                  onClick={() => openDetail(selected)}
+                  className="group inline-flex min-h-11 items-center gap-12 text-sm font-medium uppercase tracking-[0.07em] wide:gap-16"
                 >
                   {t("openFile")}
                   <span aria-hidden="true" className="text-2xl transition-transform group-hover:translate-x-2 motion-reduce:transition-none">→</span>
@@ -413,7 +800,7 @@ export default function AlbumArchive({
           <div className={`${styles.fileNav} items-center gap-1.5 wide:gap-8`}>
             <button type="button" onClick={() => step("file", -1)} aria-label={t("prevFile")} className={square}>↑</button>
             <ol className="flex h-10 items-center gap-0 wide:gap-3">
-              {column.fileIndexes.slice(0, 24).map((index, i) => (
+              {column.fileIndexes.slice(0, 24).map((index) => (
                 <li key={index}>
                   <button
                     type="button"
@@ -427,7 +814,6 @@ export default function AlbumArchive({
                       className={`absolute left-1/2 top-1/2 w-0.5 -translate-x-1/2 -translate-y-1/2 transition-all duration-400 ${
                         index === selected ? "h-8 bg-fg" : "h-3 bg-fg/35 group-hover:h-6 group-hover:bg-accent"
                       }`}
-                      data-i={i}
                     />
                   </button>
                 </li>
@@ -456,7 +842,7 @@ export default function AlbumArchive({
               <>
                 ← → {t("hintPhotographer")} <span aria-hidden="true" className="mx-3">／</span> ↑ ↓ {t("hintAlbum")}
                 <span aria-hidden="true" className="mx-3">／</span> ENTER {t("hintOpen")}
-                <span aria-hidden="true" className="mx-3">／</span> / {t("hintIndex")}
+                <span aria-hidden="true" className="mx-3">／</span> ESC {t("hintBack")}
               </>
             )}
           </p>
@@ -467,7 +853,7 @@ export default function AlbumArchive({
         <main id="main-content" tabIndex={-1} className="outline-none">
           <button
             type="button"
-            onClick={() => setMode("archive")}
+            onClick={back}
             className={`${styles.back} z-10 flex min-h-11 items-center gap-2 px-2 text-2xl transition hover:text-accent-text wide:gap-5 wide:px-0`}
           >
             <span aria-hidden="true">←</span>
@@ -485,13 +871,13 @@ export default function AlbumArchive({
                 {t("dragToInspect")} <span aria-hidden="true" className="ml-4 text-lg">↔</span>
               </p>
             </div>
-            <button
-              type="button"
-              onClick={openStudy}
+            <Link
+              href={screen.kind === "album" ? screenPath({ ...screen, study: true }) : pathname}
+              scroll={false}
               className="inline-flex min-h-11 items-center gap-4 border-fg-subtle text-sm tracking-[0.02em] transition hover:border-accent hover:text-accent-text wide:mt-6 wide:border-b wide:pb-1"
             >
               {t("view360")} <span aria-hidden="true" className="text-xl">↗</span>
-            </button>
+            </Link>
           </div>
 
           <article aria-labelledby="album3d-detail-title" className={styles.document}>
@@ -536,7 +922,7 @@ export default function AlbumArchive({
                 className="inline-flex min-h-12 flex-1 items-center justify-between gap-4 bg-fg px-5 text-sm font-semibold uppercase tracking-[0.08em] text-page transition hover:bg-accent-text"
               >
                 {t("viewAlbum")}
-                <span aria-hidden="true" className="text-lg">→</span>
+                <span aria-hidden="true" className="text-lg">↗</span>
               </Link>
             </div>
             <p className="font-meta mt-5 flex justify-between text-[0.625rem] uppercase tracking-[0.1em] text-fg-subtle">
@@ -555,7 +941,7 @@ export default function AlbumArchive({
           <header className={`${styles.studyHeader} pointer-events-none flex items-start`}>
             <button
               type="button"
-              onClick={() => setMode("detail")}
+              onClick={back}
               className="pointer-events-auto flex min-h-11 items-center gap-3 py-3 text-xl transition hover:text-accent-text wide:gap-5"
             >
               <span aria-hidden="true">←</span>
@@ -659,17 +1045,28 @@ export default function AlbumArchive({
             <i aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success" />
             {t("connected")}
           </span>
-          <Link href="/" className="pointer-events-auto inline-flex min-h-7 items-center hover:text-fg">
+          <button
+            type="button"
+            onClick={() => leaveFor("classic", classicTwin(pathname))}
+            className="pointer-events-auto inline-flex min-h-7 items-center uppercase hover:text-fg"
+          >
             {t("classic")} <span aria-hidden="true" className="ml-2">↗</span>
-          </Link>
+          </button>
         </footer>
       )}
 
       {status === "unsupported" && (
-        <div className="absolute inset-0 overflow-y-auto bg-page px-4 pb-10 pt-32 sm:px-8">
+        <div className="absolute inset-0 z-20 overflow-y-auto bg-page px-4 pb-10 pt-32 sm:px-8">
           <div className="mx-auto max-w-4xl">
             <h2 className="text-xl font-bold">{t("unsupportedTitle")}</h2>
             <p className="mt-1 text-sm text-fg-muted">{t("unsupportedHint")}</p>
+            <button
+              type="button"
+              onClick={() => leaveFor("classic", classicTwin(pathname))}
+              className="mt-4 inline-flex min-h-11 items-center bg-fg px-5 text-sm font-semibold uppercase tracking-[0.08em] text-page"
+            >
+              {t("unsupportedClassic")}
+            </button>
             <ul className="mt-6 divide-y divide-border border-y border-border">
               {files.map((f) => (
                 <li key={f.id}>
@@ -692,14 +1089,15 @@ export default function AlbumArchive({
         columns={columns}
         onSelect={(index) => {
           setIndexOpen(false);
-          choose(index);
+          if (mode === "archive" && !overview) choose(index);
+          else openDetail(index);
         }}
         onOpen={(index) => {
           setIndexOpen(false);
-          if (ready) openDetail(index);
-          else choose(index);
+          openDetail(index);
         }}
       />
+      {children}
     </div>
   );
 }
