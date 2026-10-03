@@ -309,6 +309,8 @@ export function createBoard(context: {
     gridColumns = variant === "events" ? (layoutFor(width, height) === "portrait" ? 1 : 2) : 1;
     columnCount = variant === "slots" ? Math.max(1, headerLabels.length) : gridColumns;
     rowCount = Math.max(1, ...list.map((t) => cell(t.data).row + 1));
+    // Nothing open: no empty board behind the panel's notice.
+    panel.visible = rail.visible = headers.visible = list.length > 0;
     const spec = SPEC[variant];
     const boardW = columnCount * (spec.w + spec.gx) - spec.gx + 0.7;
     const boardH = spec.header + rowCount * (spec.h + spec.gy) - spec.gy + 0.8;
