@@ -299,6 +299,12 @@ export function createBoard(context: {
     return target.set(col * (spec.w + spec.gx), -(spec.header + row * (spec.h + spec.gy)) - spec.h / 2, DEPTH / 2);
   }
 
+  /** Columns the camera frames for: a full board's worth, so tiles keep one size however few days there are. */
+  function framedColumns() {
+    if (variant === "events") return gridColumns;
+    return layoutFor(width, height) === "portrait" ? 2 : 3;
+  }
+
   function visibleColumns() {
     const layout = layoutFor(width, height);
     if (variant === "events") return gridColumns;
@@ -421,7 +427,7 @@ export function createBoard(context: {
     const spec = SPEC[variant];
     const halfH = Math.tan(MathUtils.degToRad(FOV / 2));
     const halfW = halfH * aspect;
-    const span = visibleColumns() * (spec.w + spec.gx) - spec.gx + 0.9;
+    const span = framedColumns() * (spec.w + spec.gx) - spec.gx + 0.9;
     distance = span / (area.width * 2 * halfW);
     visibleW = 2 * halfW * distance;
     visibleH = 2 * halfH * distance;
