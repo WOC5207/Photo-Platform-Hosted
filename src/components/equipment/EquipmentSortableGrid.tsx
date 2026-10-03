@@ -107,7 +107,7 @@ export default function EquipmentSortableGrid({
       {reorderEnabled && <div aria-live="polite" className="min-h-5 text-right text-xs font-semibold text-fg-subtle">
         {status === "saving" ? labels.saving : status === "saved" ? labels.saved : status === "error" ? labels.error : ""}
       </div>}
-      <ul data-equipment-grid className="min-w-0 columns-1 gap-4 md:columns-2">
+      <ul data-equipment-grid className="ui-file-list min-w-0 columns-1 gap-4 md:columns-2">
         {visibleOrder.map((id, index) => (
           <li
             key={id}
@@ -119,7 +119,7 @@ export default function EquipmentSortableGrid({
               setOverId(id);
             }}
             onDrop={(event) => reorderEnabled && drop(event, id)}
-            className={`ui-panel mb-4 w-full min-w-0 break-inside-avoid overflow-hidden p-5 transition-[border-color,opacity,transform] ${
+            className={`ui-panel ui-file mb-4 w-full min-w-0 break-inside-avoid overflow-hidden p-5 transition-[border-color,opacity,transform] ${
               highlightedId === id ? "ring-2 ring-success" : ""
             } ${overId === id && draggedId !== id ? "border-accent -translate-y-0.5" : ""} ${
               draggedId === id ? "opacity-60" : ""

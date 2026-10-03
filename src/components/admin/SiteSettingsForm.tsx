@@ -15,6 +15,7 @@ import StatusMessage from "@/components/ui/StatusMessage";
 import Tabs from "@/components/ui/Tabs";
 import FormActionBar from "@/components/ui/FormActionBar";
 import DisclosureSection from "@/components/ui/DisclosureSection";
+import UiStyleSwitch from "@/components/admin/UiStyleSwitch";
 import {
   updateSiteSettings,
   type SiteSettingsSection,
@@ -128,6 +129,7 @@ export default function SiteSettingsForm({
     darkTextColor: string;
     darkThemeColor: string;
     dashboardThemeMode: string;
+    uiStyle: string;
     creditTermEn: string;
     creditTermZh: string;
     subjectTermEn: string;
@@ -409,10 +411,13 @@ export default function SiteSettingsForm({
 
       {activeSection === "appearance" && (
         <div className="flex flex-col gap-6">
+          <Group title={t("uiStyleTitle")} hint={t("uiStyleGroupHint")}>
+            <UiStyleSwitch initial={initial.uiStyle} />
+          </Group>
           <Group title={t("groupHeaderTitle")} hint={t("groupHeaderHint")}>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("siteTitleEn")}</span>
+                <span className="ui-label text-fg-muted">{t("siteTitleEn")}</span>
                 <input
                   form={FORM_ID}
                   name="siteTitleEn"
@@ -422,7 +427,7 @@ export default function SiteSettingsForm({
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("siteTitleZh")}</span>
+                <span className="ui-label text-fg-muted">{t("siteTitleZh")}</span>
                 <input
                   form={FORM_ID}
                   name="siteTitleZh"
@@ -611,7 +616,7 @@ export default function SiteSettingsForm({
         <Group title={t("groupHomepageTitle")} hint={t("groupHomepageHint")}>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("homeTitleEn")}</span>
+              <span className="ui-label text-fg-muted">{t("homeTitleEn")}</span>
               <input
                 form={FORM_ID}
                 name="homeTitleEn"
@@ -621,7 +626,7 @@ export default function SiteSettingsForm({
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("homeTitleZh")}</span>
+              <span className="ui-label text-fg-muted">{t("homeTitleZh")}</span>
               <input
                 form={FORM_ID}
                 name="homeTitleZh"
@@ -631,7 +636,7 @@ export default function SiteSettingsForm({
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("homeSubtitleEn")}</span>
+              <span className="ui-label text-fg-muted">{t("homeSubtitleEn")}</span>
               <input
                 form={FORM_ID}
                 name="homeSubtitleEn"
@@ -641,7 +646,7 @@ export default function SiteSettingsForm({
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("homeSubtitleZh")}</span>
+              <span className="ui-label text-fg-muted">{t("homeSubtitleZh")}</span>
               <input
                 form={FORM_ID}
                 name="homeSubtitleZh"
@@ -684,7 +689,7 @@ export default function SiteSettingsForm({
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-semibold text-fg-muted">English</h3>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("contactTitleEn")}</span>
+                <span className="ui-label text-fg-muted">{t("contactTitleEn")}</span>
                 <input
                   form={FORM_ID}
                   name="contactTitleEn"
@@ -694,7 +699,7 @@ export default function SiteSettingsForm({
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("contactUrlEn")}</span>
+                <span className="ui-label text-fg-muted">{t("contactUrlEn")}</span>
                 <input
                   form={FORM_ID}
                   name="contactUrlEn"
@@ -712,7 +717,7 @@ export default function SiteSettingsForm({
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-semibold text-fg-muted">中文</h3>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("contactTitleZh")}</span>
+                <span className="ui-label text-fg-muted">{t("contactTitleZh")}</span>
                 <input
                   form={FORM_ID}
                   name="contactTitleZh"
@@ -722,7 +727,7 @@ export default function SiteSettingsForm({
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("contactUrlZh")}</span>
+                <span className="ui-label text-fg-muted">{t("contactUrlZh")}</span>
                 <input
                   form={FORM_ID}
                   name="contactUrlZh"
@@ -886,7 +891,7 @@ export default function SiteSettingsForm({
                 {t("timingReferenceHint")}
               </p>
               <label className="mt-4 flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("timeZoneLabel")}</span>
+                <span className="ui-label text-fg-muted">{t("timeZoneLabel")}</span>
                 <select
                   form={FORM_ID}
                   name="timeZone"
@@ -951,7 +956,7 @@ export default function SiteSettingsForm({
             </label>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("creditTermEn")}</span>
+                <span className="ui-label text-fg-muted">{t("creditTermEn")}</span>
                 <input
                   form={FORM_ID}
                   name="creditTermEn"
@@ -961,7 +966,7 @@ export default function SiteSettingsForm({
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("creditTermZh")}</span>
+                <span className="ui-label text-fg-muted">{t("creditTermZh")}</span>
                 <input
                   form={FORM_ID}
                   name="creditTermZh"
@@ -971,7 +976,7 @@ export default function SiteSettingsForm({
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("subjectTermEn")}</span>
+                <span className="ui-label text-fg-muted">{t("subjectTermEn")}</span>
                 <input
                   form={FORM_ID}
                   name="subjectTermEn"
@@ -981,7 +986,7 @@ export default function SiteSettingsForm({
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("subjectTermZh")}</span>
+                <span className="ui-label text-fg-muted">{t("subjectTermZh")}</span>
                 <input
                   form={FORM_ID}
                   name="subjectTermZh"
@@ -996,7 +1001,7 @@ export default function SiteSettingsForm({
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("homeCreditsLabelEn")}</span>
+                <span className="ui-label text-fg-muted">{t("homeCreditsLabelEn")}</span>
                 <input
                   form={FORM_ID}
                   name="homeCreditsLabelEn"
@@ -1006,7 +1011,7 @@ export default function SiteSettingsForm({
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-fg-muted">{t("homeCreditsLabelZh")}</span>
+                <span className="ui-label text-fg-muted">{t("homeCreditsLabelZh")}</span>
                 <input
                   form={FORM_ID}
                   name="homeCreditsLabelZh"

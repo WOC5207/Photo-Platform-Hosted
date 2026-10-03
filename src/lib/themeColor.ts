@@ -32,6 +32,19 @@ export function resolveDashboardThemeMode(
   return value === "MATCH_SITE" ? "MATCH_SITE" : "PLATFORM";
 }
 
+export const UI_STYLES = ["CLASSIC", "ARCHIVE"] as const;
+export type UiStyle = (typeof UI_STYLES)[number];
+
+/** The owner's interface style; anything unknown reads as the classic UI. */
+export function resolveUiStyle(value?: string | null): UiStyle {
+  return value === "ARCHIVE" ? "ARCHIVE" : "CLASSIC";
+}
+
+/** The attribute that switches a subtree to the archive design language. */
+export function uiStyleAttribute(value?: string | null): "archive" | undefined {
+  return resolveUiStyle(value) === "ARCHIVE" ? "archive" : undefined;
+}
+
 export type SiteThemeColors = {
   backgroundColor: string;
   surfaceColor: string;

@@ -79,8 +79,8 @@ export default async function SiteSettingsPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("title")}</h1>
+      <div className="ui-page-header">
+        <h1 className="ui-page-title font-display text-3xl font-semibold tracking-[-0.03em]">{t("title")}</h1>
         <p className="mt-1 text-fg-subtle">{t("intro")}</p>
       </div>
 
@@ -111,6 +111,7 @@ export default async function SiteSettingsPage({
           darkTextColor: settings.darkTextColor,
           darkThemeColor: settings.darkThemeColor,
           dashboardThemeMode: settings.dashboardThemeMode,
+          uiStyle: settings.uiStyle,
           creditTermEn: settings.creditTermEn,
           creditTermZh: settings.creditTermZh,
           subjectTermEn: settings.subjectTermEn,

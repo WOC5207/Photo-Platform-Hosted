@@ -780,6 +780,10 @@ model SiteSettings {
   // "PLATFORM" keeps the management workspace neutral; "MATCH_SITE" applies
   // the public light/dark semantic palettes to this photographer's dashboard.
   dashboardThemeMode                String    @default("PLATFORM")
+  // "CLASSIC" keeps the standard interface; "ARCHIVE" switches this owner's
+  // dashboard and public site to the archive design language (sharp panels,
+  // file numbering, ink buttons) that the 3D album introduced.
+  uiStyle                           String    @default("CLASSIC")
   // Empty = no background image. Otherwise a token; file lives at
   // <PHOTOS_DIR>/_site/<token>.webp, served via /api/site/<token>.webp.
   backgroundImage                   String    @default("")

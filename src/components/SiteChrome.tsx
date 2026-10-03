@@ -17,7 +17,7 @@ import {
 } from "@/lib/settings";
 import { siteImageUrl } from "@/lib/images";
 import { ownerBasePath } from "@/lib/owner";
-import { siteDualThemeStyle } from "@/lib/themeColor";
+import { siteDualThemeStyle, uiStyleAttribute } from "@/lib/themeColor";
 
 /**
  * The public header/background/footer for ONE owner's site.
@@ -75,6 +75,7 @@ export default async function SiteChrome({
 
   return (
     <div
+      data-ui={uiStyleAttribute(settings.uiStyle)}
       className="site-dual-theme relative isolate flex min-h-screen flex-col"
       style={siteDualThemeStyle(
         {
@@ -94,7 +95,7 @@ export default async function SiteChrome({
       )}
     >
       <ScrollBlurBackground style={style} />
-      <header className="sticky top-0 z-40 border-b border-border bg-page/82 backdrop-blur-xl">
+      <header className="ui-site-header sticky top-0 z-40 border-b border-border bg-page/82 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
           <Link
             href={base}
@@ -104,9 +105,9 @@ export default async function SiteChrome({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoUrl} alt="" className="h-8 w-auto" />
             )}
-            <span className="truncate">{siteTitle}</span>
+            <span className="ui-brand-title truncate">{siteTitle}</span>
           </Link>
-          <nav aria-label={t("nav.menu")} className="hidden items-center gap-2 text-sm xl:flex">
+          <nav aria-label={t("nav.menu")} className="ui-site-nav hidden items-center gap-2 text-sm xl:flex">
             <Link
               href="/"
               className="inline-flex min-h-11 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"

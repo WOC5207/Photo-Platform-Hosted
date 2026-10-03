@@ -14,7 +14,8 @@ import { invalidatePublicMedia } from "@/lib/publicMediaCache";
 import {
   DASHBOARD_THEME_MODES,
   siteThemeMinimumContrast,
-  THEME_COLOR_PATTERN
+  THEME_COLOR_PATTERN,
+  UI_STYLES
 } from "@/lib/themeColor";
 import { isSafeExternalHttpUrl } from "@/lib/externalUrl";
 
@@ -239,6 +240,27 @@ export async function updateSiteSettings(
     }
   }
 
+  invalidatePublicMedia();
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/**
+ * Switch the owner's interface between the classic UI and the archive design
+ * language. Saved on its own, outside the appearance form, so the switch takes
+ * effect the moment it is flipped.
+ */
+export async function setUiStyle(
+  style: string
+): Promise<{ ok: true } | { error: "validation" }> {
+  const user = await guard();
+  const parsed = z.enum(UI_STYLES).safeParse(style);
+  if (!parsed.success) return { error: "validation" };
+  await prisma.siteSettings.upsert({
+    where: { ownerId: user.id },
+    create: { ownerId: user.id, uiStyle: parsed.data },
+    update: { uiStyle: parsed.data }
+  });
   invalidatePublicMedia();
   revalidatePath("/", "layout");
   return { ok: true };

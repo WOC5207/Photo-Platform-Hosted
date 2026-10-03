@@ -47,7 +47,7 @@ export default function SlotAdder({
       <input type="hidden" name="bookingDayId" value={bookingDayId} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("firstSlotTime")}</span>
+          <span className="ui-label text-fg-muted">{t("firstSlotTime")}</span>
           <input
             name="startTime"
             type="time"
@@ -56,7 +56,7 @@ export default function SlotAdder({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("slotMinutes")}</span>
+          <span className="ui-label text-fg-muted">{t("slotMinutes")}</span>
           <input
             name="slotMinutes"
             type="number"
@@ -68,7 +68,7 @@ export default function SlotAdder({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("slotCount")}</span>
+          <span className="ui-label text-fg-muted">{t("slotCount")}</span>
           <input
             name="slotCount"
             type="number"
@@ -80,7 +80,7 @@ export default function SlotAdder({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("capacity")}</span>
+          <span className="ui-label text-fg-muted">{t("capacity")}</span>
           <input
             name="capacity"
             type="number"
@@ -93,7 +93,7 @@ export default function SlotAdder({
         </label>
         {priceEnabled && (
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-fg-muted">{t("pricePerPerson")}</span>
+            <span className="ui-label text-fg-muted">{t("pricePerPerson")}</span>
             <input
               name="pricePerPerson"
               maxLength={60}
@@ -142,7 +142,7 @@ export default function SlotAdder({
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("slotDescriptionEn")}</span>
+          <span className="ui-label text-fg-muted">{t("slotDescriptionEn")}</span>
           <input
             name="descriptionEn"
             maxLength={120}
@@ -151,7 +151,7 @@ export default function SlotAdder({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("slotDescriptionZh")}</span>
+          <span className="ui-label text-fg-muted">{t("slotDescriptionZh")}</span>
           <input
             name="descriptionZh"
             maxLength={120}

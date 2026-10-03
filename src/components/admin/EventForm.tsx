@@ -77,7 +77,7 @@ export default function EventForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("titleEn")}</span>
+          <span className="ui-label text-fg-muted">{t("titleEn")}</span>
           <input
             name="titleEn"
             defaultValue={initial.titleEn}
@@ -86,7 +86,7 @@ export default function EventForm({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("titleZh")}</span>
+          <span className="ui-label text-fg-muted">{t("titleZh")}</span>
           <input
             name="titleZh"
             defaultValue={initial.titleZh}
@@ -99,7 +99,7 @@ export default function EventForm({
 
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("dateStart")}</span>
+          <span className="ui-label text-fg-muted">{t("dateStart")}</span>
           <input
             name="dateStart"
             type="date"
@@ -113,7 +113,7 @@ export default function EventForm({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("dateEnd")}</span>
+          <span className="ui-label text-fg-muted">{t("dateEnd")}</span>
           <input
             name="dateEnd"
             type="date"
@@ -129,7 +129,7 @@ export default function EventForm({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("location")}</span>
+          <span className="ui-label text-fg-muted">{t("location")}</span>
           <input
             name="location"
             defaultValue={initial.location}
@@ -141,7 +141,7 @@ export default function EventForm({
       <p className="-mt-2 text-xs text-fg-subtle">{t("dateRangeHint")}</p>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-fg-muted">{t("slug")}</span>
+        <span className="ui-label text-fg-muted">{t("slug")}</span>
         <input
           name="slug"
           defaultValue={initial.slug}
@@ -154,7 +154,7 @@ export default function EventForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("descriptionEn")}</span>
+          <span className="ui-label text-fg-muted">{t("descriptionEn")}</span>
           <textarea
             name="descriptionEn"
             defaultValue={initial.descriptionEn}
@@ -164,7 +164,7 @@ export default function EventForm({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-fg-muted">{t("descriptionZh")}</span>
+          <span className="ui-label text-fg-muted">{t("descriptionZh")}</span>
           <textarea
             name="descriptionZh"
             defaultValue={initial.descriptionZh}

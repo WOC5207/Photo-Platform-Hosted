@@ -32,14 +32,14 @@ export default async function NewEventWorkflow({ gallery }: { gallery?: { id: st
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="ui-page-header">
         <Link
           href="/dashboard/events"
           className="mb-2 inline-flex min-h-10 items-center text-sm text-fg-subtle underline-offset-4 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/20"
         >
           {tc("back")} · {t("listTitle")}
         </Link>
-        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{gallery ? t("addBooking") : t("newEvent")}</h1>
+        <h1 className="ui-page-title font-display text-3xl font-semibold tracking-[-0.03em]">{gallery ? t("addBooking") : t("newEvent")}</h1>
       </div>
       <p className="max-w-3xl text-sm leading-6 text-fg-subtle">{gallery ? t("legacySetupHint") : t("createHint")}</p>
       <BookingEventForm

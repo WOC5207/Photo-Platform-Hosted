@@ -312,7 +312,7 @@ export default function BookingForm({
                   ? `${tabsId}-tab-${days.findIndex((day) => day.id === activeDay.id)}`
                   : undefined
               }
-              className="flex flex-col gap-3"
+              className="ui-file-list flex flex-col gap-3"
             >
               {!activeDay || activeDay.slots.length === 0 ? (
                 <p className="rounded-xl border border-border bg-surface p-4 text-center text-sm text-fg-subtle">
@@ -325,7 +325,8 @@ export default function BookingForm({
                   return (
                     <article
                       key={slot.id}
-                      className={`flex items-center justify-between gap-3 rounded-xl border p-4 transition ${
+                      data-selected={selected || undefined}
+                      className={`ui-file flex items-center justify-between gap-3 rounded-xl border p-4 transition ${
                         full
                           ? "border-border bg-surface/50 text-fg-faint"
                           : selected
@@ -367,8 +368,8 @@ export default function BookingForm({
                         onClick={() => toggleSlot(slot.id)}
                         className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40 disabled:cursor-not-allowed disabled:opacity-50 ${
                           selected
-                            ? "border border-accent/30 bg-raised text-accent-strong"
-                            : "bg-accent text-accent-fg hover:bg-accent-strong"
+                            ? "ui-button ui-button--secondary border border-accent/30 bg-raised text-accent-strong"
+                            : "ui-button ui-button--primary bg-accent text-accent-fg hover:bg-accent-strong"
                         }`}
                       >
                         {selected ? t("removeFromCart") : t("addToCart")}
@@ -407,7 +408,7 @@ export default function BookingForm({
                   document.getElementById("booking-review")?.focus()
                 );
               }}
-              className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-accent-fg transition hover:bg-accent-strong disabled:opacity-50"
+              className="ui-button ui-button--primary rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-accent-fg transition hover:bg-accent-strong disabled:opacity-50"
             >
               {t("reviewCart", { count: selectedSlotIds.length })}
             </button>
@@ -505,7 +506,7 @@ export default function BookingForm({
               {t("yourDetails")}
             </legend>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("name")} *</span>
+              <span className="ui-label text-fg-muted">{t("name")} *</span>
               <input
                 name="name"
                 required
@@ -522,7 +523,7 @@ export default function BookingForm({
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("contactValue")} *</span>
+              <span className="ui-label text-fg-muted">{t("contactValue")} *</span>
               <input
                 name="contactValue"
                 required
@@ -539,7 +540,7 @@ export default function BookingForm({
               <span className="text-xs text-fg-subtle">{t("contactHint")}</span>
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("email")}</span>
+              <span className="ui-label text-fg-muted">{t("email")}</span>
               <input
                 name="email"
                 type="email"
@@ -557,7 +558,7 @@ export default function BookingForm({
               <span className="text-xs text-fg-subtle">{t("emailHint")}</span>
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-fg-muted">{t("notes")}</span>
+              <span className="ui-label text-fg-muted">{t("notes")}</span>
               <textarea
                 name="notes"
                 rows={3}
@@ -589,14 +590,14 @@ export default function BookingForm({
               type="button"
               disabled={pending}
               onClick={() => setStep("slots")}
-              className="rounded-lg border border-border-strong bg-raised px-5 py-3 text-sm font-semibold disabled:opacity-50"
+              className="ui-button ui-button--secondary rounded-lg border border-border-strong bg-raised px-5 py-3 text-sm font-semibold disabled:opacity-50"
             >
               {t("backToSlots")}
             </button>
             <button
               type="submit"
               disabled={pending || selectedSlotIds.length === 0}
-              className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-accent-fg transition hover:bg-accent-strong disabled:opacity-50"
+              className="ui-button ui-button--primary rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-accent-fg transition hover:bg-accent-strong disabled:opacity-50"
             >
               {pending
                 ? t("bookingInProgress")

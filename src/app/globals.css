@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./archive-ui.css";
 
 /* Explicit .dark/.light classes (set before first paint in the root layout)
    always win; absent either class, the OS preference decides. */

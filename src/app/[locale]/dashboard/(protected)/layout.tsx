@@ -17,7 +17,8 @@ import OnboardingTour from "@/components/dashboard/OnboardingTour";
 import { completeOnboardingTour } from "./tourActions";
 import {
   resolveDashboardThemeMode,
-  siteDualThemeStyle
+  siteDualThemeStyle,
+  uiStyleAttribute
 } from "@/lib/themeColor";
 import { logout } from "../../login/actions";
 
@@ -153,6 +154,7 @@ export default async function DashboardLayout({
       isAdmin={user.role === "admin"}
       logoutAction={logout}
       themeStyle={dashboardThemeStyle}
+      ui={uiStyleAttribute(settings.uiStyle)}
     >
       <PlatformNoticeBanner
         notifications={platformNotifications}

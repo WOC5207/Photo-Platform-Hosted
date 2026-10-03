@@ -1139,7 +1139,14 @@
     "announcementValidationError": "请填写标题。",
     "confirmDeleteAnnouncement": "删除这条公告？",
     "moveUp": "提前",
-    "moveDown": "延后"
+    "moveDown": "延后",
+    "uiStyleTitle": "界面风格",
+    "uiStyleGroupHint": "在经典界面和 3D 相册的档案风格之间切换。",
+    "uiStyleSwitch": "档案风格界面",
+    "uiStyleHint": "直角档案面板、档案编号、等宽标签和墨色按钮，作用于你的管理后台和公开网站（包括预约页面）。访客看到的是你选择的风格，配色保持不变。",
+    "uiStyleArchiveOn": "已启用档案风格界面",
+    "uiStyleClassicOn": "当前为经典界面",
+    "uiStyleError": "切换失败，请重试。"
   },
   "adminStorage": {
     "title": "资源监控",
