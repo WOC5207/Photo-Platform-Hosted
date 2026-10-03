@@ -29,7 +29,9 @@ const routeBudgets = [
   { label: "QR labels", route: "/[locale]/dashboard/(protected)/equipment/qr-labels/page", limitKb: 140 },
   { label: "Sharing posters", route: "/[locale]/dashboard/(protected)/sharing-posters/[id]/page", limitKb: 140 },
   { label: "Cosplan", route: "/[locale]/(directory)/cosplan/page", limitKb: 140 },
-  { label: "Public sharing poster", route: "/[locale]/(directory)/sharing-poster/page", limitKb: 140 }
+  { label: "Public sharing poster", route: "/[locale]/(directory)/sharing-poster/page", limitKb: 140 },
+  // three.js loads after first paint, so only the overlay counts here.
+  { label: "3D album", route: "/[locale]/(directory)/album-3d/page", limitKb: 135 }
 ];
 
 for (const budget of routeBudgets) {
