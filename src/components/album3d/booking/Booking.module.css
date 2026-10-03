@@ -1,0 +1,40 @@
+/* The booking screens' panel: left of the board, as the 3D site's menus, and
+   a bottom sheet on phones. Breakpoints match ArchiveSite.module.css. */
+
+.panel {
+  position: absolute;
+  left: var(--edge);
+  top: max(128px, 16%);
+  bottom: 96px;
+  width: min(32rem, 36%);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 12px;
+}
+
+@media (max-width: 1099px), (max-aspect-ratio: 105/100) {
+  .panel {
+    top: 84px;
+    bottom: 64px;
+    width: calc(50% - var(--edge));
+  }
+}
+
+/* Below the board on phones; the review form takes most of the screen. */
+@media (max-aspect-ratio: 105/100) {
+  .panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: 46dvh;
+    padding: 16px var(--edge) max(20px, env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--color-page) 94%, transparent);
+    border-top: 1px solid var(--color-border-strong);
+  }
+  .panel[data-expanded="true"] {
+    max-height: calc(100dvh - 96px);
+  }
+}

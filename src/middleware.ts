@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import createMiddleware from "next-intl/middleware";
 import { routing } from "./i18n/routing";
+import { SITE_MODE_COOKIE, THREE_D_ROOT } from "./lib/siteMode";
 
 const intlMiddleware = createMiddleware(routing);
 
@@ -38,6 +39,18 @@ export default function middleware(req: NextRequest) {
       `https://${host}`
     );
     return NextResponse.redirect(target, 308);
+  }
+  // A visitor who chose the 3D site lands on it from the homepage. Only the
+  // bare homepage moves, so the switch back to classic always works. The
+  // target is built from the Host header for the same bind-address reason as
+  // above.
+  const home = /^\/(zh|en)\/?$/.exec(req.nextUrl.pathname);
+  if (home && host && req.cookies.get(SITE_MODE_COOKIE)?.value === "3d") {
+    const target = new URL(
+      `/${home[1]}${THREE_D_ROOT}${req.nextUrl.search}`,
+      `${proto === "https" ? "https" : "http"}://${host}`
+    );
+    return NextResponse.redirect(target, 307);
   }
   return intlMiddleware(req);
 }

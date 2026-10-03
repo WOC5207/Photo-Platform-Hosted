@@ -53,6 +53,26 @@ export async function createBooking(
   _prev: BookingFormState,
   formData: FormData
 ): Promise<BookingFormState> {
+  const state = await placeBookings(formData);
+  if (state.bookings?.length === 1) {
+    redirect(`/${await getLocale()}/my-booking/${state.bookings[0].cancelToken}?new=1`);
+  }
+  return state;
+}
+
+/**
+ * The 3D site's booking form. Same checks, limits and emails as
+ * createBooking, but a single booking stays on the schedule board, which
+ * stamps it and shows its manage link, instead of opening the classic page.
+ */
+export async function createBooking3d(
+  _prev: BookingFormState,
+  formData: FormData
+): Promise<BookingFormState> {
+  return placeBookings(formData);
+}
+
+async function placeBookings(formData: FormData): Promise<BookingFormState> {
   const parsed = bookingSchema.safeParse({
     eventToken: formData.get("eventToken") ?? "",
     slotIds: formData.getAll("slotIds"),
@@ -150,9 +170,6 @@ export async function createBooking(
   }
   await rememberBookings(result.data.map((booking) => booking.bookingId));
   revalidatePath("/", "layout");
-  if (result.data.length === 1) {
-    redirect(`/${locale}/my-booking/${result.data[0].cancelToken}?new=1`);
-  }
   return {
     bookings: result.data.map(({ cancelToken, slotId }) => ({
       cancelToken,

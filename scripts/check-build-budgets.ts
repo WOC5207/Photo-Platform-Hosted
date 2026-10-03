@@ -29,12 +29,25 @@ const routeBudgets = [
   { label: "QR labels", route: "/[locale]/dashboard/(protected)/equipment/qr-labels/page", limitKb: 140 },
   { label: "Sharing posters", route: "/[locale]/dashboard/(protected)/sharing-posters/[id]/page", limitKb: 140 },
   { label: "Cosplan", route: "/[locale]/(directory)/cosplan/page", limitKb: 140 },
-  { label: "Public sharing poster", route: "/[locale]/(directory)/sharing-poster/page", limitKb: 140 }
+  { label: "Public sharing poster", route: "/[locale]/(directory)/sharing-poster/page", limitKb: 140 },
+  // three.js loads after first paint, so only the overlay counts here. It
+  // lives in the /3d layout, which the page entry doesn't list. The header
+  // controls (mode, language and theme switches) come as a chunk shared with
+  // the homepage, which gzips about 1 KB worse than when they were inlined.
+  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 137 }
 ];
 
 for (const budget of routeBudgets) {
-  const routeFiles = Array.from(new Set(appManifest.pages?.[budget.route] ?? []));
-  if (routeFiles.length === 0) throw new Error(`Missing build manifest route: ${budget.route}`);
+  const routes = Array.isArray(budget.route) ? budget.route : [budget.route];
+  const routeFiles = Array.from(
+    new Set(
+      routes.flatMap((route) => {
+        const entry = appManifest.pages?.[route];
+        if (!entry?.length) throw new Error(`Missing build manifest route: ${route}`);
+        return entry;
+      })
+    )
+  );
   const bytes = routeFiles.reduce(
     (sum, file) => sum + gzipSync(readFileSync(path.join(root, ".next", file))).byteLength,
     0
