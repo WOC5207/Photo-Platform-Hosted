@@ -32,7 +32,17 @@ export type Screen =
   | { kind: "photo"; username: string; slug: string; photoId: string }
   | { kind: "booking"; username: string }
   | { kind: "book"; username: string; token: string }
-  | { kind: "draw"; username: string; token: string };
+  | { kind: "draw"; username: string; token: string }
+  | { kind: "studio"; username: string; page: StudioPage; id?: string };
+
+/**
+ * The 3D Dashboard, a photographer's own backend under their address:
+ * "home" is its menu, "events" their events (drafts too), "new" creates one,
+ * and "event", "photos" and "upload" are one event's details, its photos on
+ * the light table, and adding photos to it (`id` names the event).
+ */
+export type StudioPage = "home" | "events" | "new" | "event" | "photos" | "upload";
+const EVENT_PAGES = ["photos", "upload"] as const;
 
 /**
  * The poster creators' steps after their first screen: Cosplan picks a
@@ -84,6 +94,7 @@ export function parseScreen(path: string): Screen | null {
   if (rest.length === 4 && (rest[2] === "book" || rest[2] === "draw") && TOKEN.test(rest[3])) {
     return { kind: rest[2], username, token: rest[3] };
   }
+  if (rest[2] === "studio") return parseStudio(username, rest.slice(3));
   if (rest[2] !== "albums") return null;
   if (rest.length === 3) return { kind: "albumSelect", username };
   const slug = rest[3];
@@ -95,7 +106,40 @@ export function parseScreen(path: string): Screen | null {
   return null;
 }
 
+function parseStudio(username: string, rest: string[]): Screen | null {
+  if (rest.length === 0) return { kind: "studio", username, page: "home" };
+  if (rest[0] !== "events") return null;
+  if (rest.length === 1) return { kind: "studio", username, page: "events" };
+  if (rest.length === 2 && rest[1] === "new") return { kind: "studio", username, page: "new" };
+  if (!SEGMENT.test(rest[1])) return null;
+  if (rest.length === 2) return { kind: "studio", username, page: "event", id: rest[1] };
+  if (rest.length === 3 && (EVENT_PAGES as readonly string[]).includes(rest[2])) {
+    return { kind: "studio", username, page: rest[2] as StudioPage, id: rest[1] };
+  }
+  return null;
+}
+
 const enc = encodeURIComponent;
+
+/** A Dashboard page's path under /studio, and its classic twin's under /dashboard. */
+function studioTail(screen: Extract<Screen, { kind: "studio" }>, classic = false): string {
+  const event = `/events/${enc(screen.id ?? "")}`;
+  switch (screen.page) {
+    case "home":
+      return "";
+    case "events":
+      return "/events";
+    case "new":
+      return "/events/new";
+    case "event":
+      return event;
+    // The classic event page manages its photos; its /photos page adds them.
+    case "photos":
+      return classic ? event : `${event}/photos`;
+    case "upload":
+      return `${event}/${classic ? "photos" : "upload"}`;
+  }
+}
 
 /** The address of a 3D screen. */
 export function screenPath(screen: Screen): string {
@@ -128,6 +172,8 @@ export function screenPath(screen: Screen): string {
     case "book":
     case "draw":
       return `${THREE_D_ROOT}/u/${enc(screen.username)}/${screen.kind}/${enc(screen.token)}`;
+    case "studio":
+      return `${THREE_D_ROOT}/u/${enc(screen.username)}/studio${studioTail(screen)}`;
   }
 }
 
@@ -167,6 +213,13 @@ export function parentScreen(screen: Screen): Screen | null {
     case "book":
     case "draw":
       return { kind: "booking", username: screen.username };
+    case "studio": {
+      const { username, id } = screen;
+      if (screen.page === "home") return { kind: "title" };
+      if (screen.page === "events") return { kind: "studio", username, page: "home" };
+      if (screen.page === "photos" || screen.page === "upload") return { kind: "studio", username, page: "event", id };
+      return { kind: "studio", username, page: "events" };
+    }
   }
 }
 
@@ -200,6 +253,8 @@ export function classicTwin(path: string): string {
     case "book":
     case "draw":
       return `/${screen.kind}/${enc(screen.token)}`;
+    case "studio":
+      return `/dashboard${studioTail(screen, true)}`;
   }
 }
 
@@ -214,6 +269,9 @@ export function threeDTwin(path: string): string {
   if (parts.length === 1 && parts[0] === "cosplan") return screenPath({ kind: "cosplan" });
   if (parts.length === 1 && parts[0] === "sharing-poster") return screenPath({ kind: "sharepost" });
   if (parts.length === 1 && parts[0] === "login") return screenPath({ kind: "login" });
+  // The dashboard names no one; /3d/studio forwards to the signed-in
+  // photographer's own address.
+  if (parts[0] === "dashboard") return `${THREE_D_ROOT}/studio${studioFromClassic(parts.slice(1), path)}`;
   // Booking and draw links name only their token; /3d/book/<token> looks up
   // the photographer and forwards to their address.
   if ((parts[0] === "book" || parts[0] === "draw") && parts[1] && TOKEN.test(parts[1]) && parts.length === 2) {
@@ -230,6 +288,21 @@ export function threeDTwin(path: string): string {
   if (parts[2] === "gallery" && parts.length === 3) return screenPath({ kind: "albumSelect", username });
   if (parts[2] === "booking" && parts.length === 3) return screenPath({ kind: "booking", username });
   return screenPath({ kind: "photographer", username });
+}
+
+/** The Dashboard page under /3d/studio for a classic /dashboard page's segments. */
+function studioFromClassic(rest: string[], path: string): string {
+  // Sections without a 3D page yet open the Dashboard's menu.
+  if (rest[0] !== "events") return "";
+  if (rest.length === 1) return "/events";
+  const id = rest[1];
+  if (rest.length === 2) {
+    if (id === "new") return "/events/new";
+    // The classic page opens on its photo manager with #photos.
+    return SEGMENT.test(id) ? `/events/${enc(id)}${path.includes("#photos") ? "/photos" : ""}` : "/events";
+  }
+  if (rest.length === 3 && rest[2] === "photos" && SEGMENT.test(id)) return `/events/${enc(id)}/upload`;
+  return SEGMENT.test(id) ? `/events/${enc(id)}` : "/events";
 }
 
 /** Cookie string that remembers the visitor's site. */

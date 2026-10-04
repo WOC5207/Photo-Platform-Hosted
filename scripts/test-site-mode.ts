@@ -30,7 +30,13 @@ const screens = [
   "/3d/u/george/albums/fan-expo-2026/photos/cmabc123",
   "/3d/u/george/booking",
   "/3d/u/george/book/k3x9q2",
-  "/3d/u/george/draw/p8z4m1"
+  "/3d/u/george/draw/p8z4m1",
+  "/3d/u/george/studio",
+  "/3d/u/george/studio/events",
+  "/3d/u/george/studio/events/new",
+  "/3d/u/george/studio/events/cmevent1",
+  "/3d/u/george/studio/events/cmevent1/photos",
+  "/3d/u/george/studio/events/cmevent1/upload"
 ];
 for (const path of screens) {
   const screen = parseScreen(path);
@@ -44,7 +50,7 @@ assert.deepEqual(parseScreen("/3d/u/george/albums/fan-expo-2026?x=1"), {
   slug: "fan-expo-2026",
   study: false
 });
-for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/cosplan/board/x", "/3d/sharepost/board", "/3d/sharing-poster"]) {
+for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/cosplan/board/x", "/3d/sharepost/board", "/3d/sharing-poster", "/3d/u/george/studio/bookings", "/3d/u/george/studio/events/cmevent1/setup", "/3d/u/george/studio/events/cmevent1/photos/x"]) {
   assert.equal(parseScreen(path), null, `${path} is not a 3D screen`);
 }
 
@@ -81,6 +87,17 @@ assert.deepEqual(climb("/3d/u/george/book/k3x9q2"), [
   "/3d"
 ]);
 assert.deepEqual(climb("/3d/u/george/draw/p8z4m1").slice(0, 2), ["/3d/u/george/draw/p8z4m1", "/3d/u/george/booking"]);
+
+// The Dashboard walks back to its menu, then the title screen.
+assert.deepEqual(climb("/3d/u/george/studio/events/cmevent1/upload"), [
+  "/3d/u/george/studio/events/cmevent1/upload",
+  "/3d/u/george/studio/events/cmevent1",
+  "/3d/u/george/studio/events",
+  "/3d/u/george/studio",
+  "/3d"
+]);
+assert.deepEqual(climb("/3d/u/george/studio/events/new").slice(0, 2), ["/3d/u/george/studio/events/new", "/3d/u/george/studio/events"]);
+assert.deepEqual(climb("/3d/u/george/studio/events/cmevent1/photos")[1], "/3d/u/george/studio/events/cmevent1");
 
 // The switch lands on the matching page on the other side.
 const twins: [classic: string, threeD: string][] = [
@@ -128,6 +145,24 @@ assert.equal(classicTwin("/3d/settings"), "/");
 assert.equal(classicTwin("/3d/u/george/albums/fan-expo-2026/photos"), "/u/george/gallery/fan-expo-2026");
 assert.equal(classicTwin("/3d/u/george/albums/fan-expo-2026/360"), "/u/george/gallery/fan-expo-2026");
 assert.equal(classicTwin("/somewhere"), "/");
+
+// Each Dashboard page has a classic twin; the classic dashboard names no one,
+// so its 3D twin goes through /3d/studio, which forwards to the signed-in account.
+const dashboardTwins: [threeD: string, classic: string, back: string][] = [
+  ["/3d/u/george/studio", "/dashboard", "/3d/studio"],
+  ["/3d/u/george/studio/events", "/dashboard/events", "/3d/studio/events"],
+  ["/3d/u/george/studio/events/new", "/dashboard/events/new", "/3d/studio/events/new"],
+  ["/3d/u/george/studio/events/cmevent1", "/dashboard/events/cmevent1", "/3d/studio/events/cmevent1"],
+  ["/3d/u/george/studio/events/cmevent1/photos", "/dashboard/events/cmevent1", "/3d/studio/events/cmevent1"],
+  ["/3d/u/george/studio/events/cmevent1/upload", "/dashboard/events/cmevent1/photos", "/3d/studio/events/cmevent1/upload"]
+];
+for (const [threeD, classic, back] of dashboardTwins) {
+  assert.equal(classicTwin(threeD), classic, `${threeD} -> classic`);
+  assert.equal(threeDTwin(classic), back, `${classic} -> 3D`);
+}
+assert.equal(threeDTwin("/dashboard/events/cmevent1#photos"), "/3d/studio/events/cmevent1/photos");
+assert.equal(threeDTwin("/dashboard/bookings/abc"), "/3d/studio");
+assert.equal(threeDTwin("/dashboard/events/cmevent1/setup"), "/3d/studio/events/cmevent1");
 
 // Usernames and slugs that need escaping survive the trip.
 assert.equal(threeDTwin("/u/a%20b/gallery/c%2Fd"), "/3d/u/a%20b/albums/c%2Fd");

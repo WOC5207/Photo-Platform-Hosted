@@ -34,7 +34,8 @@ const routeBudgets = [
   // lives in the /3d layout, which the page entry doesn't list. The header
   // controls (mode, language and theme switches) come as a chunk shared with
   // the homepage, which gzips about 1 KB worse than when they were inlined.
-  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 137 },
+  // The 3D Dashboard's routes and crumbs add about half a KB.
+  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 138 },
   // The poster creators open from the title menu; their poster code and the
   // easel scene load with the draft, after the panel paints. Each creator's
   // steps share a studio layout that holds the draft, so it counts too. The
@@ -44,7 +45,14 @@ const routeBudgets = [
   { label: "3D Cosplan", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/page"], limitKb: 152 },
   { label: "3D Cosplan board", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/board/page"], limitKb: 158 },
   { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/page"], limitKb: 149 },
-  { label: "3D Sharepost credits", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/credits/page"], limitKb: 175 }
+  { label: "3D Sharepost credits", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/credits/page"], limitKb: 176 },
+  // The 3D Dashboard's screens come with their pages. Adding photos carries
+  // the classic photo wizard and its upload queue.
+  { label: "3D Dashboard", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/page"], limitKb: 145 },
+  { label: "3D Dashboard events", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/page"], limitKb: 145 },
+  { label: "3D Dashboard event", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/[id]/page"], limitKb: 145 },
+  { label: "3D Dashboard photos", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/[id]/photos/page"], limitKb: 146 },
+  { label: "3D Dashboard upload", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/[id]/upload/page"], limitKb: 157 }
 ];
 
 for (const budget of routeBudgets) {

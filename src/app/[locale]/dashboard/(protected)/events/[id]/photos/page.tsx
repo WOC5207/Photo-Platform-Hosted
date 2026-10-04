@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { getTranslations, getLocale } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { photoUrls } from "@/lib/images";
 import { config } from "@/lib/config";
 import {
   getCreditProfiles,
@@ -13,7 +12,7 @@ import {
 import { pickText } from "@/lib/content";
 import { Link } from "@/i18n/navigation";
 import PhotoWizard from "@/components/admin/wizard/PhotoWizard";
-import type { PendingPhotoValue } from "@/components/admin/wizard/usePendingUploadQueue";
+import { pendingPhotoValue } from "@/lib/pendingPhotos";
 import { getPlatformSettings } from "@/lib/platformSettings";
 
 export default async function AddPhotosPage({
@@ -48,44 +47,7 @@ export default async function AddPhotosPage({
     socialLinks: c.socialLinks.map((s) => ({ platform: s.platform, url: s.url }))
   }));
 
-  const pendingPhotos: PendingPhotoValue[] = event.photos.map((photo) => ({
-    id: photo.id,
-    name: photo.originalName,
-    previewUrl: photoUrls(event.id, photo.id).thumb,
-    state:
-      photo.uploadState === "awaiting"
-        ? "awaiting"
-        : photo.uploadState === "processing" ||
-            photo.uploadState === "finalizing"
-          ? "processing"
-          : photo.uploadState === "deleting"
-            ? "deleting"
-            : "pending",
-    storagePreset:
-      photo.storagePreset === "archive" || photo.storagePreset === "balanced"
-        ? photo.storagePreset
-        : "original",
-    candidatePreset:
-      photo.candidatePreset === "archive" || photo.candidatePreset === "balanced"
-        ? photo.candidatePreset
-        : null,
-    width: photo.width,
-    height: photo.height,
-    sourceBytes: photo.sourceBytes,
-    candidateBytes: photo.candidateBytes,
-    renditionBytes: photo.renditionBytes,
-    pendingBytes: photo.bytes,
-    finalBytes:
-      photo.renditionBytes != null &&
-      (photo.storagePreset === "original"
-        ? photo.sourceBytes != null
-        : photo.candidateBytes != null)
-        ? (photo.storagePreset === "original"
-            ? photo.sourceBytes!
-            : photo.candidateBytes!) + photo.renditionBytes
-        : null,
-    compressionFailed: photo.compressionFailed
-  }));
+  const pendingPhotos = event.photos.map(pendingPhotoValue);
 
   return (
     <div className="flex flex-col gap-6">

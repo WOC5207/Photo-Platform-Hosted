@@ -21,8 +21,8 @@ import {
   splitEvent
 } from "@/lib/booking";
 import { getSiteSettings } from "@/lib/settings";
-import { acceptBookingPriceNotice } from "@/lib/bookingPriceNotice";
-import { createEventWorkspace, ensureDayChecklists, validEventDates } from "@/lib/eventWorkspace";
+import { ensureDayChecklists } from "@/lib/eventWorkspace";
+import { createEventFromForm, parseBookingEventForm, parseSelectedDates } from "@/lib/eventForms";
 
 class DayHasBookingsError extends Error {}
 
@@ -37,42 +37,11 @@ export type BookingEventFormState = {
 };
 export type SlotFormState = { error?: "validation"; ok?: boolean };
 
-function parseSelectedDates(raw: FormDataEntryValue | null): string[] | null {
-  if (typeof raw !== "string") return null;
-  try { return validEventDates(JSON.parse(raw)); } catch { return null; }
-}
-
 /** See the note in the events actions: signed in is not the same as owns it. */
 async function guard(): Promise<{ locale: string; user: User }> {
   const locale = await getLocale();
   const user = await requireUser(locale);
   return { locale, user };
-}
-
-const bookingEventSchema = z
-  .object({
-    titleEn: z.string().trim().max(300),
-    titleZh: z.string().trim().max(300),
-    location: z.string().trim().max(300),
-    descriptionEn: z.string().trim().max(5000),
-    descriptionZh: z.string().trim().max(5000),
-    visitorEditsEnabled: z.boolean(),
-    visitorEditCutoffHours: z.coerce.number().int().min(0).max(8760),
-    open: z.boolean()
-  })
-  .refine((d) => d.titleEn.length > 0 || d.titleZh.length > 0);
-
-function parseBookingEventForm(formData: FormData) {
-  return bookingEventSchema.safeParse({
-    titleEn: formData.get("titleEn") ?? "",
-    titleZh: formData.get("titleZh") ?? "",
-    location: formData.get("location") ?? "",
-    descriptionEn: formData.get("descriptionEn") ?? "",
-    descriptionZh: formData.get("descriptionZh") ?? "",
-    visitorEditsEnabled: formData.get("visitorEditsEnabled") === "on",
-    visitorEditCutoffHours: formData.get("visitorEditCutoffHours") ?? "",
-    open: formData.get("open") === "on"
-  });
 }
 
 function toDate(value: string): Date {
@@ -85,42 +54,11 @@ export async function createBookingEvent(
   formData: FormData
 ): Promise<BookingEventFormState> {
   const { locale, user } = await guard();
-  const parsed = parseBookingEventForm(formData);
-  const dates = parseSelectedDates(formData.get("dates"));
-  if (!parsed.success || !dates) return { error: "validation" };
-  const d = parsed.data;
-  const enablePriceDisplay = formData.get("enablePriceDisplay") === "on";
-  const acceptedVersion = Number(
-    formData.get("bookingPriceNoticeAcceptedVersion")
-  );
-
-  const result = await prisma.$transaction(async (tx) => {
-    if (enablePriceDisplay) {
-      const acceptance = await acceptBookingPriceNotice(tx, {
-        ownerId: user.id,
-        acceptedVersion,
-        locale
-      });
-      if (!acceptance.ok) return { error: "priceNoticeRequired" as const };
-      await tx.siteSettings.upsert({
-        where: { ownerId: user.id },
-        create: { ownerId: user.id, ...acceptance.acceptance },
-        update: acceptance.acceptance
-      });
-    }
-
-    const galleryId = formData.get("galleryEventId");
-    const workspace = await createEventWorkspace(tx, user.id, {
-      titleEn: d.titleEn, titleZh: d.titleZh, descriptionEn: d.descriptionEn,
-      descriptionZh: d.descriptionZh, location: d.location,
-      visitorEditsEnabled: d.visitorEditsEnabled, visitorEditCutoffHours: d.visitorEditCutoffHours
-    }, dates, locale, typeof galleryId === "string" && galleryId ? galleryId : undefined);
-    return { workspace };
-  }).catch(() => ({ error: "unknown" as const }));
+  const result = await createEventFromForm(user, locale, formData);
   if ("error" in result) return { error: result.error };
 
   revalidatePath("/", "layout");
-  redirect(`/${locale}/dashboard/bookings/${result.workspace.bookingId}`);
+  redirect(`/${locale}/dashboard/bookings/${result.bookingId}`);
 }
 
 export async function updateBookingEvent(

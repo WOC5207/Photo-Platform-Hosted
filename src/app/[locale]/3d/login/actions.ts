@@ -9,12 +9,12 @@ import type { LoginState } from "../../login/actions";
 
 /**
  * The 3D site's sign-in: the same accounts and checks as the classic login,
- * but the photographer stays in 3D, on the login screen's signed-in panel.
+ * but the photographer stays in 3D and lands in the 3D Dashboard.
  */
 export async function login3d(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const result = await signIn(formData);
   if ("error" in result) return { error: result.error };
-  redirect(`/${await getLocale()}${screenPath({ kind: "login" })}`);
+  redirect(`/${await getLocale()}${screenPath({ kind: "studio", username: result.user.username, page: "home" })}`);
 }
 
 export async function logout3d(): Promise<void> {
