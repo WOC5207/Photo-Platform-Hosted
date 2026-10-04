@@ -64,14 +64,17 @@
     linear-gradient(180deg, color-mix(in srgb, var(--color-page) 55%, transparent), transparent 22%),
     linear-gradient(90deg, color-mix(in srgb, var(--color-page) 92%, transparent) 30%, transparent 40%);
 }
-/* Album covers on the cards behind the callout stay quiet under its text. */
+/*
+ * The standing album reaches up behind the header, so the top fade stops just
+ * under it; a soft patch behind the callout keeps its text readable over the
+ * covers without washing them out.
+ */
 @media (min-aspect-ratio: 105/100) {
   .shade[data-archive="true"]::before {
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--color-page) 55%, transparent), transparent 38%),
-      radial-gradient(ellipse 38% 34% at 72% 56%, color-mix(in srgb, var(--color-page) 68%, transparent), transparent),
-      radial-gradient(ellipse 30% 22% at 12% 88%, color-mix(in srgb, var(--color-page) 60%, transparent), transparent),
-      radial-gradient(ellipse at 42% 47%, transparent 32%, color-mix(in srgb, var(--color-page) 22%, transparent) 85%);
+      linear-gradient(180deg, color-mix(in srgb, var(--color-page) 55%, transparent), transparent 14%),
+      radial-gradient(ellipse 30% 24% at 70% 56%, color-mix(in srgb, var(--color-page) 50%, transparent), transparent),
+      radial-gradient(ellipse 26% 18% at 12% 88%, color-mix(in srgb, var(--color-page) 45%, transparent), transparent);
   }
 }
 .shade[data-detail="true"]::before {

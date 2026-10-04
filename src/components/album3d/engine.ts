@@ -13,6 +13,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  type MeshBasicMaterial,
   OrthographicCamera,
   PCFShadowMap,
   PerspectiveCamera,
@@ -27,7 +28,7 @@ import {
   type IUniform
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { addLighting, fitText, forgetShadowLights, loadImage, makeTexture, photoTexture, setShadows } from "./kit";
+import { addLighting, fitText, forgetShadowLights, imageMaterial, loadImage, makeTexture, photoTexture, setShadows } from "./kit";
 import { createCarousel, type Carousel, type CarouselCard } from "./carousel";
 import { createLightTable, type LightTable, type TablePrint } from "./lightTable";
 import type { Board } from "./board";
@@ -140,6 +141,8 @@ export interface EngineOptions {
   onCard: (index: number, open: boolean) => void;
   /** A print on the light table was tapped, or the wheel moved the focus. */
   onPrint: (index: number, open: boolean) => void;
+  /** The opened print reached the photo box (true) or started back down. */
+  onRaised?: (raised: boolean) => void;
   /**
    * The scene can't carry on well: "slow" once frames stay slow at the lowest
    * quality, "lost" when the browser dropped WebGL and didn't give it back.
@@ -300,7 +303,7 @@ function buildCassette(
   group.add(substrate);
 
   // Prints: the first fills the window, the rest fit inside it.
-  const photoMaterials: MeshStandardMaterial[] = [];
+  const photoMaterials: MeshBasicMaterial[] = [];
   const photoAspects: number[] = [];
   const printEdge = own(new MeshStandardMaterial({ color: 0xfbf8f2, roughness: 0.7 }));
   const printMeshes = prints.map((print, j) => {
@@ -311,7 +314,7 @@ function buildCassette(
       if (aspect > PHOTO_W / PHOTO_H) h = PHOTO_W / aspect;
       else w = PHOTO_H * aspect;
     }
-    const face = own(new MeshStandardMaterial({ color: color(palette.control), roughness: 0.62 }));
+    const face = own(imageMaterial({ color: color(palette.control) }));
     photoMaterials.push(face);
     photoAspects.push(w / h);
     const mesh = new Mesh(own(new BoxGeometry(w, h, 0.006)), [printEdge, printEdge, printEdge, printEdge, face, printEdge]);
@@ -336,7 +339,7 @@ function buildCassette(
       `#include <color_fragment>
       float sweep = uClarity * 1.3 - 0.15;
       float frost = smoothstep(sweep - 0.12, sweep + 0.12, 1.0 - vMapUv.y);
-      diffuseColor.a *= mix(0.05, 0.88, frost);`
+      diffuseColor.a *= mix(0.0, 0.88, frost);`
     );
   };
   coverMaterial.customProgramCacheKey = () => "album-archive-cover";
@@ -523,7 +526,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   field.add(cards, cardScrews);
   let instanceCells: Cell[] = [];
 
-  // Every other card shows its album's cover behind a light veil, so the
+  // Every other card shows its album's cover, so the
   // field reads as albums and any of them can be found by its picture. The
   // covers share one atlas, filled as their cards come into view; when it is
   // full, the cover seen longest ago gives up its cell.
@@ -589,7 +592,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   faceGeo.setAttribute("aCell", faceCells);
   const veil = { value: 0 };
   const veilColor = { value: new Color() };
-  const faceMaterial = new MeshStandardMaterial({ map: atlas, roughness: 0.62 });
+  const faceMaterial = imageMaterial({ map: atlas });
   // Just in front of the card face; offset the depth test, not the geometry.
   faceMaterial.polygonOffset = true;
   faceMaterial.polygonOffsetFactor = -1;
@@ -608,7 +611,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   };
   faceMaterial.customProgramCacheKey = () => "album-archive-faces";
   const faces = new InstancedMesh(faceGeo, faceMaterial, MAX_INSTANCES);
-  faces.receiveShadow = !lowPower;
   faces.frustumCulled = false;
   faces.count = 0;
   field.add(faces);
@@ -947,7 +949,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const rect = canvas.parentElement?.getBoundingClientRect();
     width = Math.max(1, Math.round(rect?.width ?? canvas.clientWidth));
     height = Math.max(1, Math.round(rect?.height ?? canvas.clientHeight));
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXELS[tier]));
+    renderer.setPixelRatio(tierPixels());
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     studyCamera.aspect = width / height;
@@ -960,6 +962,14 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     stages.poster?.resize(width, height);
     snapCamera = true;
     invalidate();
+  }
+
+  const tierPixels = () => Math.min(window.devicePixelRatio || 1, TIER_PIXELS[tier]);
+  const restPixels = () => Math.min(window.devicePixelRatio || 1, TIER_PIXELS[0]);
+  function setPixels(ratio: number) {
+    if (renderer.getPixelRatio() === ratio) return;
+    renderer.setPixelRatio(ratio);
+    renderer.setSize(width, height, false);
   }
 
   // ----------------------------------------------------------------- loop --
@@ -1040,7 +1050,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const clarityTarget = !overviewTarget && lift.value > PREVIEW_LIFT - 0.5 ? 1 : 0;
     if (selected) {
       const c = selected.clarity;
-      const next = reduced ? clarityTarget : MathUtils.lerp(c.value, clarityTarget, 1 - Math.exp(-dt * (clarityTarget ? 1.8 : 9)));
+      const next = reduced ? clarityTarget : MathUtils.lerp(c.value, clarityTarget, 1 - Math.exp(-dt * (clarityTarget ? 3.2 : 9)));
       if (Math.abs(next - clarityTarget) > 1e-3) {
         c.value = next;
         moving = true;
@@ -1109,8 +1119,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       }
       moving = true;
     }
-    // Menus quiet the covers down to plain cards behind their text.
-    veil.value = MathUtils.lerp(0.16, 1, overview);
+    // Covers show as they are; menus quiet them down to plain cards
+    // behind their text.
+    veil.value = overview;
+    faces.visible = overview < 0.99;
 
     cardPosition.set(
       selectedCell.lane * COLUMN_SPACING - trackX.value,
@@ -1224,6 +1236,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     else if (mode === "stage" && stage) moving = stage.step(dt);
     else if (mode === "study") moving = stepStudy(dt);
     else moving = stepField(dt);
+    // The tier's pixel ratio holds while things move; the frame things come
+    // to rest on is drawn at the screen's own, so a still poster, cover or
+    // print is never left upscaled and soft.
+    setPixels(moving || wipe < 1 ? tierPixels() : restPixels());
     renderer.render(...view());
     rendered = true;
     if (wipe < 1) {
@@ -1600,7 +1616,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     },
     showTable(key, prints, focus, raised) {
       if (!table) {
-        table = createLightTable(stageContext());
+        table = createLightTable({ ...stageContext(), onRaised: options.onRaised });
         table.resize(width, height);
       }
       table.setPrints(key, prints);

@@ -199,6 +199,8 @@ export default function ArchiveSite({
   }, [indexOpen]);
   const [touch, setTouch] = useState(false);
   const [tableFocus, setTableFocus] = useState(0);
+  // The opened print is in place, so the photo screen can fade its image in.
+  const [printUp, setPrintUp] = useState(false);
   const [motion, setMotion] = useState<MotionPreference>("system");
   const [theme, setTheme] = useState<ThemePreference>("system");
   const [gamepad, setGamepad] = useState(false);
@@ -433,6 +435,7 @@ export default function ArchiveSite({
           }),
           onCard: (index, open) => handlers.current.onCard(index, open),
           onPrint: (index, open) => handlers.current.onPrint(index, open),
+          onRaised: setPrintUp,
           onTrouble: (kind) => (kind === "lost" ? setStatus("lost") : setSlow(true))
         });
         engineRef.current = engine;
@@ -902,6 +905,7 @@ export default function ArchiveSite({
           index={photoIndex}
           onStep={stepPhoto}
           onBack={back}
+          printUp={printUp || status !== "ready"}
           classicHref={classicTwin(pathname)}
         />
       )}

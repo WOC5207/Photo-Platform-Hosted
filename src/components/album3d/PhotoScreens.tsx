@@ -102,7 +102,8 @@ export function TableScreen({
 
 /**
  * One photo, raised off the light table. The scene lifts the print into the
- * box photoRect describes, and the full-resolution image fades in over it.
+ * box photoRect describes, and once it is there the full-resolution image
+ * fades in over it.
  */
 export function PhotoScreen({
   file,
@@ -111,6 +112,7 @@ export function PhotoScreen({
   index,
   onStep,
   onBack,
+  printUp,
   classicHref
 }: {
   file: ArchiveFile;
@@ -119,6 +121,8 @@ export function PhotoScreen({
   index: number;
   onStep: (direction: 1 | -1) => void;
   onBack: () => void;
+  /** The scene's print has reached this image's box. */
+  printUp: boolean;
   classicHref: string;
 }) {
   const t = useTranslations("album3d");
@@ -151,9 +155,10 @@ export function PhotoScreen({
             srcSet={`${photo.med} 1280w, ${photo.full} 2560w`}
             sizes="64vw"
             alt={photo.caption || file.title}
+            decoding="async"
             onLoad={() => setLoaded(photo.id)}
-            className={`h-full w-full object-contain transition-opacity duration-500 motion-reduce:transition-none ${
-              loaded === photo.id ? "opacity-100 delay-500 motion-reduce:delay-0" : "opacity-0"
+            className={`h-full w-full object-contain transition-opacity duration-300 motion-reduce:transition-none ${
+              loaded === photo.id && printUp ? "opacity-100" : "opacity-0"
             }`}
           />
         </div>
