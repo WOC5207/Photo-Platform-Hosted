@@ -512,13 +512,9 @@ export default function ArchiveSite({
       sub: t("menuPhotographersSub", { count: columns.length }),
       run: () => go({ kind: "photographers" })
     },
-    {
-      key: "albums",
-      label: t("menuAllAlbums"),
-      sub: t("menuAllAlbumsSub", { count: files.length }),
-      run: () => go({ kind: "albums" })
-    },
-    { key: "index", label: t("index"), sub: t("indexSubtitle"), run: () => setIndexOpen(true) },
+    // The poster creators are classic pages for now; the site mode stays 3D.
+    { key: "cosplan", label: t("menuCosplan"), sub: t("menuCosplanSub"), external: true, run: () => router.push("/cosplan") },
+    { key: "poster", label: t("menuPoster"), sub: t("menuPosterSub"), external: true, run: () => router.push("/sharing-poster") },
     { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), run: () => go({ kind: "settings" }) },
     { key: "classic", label: t("menuClassic"), sub: t("menuClassicSub"), external: true, run: () => leaveFor("classic", "/") }
   ];
