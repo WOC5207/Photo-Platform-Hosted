@@ -158,15 +158,16 @@ export default function ArchiveSite({
   const [album, setAlbum] = useState<AlbumPhotos | null>(null);
   const albumHere = album && "slug" in screen && album.username === screen.username && album.slug === screen.slug ? album : null;
   const photoIndex = screen.kind === "photo" && albumHere ? albumHere.photos.findIndex((p) => p.id === screen.photoId) : -1;
-  // Booking screens draw their own panels, from their pages (see StageContext).
+  // Booking and the poster creators draw their own panels, from their pages (see StageContext).
   const booking = screen.kind === "booking" || screen.kind === "book" || screen.kind === "draw";
+  const creator = screen.kind === "cosplan" || screen.kind === "sharepost";
   const missing =
     ("username" in screen && columnIndex < 0 && !booking) ||
     (inAlbum && fileIndex < 0) ||
     (screen.kind === "photo" && albumHere !== null && photoIndex < 0);
   const mode: Mode = missing
     ? "archive"
-    : booking
+    : booking || creator
       ? "booking"
       : screen.kind === "album"
       ? screen.study
@@ -512,9 +513,8 @@ export default function ArchiveSite({
       sub: t("menuPhotographersSub", { count: columns.length }),
       run: () => go({ kind: "photographers" })
     },
-    // The poster creators are classic pages for now; the site mode stays 3D.
-    { key: "cosplan", label: t("menuCosplan"), sub: t("menuCosplanSub"), external: true, run: () => router.push("/cosplan") },
-    { key: "poster", label: t("menuPoster"), sub: t("menuPosterSub"), external: true, run: () => router.push("/sharing-poster") },
+    { key: "cosplan", label: t("menuCosplan"), sub: t("menuCosplanSub"), run: () => go({ kind: "cosplan" }) },
+    { key: "poster", label: t("menuPoster"), sub: t("menuPosterSub"), run: () => go({ kind: "sharepost" }) },
     { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), run: () => go({ kind: "settings" }) },
     { key: "classic", label: t("menuClassic"), sub: t("menuClassicSub"), external: true, run: () => leaveFor("classic", "/") }
   ];
@@ -764,6 +764,8 @@ export default function ArchiveSite({
     if (screen.kind !== "booking") crumbs.push({ label: t(screen.kind === "draw" ? "crumbDraw" : "crumbSchedule") });
   }
   else if (screen.kind === "settings") crumbs.push({ label: t("menuSettings") });
+  else if (screen.kind === "cosplan") crumbs.push({ label: t("menuCosplan") });
+  else if (screen.kind === "sharepost") crumbs.push({ label: t("menuPoster") });
   crumbs[crumbs.length - 1].href = undefined;
 
   const studyHeader = mode === "study";

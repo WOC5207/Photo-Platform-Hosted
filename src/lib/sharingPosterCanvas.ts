@@ -1,5 +1,5 @@
 import type { SharingPosterComposition, SharingPosterLayer, SharingPosterResolvedPhoto } from "@/lib/sharingPoster";
-import { sharingPosterCreditLines, sharingPosterFit, sharingPosterLayerUrl } from "@/lib/sharingPoster";
+import { sharingPosterCreditLines, sharingPosterFit, sharingPosterLayerUrl, sharingPosterPixelSize } from "@/lib/sharingPoster";
 import {
   calculateSharingPosterLayout,
   containFrame,
@@ -527,4 +527,37 @@ export async function loadPosterLayerImages(layers: SharingPosterLayer[] | undef
     })
   );
   return result;
+}
+
+/**
+ * The finished poster at its export size, from the original files: what the
+ * classic editor and the 3D site download. The full-size canvas is freed
+ * before returning.
+ */
+export async function exportSharingPoster(
+  composition: SharingPosterComposition,
+  photos: SharingPosterResolvedPhoto[]
+): Promise<Blob> {
+  await document.fonts?.ready;
+  const images = await loadPosterImages(photos, "full", 2);
+  if (images.size !== photos.length) throw new Error("image_load_failed");
+  const layerImages = await loadPosterLayerImages(composition.layers);
+  if (layerImages.size !== new Set(composition.layers?.map((layer) => layer.token)).size) throw new Error("layer_load_failed");
+  const size = sharingPosterPixelSize(composition);
+  const canvas = document.createElement("canvas");
+  canvas.width = size.width;
+  canvas.height = size.height;
+  try {
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("canvas_failed");
+    const result = renderSharingPoster(context, canvas.width, canvas.height, composition, photos, images, { layerImages });
+    if (result.footerTooTall) throw new Error("footer_too_tall");
+    const png = composition.export.format === "png";
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("encode_failed"))), png ? "image/png" : "image/jpeg", png ? undefined : 0.92);
+    });
+  } finally {
+    canvas.width = 1;
+    canvas.height = 1;
+  }
 }

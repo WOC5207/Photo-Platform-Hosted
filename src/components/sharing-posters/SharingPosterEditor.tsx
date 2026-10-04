@@ -73,12 +73,6 @@ function newCreditLineId(kind: SharingPosterCreditKind, lines: SharingPosterCred
   }
 }
 
-function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("encode_failed"))), type, quality);
-  });
-}
-
 function safeFilename(value: string): string {
   return value.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").slice(0, 80) || "sharing-poster";
 }
@@ -546,21 +540,8 @@ export default function SharingPosterEditor({
     setExportState("preparing");
     setNotice("");
     try {
-      await document.fonts?.ready;
-      const { loadPosterImages, loadPosterLayerImages, renderSharingPoster } = await import("@/lib/sharingPosterCanvas");
-      const images = await loadPosterImages(photos, "full", 2);
-      if (images.size !== photos.length) throw new Error("image_load_failed");
-      const layerImages = await loadPosterLayerImages(composition.layers);
-      if (layerImages.size !== new Set(composition.layers?.map((layer) => layer.token)).size) throw new Error("layer_load_failed");
-      const canvas = document.createElement("canvas");
-      canvas.width = pixelSize.width;
-      canvas.height = pixelSize.height;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("canvas_failed");
-      const result = renderSharingPoster(context, canvas.width, canvas.height, composition, photos, images, { layerImages });
-      if (result.footerTooTall) throw new Error("footer_too_tall");
-      const mime = composition.export.format === "png" ? "image/png" : "image/jpeg";
-      const blob = await canvasBlob(canvas, mime, composition.export.format === "jpeg" ? 0.92 : undefined);
+      const { exportSharingPoster } = await import("@/lib/sharingPosterCanvas");
+      const blob = await exportSharingPoster(composition, photos);
       if (prepared) URL.revokeObjectURL(prepared.url);
       const extension = composition.export.format === "png" ? "png" : "jpg";
       setPrepared({
@@ -569,8 +550,6 @@ export default function SharingPosterEditor({
         filename: `${safeFilename(name)}.${extension}`,
         signature: currentSignatureRef.current
       });
-      canvas.width = 1;
-      canvas.height = 1;
       setExportState("ready");
     } catch {
       setExportState("error");

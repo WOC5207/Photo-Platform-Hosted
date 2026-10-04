@@ -34,7 +34,11 @@ const routeBudgets = [
   // lives in the /3d layout, which the page entry doesn't list. The header
   // controls (mode, language and theme switches) come as a chunk shared with
   // the homepage, which gzips about 1 KB worse than when they were inlined.
-  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 137 }
+  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 137 },
+  // The poster creators open from the title menu; their poster code and the
+  // easel scene load with the draft, after the panel paints.
+  { label: "3D Cosplan", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/page"], limitKb: 147 },
+  { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/page"], limitKb: 144 }
 ];
 
 for (const budget of routeBudgets) {

@@ -24,6 +24,7 @@
     "test:cosplan": "tsx --conditions=react-server scripts/test-cosplan.ts",
     "test:cosplan:names": "tsx scripts/test-cosplan-names.ts",
     "test:cosplan:mobile": "tsx scripts/test-cosplan-mobile.ts",
+    "test:cosplan:render": "tsx scripts/test-cosplan-render.ts",
     "test:sharing-posters": "tsx --conditions=react-server scripts/test-sharing-posters.ts",
     "test:subject-detection": "tsx --conditions=react-server scripts/test-subject-detection.ts",
     "test:onboarding-tour": "tsx --conditions=react-server scripts/test-onboarding-tour.ts",

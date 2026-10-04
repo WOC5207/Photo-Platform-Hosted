@@ -22,6 +22,8 @@ export type Screen =
   | { kind: "albums" }
   | { kind: "photographers" }
   | { kind: "settings" }
+  | { kind: "cosplan" }
+  | { kind: "sharepost" }
   | { kind: "photographer"; username: string }
   | { kind: "albumSelect"; username: string }
   | { kind: "album"; username: string; slug: string; study: boolean }
@@ -55,6 +57,8 @@ export function parseScreen(path: string): Screen | null {
   if (rest.length === 1 && rest[0] === "albums") return { kind: "albums" };
   if (rest.length === 1 && rest[0] === "photographers") return { kind: "photographers" };
   if (rest.length === 1 && rest[0] === "settings") return { kind: "settings" };
+  if (rest.length === 1 && rest[0] === "cosplan") return { kind: "cosplan" };
+  if (rest.length === 1 && rest[0] === "sharepost") return { kind: "sharepost" };
   if (rest[0] !== "u" || !rest[1] || !SEGMENT.test(rest[1])) return null;
   const username = rest[1];
   if (rest.length === 2) return { kind: "photographer", username };
@@ -86,6 +90,10 @@ export function screenPath(screen: Screen): string {
       return `${THREE_D_ROOT}/photographers`;
     case "settings":
       return `${THREE_D_ROOT}/settings`;
+    case "cosplan":
+      return `${THREE_D_ROOT}/cosplan`;
+    case "sharepost":
+      return `${THREE_D_ROOT}/sharepost`;
     case "photographer":
       return `${THREE_D_ROOT}/u/${enc(screen.username)}`;
     case "albumSelect":
@@ -112,6 +120,8 @@ export function parentScreen(screen: Screen): Screen | null {
     case "albums":
     case "photographers":
     case "settings":
+    case "cosplan":
+    case "sharepost":
       return { kind: "title" };
     case "photographer":
       return { kind: "photographers" };
@@ -143,6 +153,10 @@ export function classicTwin(path: string): string {
     case "photographers":
     case "settings":
       return "/";
+    case "cosplan":
+      return "/cosplan";
+    case "sharepost":
+      return "/sharing-poster";
     case "photographer":
       return `/u/${enc(screen.username)}`;
     case "albumSelect":
@@ -167,6 +181,9 @@ export function classicTwin(path: string): string {
 export function threeDTwin(path: string): string {
   const parts = segments(path);
   if (parts[0] === "3d") return path;
+  // The creators keep their drafts in the browser, so both sides open the same one.
+  if (parts.length === 1 && parts[0] === "cosplan") return screenPath({ kind: "cosplan" });
+  if (parts.length === 1 && parts[0] === "sharing-poster") return screenPath({ kind: "sharepost" });
   // Booking and draw links name only their token; /3d/book/<token> looks up
   // the photographer and forwards to their address.
   if ((parts[0] === "book" || parts[0] === "draw") && parts[1] && TOKEN.test(parts[1]) && parts.length === 2) {

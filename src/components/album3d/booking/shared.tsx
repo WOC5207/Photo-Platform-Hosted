@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { StageContext, type Stage } from "../StageContext";
 import type { Board } from "../board";
 import type { Deck } from "../deck";
+import type { PosterStage } from "../poster";
 import type { StageInput } from "../engine";
 import { GameMenu } from "../hud";
 import styles from "./Booking.module.css";
@@ -32,14 +33,16 @@ export function useStage(): Stage {
   return useContext(StageContext) ?? fallbackStage;
 }
 
-/** The booking board or the prize deck, once the scene has it on screen. */
-export function useScene<K extends "board" | "deck">(kind: K): (K extends "board" ? Board : Deck) | null {
+type Scenes = { board: Board; deck: Deck; poster: PosterStage };
+
+/** The booking board, the prize deck or the poster easel, once the scene has it on screen. */
+export function useScene<K extends keyof Scenes>(kind: K): Scenes[K] | null {
   const { engine } = useStage();
-  const [scene, setScene] = useState<Board | Deck | null>(null);
+  const [scene, setScene] = useState<Scenes[keyof Scenes] | null>(null);
   useEffect(() => {
     if (!engine) return;
     let live = true;
-    (kind === "board" ? engine.showBoard() : engine.showDeck()).then((next) => {
+    (kind === "board" ? engine.showBoard() : kind === "deck" ? engine.showDeck() : engine.showPoster()).then((next) => {
       if (live) setScene(next);
     });
     return () => {
@@ -47,7 +50,7 @@ export function useScene<K extends "board" | "deck">(kind: K): (K extends "board
       setScene(null);
     };
   }, [engine, kind]);
-  return scene as (K extends "board" ? Board : Deck) | null;
+  return scene as Scenes[K] | null;
 }
 
 /** Taps, swipes and the wheel on the scene, for as long as the screen is up. */

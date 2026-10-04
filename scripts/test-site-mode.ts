@@ -14,6 +14,8 @@ const screens = [
   "/3d/albums",
   "/3d/photographers",
   "/3d/settings",
+  "/3d/cosplan",
+  "/3d/sharepost",
   "/3d/u/george",
   "/3d/u/george/albums",
   "/3d/u/george/albums/fan-expo-2026",
@@ -36,7 +38,7 @@ assert.deepEqual(parseScreen("/3d/u/george/albums/fan-expo-2026?x=1"), {
   slug: "fan-expo-2026",
   study: false
 });
-for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope"]) {
+for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/sharing-poster"]) {
   assert.equal(parseScreen(path), null, `${path} is not a 3D screen`);
 }
 
@@ -80,14 +82,18 @@ const twins: [classic: string, threeD: string][] = [
   ["/u/george/gallery", "/3d/u/george/albums"],
   ["/u/george/gallery/fan-expo-2026", "/3d/u/george/albums/fan-expo-2026"],
   ["/u/george/gallery/fan-expo-2026?photo=cmabc123", "/3d/u/george/albums/fan-expo-2026/photos/cmabc123"],
-  ["/u/george/booking", "/3d/u/george/booking"]
+  ["/u/george/booking", "/3d/u/george/booking"],
+  ["/cosplan", "/3d/cosplan"],
+  ["/sharing-poster", "/3d/sharepost"]
 ];
 for (const [classic, threeD] of twins) {
   assert.equal(threeDTwin(classic), threeD, `${classic} -> 3D`);
   assert.equal(classicTwin(threeD), classic, `${threeD} -> classic`);
 }
 assert.equal(threeDTwin("/"), "/3d");
-assert.equal(threeDTwin("/cosplan"), "/3d");
+assert.equal(threeDTwin("/cosplan/extra"), "/3d");
+assert.deepEqual(parentScreen({ kind: "cosplan" }), { kind: "title" });
+assert.deepEqual(parentScreen({ kind: "sharepost" }), { kind: "title" });
 // Booking and draw links carry no username; /3d/book and /3d/draw forward.
 assert.equal(threeDTwin("/book/k3x9q2"), "/3d/book/k3x9q2");
 assert.equal(threeDTwin("/draw/p8z4m1"), "/3d/draw/p8z4m1");
