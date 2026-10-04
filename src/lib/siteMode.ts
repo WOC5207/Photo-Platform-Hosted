@@ -139,8 +139,12 @@ export function parentScreen(screen: Screen): Screen | null {
     case "cosplan":
       // Printing goes back to the board; the board, to the backgrounds.
       return screen.step === "print" ? { kind: "cosplan", step: "board" } : screen.step ? { kind: "cosplan" } : { kind: "title" };
-    case "sharepost":
-      return screen.step ? { kind: "sharepost" } : { kind: "title" };
+    case "sharepost": {
+      // One step back at a time: print, credits, layout, then the photos.
+      const at = screen.step ? SHAREPOST_STEPS.indexOf(screen.step) : -1;
+      if (at < 0) return { kind: "title" };
+      return at === 0 ? { kind: "sharepost" } : { kind: "sharepost", step: SHAREPOST_STEPS[at - 1] };
+    }
     case "photographer":
       return { kind: "photographers" };
     case "albumSelect":

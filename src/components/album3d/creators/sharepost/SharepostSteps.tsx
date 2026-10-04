@@ -19,9 +19,10 @@ const STEPS: { step: Step; label: string }[] = [
 const screenOf = (step: Step): Screen => (step === "photos" ? { kind: "sharepost" } : { kind: "sharepost", step });
 
 /**
- * The Sharepost steps at the top of each screen's panel: Back (the same as
- * Esc, and the only way back on touch screens) and every step, so any one
- * is a click away. Print waits for a photograph, as it does on the menu.
+ * The Sharepost steps at the top of each screen's panel: Back (one step
+ * back, the same as Esc, and the only way back on touch screens) and every
+ * step, so any one is a click away. Print waits for a photograph, as it
+ * does on the menu.
  */
 export function SharepostSteps({ current }: { current: Step }) {
   const t = useTranslations("album3d");
