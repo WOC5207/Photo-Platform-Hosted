@@ -702,7 +702,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let stageDrag: ((input: StageDrag) => boolean) | null = null;
   /** Pointers a screen took on "down"; their moves and release go to it. */
   const dragged = new Set<number>();
-  const stageContext = () => ({ renderer, palette, reduced: () => reduced, lowPower, invalidate });
+  const stageContext = () => ({ renderer, palette, reduced: () => reduced, lowPower, tier: () => tier, invalidate });
 
   function buildStudy(index: number) {
     studyCassette?.group.removeFromParent();

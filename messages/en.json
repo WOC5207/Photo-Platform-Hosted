@@ -2210,6 +2210,7 @@
     "creatorEditClassic": "Edit in the classic editor",
     "creatorEditClassicSub": "Your draft opens there",
     "creatorPhotoMissing": "Photo missing",
+    "creatorFallbackHint": "Your draft is kept in this browser, so the classic editor opens it just as you left it.",
     "crumbBoard": "Board",
     "crumbPrint": "Print",
     "crumbLayout": "Layout",

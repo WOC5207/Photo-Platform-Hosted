@@ -6,7 +6,7 @@ import { useRouter } from "@/i18n/navigation";
 import { GameMenu, Hints, wrap, type MenuItem } from "../../hud";
 import styles from "../../ArchiveSite.module.css";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, useScene, useScreenKeys, useStage, useStageInput } from "../../booking/shared";
-import { download, paintBlankPoster, printPoster, safeFilename } from "../shared";
+import { canShareFile, download, paintBlankPoster, printPoster, safeFilename, shareFile } from "../shared";
 import { useMatPaint } from "./mat";
 import { SaveState } from "./SharepostPhotos";
 import { useSharepostStudio } from "./SharepostStudio";
@@ -44,15 +44,6 @@ export default function SharepostPrint() {
   const size = composition && tools ? tools.sharingPosterPixelSize(composition) : null;
   const unresolved = photos.filter((photo) => !photo.source).length;
   const blocked = !composition || photos.length === 0 ? ts("selectPhotoFirst") : unresolved ? ts("unresolvedError", { count: unresolved }) : studio.metrics?.footerTooTall ? ts("footerTooTall") : "";
-  const canShare = (file: File) => {
-    if (typeof navigator === "undefined" || !navigator.share) return false;
-    try {
-      return !navigator.canShare || navigator.canShare({ files: [file] });
-    } catch {
-      return false;
-    }
-  };
-
   const print = async () => {
     if (!composition || !tools || blocked || state === "printing") return;
     setState("printing");
@@ -68,12 +59,8 @@ export default function SharepostPrint() {
     }
   };
   const share = async () => {
-    if (!printed || !canShare(printed.file)) return;
-    try {
-      await navigator.share({ files: [printed.file], title: name });
-    } catch (error) {
-      if ((error as DOMException).name !== "AbortError") setNotice(ts("shareError"));
-    }
+    if (!printed || !canShareFile(printed.file)) return;
+    if (!(await shareFile(printed.file, name))) setNotice(ts("shareError"));
   };
   const setFormat = () => update((value) => ({ ...value, export: { ...value.export, format: value.export.format === "png" ? "jpeg" : "png" } }));
   const setEdge = (delta: number) =>
@@ -82,7 +69,7 @@ export default function SharepostPrint() {
   const items: (MenuItem & { adjust?: (delta: number) => void })[] = composition
     ? [
         { key: "print", label: t(state === "printing" ? "creatorPrinting" : "creatorDownloadFormat", { format: format.toUpperCase() }), sub: size ? `${size.width} × ${size.height} PX` : "", run: () => void print() },
-        ...(printed && canShare(printed.file) ? [{ key: "share", label: ts("share"), sub: printed.file.name, run: () => void share() }] : []),
+        ...(printed && canShareFile(printed.file) ? [{ key: "share", label: ts("share"), sub: printed.file.name, run: () => void share() }] : []),
         { key: "format", label: ts("format"), value: format === "png" ? "PNG" : "JPEG · 92%", run: setFormat, adjust: () => setFormat() },
         { key: "edge", label: ts("longestEdge"), value: `${edge} PX`, run: () => setEdge(1), adjust: setEdge },
         { key: "photos", label: t("creatorBackToPhotos"), sub: t("creatorSharepostCount", { photos: photos.length }), run: () => go({ kind: "sharepost" }) },

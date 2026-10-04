@@ -112,7 +112,11 @@ export default function SharepostLayout() {
 
   useMatPaint(scene, studio, { selected: selected?.photoId, composition: preview, key: "sharepost", blank: (canvas) => paintBlankPoster(canvas, t("creatorAddPhotosBlank")) });
 
-  const cards = useMemo(() => frames.map((item) => ({ key: item.key, image: frameCard(item), label: item.label, sub: item.adaptive ? t("creatorAdaptiveSub") : `${item.width}:${item.height}` })), [frames, t]);
+  // The cards are drawn on canvases, so only in the browser (this page also renders on the server).
+  const cards = useMemo(
+    () => (scene ? frames.map((item) => ({ key: item.key, image: frameCard(item), label: item.label, sub: item.adaptive ? t("creatorAdaptiveSub") : `${item.width}:${item.height}` })) : []),
+    [scene, frames, t]
+  );
   useEffect(() => {
     scene?.setRail(composition ? cards : null, at);
   }, [scene, cards, at, composition]);

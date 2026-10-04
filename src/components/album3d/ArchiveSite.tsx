@@ -1248,6 +1248,23 @@ export default function ArchiveSite({
         </div>
       )}
 
+      {(status === "unsupported" || status === "lost") && creator && (
+        // The creators can't work without the easel; the classic editor opens the same draft.
+        <div className="absolute inset-0 z-20 overflow-y-auto bg-page px-4 pb-10 pt-32 sm:px-8">
+          <div className="mx-auto max-w-xl">
+            <h2 className="text-xl font-bold">{t(status === "lost" ? "lostTitle" : "unsupportedTitle")}</h2>
+            <p className="mt-1 text-sm text-fg-muted">{t("creatorFallbackHint")}</p>
+            <button
+              type="button"
+              onClick={() => leaveFor("classic", classicTwin(pathname))}
+              className="mt-4 inline-flex min-h-11 items-center bg-fg px-5 text-sm font-semibold uppercase tracking-[0.08em] text-page"
+            >
+              {t("creatorEditClassic")}
+            </button>
+          </div>
+        </div>
+      )}
+
       {(status === "unsupported" || status === "lost") && mode !== "booking" && (
         <div className="absolute inset-0 z-20 overflow-y-auto bg-page px-4 pb-10 pt-32 sm:px-8">
           <div className="mx-auto max-w-4xl">

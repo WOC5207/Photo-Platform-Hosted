@@ -50,3 +50,23 @@ export async function printPoster(scene: PosterStage | null, render: () => Promi
 export function safeFilename(value: string, fallback: string): string {
   return value.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").slice(0, 80) || fallback;
 }
+
+/** Whether the device's share sheet can take this file (phones, mostly). */
+export function canShareFile(file: File): boolean {
+  if (typeof navigator === "undefined" || !navigator.share) return false;
+  try {
+    return !navigator.canShare || navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
+/** Opens the share sheet; false when it failed for a reason other than the visitor closing it. */
+export async function shareFile(file: File, title: string): Promise<boolean> {
+  try {
+    await navigator.share({ files: [file], title });
+    return true;
+  } catch (error) {
+    return (error as DOMException).name === "AbortError";
+  }
+}

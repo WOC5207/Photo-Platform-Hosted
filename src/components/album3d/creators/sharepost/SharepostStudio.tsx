@@ -155,6 +155,28 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
     return () => window.clearTimeout(timer);
   }, [tools, composition, name, signature]);
 
+  // Leaving the screen, closing the tab or opening the classic editor saves
+  // a change the timer above hadn't reached yet.
+  const pending = useRef<{ name: string; composition: SharingPosterComposition; signature: string } | null>(null);
+  pending.current = composition ? { name, composition, signature } : null;
+  useEffect(() => {
+    if (!tools) return;
+    const flush = () => {
+      const latest = pending.current;
+      if (!latest || !latest.name.trim() || latest.signature === lastSaved.current) return;
+      lastSaved.current = latest.signature;
+      void tools.saveLocalPosterDraft({ name: latest.name, composition: latest.composition }).then(() => setSaved("saved"), () => undefined);
+    };
+    const onVisibility = () => document.visibilityState === "hidden" && flush();
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+      flush();
+    };
+  }, [tools]);
+
   const update = useCallback((change: (current: SharingPosterComposition) => SharingPosterComposition) => {
     setComposition((current) => (current ? change(current) : current));
   }, []);

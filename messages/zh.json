@@ -2210,6 +2210,7 @@
     "creatorEditClassic": "在经典编辑器中编辑",
     "creatorEditClassicSub": "草稿会在那里打开",
     "creatorPhotoMissing": "照片缺失",
+    "creatorFallbackHint": "草稿保存在这个浏览器里，经典编辑器会原样打开它。",
     "crumbBoard": "画板",
     "crumbPrint": "打印",
     "crumbLayout": "版式",

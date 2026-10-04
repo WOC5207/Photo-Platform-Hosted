@@ -109,6 +109,8 @@ export function createPosterStage(context: {
   palette: EnginePalette;
   reduced: () => boolean;
   lowPower: boolean;
+  /** The engine's quality tier, 2 being the lowest. */
+  tier: () => number;
   invalidate: () => void;
 }): PosterStage {
   const { renderer, lowPower, invalidate } = context;
@@ -483,7 +485,8 @@ export function createPosterStage(context: {
     scene,
     camera,
     setPoster(nextKey, nextAspect, longEdge = 2048) {
-      const edge = Math.min(longEdge, lowPower ? 1024 : 2048);
+      // Phones and the lowest quality tier keep the live texture at 1024 px.
+      const edge = Math.min(longEdge, lowPower || context.tier() >= 2 ? 1024 : 2048);
       const w = Math.max(2, Math.round(nextAspect >= 1 ? edge : edge * nextAspect));
       const h = Math.max(2, Math.round(nextAspect >= 1 ? edge / nextAspect : edge));
       if (nextKey !== key) {

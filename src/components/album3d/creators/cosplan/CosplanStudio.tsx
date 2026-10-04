@@ -87,6 +87,20 @@ export default function CosplanStudioProvider({ templates, children }: { templat
     };
   }, []);
 
+  // Closing the tab or leaving for the classic editor mid-edit keeps the last change too.
+  useEffect(() => {
+    const flush = () => {
+      if (dirty.current && compositionRef.current) void writeDraft(compositionRef.current).then(() => (dirty.current = false), () => undefined);
+    };
+    const onVisibility = () => document.visibilityState === "hidden" && flush();
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
   // Autosave, as the classic editor does: shortly after the last change.
   useEffect(() => {
     if (!composition || !dirty.current) return;

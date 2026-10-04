@@ -7,7 +7,7 @@ import { exportCosplanPng, loadCosplanImages, renderCosplan } from "@/lib/cospla
 import { GameMenu, Hints, wrap, type MenuItem } from "../../hud";
 import styles from "../../ArchiveSite.module.css";
 import { BookingPanel, isInteractive, metaLabel, useScene, useScreenKeys, useStage, useStageInput } from "../../booking/shared";
-import { download, paintBlankPoster, printPoster } from "../shared";
+import { canShareFile, download, paintBlankPoster, printPoster, shareFile } from "../shared";
 import { useCosplanStudio } from "./CosplanStudio";
 
 /**
@@ -17,12 +17,19 @@ import { useCosplanStudio } from "./CosplanStudio";
 export default function CosplanPrint() {
   const t = useTranslations("album3d");
   const tc = useTranslations("cosplan");
+  const ts = useTranslations("sharingPosters");
   const router = useRouter();
   const { key, touch, go } = useStage();
   const scene = useScene("poster");
   const { composition, images, status } = useCosplanStudio();
   const [focus, setFocus] = useState(0);
   const [state, setState] = useState<"idle" | "printing" | "error">("idle");
+  // The last print, for the share sheet; any change to the poster retires it.
+  const [printed, setPrinted] = useState<{ file: File; updatedAt: number } | null>(null);
+  const [shareFailed, setShareFailed] = useState(false);
+  useEffect(() => {
+    if (printed && printed.updatedAt !== composition?.updatedAt) setPrinted(null);
+  }, [printed, composition?.updatedAt]);
 
   useEffect(() => {
     if (!scene || status === "reading") return;
@@ -43,7 +50,10 @@ export default function CosplanPrint() {
       // The board's images are loaded already; anything still on its way is loaded here.
       const ready = images.background && images.layers.size === composition.layers.filter((layer) => layer.type === "image").length ? images : await loadCosplanImages(composition);
       const blob = await printPoster(scene, () => exportCosplanPng(composition, ready));
-      download(blob, `cosplan-${Date.now()}.png`);
+      const filename = `cosplan-${Date.now()}.png`;
+      download(blob, filename);
+      setPrinted({ file: new File([blob], filename, { type: "image/png" }), updatedAt: composition.updatedAt });
+      setShareFailed(false);
       setState("idle");
     } catch {
       setState("error");
@@ -53,6 +63,9 @@ export default function CosplanPrint() {
   const items: MenuItem[] = composition
     ? [
         { key: "print", label: t(state === "printing" ? "creatorPrinting" : "creatorDownloadPng"), sub: t("creatorDownloadSub"), run: () => void print() },
+        ...(printed && canShareFile(printed.file)
+          ? [{ key: "share", label: ts("share"), sub: printed.file.name, run: () => void shareFile(printed.file, composition.templateTitle).then((ok) => setShareFailed(!ok)) }]
+          : []),
         { key: "board", label: t("creatorBackToBoard"), sub: t("creatorBackToBoardSub"), run: () => go({ kind: "cosplan", step: "board" }) },
         { key: "classic", label: t("creatorEditClassic"), sub: t("creatorEditClassicSub"), external: true, run: () => router.push("/cosplan") }
       ]
@@ -98,6 +111,7 @@ export default function CosplanPrint() {
         )}
         <p aria-live="polite" className="mt-4 min-h-5 text-sm">
           {state === "error" && <span className="text-danger">{t("creatorPrintFailed")}</span>}
+          {shareFailed && <span className="text-danger">{ts("shareError")}</span>}
         </p>
       </BookingPanel>
       {!touch && status === "ready" && (
