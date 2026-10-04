@@ -8,14 +8,10 @@ import { Group, Image as KonvaImage, Layer, Rect, Stage, Text, Transformer } fro
 import { useLocale, useTranslations } from "next-intl";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import { controlClasses } from "@/components/ui/Field";
-import { cosplanCharacterNames, normalizeCosplanLayerOrder, parseCosplanSlots, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTemplateSummary, type CosplanTextLayer } from "@/lib/cosplanTypes";
+import { cosplanCharacterNames, normalizeCosplanLayerOrder, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTemplateSummary, type CosplanTextLayer } from "@/lib/cosplanTypes";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { COSPLAN_IMAGE_LIMIT as IMAGE_LIMIT, COSPLAN_TEXT_LIMIT as TEXT_LIMIT, clearDraft, composeOnTemplate, normalizeCosplanUpload, placeCharacter, readDraft, restoreDraft, writeDraft, type CosplanCharacter } from "@/lib/cosplanDraft";
 
-const DB_NAME = "photo-platform-cosplan";
-const STORE_NAME = "drafts";
-const DRAFT_KEY = "current";
-const IMAGE_LIMIT = 20;
-const TEXT_LIMIT = 30;
 const FONT_OPTIONS = ["Arial", "Georgia", "Trebuchet MS", "Noto Sans SC", "Microsoft YaHei"];
 
 function CharacterNameText({ field }: { field: ReturnType<typeof cosplanCharacterNames>[number] }) {
@@ -30,14 +26,7 @@ function CharacterNameText({ field }: { field: ReturnType<typeof cosplanCharacte
 }
 
 type CharacterResult = { id: number; name: string; nameCn: string; thumbnailUrl: string; imageUrl: string; sourceUrl: string };
-type PendingCharacter = {
-  src: string;
-  blob?: Blob;
-  sourceUrl?: string;
-  name: string;
-  naturalWidth: number;
-  naturalHeight: number;
-};
+type PendingCharacter = CosplanCharacter;
 
 const CanvasLayoutContext = createContext<{
   slots: CosplanSlot[];
@@ -45,80 +34,6 @@ const CanvasLayoutContext = createContext<{
   width: number;
   height: number;
 }>({ slots: [], foreground: null, width: 0, height: 0 });
-
-function supportedDraft(value: unknown): value is CosplanComposition {
-  if (!value || typeof value !== "object") return false;
-  const draft = value as Partial<CosplanComposition>;
-  if (
-    (draft.version !== 1 && draft.version !== 2) ||
-    typeof draft.templateId !== "string" ||
-    typeof draft.templateTitle !== "string" ||
-    typeof draft.assetToken !== "string" ||
-    typeof draft.backgroundUrl !== "string" ||
-    !Number.isInteger(draft.width) ||
-    !Number.isInteger(draft.height) ||
-    (draft.width ?? 0) < 320 ||
-    (draft.height ?? 0) < 320 ||
-    (draft.width ?? 0) > 4096 ||
-    (draft.height ?? 0) > 4096 ||
-    (draft.width ?? 0) * (draft.height ?? 0) > 12_000_000 ||
-    !Array.isArray(draft.layers) ||
-    draft.layers.length > IMAGE_LIMIT + TEXT_LIMIT
-  ) return false;
-  if (draft.version === 2) {
-    if (!Array.isArray(draft.slots)) return false;
-    if (parseCosplanSlots(draft.slots, draft.width as number, draft.height as number).length !== draft.slots.length) return false;
-  }
-  return draft.layers.every((layer) => {
-    if (!layer || typeof layer !== "object" || typeof layer.id !== "string" || typeof layer.name !== "string") return false;
-    const numeric = [layer.x, layer.y, layer.width, layer.rotation];
-    if (!numeric.every(Number.isFinite)) return false;
-    if (layer.type === "text") return typeof layer.text === "string" && Number.isFinite(layer.fontSize) && typeof layer.fill === "string";
-    return layer.type === "image" && (layer.showName === undefined || typeof layer.showName === "boolean") && Number.isFinite(layer.height) && [layer.cropX, layer.cropY, layer.cropWidth, layer.cropHeight].every(Number.isFinite);
-  });
-}
-
-function openDraftDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function readDraft(): Promise<CosplanComposition | null> {
-  const db = await openDraftDb();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readonly");
-    const request = transaction.objectStore(STORE_NAME).get(DRAFT_KEY);
-    request.onsuccess = () => resolve(supportedDraft(request.result) ? request.result : null);
-    request.onerror = () => reject(request.error);
-    transaction.oncomplete = () => db.close();
-  });
-}
-
-async function writeDraft(draft: CosplanComposition): Promise<void> {
-  const db = await openDraftDb();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).put(draft, DRAFT_KEY);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-  });
-  db.close();
-}
-
-async function clearDraft(): Promise<void> {
-  const db = await openDraftDb();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).delete(DRAFT_KEY);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-  });
-  db.close();
-}
 
 function useCanvasImage(src: string) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -260,8 +175,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
   useEffect(() => {
     if (!composition) return;
     const timer = window.setTimeout(() => {
-      const stored = structuredClone(textSession ? { ...composition, layers: composition.layers.map((layer) => layer.id === textSession.layer.id ? { ...layer, text: textSession.value } : layer) } : composition);
-      for (const layer of stored.layers) if (layer.type === "image" && layer.blob) layer.src = "";
+      const stored = textSession ? { ...composition, layers: composition.layers.map((layer) => layer.id === textSession.layer.id ? { ...layer, text: textSession.value } : layer) } : composition;
       writeDraft(stored).then(() => setDraftStatus("saved")).catch(() => setDraftStatus("error"));
     }, 700);
     return () => window.clearTimeout(timer);
@@ -318,39 +232,14 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
 
   async function chooseTemplate(template: CosplanTemplateSummary) {
     if (composition?.layers.length && !(await confirm({ message: t("changeTemplateConfirm"), confirmLabel: t("changeTemplate") }))) return;
-    const scaleX = composition ? template.width / composition.width : 1;
-    const scaleY = composition ? template.height / composition.height : 1;
-    const contentScale = Math.min(scaleX, scaleY);
-    const layers = composition?.layers.map((layer) => {
-      if (layer.type === "text") {
-        return { ...layer, x: layer.x * scaleX, y: layer.y * scaleY, width: layer.width * scaleX, fontSize: layer.fontSize * contentScale };
-      }
-      const slot = layer.slotId ? template.slots.find((item) => item.id === layer.slotId) : undefined;
-      return { ...layer, slotId: slot?.id, slot: slot ? structuredClone(slot) : undefined, x: layer.x * scaleX, y: layer.y * scaleY, width: layer.width * contentScale, height: layer.height * contentScale };
-    }) ?? [];
-    apply({
-      version: 2,
-      templateId: template.id,
-      templateTitle: template.title,
-      assetToken: template.assetToken,
-      backgroundUrl: template.imageUrl,
-      foregroundToken: template.foregroundToken,
-      foregroundUrl: template.foregroundUrl,
-      layoutVersion: template.layoutVersion,
-      slots: structuredClone(template.slots),
-      width: template.width,
-      height: template.height,
-      layers,
-      updatedAt: Date.now()
-    });
+    apply(composeOnTemplate(template, composition));
     setPendingCharacter(null);
     setSelectedId(null);
   }
 
   async function restore() {
     if (!draftAvailable) return;
-    const restored = structuredClone(draftAvailable);
-    for (const layer of restored.layers) if (layer.type === "image" && layer.blob) layer.src = URL.createObjectURL(layer.blob);
+    const restored = restoreDraft(draftAvailable);
     setComposition({ ...restored, layers: normalizeCosplanLayerOrder(restored.layers) });
     setDraftAvailable(null);
   }
@@ -365,31 +254,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
 
   function insertCharacter(character: PendingCharacter, slot?: CosplanSlot) {
     if (!composition || imageCount >= IMAGE_LIMIT) return;
-    const maxWidth = slot ? slot.width * 0.9 : composition.width * 0.55;
-    const maxHeight = slot ? slot.height * 0.9 : composition.height * 0.65;
-    const ratio = Math.min(maxWidth / character.naturalWidth, maxHeight / character.naturalHeight, 1);
-    const width = character.naturalWidth * ratio;
-    const height = character.naturalHeight * ratio;
-    const layer: CosplanImageLayer = {
-      id: crypto.randomUUID(),
-      type: "image",
-      name: character.name,
-      showName: true,
-      src: character.src,
-      blob: character.blob,
-      sourceUrl: character.sourceUrl,
-      slotId: slot?.id,
-      slot: slot ? structuredClone(slot) : undefined,
-      x: slot ? slot.x + (slot.width - width) / 2 : composition.width * 0.22,
-      y: slot ? slot.y + (slot.height - height) / 2 : composition.height * 0.15,
-      width,
-      height,
-      rotation: 0,
-      cropX: 0,
-      cropY: 0,
-      cropWidth: 1,
-      cropHeight: 1
-    };
+    const layer = placeCharacter(composition, character, slot);
     apply({ ...composition, layers: [...composition.layers, layer] });
     setSelectedId(layer.id);
     setPendingCharacter(null);
@@ -412,18 +277,11 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
   }
 
   async function uploadCharacter(file: File) {
-    if (!composition || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 15 * 1024 * 1024) return setSearchStatus("error");
-    const sourceUrl = URL.createObjectURL(file);
+    if (!composition) return;
     try {
-      const image = await loadBrowserImage(sourceUrl);
-      const scale = Math.min(1, 4096 / image.naturalWidth, 4096 / image.naturalHeight, Math.sqrt(12_000_000 / (image.naturalWidth * image.naturalHeight)));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
-      const normalized = await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("normalizeFailed")), "image/webp", 0.92));
-      URL.revokeObjectURL(sourceUrl);
+      const normalized = await normalizeCosplanUpload(file);
       await addImage(URL.createObjectURL(normalized), file.name.replace(/\.[^.]+$/, ""), undefined, normalized);
-    } catch { URL.revokeObjectURL(sourceUrl); setSearchStatus("error"); }
+    } catch { setSearchStatus("error"); }
   }
 
   async function addCharacterResult(result: CharacterResult) {
@@ -479,9 +337,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
       setMobilePanel("text");
     });
     // Replace any in-progress autosave promptly on cancellation.
-    const stored = structuredClone(next);
-    for (const layer of stored.layers) if (layer.type === "image" && layer.blob) layer.src = "";
-    void writeDraft(stored).then(() => setDraftStatus("saved")).catch(() => setDraftStatus("error"));
+    void writeDraft(next).then(() => setDraftStatus("saved")).catch(() => setDraftStatus("error"));
   }
 
   function addText() {

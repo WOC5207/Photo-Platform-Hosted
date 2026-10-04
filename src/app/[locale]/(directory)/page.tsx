@@ -5,6 +5,7 @@ import { photoUrls, siteImageUrl } from "@/lib/images";
 import { Link } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
+import SiteModeSwitch from "@/components/SiteModeSwitch";
 import DirectorySearch from "@/components/DirectorySearch";
 import EmptyState from "@/components/ui/EmptyState";
 import { buttonClasses } from "@/components/ui/Button";
@@ -103,6 +104,7 @@ export default async function DirectoryPage() {
         <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
           <Link href="/cosplan" className={buttonClasses({ variant: "secondary" })}>{t("cosplan")}</Link>
           <Link href="/sharing-poster" className={buttonClasses({ variant: "secondary" })}>{t("sharingPoster")}</Link>
+          <SiteModeSwitch current="classic" />
           <LanguageSwitcher />
           <ThemeToggle label={tc("toggleTheme")} />
           {/* The only way in for a photographer arriving at the root: every

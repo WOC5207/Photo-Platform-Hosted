@@ -29,12 +29,34 @@ const routeBudgets = [
   { label: "QR labels", route: "/[locale]/dashboard/(protected)/equipment/qr-labels/page", limitKb: 140 },
   { label: "Sharing posters", route: "/[locale]/dashboard/(protected)/sharing-posters/[id]/page", limitKb: 140 },
   { label: "Cosplan", route: "/[locale]/(directory)/cosplan/page", limitKb: 140 },
-  { label: "Public sharing poster", route: "/[locale]/(directory)/sharing-poster/page", limitKb: 140 }
+  { label: "Public sharing poster", route: "/[locale]/(directory)/sharing-poster/page", limitKb: 140 },
+  // three.js loads after first paint, so only the overlay counts here. It
+  // lives in the /3d layout, which the page entry doesn't list. The header
+  // controls (mode, language and theme switches) come as a chunk shared with
+  // the homepage, which gzips about 1 KB worse than when they were inlined.
+  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 137 },
+  // The poster creators open from the title menu; their poster code and the
+  // easel scene load with the draft, after the panel paints. Each creator's
+  // steps share a studio layout that holds the draft, so it counts too. The
+  // Cosplan board carries the arranging and text panels; the Sharepost
+  // credits step reuses the classic editor's credit layers.
+  { label: "3D Cosplan", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/page"], limitKb: 152 },
+  { label: "3D Cosplan board", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/board/page"], limitKb: 158 },
+  { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/page"], limitKb: 148 },
+  { label: "3D Sharepost credits", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/credits/page"], limitKb: 175 }
 ];
 
 for (const budget of routeBudgets) {
-  const routeFiles = Array.from(new Set(appManifest.pages?.[budget.route] ?? []));
-  if (routeFiles.length === 0) throw new Error(`Missing build manifest route: ${budget.route}`);
+  const routes = Array.isArray(budget.route) ? budget.route : [budget.route];
+  const routeFiles = Array.from(
+    new Set(
+      routes.flatMap((route) => {
+        const entry = appManifest.pages?.[route];
+        if (!entry?.length) throw new Error(`Missing build manifest route: ${route}`);
+        return entry;
+      })
+    )
+  );
   const bytes = routeFiles.reduce(
     (sum, file) => sum + gzipSync(readFileSync(path.join(root, ".next", file))).byteLength,
     0

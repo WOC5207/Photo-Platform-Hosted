@@ -68,6 +68,7 @@ jobs:
       - run: npm run test:images
       - run: npm run test:email
       - run: npm run test:theme
+      - run: npm run test:site-mode
       - run: npm run test:sharing-posters
       - run: npm run test:subject-detection
       - run: npm run test:onboarding-tour
@@ -81,6 +82,7 @@ jobs:
       - run: npm run build
       - run: npm run test:build-budget
       - run: npm run test:cosplan:mobile
+      - run: npm run test:cosplan:render
       - run: npx playwright install --with-deps chromium
       - name: HTTP isolation and browser coverage
         shell: bash
