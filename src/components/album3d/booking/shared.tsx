@@ -6,7 +6,7 @@ import { StageContext, type Stage } from "../StageContext";
 import type { Board } from "../board";
 import type { Deck } from "../deck";
 import type { PosterStage } from "../poster";
-import type { StageInput } from "../engine";
+import type { StageDrag, StageInput } from "../engine";
 import { GameMenu } from "../hud";
 import styles from "./Booking.module.css";
 
@@ -65,6 +65,18 @@ export function useStageInput(handler: (input: StageInput) => void) {
   }, [engine]);
 }
 
+/** Raw pointers and the wheel on the scene, ahead of its taps and swipes (see StageDrag). */
+export function useStageDrag(handler: (input: StageDrag) => boolean) {
+  const { engine } = useStage();
+  const ref = useRef(handler);
+  ref.current = handler;
+  useEffect(() => {
+    if (!engine) return;
+    engine.setStageDrag((input) => ref.current(input));
+    return () => engine.setStageDrag(null);
+  }, [engine]);
+}
+
 function isTyping(target: EventTarget | null) {
   return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 }
@@ -73,14 +85,14 @@ function isTyping(target: EventTarget | null) {
  * Keys for the screen, ahead of the 3D site's own handler (which still takes
  * Esc unless this one used it). Return true when the key was used.
  */
-export function useScreenKeys(handler: (key: string, target: EventTarget | null) => boolean) {
+export function useScreenKeys(handler: (key: string, target: EventTarget | null, event: KeyboardEvent) => boolean) {
   const ref = useRef(handler);
   ref.current = handler;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
       if (document.querySelector("[role=dialog]")) return;
-      if (ref.current(e.key, e.target)) e.preventDefault();
+      if (ref.current(e.key, e.target, e)) e.preventDefault();
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);

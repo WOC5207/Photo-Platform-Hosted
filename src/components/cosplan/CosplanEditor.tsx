@@ -10,7 +10,7 @@ import Button, { buttonClasses } from "@/components/ui/Button";
 import { controlClasses } from "@/components/ui/Field";
 import { cosplanCharacterNames, normalizeCosplanLayerOrder, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTemplateSummary, type CosplanTextLayer } from "@/lib/cosplanTypes";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
-import { COSPLAN_IMAGE_LIMIT as IMAGE_LIMIT, COSPLAN_TEXT_LIMIT as TEXT_LIMIT, clearDraft, composeOnTemplate, placeCharacter, readDraft, restoreDraft, writeDraft, type CosplanCharacter } from "@/lib/cosplanDraft";
+import { COSPLAN_IMAGE_LIMIT as IMAGE_LIMIT, COSPLAN_TEXT_LIMIT as TEXT_LIMIT, clearDraft, composeOnTemplate, normalizeCosplanUpload, placeCharacter, readDraft, restoreDraft, writeDraft, type CosplanCharacter } from "@/lib/cosplanDraft";
 
 const FONT_OPTIONS = ["Arial", "Georgia", "Trebuchet MS", "Noto Sans SC", "Microsoft YaHei"];
 
@@ -277,18 +277,11 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
   }
 
   async function uploadCharacter(file: File) {
-    if (!composition || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 15 * 1024 * 1024) return setSearchStatus("error");
-    const sourceUrl = URL.createObjectURL(file);
+    if (!composition) return;
     try {
-      const image = await loadBrowserImage(sourceUrl);
-      const scale = Math.min(1, 4096 / image.naturalWidth, 4096 / image.naturalHeight, Math.sqrt(12_000_000 / (image.naturalWidth * image.naturalHeight)));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
-      const normalized = await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("normalizeFailed")), "image/webp", 0.92));
-      URL.revokeObjectURL(sourceUrl);
+      const normalized = await normalizeCosplanUpload(file);
       await addImage(URL.createObjectURL(normalized), file.name.replace(/\.[^.]+$/, ""), undefined, normalized);
-    } catch { URL.revokeObjectURL(sourceUrl); setSearchStatus("error"); }
+    } catch { setSearchStatus("error"); }
   }
 
   async function addCharacterResult(result: CharacterResult) {

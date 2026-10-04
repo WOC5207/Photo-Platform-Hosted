@@ -112,6 +112,32 @@ export type CosplanCharacter = {
   naturalHeight: number;
 };
 
+/** A picture the visitor chose for a character, as the poster keeps it: WebP within 4096 px and 12 MP. */
+export async function normalizeCosplanUpload(file: File): Promise<Blob> {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 15 * 1024 * 1024) throw new Error("unsupportedImage");
+  const source = URL.createObjectURL(file);
+  try {
+    const image = await loadCosplanImage(source);
+    const scale = Math.min(1, 4096 / image.naturalWidth, 4096 / image.naturalHeight, Math.sqrt(12_000_000 / (image.naturalWidth * image.naturalHeight)));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("normalizeFailed"))), "image/webp", 0.92));
+  } finally {
+    URL.revokeObjectURL(source);
+  }
+}
+
+export function loadCosplanImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("imageLoadFailed"));
+    image.src = src;
+  });
+}
+
 /** A new character layer: fitted to 90% of its slot and centred, or free on the poster. */
 export function placeCharacter(composition: CosplanComposition, character: CosplanCharacter, slot?: CosplanSlot): CosplanImageLayer {
   const maxWidth = slot ? slot.width * 0.9 : composition.width * 0.55;

@@ -15,7 +15,12 @@ const screens = [
   "/3d/photographers",
   "/3d/settings",
   "/3d/cosplan",
+  "/3d/cosplan/board",
+  "/3d/cosplan/print",
   "/3d/sharepost",
+  "/3d/sharepost/layout",
+  "/3d/sharepost/credits",
+  "/3d/sharepost/print",
   "/3d/u/george",
   "/3d/u/george/albums",
   "/3d/u/george/albums/fan-expo-2026",
@@ -38,7 +43,7 @@ assert.deepEqual(parseScreen("/3d/u/george/albums/fan-expo-2026?x=1"), {
   slug: "fan-expo-2026",
   study: false
 });
-for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/sharing-poster"]) {
+for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/cosplan/board/x", "/3d/sharepost/board", "/3d/sharing-poster"]) {
   assert.equal(parseScreen(path), null, `${path} is not a 3D screen`);
 }
 
@@ -94,6 +99,14 @@ assert.equal(threeDTwin("/"), "/3d");
 assert.equal(threeDTwin("/cosplan/extra"), "/3d");
 assert.deepEqual(parentScreen({ kind: "cosplan" }), { kind: "title" });
 assert.deepEqual(parentScreen({ kind: "sharepost" }), { kind: "title" });
+assert.deepEqual(parentScreen({ kind: "cosplan", step: "board" }), { kind: "cosplan" });
+assert.deepEqual(parentScreen({ kind: "cosplan", step: "print" }), { kind: "cosplan", step: "board" });
+for (const step of ["layout", "credits", "print"] as const) {
+  assert.deepEqual(parentScreen({ kind: "sharepost", step }), { kind: "sharepost" });
+}
+// Every creator step's classic twin is its editor, where the same draft opens.
+assert.equal(classicTwin("/3d/cosplan/board"), "/cosplan");
+assert.equal(classicTwin("/3d/sharepost/credits"), "/sharing-poster");
 // Booking and draw links carry no username; /3d/book and /3d/draw forward.
 assert.equal(threeDTwin("/book/k3x9q2"), "/3d/book/k3x9q2");
 assert.equal(threeDTwin("/draw/p8z4m1"), "/3d/draw/p8z4m1");

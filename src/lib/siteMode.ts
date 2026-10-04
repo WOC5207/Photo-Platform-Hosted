@@ -22,8 +22,8 @@ export type Screen =
   | { kind: "albums" }
   | { kind: "photographers" }
   | { kind: "settings" }
-  | { kind: "cosplan" }
-  | { kind: "sharepost" }
+  | { kind: "cosplan"; step?: CosplanStep }
+  | { kind: "sharepost"; step?: SharepostStep }
   | { kind: "photographer"; username: string }
   | { kind: "albumSelect"; username: string }
   | { kind: "album"; username: string; slug: string; study: boolean }
@@ -32,6 +32,16 @@ export type Screen =
   | { kind: "booking"; username: string }
   | { kind: "book"; username: string; token: string }
   | { kind: "draw"; username: string; token: string };
+
+/**
+ * The poster creators' steps after their first screen: Cosplan picks a
+ * background, then edits on the board and prints; Sharepost lays out
+ * photographs, then sets the layout and credits and prints.
+ */
+export const COSPLAN_STEPS = ["board", "print"] as const;
+export type CosplanStep = (typeof COSPLAN_STEPS)[number];
+export const SHAREPOST_STEPS = ["layout", "credits", "print"] as const;
+export type SharepostStep = (typeof SHAREPOST_STEPS)[number];
 
 /** Booking and prize-draw links are opaque tokens, as on the classic pages. */
 const TOKEN = /^[a-z0-9]+$/;
@@ -59,6 +69,12 @@ export function parseScreen(path: string): Screen | null {
   if (rest.length === 1 && rest[0] === "settings") return { kind: "settings" };
   if (rest.length === 1 && rest[0] === "cosplan") return { kind: "cosplan" };
   if (rest.length === 1 && rest[0] === "sharepost") return { kind: "sharepost" };
+  if (rest.length === 2 && rest[0] === "cosplan" && (COSPLAN_STEPS as readonly string[]).includes(rest[1])) {
+    return { kind: "cosplan", step: rest[1] as CosplanStep };
+  }
+  if (rest.length === 2 && rest[0] === "sharepost" && (SHAREPOST_STEPS as readonly string[]).includes(rest[1])) {
+    return { kind: "sharepost", step: rest[1] as SharepostStep };
+  }
   if (rest[0] !== "u" || !rest[1] || !SEGMENT.test(rest[1])) return null;
   const username = rest[1];
   if (rest.length === 2) return { kind: "photographer", username };
@@ -91,9 +107,8 @@ export function screenPath(screen: Screen): string {
     case "settings":
       return `${THREE_D_ROOT}/settings`;
     case "cosplan":
-      return `${THREE_D_ROOT}/cosplan`;
     case "sharepost":
-      return `${THREE_D_ROOT}/sharepost`;
+      return `${THREE_D_ROOT}/${screen.kind}${screen.step ? `/${screen.step}` : ""}`;
     case "photographer":
       return `${THREE_D_ROOT}/u/${enc(screen.username)}`;
     case "albumSelect":
@@ -120,9 +135,12 @@ export function parentScreen(screen: Screen): Screen | null {
     case "albums":
     case "photographers":
     case "settings":
-    case "cosplan":
-    case "sharepost":
       return { kind: "title" };
+    case "cosplan":
+      // Printing goes back to the board; the board, to the backgrounds.
+      return screen.step === "print" ? { kind: "cosplan", step: "board" } : screen.step ? { kind: "cosplan" } : { kind: "title" };
+    case "sharepost":
+      return screen.step ? { kind: "sharepost" } : { kind: "title" };
     case "photographer":
       return { kind: "photographers" };
     case "albumSelect":

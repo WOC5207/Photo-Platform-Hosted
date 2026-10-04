@@ -1,4 +1,4 @@
-import { cosplanCharacterNames, type CosplanComposition, type CosplanImageLayer, type CosplanSlot } from "./cosplanTypes";
+import { cosplanCharacterNames, type CosplanComposition, type CosplanImageLayer, type CosplanSlot, type CosplanTextLayer } from "./cosplanTypes";
 
 /**
  * Paints a Cosplan poster on a plain 2D canvas, for the 3D site's easel and
@@ -176,13 +176,60 @@ function nameSize(ctx: CanvasRenderingContext2D, text: string, field: { fontSize
   return Math.min(field.fontSize, Math.max(1, field.height - 4) / 1.15, (field.fontSize * Math.max(1, field.width - 4)) / Math.max(1, measured));
 }
 
+/** One piece of a poster, for the 3D site's taken-apart view. */
+export type CosplanPart = { kind: "background" } | { kind: "layer"; id: string } | { kind: "foreground" } | { kind: "names" };
+
+function textBox(layer: CosplanTextLayer): TextBox {
+  return { text: layer.text, size: layer.fontSize, family: layer.fontFamily, bold: layer.bold, fill: layer.fill, align: layer.align, lineHeight: 1.15, padding: 0, width: layer.width, wrap: "word", verticalAlign: "top" };
+}
+
+/** How tall a text layer is drawn, in poster pixels (Konva's height for its wrapped lines). */
+export function cosplanTextHeight(ctx: CanvasRenderingContext2D, layer: CosplanTextLayer): number {
+  ctx.save();
+  ctx.font = font(layer.bold, layer.fontSize, layer.fontFamily);
+  const lines = layer.text ? textLines(ctx, textBox(layer)).length : 1;
+  ctx.restore();
+  return Math.max(1, lines) * layer.fontSize * 1.15;
+}
+
+function paintLayer(ctx: CanvasRenderingContext2D, composition: CosplanComposition, images: CosplanImages, id: string, foreground: boolean) {
+  const layer = composition.layers.find((item) => item.id === id);
+  if (!layer) return;
+  ctx.save();
+  if (layer.type === "image") {
+    const image = images.layers.get(layer.id);
+    const slot = layer.slot ?? composition.slots?.find((item) => item.id === layer.slotId);
+    if (image) {
+      if (slot) clipToSlot(ctx, slot);
+      drawCharacter(ctx, layer, image);
+    }
+    ctx.restore();
+    if (foreground && layer.drawForeground && images.foreground) ctx.drawImage(images.foreground, 0, 0, composition.width, composition.height);
+    return;
+  }
+  ctx.translate(layer.x, layer.y);
+  if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
+  drawText(ctx, textBox(layer));
+  ctx.restore();
+}
+
+function paintNames(ctx: CanvasRenderingContext2D, composition: CosplanComposition) {
+  for (const field of cosplanCharacterNames(composition.slots ?? [], composition.layers)) {
+    const text = field.text.replace(/\s+/g, " ");
+    ctx.save();
+    const size = nameSize(ctx, text, field);
+    ctx.translate(field.x, field.y);
+    drawText(ctx, { text, size, family: "Arial", bold: field.bold, fill: field.fill, align: field.align, lineHeight: 1, padding: 2, width: field.width, height: field.height, wrap: "none", verticalAlign: "middle" });
+    ctx.restore();
+  }
+}
+
 /**
  * Paints the whole poster. `scale` maps poster pixels to canvas pixels
  * (1 for the download, smaller for the easel texture).
  */
 export function renderCosplan(ctx: CanvasRenderingContext2D, composition: CosplanComposition, images: CosplanImages, scale = 1) {
   const { width, height } = composition;
-  const slots = composition.slots ?? [];
   ctx.save();
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.imageSmoothingEnabled = true;
@@ -192,32 +239,27 @@ export function renderCosplan(ctx: CanvasRenderingContext2D, composition: Cospla
   ctx.closePath();
   ctx.fill();
   if (images.background) ctx.drawImage(images.background, 0, 0, width, height);
-  for (const layer of composition.layers) {
-    ctx.save();
-    if (layer.type === "image") {
-      const image = images.layers.get(layer.id);
-      const slot = layer.slot ?? slots.find((item) => item.id === layer.slotId);
-      if (image) {
-        if (slot) clipToSlot(ctx, slot);
-        drawCharacter(ctx, layer, image);
-      }
-      ctx.restore();
-      if (layer.drawForeground && images.foreground) ctx.drawImage(images.foreground, 0, 0, width, height);
-      continue;
-    }
-    ctx.translate(layer.x, layer.y);
-    if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
-    drawText(ctx, { text: layer.text, size: layer.fontSize, family: layer.fontFamily, bold: layer.bold, fill: layer.fill, align: layer.align, lineHeight: 1.15, padding: 0, width: layer.width, wrap: "word", verticalAlign: "top" });
-    ctx.restore();
-  }
-  for (const field of cosplanCharacterNames(slots, composition.layers)) {
-    const text = field.text.replace(/\s+/g, " ");
-    ctx.save();
-    const size = nameSize(ctx, text, field);
-    ctx.translate(field.x, field.y);
-    drawText(ctx, { text, size, family: "Arial", bold: field.bold, fill: field.fill, align: field.align, lineHeight: 1, padding: 2, width: field.width, height: field.height, wrap: "none", verticalAlign: "middle" });
-    ctx.restore();
-  }
+  for (const layer of composition.layers) paintLayer(ctx, composition, images, layer.id, true);
+  paintNames(ctx, composition);
+  ctx.restore();
+}
+
+/** One piece of the poster alone, over transparency (the background over white). */
+export function renderCosplanPart(ctx: CanvasRenderingContext2D, composition: CosplanComposition, images: CosplanImages, part: CosplanPart, scale = 1) {
+  const { width, height } = composition;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  if (part.kind === "background") {
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, width, height);
+    if (images.background) ctx.drawImage(images.background, 0, 0, width, height);
+  } else if (part.kind === "foreground") {
+    if (images.foreground) ctx.drawImage(images.foreground, 0, 0, width, height);
+  } else if (part.kind === "names") paintNames(ctx, composition);
+  else paintLayer(ctx, composition, images, part.id, false);
   ctx.restore();
 }
 

@@ -36,9 +36,14 @@ const routeBudgets = [
   // the homepage, which gzips about 1 KB worse than when they were inlined.
   { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 137 },
   // The poster creators open from the title menu; their poster code and the
-  // easel scene load with the draft, after the panel paints.
-  { label: "3D Cosplan", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/page"], limitKb: 147 },
-  { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/page"], limitKb: 144 }
+  // easel scene load with the draft, after the panel paints. Each creator's
+  // steps share a studio layout that holds the draft, so it counts too. The
+  // Cosplan board carries the arranging and text panels; the Sharepost
+  // credits step reuses the classic editor's credit layers.
+  { label: "3D Cosplan", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/page"], limitKb: 152 },
+  { label: "3D Cosplan board", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/board/page"], limitKb: 158 },
+  { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/page"], limitKb: 148 },
+  { label: "3D Sharepost credits", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/credits/page"], limitKb: 175 }
 ];
 
 for (const budget of routeBudgets) {

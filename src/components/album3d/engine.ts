@@ -98,6 +98,16 @@ export type StageInput =
   | { kind: "swipe"; x: -1 | 0 | 1; y: -1 | 0 | 1 }
   | { kind: "wheel"; direction: 1 | -1 };
 
+/**
+ * Raw pointers and the wheel on the stage, for screens that edit what is on
+ * it (the poster creators). A screen that answers true to "down" or "wheel"
+ * takes that pointer, or that wheel step, and the engine's taps and swipes
+ * leave it alone.
+ */
+export type StageDrag =
+  | { phase: "down" | "move" | "up" | "cancel"; id: number; clientX: number; clientY: number; rect: DOMRect }
+  | { phase: "wheel"; deltaY: number; clientX: number; clientY: number; rect: DOMRect };
+
 /** What the engine needs from a scene module it loads on demand. */
 interface StageModule {
   scene: Scene;
@@ -164,6 +174,8 @@ export interface ArchiveEngine {
   showPoster(): Promise<PosterStage | null>;
   /** Where taps, swipes and the wheel on the board or the deck go. */
   setStageHandler(handler: ((input: StageInput) => void) | null): void;
+  /** Where raw pointers on the stage go first (see StageDrag). */
+  setStageDrag(handler: ((input: StageDrag) => boolean) | null): void;
   dispose(): void;
 }
 
@@ -687,6 +699,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const stages: { board?: Board; deck?: Deck; poster?: PosterStage } = {};
   let stageToken = 0;
   let stageHandler: ((input: StageInput) => void) | null = null;
+  let stageDrag: ((input: StageDrag) => boolean) | null = null;
+  /** Pointers a screen took on "down"; their moves and release go to it. */
+  const dragged = new Set<number>();
   const stageContext = () => ({ renderer, palette, reduced: () => reduced, lowPower, invalidate });
 
   function buildStudy(index: number) {
@@ -1274,6 +1289,11 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   function onPointerDown(e: PointerEvent) {
+    if (mode === "stage" && stageDrag?.({ phase: "down", id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() })) {
+      dragged.add(e.pointerId);
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     if (mode === "carousel" || mode === "table" || mode === "stage") {
       down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, rotation: 0 };
       return;
@@ -1284,6 +1304,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   function onPointerMove(e: PointerEvent) {
+    if (dragged.has(e.pointerId)) {
+      stageDrag?.({ phase: "move", id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() });
+      return;
+    }
     if (mode === "carousel" || mode === "table" || mode === "stage") return stagePointerMove(e);
     if (mode !== "field") return;
     if (down && down.id === e.pointerId && detailTarget && lift.value > 3.3) {
@@ -1307,6 +1331,11 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   function onPointerUp(e: PointerEvent) {
+    if (dragged.delete(e.pointerId)) {
+      const phase = e.type === "pointercancel" ? "cancel" : "up";
+      stageDrag?.({ phase, id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() });
+      return;
+    }
     if (!down || down.id !== e.pointerId) return;
     const dx = e.clientX - down.x;
     const dy = e.clientY - down.y;
@@ -1348,6 +1377,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   function onWheel(e: WheelEvent) {
     if (mode === "study") return;
     e.preventDefault();
+    if (mode === "stage" && stageDrag?.({ phase: "wheel", deltaY: e.deltaY, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() })) return;
     if (mode === "carousel" || mode === "table" || mode === "stage") {
       const now = performance.now();
       if (now - wheelAt < 260 || Math.abs(e.deltaY) < 4) return;
@@ -1465,6 +1495,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     },
     setStageHandler(handler) {
       stageHandler = handler;
+    },
+    setStageDrag(handler) {
+      stageDrag = handler;
+      if (!handler) dragged.clear();
     },
     dispose() {
       disposed = true;

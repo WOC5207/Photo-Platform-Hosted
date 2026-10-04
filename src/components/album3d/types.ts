@@ -1,5 +1,13 @@
 /** Data handed from the server page to the 3D album archive. */
 
+/**
+ * What the poster easel's pick() adds to a rail card's or a layer's index.
+ * Kept here rather than in poster.ts so screens can read them without
+ * pulling three.js into their pages.
+ */
+export const RAIL_PICK = 1000;
+export const LAYER_PICK = 2000;
+
 export interface ArchivePrint {
   thumb: string;
   med: string;

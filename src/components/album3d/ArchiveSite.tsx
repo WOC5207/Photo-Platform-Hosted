@@ -87,6 +87,8 @@ function resolveColor(ctx: CanvasRenderingContext2D, value: string, fallback: st
   return { css: `rgb(${r}, ${g}, ${b})`, luminance: (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 };
 }
 
+const STEP_CRUMBS = { board: "crumbBoard", print: "crumbPrint", layout: "crumbLayout", credits: "crumbCredits" } as const;
+
 function readPalette(element: HTMLElement): EnginePalette {
   const style = getComputedStyle(element);
   const probe = document.createElement("canvas");
@@ -764,8 +766,11 @@ export default function ArchiveSite({
     if (screen.kind !== "booking") crumbs.push({ label: t(screen.kind === "draw" ? "crumbDraw" : "crumbSchedule") });
   }
   else if (screen.kind === "settings") crumbs.push({ label: t("menuSettings") });
-  else if (screen.kind === "cosplan") crumbs.push({ label: t("menuCosplan") });
-  else if (screen.kind === "sharepost") crumbs.push({ label: t("menuPoster") });
+  else if (screen.kind === "cosplan" || screen.kind === "sharepost") {
+    crumbs.push({ label: t(screen.kind === "cosplan" ? "menuCosplan" : "menuPoster"), href: screenPath({ kind: screen.kind }) });
+    if (screen.kind === "cosplan" && screen.step === "print") crumbs.push({ label: t("crumbBoard"), href: screenPath({ kind: "cosplan", step: "board" }) });
+    if (screen.step) crumbs.push({ label: t(STEP_CRUMBS[screen.step]) });
+  }
   crumbs[crumbs.length - 1].href = undefined;
 
   const studyHeader = mode === "study";

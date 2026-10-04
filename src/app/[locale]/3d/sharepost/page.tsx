@@ -1,6 +1,5 @@
-import SharepostScreen from "@/components/album3d/creators/SharepostScreen";
+import SharepostPhotos from "@/components/album3d/creators/sharepost/SharepostPhotos";
 
-// The draft lives in the visitor's browser; the screen reads it there.
 export default function SharepostPage() {
-  return <SharepostScreen />;
+  return <SharepostPhotos />;
 }
