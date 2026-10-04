@@ -328,6 +328,17 @@ export default function ArchiveSite({
     [files, columns, choose, go]
   );
 
+  /** An album's light table; the raised album comes apart on the way. */
+  const openTable = useCallback(
+    (username: string, slug: string) => {
+      const next = () => go({ kind: "table", username, slug });
+      const engine = engineRef.current;
+      if (engine && mode === "detail") engine.openAlbum(next);
+      else next();
+    },
+    [mode, go]
+  );
+
   /** Photographer select: the focused name brings its lane into view. */
   const focusPhotographer = useCallback(
     (index: number) => {
@@ -387,10 +398,13 @@ export default function ArchiveSite({
   );
 
   // Latest callbacks for the engine, which is created once.
-  const handlers = useRef({ step, openDetail, choose, onCard, onPrint });
+  const enterAlbum = useCallback(() => {
+    if (screen.kind === "album" && !screen.study) openTable(screen.username, screen.slug);
+  }, [screen, openTable]);
+  const handlers = useRef({ step, openDetail, choose, onCard, onPrint, enterAlbum });
   useEffect(() => {
-    handlers.current = { step, openDetail, choose, onCard, onPrint };
-  }, [step, openDetail, choose, onCard, onPrint]);
+    handlers.current = { step, openDetail, choose, onCard, onPrint, enterAlbum };
+  }, [step, openDetail, choose, onCard, onPrint, enterAlbum]);
 
   // ----------------------------------------------------------------- engine --
   // Create the engine once; three.js loads only after the overlay is up.
@@ -423,6 +437,7 @@ export default function ArchiveSite({
           archiveLabel: t("archiveLabel"),
           onPick: (index) => handlers.current.choose(index),
           onOpen: (index) => handlers.current.openDetail(index),
+          onEnter: () => handlers.current.enterAlbum(),
           onStep: (move) => handlers.current.step(move.axis, move.direction),
           cards: columns.map((c) => {
             const cover = files[c.fileIndexes[0]]?.prints[0];
@@ -680,7 +695,7 @@ export default function ArchiveSite({
       }
       if (mode === "detail" && e.key === "Enter" && !isInteractive(e.target) && screen.kind === "album") {
         e.preventDefault();
-        go({ kind: "table", username: screen.username, slug: screen.slug });
+        openTable(screen.username, screen.slug);
         return;
       }
       if (mode !== "archive") return;
@@ -703,7 +718,7 @@ export default function ArchiveSite({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go]);
+  }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go, openTable]);
 
   // Controller glyphs replace key names while a controller is in use.
   const key = useCallback(
@@ -1179,6 +1194,11 @@ export default function ArchiveSite({
               <Link
                 href={screenPath({ kind: "table", username: column.username, slug: file.slug })}
                 scroll={false}
+                onClick={(e) => {
+                  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                  e.preventDefault();
+                  openTable(column.username, file.slug);
+                }}
                 className="inline-flex min-h-12 items-center justify-between gap-4 bg-fg px-5 text-sm font-semibold uppercase tracking-[0.08em] text-page transition hover:bg-accent-text"
               >
                 {t("openLightTable")}
