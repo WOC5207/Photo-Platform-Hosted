@@ -6,7 +6,7 @@ import { Link } from "@/i18n/navigation";
 import { screenPath } from "@/lib/siteMode";
 import { Rolling, pad } from "./hud";
 import styles from "./ArchiveSite.module.css";
-import { fileCode, photoRect, type AlbumPhotos, type ArchiveFile } from "./types";
+import { photoRect, type AlbumPhotos, type ArchiveFile } from "./types";
 
 const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle";
 const square = "grid h-11 w-11 shrink-0 place-items-center text-2xl transition hover:bg-accent-surface disabled:opacity-30";
@@ -37,12 +37,11 @@ export function TableScreen({
 }) {
   const t = useTranslations("album3d");
   const total = album?.photos.length ?? 0;
-  const code = fileCode(file.number);
 
   return (
     <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
       <p className={metaLabel}>
-        {code} <span aria-hidden="true" className="mx-2">／</span> {owner}
+        {owner}
       </p>
       <h1 className="mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[3.75rem]">
         {file.title}
@@ -172,7 +171,7 @@ export function PhotoScreen({
           {photo.caption || file.title}
         </h1>
         <p className="font-meta mt-2 text-[0.625rem] uppercase tracking-[0.12em] text-fg-subtle">
-          {fileCode(file.number)} / {owner}
+          {photo.caption ? `${file.title} / ${owner}` : owner}
         </p>
         <div aria-hidden="true" className="mt-5 h-0.5 bg-fg" />
         {photo.comment && <p className="mt-5 whitespace-pre-line text-sm text-fg-muted">{photo.comment}</p>}

@@ -13,7 +13,7 @@ import { GameMenu, Hints, MENU_SCREENS, Rolling, pad, wrap, type MenuItem } from
 import { AlbumPhotosContext } from "./AlbumPhotosFeed";
 import { StageContext } from "./StageContext";
 import styles from "./ArchiveSite.module.css";
-import { fileCode, tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile } from "./types";
+import { tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile } from "./types";
 import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
 
 export type { ArchiveColumn, ArchiveFile, ArchivePrint } from "./types";
@@ -409,7 +409,6 @@ export default function ArchiveSite({
         if (disposed) return;
         const engine = createArchiveEngine(canvas, {
           files: files.map((f) => ({
-            number: f.number,
             column: f.column,
             title: f.title,
             owner: columns[f.column]?.name ?? "",
@@ -738,7 +737,6 @@ export default function ArchiveSite({
     );
   }
 
-  const code = fileCode(file.number);
   const altTitle = file.altTitle && file.altTitle !== file.title ? file.altTitle : "";
   const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle";
   const square = "grid h-11 w-11 shrink-0 place-items-center text-2xl transition hover:bg-accent-surface";
@@ -751,7 +749,7 @@ export default function ArchiveSite({
     crumbs.push({ label: t("menuPhotographers"), href: screenPath({ kind: "photographers" }) });
     crumbs.push({ label: here.name, href: screenPath({ kind: "photographer", username: here.username }) });
     if (albumsHere) crumbs.push({ label: t("menuAlbums"), href: screenPath({ kind: "albumSelect", username: here.username }) });
-    if (inAlbum && "slug" in screen) crumbs.push({ label: code, href: screenPath({ kind: "album", username: here.username, slug: screen.slug, study: false }) });
+    if (inAlbum && "slug" in screen) crumbs.push({ label: file.title, href: screenPath({ kind: "album", username: here.username, slug: screen.slug, study: false }) });
     if (screen.kind === "album" && screen.study) crumbs.push({ label: t("study") });
     if (screen.kind === "table" || screen.kind === "photo") {
       crumbs.push({ label: t("lightTable"), href: screenPath({ kind: "table", username: here.username, slug: screen.slug }) });
@@ -793,6 +791,7 @@ export default function ArchiveSite({
           data-detail={mode === "detail" || mode === "photo"}
           data-overview={overview || mode === "table"}
           data-booking={mode === "booking"}
+          data-archive={mode === "archive" && !overview}
         />
       )}
 
@@ -1008,24 +1007,20 @@ export default function ArchiveSite({
             <p className="font-meta text-[0.5625rem] uppercase tracking-[0.1em] text-fg-subtle sm:text-xs">
               {t("archiveLabel")} <span aria-hidden="true" className="mx-1 sm:mx-3">／</span> {column.name}
             </p>
-            <button
-              type="button"
-              onClick={() => openDetail(selected)}
-              className="group mt-3 flex min-h-11 w-full items-center gap-2 text-left text-xl font-bold tracking-[0.01em] sm:mt-5 wide:text-[1.75rem]"
-            >
-              <span className="whitespace-nowrap">
-                {t("fileNumber").toUpperCase()}: <Rolling value={code} />
-                <span className="sr-only">{code}</span>
-              </span>
-              <span aria-hidden="true" className="ml-auto text-xl transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 wide:ml-12 wide:opacity-0 wide:group-hover:opacity-100">↗</span>
-            </button>
+            <h1 id="album3d-title" className="mt-3 text-xl font-bold tracking-[0.01em] sm:mt-5 wide:text-[1.75rem]">
+              <button
+                type="button"
+                onClick={() => openDetail(selected)}
+                className="group flex min-h-11 w-full items-center gap-2 text-left"
+              >
+                <span className="line-clamp-2 min-w-0 uppercase leading-tight [overflow-wrap:anywhere]">{file.title}</span>
+                <span aria-hidden="true" className="ml-auto text-xl transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 wide:ml-12 wide:opacity-0 wide:group-hover:opacity-100">↗</span>
+              </button>
+            </h1>
             <div aria-hidden="true" className={styles.calloutRule} />
             <div className={styles.calloutBody}>
               <div className="mt-3 flex items-baseline justify-between gap-5 wide:mt-5">
-                <h1 id="album3d-title" className="min-w-0 text-base font-medium leading-snug sm:text-lg">
-                  {file.title}
-                  {altTitle && <span className="block text-xs font-normal text-fg-muted">{altTitle}</span>}
-                </h1>
+                <p className="min-w-0 text-sm text-fg-muted sm:text-base">{altTitle}</p>
                 <p className="font-meta shrink-0 text-[0.625rem] uppercase tracking-[0.1em] text-fg-subtle">
                   {file.dateLabel || t("noDate")}
                 </p>
@@ -1065,7 +1060,7 @@ export default function ArchiveSite({
                   <button
                     type="button"
                     onClick={() => choose(index)}
-                    aria-label={`${fileCode(files[index]?.number ?? 0)} ${files[index]?.title ?? ""}`}
+                    aria-label={files[index]?.title ?? ""}
                     aria-current={index === selected ? "true" : undefined}
                     className="group relative block h-10 w-3.5 max-sm:w-[1.6875rem]"
                   >
@@ -1123,7 +1118,7 @@ export default function ArchiveSite({
 
           <div className={`${styles.caption} flex items-center justify-between gap-3 wide:block`}>
             <div>
-              <p className="text-[0.9375rem] tracking-[-0.03em] sm:text-xl wide:text-[2.3rem]">{code}</p>
+              <p className="line-clamp-2 text-[0.9375rem] leading-tight tracking-[-0.03em] [overflow-wrap:anywhere] sm:text-xl wide:max-w-[18rem] wide:text-[2.3rem]">{file.title}</p>
               <p className="font-meta mt-1 hidden text-[0.5rem] uppercase tracking-[0.18em] text-fg-subtle sm:block wide:mt-2 wide:text-[0.625rem]">
                 {t("archiveLabel")}
               </p>
@@ -1142,7 +1137,7 @@ export default function ArchiveSite({
 
           <article aria-labelledby="album3d-detail-title" className={styles.document}>
             <p className="flex items-center justify-between font-meta text-[0.6875rem] uppercase tracking-[0.14em]">
-              <span>{code}</span>
+              <span>{t("archiveLabel")}</span>
               <span className="text-[0.5625rem] text-fg-subtle">{column.name}</span>
             </p>
             <h1 id="album3d-detail-title" className="mb-2 mt-3 text-[1.6875rem] font-bold leading-[1.12] tracking-[-0.03em] [overflow-wrap:anywhere] wide:mb-3 wide:mt-7 wide:text-[2.5rem]">
@@ -1281,7 +1276,6 @@ export default function ArchiveSite({
               {files.map((f) => (
                 <li key={f.id}>
                   <Link href={f.href} className="flex min-h-12 items-center gap-4 py-3 hover:bg-fg/5">
-                    <span className="font-meta w-16 text-xs">{fileCode(f.number)}</span>
                     <span className="flex-1 font-medium">{f.title}</span>
                     <span className="text-sm text-fg-subtle">{columns[f.column]?.name}</span>
                   </Link>

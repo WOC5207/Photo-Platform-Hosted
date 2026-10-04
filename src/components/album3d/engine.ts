@@ -7,6 +7,7 @@ import {
   FramebufferTexture,
   Fog,
   Group,
+  InstancedBufferAttribute,
   InstancedMesh,
   MathUtils,
   Mesh,
@@ -42,6 +43,7 @@ import {
   settlingWave,
   smooth,
   spring,
+  stairDrop,
   wrap,
   type Spring
 } from "./motion";
@@ -69,7 +71,6 @@ export interface EnginePrint {
 }
 
 export interface EngineFile {
-  number: number;
   column: number;
   title: string;
   owner: string;
@@ -188,7 +189,9 @@ const ROW_SPACING = 0.62;
 const BASE_Y = -4.6;
 const SLOT_Z = -2.17;
 const ROW_ORIGIN = 12;
-const PREVIEW_LIFT = 0.4;
+// The selected album stands far enough out of the stack to show most of its
+// cover; the reference's 0.4 left only a sliver of it above the next card.
+const PREVIEW_LIFT = 2.3;
 const DETAIL_LIFT = 4.05;
 const HOVER_LIFT = 0.28;
 const MAX_ROTATION = 0.8;
@@ -209,6 +212,7 @@ const direction = (yawDeg: number, elevationDeg: number) => {
 const ARCHIVE_DIRECTION = direction(59, 19);
 const DETAIL_DIRECTION = new Vector3(-0.277, 0.238, 0.931).normalize();
 const ARCHIVE_AIM = new Vector3(-1.091, -0.045, 0.481);
+const ARCHIVE_RAISE = 1.4;
 const ARCHIVE_DISTANCE = 140;
 const DETAIL_DISTANCE = 72;
 const ARCHIVE_SPAN = 7.33;
@@ -221,10 +225,6 @@ const STUDY_EXPLODED = new Vector3(9.8, 4.6, 14.5);
 
 type Cell = { lane: number; row: number };
 const cellKey = (c: Cell) => `${c.lane}:${c.row}`;
-
-function fileCode(n: number) {
-  return `NO.${String(n).padStart(3, "0")}`;
-}
 
 /** The card body: origin at the bottom centre, darkening toward its base. */
 function cardGeometry() {
@@ -413,11 +413,18 @@ function buildCassette(
   l.fillRect(390, 26, 90, 12);
   l.font = `600 18px ${palette.fontSans}`;
   l.fillText("INFO", 420, 64);
-  l.font = `500 70px ${palette.fontSans}`;
-  l.fillText(fileCode(file.number), 24, 160);
+  // The album's name where the reference prints its file number, as large
+  // as fits beside the aperture mark.
+  let size = 56;
+  l.font = `600 ${size}px ${palette.fontSans}`;
+  while (size > 30 && l.measureText(file.title).width > 390) {
+    size -= 2;
+    l.font = `600 ${size}px ${palette.fontSans}`;
+  }
+  l.fillText(fitText(l, file.title, 390), 24, 154);
   l.font = `500 22px ${palette.fontSans}`;
   l.fillStyle = "#5a5349";
-  l.fillText(fitText(l, file.title, 380), 26, 200);
+  l.fillText(fitText(l, file.owner.toUpperCase(), 380), 26, 200);
   // An aperture mark where the reference prints its infinity sign.
   l.strokeStyle = "#1c1a16";
   l.lineWidth = 5;
@@ -516,6 +523,96 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   field.add(cards, cardScrews);
   let instanceCells: Cell[] = [];
 
+  // Every other card shows its album's cover behind a light veil, so the
+  // field reads as albums and any of them can be found by its picture. The
+  // covers share one atlas, filled as their cards come into view; when it is
+  // full, the cover seen longest ago gives up its cell.
+  const ATLAS_COLUMNS = 10;
+  const ATLAS_ROWS = 14;
+  const cellW = lowPower ? 102 : 204;
+  const cellH = Math.round((cellW * PHOTO_H) / PHOTO_W);
+  const atlasCanvas = document.createElement("canvas");
+  atlasCanvas.width = ATLAS_COLUMNS * cellW;
+  atlasCanvas.height = ATLAS_ROWS * cellH;
+  const atlasContext = atlasCanvas.getContext("2d") as CanvasRenderingContext2D;
+  const atlas = makeTexture(atlasCanvas, renderer);
+  const slotOf = new Map<number, number>();
+  const slotFile: number[] = [];
+  const slotSeen: number[] = [];
+  const slotReady: boolean[] = [];
+  let atlasDirty = false;
+  let atlasUploaded = 0;
+  function coverSlot(index: number): number {
+    const known = slotOf.get(index);
+    if (known !== undefined) {
+      slotSeen[known] = clock;
+      return slotReady[known] ? known : -1;
+    }
+    const cover = files[index]?.prints[0];
+    if (!cover) return -1;
+    let slot = slotFile.length;
+    if (slot >= ATLAS_COLUMNS * ATLAS_ROWS) {
+      slot = -1;
+      let oldest = clock;
+      for (let i = 0; i < slotSeen.length; i++) {
+        if (slotSeen[i] < oldest) {
+          oldest = slotSeen[i];
+          slot = i;
+        }
+      }
+      if (slot < 0) return -1;
+      slotOf.delete(slotFile[slot]);
+    }
+    slotOf.set(index, slot);
+    slotFile[slot] = index;
+    slotSeen[slot] = clock;
+    slotReady[slot] = false;
+    loadImage(cover.thumb)
+      .then((image) => {
+        if (disposed || slotFile[slot] !== index) return;
+        // Cover crop into the cell, as photoTexture does on the cassette.
+        const x = (slot % ATLAS_COLUMNS) * cellW;
+        const y = Math.floor(slot / ATLAS_COLUMNS) * cellH;
+        const scale = Math.max(cellW / image.naturalWidth, cellH / image.naturalHeight);
+        const sw = cellW / scale;
+        const sh = cellH / scale;
+        atlasContext.drawImage(image, (image.naturalWidth - sw) / 2, (image.naturalHeight - sh) / 2, sw, sh, x, y, cellW, cellH);
+        slotReady[slot] = true;
+        atlasDirty = true;
+        invalidate();
+      })
+      .catch(() => undefined);
+    return -1;
+  }
+  const faceGeo = new PlaneGeometry(PHOTO_W, PHOTO_H);
+  const faceCells = new InstancedBufferAttribute(new Float32Array(MAX_INSTANCES * 4), 4);
+  faceGeo.setAttribute("aCell", faceCells);
+  const veil = { value: 0 };
+  const veilColor = { value: new Color() };
+  const faceMaterial = new MeshStandardMaterial({ map: atlas, roughness: 0.62 });
+  // Just in front of the card face; offset the depth test, not the geometry.
+  faceMaterial.polygonOffset = true;
+  faceMaterial.polygonOffsetFactor = -1;
+  faceMaterial.polygonOffsetUnits = -2;
+  faceMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.uVeil = veil;
+    shader.uniforms.uVeilColor = veilColor;
+    shader.vertexShader = `attribute vec4 aCell;\n${shader.vertexShader}`.replace(
+      "#include <uv_vertex>",
+      "#include <uv_vertex>\n  vMapUv = aCell.xy + uv * aCell.zw;"
+    );
+    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\n${shader.fragmentShader}`.replace(
+      "#include <map_fragment>",
+      "#include <map_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, uVeilColor, uVeil);"
+    );
+  };
+  faceMaterial.customProgramCacheKey = () => "album-archive-faces";
+  const faces = new InstancedMesh(faceGeo, faceMaterial, MAX_INSTANCES);
+  faces.receiveShadow = !lowPower;
+  faces.frustumCulled = false;
+  faces.count = 0;
+  field.add(faces);
+
   // Files lie on an endless grid: lanes wrap over photographers and rows wrap
   // over that photographer's albums.
   const columnCount = Math.max(1, columns.length);
@@ -550,7 +647,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let detail = 0;
   let overviewTarget = false;
   let overview = 0;
-  let clarityTarget = 0;
   let clock = performance.now() / 1000;
 
   // The selected card is a full cassette; every other card is an instance.
@@ -636,10 +732,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (next) {
       sharpenSelected?.();
       sharpenSelected = null;
-    } else {
-      targetRotation = 0;
-      clarityTarget = 0;
-    }
+    } else targetRotation = 0;
     invalidate();
   }
 
@@ -833,6 +926,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       ? toColor(palette.raised).lerp(toColor(palette.surface), 0.3)
       : toColor(palette.raised).lerp(page, 0.25);
     cardMaterial.color.copy(card);
+    veilColor.value.copy(card);
     screwMaterial.color.copy(toColor(palette.subtle)).lerp(card, 0.3);
     for (const lights of [fieldLights, studyLights]) {
       lights.hemi.intensity = palette.dark ? 0.35 : 0.65;
@@ -887,7 +981,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const origin = new Vector3();
 
   function height3(row: number, lane: number) {
-    const ridge = settlingWave(row - shoulder.value) * columnStrength(lane, laneFocus.value);
+    const ridge = (settlingWave(row - shoulder.value) - stairDrop(row - shoulder.value)) * columnStrength(lane, laneFocus.value);
     let ripple = 0;
     for (const p of pulses) ripple += selectionWave(Math.hypot(row - p.row, (lane - p.lane) * 2.2), clock - p.time);
     const breathing = idleGain > 0 ? idleWave(row, lane, clock) * idleGain : 0;
@@ -935,14 +1029,15 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     else idleGain = 0;
 
     const detailGoal = detailTarget
-      ? smooth((lift.value - 0.8) / 2.4)
+      ? smooth((lift.value - PREVIEW_LIFT) / (DETAIL_LIFT - 0.85 - PREVIEW_LIFT))
       : smooth((lift.value - PREVIEW_LIFT) / (DETAIL_LIFT - PREVIEW_LIFT));
     detail = reduced ? detailGoal : MathUtils.lerp(detail, detailGoal, 1 - Math.exp(-dt * 10));
     if (Math.abs(detail - detailGoal) > 1e-3) moving = true;
     else detail = detailGoal;
 
-    // The cover clears once the card is fully up, from the top down.
-    if (detailTarget && detail > 0.78 && lift.value > 3.3) clarityTarget = 1;
+    // The frosted cover clears from the top down once the card stands out of
+    // the stack, and frosts again as it sinks back.
+    const clarityTarget = !overviewTarget && lift.value > PREVIEW_LIFT - 0.5 ? 1 : 0;
     if (selected) {
       const c = selected.clarity;
       const next = reduced ? clarityTarget : MathUtils.lerp(c.value, clarityTarget, 1 - Math.exp(-dt * (clarityTarget ? 1.8 : 9)));
@@ -966,6 +1061,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const centerLane = Math.round(trackX.value / COLUMN_SPACING);
     const centerRow = Math.round((SLOT_Z - rail.value) / ROW_SPACING);
     let count = 0;
+    let faceCount = 0;
     instanceCells = [];
     // Nearest first (the camera sits on the -x, +z side), so the depth test
     // rejects the hidden faces of the dense stack instead of shading them.
@@ -984,11 +1080,37 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         cardScrews.setMatrixAt(count, dummy.matrix);
         instanceCells.push({ lane, row });
         count += 1;
+        const slot = coverSlot(fileAt({ lane, row }));
+        if (slot >= 0) {
+          // Where the cassette holds its front print.
+          dummy.position.set(x + 0.12, y + CARD_H / 2 + 0.02, z + CARD_D / 2);
+          dummy.updateMatrix();
+          faces.setMatrixAt(faceCount, dummy.matrix);
+          // The cell, inset half a pixel against bleeding from its neighbours.
+          const u = ((slot % ATLAS_COLUMNS) * cellW + 0.5) / atlasCanvas.width;
+          const v = 1 - ((Math.floor(slot / ATLAS_COLUMNS) + 1) * cellH - 0.5) / atlasCanvas.height;
+          faceCells.setXYZW(faceCount, u, v, (cellW - 1) / atlasCanvas.width, (cellH - 1) / atlasCanvas.height);
+          faceCount += 1;
+        }
       }
     }
     cards.count = cardScrews.count = count;
     cards.instanceMatrix.needsUpdate = true;
     cardScrews.instanceMatrix.needsUpdate = true;
+    faces.count = faceCount;
+    faces.instanceMatrix.needsUpdate = true;
+    faceCells.needsUpdate = true;
+    // Covers arrive one by one; upload the atlas a few times a second at most.
+    if (atlasDirty) {
+      if (clock - atlasUploaded > 0.25) {
+        atlas.needsUpdate = true;
+        atlasDirty = false;
+        atlasUploaded = clock;
+      }
+      moving = true;
+    }
+    // Menus quiet the covers down to plain cards behind their text.
+    veil.value = MathUtils.lerp(0.16, 1, overview);
 
     cardPosition.set(
       selectedCell.lane * COLUMN_SPACING - trackX.value,
@@ -1010,7 +1132,12 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (f.portrait) {
       aim.set(0, BASE_Y + settlingWave(0) + PREVIEW_LIFT + CARD_H / 2, SLOT_Z);
       aim.addScaledVector(up, ((f.previewY - 0.5) * height) / pixelScale);
-    } else aim.copy(ARCHIVE_AIM);
+    } else {
+      // Look a little higher than the reference so the standing card keeps
+      // its top in frame; menus drop back to the reference view.
+      aim.copy(ARCHIVE_AIM);
+      aim.y += ARCHIVE_RAISE * (1 - overview);
+    }
     detailAim.copy(cardPosition).setY(cardPosition.y + CARD_H / 2);
     detailAim.addScaledVector(right, ((0.5 - f.detailX) * width) / pixelScale);
     detailAim.addScaledVector(up, ((f.detailY - 0.5) * height) / pixelScale);
@@ -1527,10 +1654,11 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       stages.board?.dispose();
       stages.deck?.dispose();
       stages.poster?.dispose();
-      for (const thing of [cardGeo, screwGeo, cardMaterial, screwMaterial, fieldLights.environment, studyLights.environment])
+      for (const thing of [cardGeo, screwGeo, cardMaterial, screwMaterial, faceGeo, faceMaterial, atlas, fieldLights.environment, studyLights.environment])
         thing.dispose();
       cards.dispose();
       cardScrews.dispose();
+      faces.dispose();
       renderer.dispose();
     }
   };

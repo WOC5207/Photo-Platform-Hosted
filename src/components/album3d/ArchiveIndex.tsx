@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import Dialog from "@/components/ui/Dialog";
-import { fileCode, type ArchiveColumn, type ArchiveFile } from "./types";
+import { type ArchiveColumn, type ArchiveFile } from "./types";
 
 /**
  * The archive's search overlay: filter by photographer, match album titles in
- * either language, photographer names, or a file number ("12", "NO.012").
+ * either language or photographer names.
  */
 export default function ArchiveIndex({
   open,
@@ -36,14 +36,12 @@ export default function ArchiveIndex({
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const number = Number(q.replace(/^no\.?\s*/, ""));
     return files
       .map((file, index) => ({ file, index }))
       .filter(({ file }) => column === null || file.column === column)
       .filter(({ file }) => {
         if (!q) return true;
-        if (Number.isInteger(number) && number > 0 && file.number === number) return true;
-        return [file.title, file.altTitle, columns[file.column]?.name ?? "", fileCode(file.number)]
+        return [file.title, file.altTitle, columns[file.column]?.name ?? ""]
           .some((text) => text.toLowerCase().includes(q));
       });
   }, [files, columns, query, column]);
@@ -106,8 +104,7 @@ export default function ArchiveIndex({
         ))}
       </div>
 
-      <div className="mt-3 hidden grid-cols-[5rem_1fr_10rem_5rem_2.75rem] border-b border-border pb-2 font-meta text-[0.5625rem] uppercase tracking-[0.14em] text-fg-subtle sm:grid">
-        <span>{t("colFile")}</span>
+      <div className="mt-3 hidden grid-cols-[1fr_10rem_5rem_2.75rem] border-b border-border pb-2 font-meta text-[0.5625rem] uppercase tracking-[0.14em] text-fg-subtle sm:grid">
         <span>{t("colAlbum")}</span>
         <span>{t("colPhotographer")}</span>
         <span>{t("colPhotos")}</span>
@@ -123,9 +120,8 @@ export default function ArchiveIndex({
               <button
                 type="button"
                 onClick={() => onSelect(index)}
-                className="grid min-h-14 grid-cols-[4.5rem_1fr] items-center gap-x-2 py-2 text-left hover:bg-fg/5 sm:grid-cols-[5rem_1fr_10rem_5rem]"
+                className="grid min-h-14 grid-cols-[1fr] items-center gap-x-2 py-2 text-left hover:bg-fg/5 sm:grid-cols-[1fr_10rem_5rem]"
               >
-                <span className="font-meta text-xs">{fileCode(file.number)}</span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">{file.title}</span>
                   {file.altTitle && file.altTitle !== file.title && (

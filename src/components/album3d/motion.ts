@@ -27,6 +27,15 @@ export function settlingWave(distance: number, time = 26.56) {
   return envelope * (rise + 0.18 * ring * smooth(age / 0.16));
 }
 
+/**
+ * Rows in front of the selection step down toward the viewer, the nearest
+ * steps the deepest, so each card there shows a band of its cover above
+ * the next one.
+ */
+export function stairDrop(distance: number) {
+  return distance > 0 ? 4 * (1 - Math.exp(-distance / 4)) : 0;
+}
+
 /** The ripple that runs outward from a newly selected file. */
 export function selectionWave(distance: number, age: number) {
   if (age < 0 || age > 3.2) return 0;

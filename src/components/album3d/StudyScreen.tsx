@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { pad } from "./hud";
 import styles from "./ArchiveSite.module.css";
-import { fileCode, type ArchiveFile } from "./types";
+import type { ArchiveFile } from "./types";
 
 const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle";
 
@@ -34,7 +34,6 @@ export default function StudyScreen({
   onReset: () => void;
 }) {
   const t = useTranslations("album3d");
-  const code = fileCode(file.number);
   const parts = [
     t("partScrews"),
     t("partCover"),
@@ -60,7 +59,7 @@ export default function StudyScreen({
           <p className={metaLabel}>{t("archiveLabel")} / {t("study")}</p>
           <h1 className="mb-2 mt-2.5 text-[1.9rem] font-semibold">{file.title}</h1>
           <p className="font-meta text-[0.6875rem] uppercase tracking-[0.08em] text-fg-subtle">
-            {code} / {owner}
+            {owner}
           </p>
         </div>
         <p aria-hidden="true" className="ml-auto hidden text-[3.625rem] font-light leading-none text-fg-muted wide:block">
@@ -69,7 +68,7 @@ export default function StudyScreen({
       </header>
 
       <div className="pointer-events-none absolute inset-x-[var(--edge)] top-20 wide:hidden">
-        <p className={metaLabel}>{code} / {owner}</p>
+        <p className={metaLabel}>{owner}</p>
         <h1 aria-hidden="true" className="mt-1 text-lg font-semibold">{file.title}</h1>
       </div>
 

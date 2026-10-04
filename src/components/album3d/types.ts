@@ -38,10 +38,6 @@ export interface ArchiveColumn {
   fileIndexes: number[];
 }
 
-export function fileCode(n: number): string {
-  return `NO.${String(n).padStart(3, "0")}`;
-}
-
 /** One photo of an album, for the light table and the photo screen. */
 export interface TablePhoto {
   id: string;
