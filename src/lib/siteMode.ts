@@ -22,6 +22,7 @@ export type Screen =
   | { kind: "albums" }
   | { kind: "photographers" }
   | { kind: "settings" }
+  | { kind: "login" }
   | { kind: "cosplan"; step?: CosplanStep }
   | { kind: "sharepost"; step?: SharepostStep }
   | { kind: "photographer"; username: string }
@@ -67,6 +68,7 @@ export function parseScreen(path: string): Screen | null {
   if (rest.length === 1 && rest[0] === "albums") return { kind: "albums" };
   if (rest.length === 1 && rest[0] === "photographers") return { kind: "photographers" };
   if (rest.length === 1 && rest[0] === "settings") return { kind: "settings" };
+  if (rest.length === 1 && rest[0] === "login") return { kind: "login" };
   if (rest.length === 1 && rest[0] === "cosplan") return { kind: "cosplan" };
   if (rest.length === 1 && rest[0] === "sharepost") return { kind: "sharepost" };
   if (rest.length === 2 && rest[0] === "cosplan" && (COSPLAN_STEPS as readonly string[]).includes(rest[1])) {
@@ -106,6 +108,8 @@ export function screenPath(screen: Screen): string {
       return `${THREE_D_ROOT}/photographers`;
     case "settings":
       return `${THREE_D_ROOT}/settings`;
+    case "login":
+      return `${THREE_D_ROOT}/login`;
     case "cosplan":
     case "sharepost":
       return `${THREE_D_ROOT}/${screen.kind}${screen.step ? `/${screen.step}` : ""}`;
@@ -135,6 +139,7 @@ export function parentScreen(screen: Screen): Screen | null {
     case "albums":
     case "photographers":
     case "settings":
+    case "login":
       return { kind: "title" };
     case "cosplan":
       // Printing goes back to the board; the board, to the backgrounds.
@@ -175,6 +180,8 @@ export function classicTwin(path: string): string {
     case "photographers":
     case "settings":
       return "/";
+    case "login":
+      return "/login";
     case "cosplan":
       return "/cosplan";
     case "sharepost":
@@ -206,6 +213,7 @@ export function threeDTwin(path: string): string {
   // The creators keep their drafts in the browser, so both sides open the same one.
   if (parts.length === 1 && parts[0] === "cosplan") return screenPath({ kind: "cosplan" });
   if (parts.length === 1 && parts[0] === "sharing-poster") return screenPath({ kind: "sharepost" });
+  if (parts.length === 1 && parts[0] === "login") return screenPath({ kind: "login" });
   // Booking and draw links name only their token; /3d/book/<token> looks up
   // the photographer and forwards to their address.
   if ((parts[0] === "book" || parts[0] === "draw") && parts[1] && TOKEN.test(parts[1]) && parts.length === 2) {

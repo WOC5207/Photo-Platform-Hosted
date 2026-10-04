@@ -534,6 +534,7 @@ export default function ArchiveSite({
     },
     { key: "cosplan", label: t("menuCosplan"), sub: t("menuCosplanSub"), run: () => go({ kind: "cosplan" }) },
     { key: "poster", label: t("menuPoster"), sub: t("menuPosterSub"), run: () => go({ kind: "sharepost" }) },
+    { key: "login", label: t("menuLogin"), sub: t("menuLoginSub"), run: () => go({ kind: "login" }) },
     { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), run: () => go({ kind: "settings" }) },
     { key: "classic", label: t("menuClassic"), sub: t("menuClassicSub"), external: true, run: () => leaveFor("classic", "/") }
   ];
@@ -674,6 +675,8 @@ export default function ArchiveSite({
         }
         return;
       }
+      // The login screen's form and menu take their own keys.
+      if (screen.kind === "login") return;
       if (mode === "table" && albumHere && albumHere.photos.length > 0) {
         const columnsAcross = tableColumns(window.innerWidth, window.innerHeight);
         const moves: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columnsAcross, ArrowDown: columnsAcross };
@@ -782,6 +785,7 @@ export default function ArchiveSite({
     if (screen.kind !== "booking") crumbs.push({ label: t(screen.kind === "draw" ? "crumbDraw" : "crumbSchedule") });
   }
   else if (screen.kind === "settings") crumbs.push({ label: t("menuSettings") });
+  else if (screen.kind === "login") crumbs.push({ label: t("menuLogin") });
   else if (screen.kind === "cosplan" || screen.kind === "sharepost") {
     crumbs.push({ label: t(screen.kind === "cosplan" ? "menuCosplan" : "menuPoster"), href: screenPath({ kind: screen.kind }) });
     if (screen.kind === "cosplan" && screen.step === "print") crumbs.push({ label: t("crumbBoard"), href: screenPath({ kind: "cosplan", step: "board" }) });
