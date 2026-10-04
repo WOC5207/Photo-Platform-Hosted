@@ -2374,6 +2374,10 @@
     "drawClassic": "经典版抽奖页面",
     "drawEntered": "报名成功！请保存你的编号，以便回来查看抽奖。",
     "hintPrize": "奖品",
-    "hintDraw": "抽取"
+    "hintDraw": "抽取",
+    "creatorStepPhotos": "照片",
+    "creatorStepsLabel": "分享海报步骤",
+    "creatorBack": "返回",
+    "creatorNextStep": "下一步：{step}"
   }
 }

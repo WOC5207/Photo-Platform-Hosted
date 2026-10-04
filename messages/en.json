@@ -2374,6 +2374,10 @@
     "drawClassic": "Classic prize draw page",
     "drawEntered": "You're entered. Keep your token to come back to this draw.",
     "hintPrize": "prizes",
-    "hintDraw": "draw"
+    "hintDraw": "draw",
+    "creatorStepPhotos": "Photos",
+    "creatorStepsLabel": "Sharepost steps",
+    "creatorBack": "Back",
+    "creatorNextStep": "Next: {step}"
   }
 }

@@ -10,6 +10,7 @@ import { RAIL_PICK } from "../../types";
 import { paintBlankPoster } from "../shared";
 import { photoAt, useMatPaint } from "./mat";
 import { useSharepostStudio } from "./SharepostStudio";
+import { SharepostSteps } from "./SharepostSteps";
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif";
 
@@ -145,6 +146,7 @@ export default function SharepostPhotos() {
         }}
       />
       <BookingPanel>
+        <SharepostSteps current="photos" />
         <p className={metaLabel}>
           {t("menuPoster")}
           <span aria-hidden="true" className="mx-2">／</span>
