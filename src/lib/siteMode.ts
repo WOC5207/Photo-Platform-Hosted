@@ -47,7 +47,10 @@ export type Screen =
  * names the item), "categories", "contact" (the QR page's contact details)
  * and "labels" (the QR label sheet) under it. "preparation" lists their
  * packing checklists, "checklist" is one of them (`id`), and "slotSheet" is
- * their booked slots to mark finished.
+ * their booked slots to mark finished. "posters" lists their saved
+ * Sharepost posters, and "poster" (`id`) opens one in the editor, whose
+ * steps follow. "credits", "storage" and "site" are their credit profiles,
+ * disk use and site settings, with a page per settings group under "site".
  */
 export type StudioPage = keyof typeof STUDIO;
 
@@ -78,7 +81,22 @@ const STUDIO = {
   // The classic preparation pages are tabs: booked slots and checklists.
   preparation: ["/preparation", "home", "/preparation/equipment"],
   slotSheet: ["/preparation/slots", "preparation"],
-  checklist: ["/preparation/:id", "preparation", "/preparation/equipment/:id"]
+  checklist: ["/preparation/:id", "preparation", "/preparation/equipment/:id"],
+  // A saved Sharepost opens in the 3D editor; its steps are one classic page.
+  posters: ["/posters", "home", "/sharing-posters"],
+  poster: ["/posters/:id", "posters", "/sharing-posters/:id"],
+  posterLayout: ["/posters/:id/layout", "poster", "/sharing-posters/:id"],
+  posterCredits: ["/posters/:id/credits", "posterLayout", "/sharing-posters/:id"],
+  posterPrint: ["/posters/:id/print", "posterCredits", "/sharing-posters/:id"],
+  credits: ["/credits", "home"],
+  storage: ["/storage", "home"],
+  // The classic settings page is tabs; each is a page here, under a menu.
+  siteAppearance: ["/site/appearance", "site", "/settings?section=appearance"],
+  siteHomepage: ["/site/homepage", "site", "/settings?section=homepage"],
+  siteContact: ["/site/contact", "site", "/settings?section=contact"],
+  siteFeatures: ["/site/features", "site", "/settings?section=features"],
+  account: ["/site/account", "site", "/settings?section=profile"],
+  site: ["/site", "home", "/settings"]
 } as const satisfies Record<string, readonly [string, string | null, string?]>;
 
 /**
@@ -143,13 +161,21 @@ export function parseScreen(path: string): Screen | null {
   return null;
 }
 
-/** The Dashboard page at these segments under /studio, or (`classic`) under /dashboard. */
-function matchStudio(rest: string[], classic = false): { page: StudioPage; id?: string } | null {
-  for (const [page, [tail, , twin]] of Object.entries(STUDIO) as [StudioPage, readonly [string, string | null, string?]][]) {
-    const want = (classic ? (twin ?? tail) : tail).split("?")[0].split("/").filter(Boolean);
-    if (want.length !== rest.length) continue;
-    const at = want.indexOf(":id");
-    if (want.every((part, i) => (i === at ? SEGMENT.test(rest[i]) : part === rest[i]))) return at < 0 ? { page } : { page, id: rest[at] };
+/**
+ * The Dashboard page at these segments under /studio, or (`classic`) under
+ * /dashboard, where a twin with a query (a classic tab) needs that query.
+ */
+function matchStudio(rest: string[], classic?: URLSearchParams): { page: StudioPage; id?: string } | null {
+  // Tabs first, so a tab's page wins over the page it is a tab of.
+  for (const tabbed of [true, false]) {
+    for (const [page, [tail, , twin]] of Object.entries(STUDIO) as [StudioPage, readonly [string, string | null, string?]][]) {
+      const [path, tab] = (classic ? (twin ?? tail) : tail).split("?");
+      if (!tab === tabbed || (tab && [...new URLSearchParams(tab)].some(([k, v]) => classic?.get(k) !== v))) continue;
+      const want = path.split("/").filter(Boolean);
+      if (want.length !== rest.length) continue;
+      const at = want.indexOf(":id");
+      if (want.every((part, i) => (i === at ? SEGMENT.test(rest[i]) : part === rest[i]))) return at < 0 ? { page } : { page, id: rest[at] };
+    }
   }
   return null;
 }
@@ -325,13 +351,13 @@ function studioFromClassic(rest: string[], path: string): string {
   if (rest[0] === "bookings" && rest[1] === "new") return "/events/new";
   const query = new URLSearchParams(path.split("?")[1]?.split("#")[0] ?? "");
   for (let n = rest.length; n > 0; n--) {
-    for (const classic of [true, false]) {
+    for (const classic of [query, undefined]) {
       const match = matchStudio(rest.slice(0, n), classic);
       if (!match) continue;
       let { page } = match;
-      // The classic booking page's overview and advanced tabs hold the settings,
-      // and the classic event page opens on its photo manager with #photos.
-      if (page === "booking" && /^(overview|advanced)$/.test(query.get("section") ?? "")) page = "bookingDetails";
+      // The classic booking page's advanced tab holds settings too, and the
+      // classic event page opens on its photo manager with #photos.
+      if (page === "booking" && query.get("section") === "advanced") page = "bookingDetails";
       if (page === "event" && path.includes("#photos")) page = "photos";
       // The classic preparation tabs narrow to one event with ?event=; so do these.
       const event = query.get("event");

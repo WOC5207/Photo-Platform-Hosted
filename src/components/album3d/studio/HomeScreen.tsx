@@ -12,8 +12,8 @@ import type { StudioHome } from "./types";
 
 /**
  * The 3D Dashboard's menu: the photographer's numbers, the platform's
- * notices, and every section of their backend. Sections without a 3D screen
- * yet open on the classic dashboard.
+ * notices, and every section of their backend. Administration still opens
+ * on the classic site.
  */
 export default function HomeScreen({ home }: { home: StudioHome }) {
   const t = useTranslations("album3d");
@@ -56,11 +56,12 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
       sub: t("studioEquipmentSub"),
       run: () => go({ kind: "studio", username, page: "equipment" })
     },
-    classic("posters", ta("sharingPosters"), "/dashboard/sharing-posters"),
-    classic("credits", ta("credits", { term: home.creditTerm }), "/dashboard/credits"),
-    classic("site", ta("site"), "/dashboard/settings"),
-    classic("storage", ta("myStorage"), "/dashboard/storage"),
-    classic("account", ta("account"), "/dashboard/account"),
+    ...(["posters", "credits", "site", "storage", "account"] as const).map((page) => ({
+      key: page,
+      label: page === "posters" ? ta("sharingPosters") : page === "credits" ? ta("credits", { term: home.creditTerm }) : t(`studioCrumbs.${page}`),
+      sub: page === "storage" ? t("studioStorage", { used: formatBytes(home.usedBytes), total: formatBytes(home.quotaBytes) }) : t(`studioSub.${page}`),
+      run: () => go({ kind: "studio", username, page })
+    })),
     ...(home.account.admin ? [classic("admin", t("loginAdmin"), "/admin")] : []),
     ...(home.listed
       ? [{ key: "archive", label: t("loginArchive"), sub: `@${username}`, run: () => go({ kind: "photographer", username }) }]

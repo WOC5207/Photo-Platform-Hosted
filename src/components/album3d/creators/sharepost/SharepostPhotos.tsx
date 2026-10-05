@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { GameMenu, Hints, pad, wrap, type MenuItem } from "../../hud";
@@ -13,6 +13,8 @@ import { useSharepostStudio } from "./SharepostStudio";
 import { SharepostSteps } from "./SharepostSteps";
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif";
+// Only a saved project picks from galleries, so the public creator never loads it.
+const SharepostGallery = lazy(() => import("./SharepostGallery"));
 
 /**
  * Create Sharepost, first screen: the poster stands on the easel, laid out
@@ -31,6 +33,7 @@ export default function SharepostPhotos() {
   const [focus, setFocus] = useState(0);
   const [menuFocus, setMenuFocus] = useState(0);
   const [drag, setDrag] = useState<{ id: string; over: string | null; moved: boolean } | null>(null);
+  const [picking, setPicking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const max = tools?.SHARING_POSTER_MAX_PHOTOS ?? 9;
   const at = Math.min(focus, Math.max(0, photos.length - 1));
@@ -66,7 +69,7 @@ export default function SharepostPhotos() {
       key: "add",
       label: studio.reading ? ts("localReading", studio.reading) : ts("localAddButton"),
       sub: `${photos.length} / ${max}`,
-      run: () => photos.length < max && !studio.reading && inputRef.current?.click()
+      run: () => (studio.project ? setPicking(!picking) : photos.length < max && !studio.reading && inputRef.current?.click())
     },
     ...(focused && photos.length > 1
       ? [
@@ -75,10 +78,10 @@ export default function SharepostPhotos() {
         ]
       : []),
     ...(focused ? [{ key: "remove", label: ts("removePhoto"), sub: `${pad(at + 1)} / ${pad(photos.length)}`, run: () => studio.removePhoto(focused.photoId) }] : []),
-    { key: "layout", label: t("creatorLayout"), sub: t("creatorLayoutSub"), run: () => go({ kind: "sharepost", step: "layout" }) },
-    { key: "credits", label: t("creatorCredits"), sub: t("creatorCreditsSub"), run: () => go({ kind: "sharepost", step: "credits" }) },
-    ...(photos.length ? [{ key: "print", label: t("creatorPrint"), sub: t("creatorPrintSharepostSub"), run: () => go({ kind: "sharepost", step: "print" }) }] : []),
-    { key: "classic", label: t("creatorEditClassic"), sub: t("creatorEditClassicSub"), external: true, run: () => router.push("/sharing-poster") }
+    { key: "layout", label: t("creatorLayout"), sub: t("creatorLayoutSub"), run: () => go(studio.screen("layout")) },
+    { key: "credits", label: t("creatorCredits"), sub: t("creatorCreditsSub"), run: () => go(studio.screen("credits")) },
+    ...(photos.length ? [{ key: "print", label: t("creatorPrint"), sub: t("creatorPrintSharepostSub"), run: () => go(studio.screen("print")) }] : []),
+    { key: "classic", label: t("creatorEditClassic"), sub: t("creatorEditClassicSub"), external: true, run: () => router.push(studio.classicHref) }
   ];
   const menuAt = Math.min(menuFocus, items.length - 1);
 
@@ -166,6 +169,11 @@ export default function SharepostPhotos() {
               </div>
             )}
             <GameMenu label={t("menuPoster")} className="mt-4" focus={menuAt} onFocus={setMenuFocus} items={items} />
+            {picking && (
+              <Suspense fallback={null}>
+                <SharepostGallery onClose={() => setPicking(false)} />
+              </Suspense>
+            )}
             <p aria-live="polite" className="mt-3 min-h-5 text-sm text-fg-muted">
               {studio.readNotice.failed > 0 && <span className="block text-danger">{ts("localReadError", { count: studio.readNotice.failed })}</span>}
               {studio.readNotice.skipped > 0 && <span className="block">{ts("localSkipped", { count: studio.readNotice.skipped })}</span>}
@@ -188,10 +196,19 @@ export default function SharepostPhotos() {
 /** Whether the draft is kept in this browser yet, and the way to keep it when the name is empty. */
 export function SaveState() {
   const ts = useTranslations("sharingPosters");
-  const { saved, name } = useSharepostStudio();
+  const { saved, name, project } = useSharepostStudio();
+  if (saved === "conflict")
+    return (
+      <p role="alert" className="mt-2 text-sm text-danger">
+        {ts("saveConflict")}. {ts("conflictHint")}{" "}
+        <button type="button" onClick={() => window.location.reload()} className="underline underline-offset-4">
+          {ts("reload")}
+        </button>
+      </p>
+    );
   return (
     <p role="status" className="font-meta mt-2 text-[0.625rem] uppercase tracking-[0.12em] text-fg-subtle">
-      {!name.trim() ? ts("projectNameRequired") : saved === "saved" ? ts("localSaved") : saved === "error" ? ts("saveError") : saved === "dirty" ? ts("unsaved") : ""}
+      {!name.trim() ? ts("projectNameRequired") : saved === "saved" ? ts(project ? "saved" : "localSaved") : saved === "error" ? ts("saveError") : saved === "dirty" ? ts("unsaved") : ""}
     </p>
   );
 }

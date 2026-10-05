@@ -8,7 +8,7 @@ import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
 import EmptyState from "@/components/ui/EmptyState";
 import SiteModeSwitch, { useLeaveFor } from "@/components/SiteModeSwitch";
-import { classicTwin, parentScreen, parseScreen, screenPath, type Screen, type StudioPage } from "@/lib/siteMode";
+import { classicTwin, parentScreen, parseScreen, screenPath, type Screen } from "@/lib/siteMode";
 import { GameMenu, Hints, MENU_SCREENS, Rolling, pad, wrap, type MenuItem } from "./hud";
 import { AlbumPhotosContext } from "./AlbumPhotosFeed";
 import { StageContext } from "./StageContext";
@@ -24,29 +24,6 @@ type MotionPreference = "system" | "reduced" | "full";
 type ThemePreference = "system" | "light" | "dark";
 
 const MOTION_KEY = "album3d-motion";
-
-/** Each Dashboard page's crumb. */
-const STUDIO_CRUMBS = {
-  home: "studioTitle",
-  events: "studioEvents",
-  new: "studioNewEvent",
-  event: "studioEvent",
-  photos: "studioPhotos",
-  upload: "studioUpload",
-  bookings: "studioBookings",
-  booking: "studioBooking",
-  bookingDetails: "studioBookingDetails",
-  lottery: "studioLottery",
-  equipment: "studioEquipment",
-  equipmentNew: "studioGearNew",
-  equipmentItem: "studioGear",
-  categories: "studioCategories",
-  contact: "studioContact",
-  labels: "studioLabels",
-  preparation: "studioPreparation",
-  checklist: "studioChecklist",
-  slotSheet: "studioSlotSheet"
-} as const satisfies Record<StudioPage, string>;
 
 // The photo screens load with their own chunk, only when visited.
 // The search overlay loads the first time it opens.
@@ -185,7 +162,8 @@ export default function ArchiveSite({
   const photoIndex = screen.kind === "photo" && albumHere ? albumHere.photos.findIndex((p) => p.id === screen.photoId) : -1;
   // Booking and the poster creators draw their own panels, from their pages (see StageContext).
   const booking = screen.kind === "booking" || screen.kind === "book" || screen.kind === "draw";
-  const creator = screen.kind === "cosplan" || screen.kind === "sharepost";
+  // A saved poster opens in the Sharepost editor, which needs the easel as the creators do.
+  const creator = screen.kind === "cosplan" || screen.kind === "sharepost" || (screen.kind === "studio" && /^poster(?!s)/.test(screen.page));
   // The Dashboard's pages draw their own panels too; its home is a menu.
   const studio = screen.kind === "studio";
   const studioHome = studio && screen.page === "home";
@@ -797,7 +775,8 @@ export default function ArchiveSite({
     const trail: Extract<Screen, { kind: "studio" }>[] = [];
     for (let at: Screen | null = screen; at?.kind === "studio"; at = parentScreen(at)) trail.unshift(at);
     for (const at of trail) {
-      crumbs.push({ label: t(STUDIO_CRUMBS[at.page]), href: at === screen ? undefined : screenPath(at) });
+      // Each page's crumb is album3d.studioCrumbs.<page>.
+      crumbs.push({ label: t(`studioCrumbs.${at.page}`), href: at === screen ? undefined : screenPath(at) });
     }
   } else if (here && !missing) {
     crumbs.push({ label: t("menuPhotographers"), href: screenPath({ kind: "photographers" }) });
