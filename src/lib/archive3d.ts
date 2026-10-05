@@ -99,7 +99,7 @@ export async function loadArchive(locale: string): Promise<{ files: ArchiveFile[
       href: `${ownerBasePath(event.owner.username)}/gallery/${event.slug}`,
       prints: prints.slice(0, PRINTS_PER_ALBUM).map((p) => {
         const urls = photoUrls(event.id, p.id);
-        return { thumb: urls.thumb, med: urls.med, width: p.width, height: p.height };
+        return { id: p.id, thumb: urls.thumb, med: urls.med, full: urls.full, download: urls.download, width: p.width, height: p.height };
       })
     });
   }
@@ -116,12 +116,12 @@ const TABLE_LIMIT = 240;
  * unknown, unpublished or suspended album comes back empty.
  */
 export async function loadAlbumPhotos(username: string, slug: string): Promise<AlbumPhotos> {
-  const empty = { username, slug, photos: [], more: 0 };
+  const empty = { username, slug, photos: [], more: 0, coverId: null };
   const owner = await findOwner(username);
   if (!owner) return empty;
   const event = await prisma.event.findFirst({
     where: { ownerId: owner.id, slug, published: true },
-    select: { id: true }
+    select: { id: true, coverPhotoId: true }
   });
   if (!event) return empty;
   const where = { eventId: event.id, ...publicPhotoWhere };
@@ -143,6 +143,7 @@ export async function loadAlbumPhotos(username: string, slug: string): Promise<A
     username,
     slug,
     more: Math.max(0, total - photos.length),
+    coverId: event.coverPhotoId,
     photos: photos.map((p) => {
       const urls = photoUrls(event.id, p.id);
       return {

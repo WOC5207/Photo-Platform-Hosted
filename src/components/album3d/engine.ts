@@ -150,6 +150,8 @@ export interface EngineOptions {
    * quality, "lost" when the browser dropped WebGL and didn't give it back.
    */
   onTrouble: (kind: "slow" | "lost") => void;
+  /** A print tapped in the 360° study, by its place in the album's prints. */
+  onStudyPick?: (index: number) => void;
 }
 
 export interface ArchiveEngine {
@@ -160,6 +162,11 @@ export interface ArchiveEngine {
   /** Title and menu screens: pull back and let the field idle behind the HUD. */
   setOverview(overview: boolean): void;
   /**
+   * Keep to one photographer's lane (their column), or -1 for all: the other
+   * lanes sink and fog over, and taps and swipes stay in the lane.
+   */
+  setLane(column: number): void;
+  /**
    * Take the raised album apart, then call `done` to move on to its light
    * table; at once when the album isn't raised or motion is reduced.
    */
@@ -167,6 +174,8 @@ export interface ArchiveEngine {
   openStudy(fileIndex: number): void;
   closeStudy(): void;
   setExploded(exploded: boolean): void;
+  /** Bring one of the study's prints to the front of the stack. */
+  setStudyFocus(index: number): void;
   setClear(clear: boolean): void;
   resetView(): void;
   setPalette(palette: EnginePalette): void;
@@ -313,15 +322,15 @@ function buildCassette(
   substrate.add(plate, guide);
   group.add(substrate);
 
-  // Prints: the first fills the window, the rest fit inside it.
+  // Prints fit inside the window whole, the cover included: nothing is cropped.
   const photoMaterials: MeshBasicMaterial[] = [];
   const photoAspects: number[] = [];
   const printEdge = own(new MeshStandardMaterial({ color: 0xfbf8f2, roughness: 0.7 }));
-  const printMeshes = prints.map((print, j) => {
+  const printMeshes = prints.map((print) => {
     const aspect = print.width / Math.max(1, print.height);
     let w = PHOTO_W;
     let h = PHOTO_H;
-    if (j > 0) {
+    if (print.width > 0 && print.height > 0) {
       if (aspect > PHOTO_W / PHOTO_H) h = PHOTO_W / aspect;
       else w = PHOTO_H * aspect;
     }
@@ -603,6 +612,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const faceGeo = new PlaneGeometry(PHOTO_W, PHOTO_H);
   const faceCells = new InstancedBufferAttribute(new Float32Array(MAX_INSTANCES * 4), 4);
   faceGeo.setAttribute("aCell", faceCells);
+  // How far each cover is fogged over: its lane is not the one kept to.
+  const faceFog = new InstancedBufferAttribute(new Float32Array(MAX_INSTANCES), 1);
+  faceGeo.setAttribute("aFog", faceFog);
   const veil = { value: 0 };
   const veilColor = { value: new Color() };
   const faceMaterial = imageMaterial({ map: atlas });
@@ -613,13 +625,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   faceMaterial.onBeforeCompile = (shader) => {
     shader.uniforms.uVeil = veil;
     shader.uniforms.uVeilColor = veilColor;
-    shader.vertexShader = `attribute vec4 aCell;\n${shader.vertexShader}`.replace(
+    shader.vertexShader = `attribute vec4 aCell;\nattribute float aFog;\nvarying float vFog;\n${shader.vertexShader}`.replace(
       "#include <uv_vertex>",
-      "#include <uv_vertex>\n  vMapUv = aCell.xy + uv * aCell.zw;"
+      "#include <uv_vertex>\n  vMapUv = aCell.xy + uv * aCell.zw;\n  vFog = aFog;"
     );
-    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\n${shader.fragmentShader}`.replace(
+    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\nvarying float vFog;\n${shader.fragmentShader}`.replace(
       "#include <map_fragment>",
-      "#include <map_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, uVeilColor, uVeil);"
+      "#include <map_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, uVeilColor, max(uVeil, vFog));"
     );
   };
   faceMaterial.customProgramCacheKey = () => "album-archive-faces";
@@ -667,6 +679,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let detail = 0;
   let overviewTarget = false;
   let overview = 0;
+  // The lane kept to (a photographer's column), or -1, and how far the rest have faded.
+  let laneLock = -1;
+  const isolate = spring(0);
+  const locked = (lane: number) => laneLock >= 0 && wrap(lane, columnCount) !== laneLock;
   let clock = performance.now() / 1000;
 
   // The selected card is a full cassette; every other card is an instance.
@@ -834,6 +850,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let sharpeners: (() => void)[] = [];
   const explode = spring(0);
   let exploded = false;
+  // The print brought to the front, and where each print stands now.
+  let studyFocus = 0;
+  let printZ: number[] = [];
   let studyClear = true;
   let cameraGoal: Vector3 | null = null;
   let mode: "field" | "study" | "carousel" | "table" | "stage" = "field";
@@ -859,6 +878,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     cassette.clarity.value = studyClear ? 1 : 0;
     study.add(cassette.group);
     studyCassette = cassette;
+    printZ = [];
     sharpeners = [];
     file.prints.forEach((print, j) => {
       const show = (image: HTMLImageElement) => {
@@ -868,7 +888,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       };
       // Only the front print is fully visible while assembled; the others
       // start as thumbnails and sharpen when the cassette is taken apart.
-      if (j === 0 || exploded) loadImage(print.med).then(show).catch(() => undefined);
+      if (j === 0 || j === studyFocus || exploded) loadImage(print.med).then(show).catch(() => undefined);
       else {
         loadImage(print.thumb).then(show).catch(() => undefined);
         sharpeners.push(() => loadImage(print.med).then(show).catch(() => undefined));
@@ -882,6 +902,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (mode !== "study") enter("study");
     studyFile = index;
     exploded = false;
+    studyFocus = 0;
     explode.value = explode.velocity = 0;
     buildStudy(index);
     mode = "study";
@@ -1121,6 +1142,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (Math.abs(overview - overviewGoal) > 1e-3) moving = true;
     else overview = overviewGoal;
 
+    damp(isolate, laneLock >= 0 ? 1 : 0, reduced ? 60 : 4, dt);
+    if (!settled(isolate, laneLock >= 0 ? 1 : 0)) moving = true;
+
     // Lay out the visible window of the endless grid.
     const f = framing(detail);
     const span = f.span * (1 + 0.85 * overview);
@@ -1138,7 +1162,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         if (lane === selectedCell.lane && row === selectedCell.row) continue;
         const key = `${lane}:${row}`;
         const x = lane * COLUMN_SPACING - trackX.value;
-        const y = BASE_Y + height3(row, lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0);
+        // Other photographers' lanes sink out of the way while one is kept to.
+        const away = locked(lane) ? isolate.value : 0;
+        const y = BASE_Y + height3(row, lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0) - away * 1.6;
         const z = row * ROW_SPACING + rail.value;
         dummy.position.set(x, y, z);
         dummy.updateMatrix();
@@ -1158,6 +1184,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
           const u = ((slot % ATLAS_COLUMNS) * cellW + 0.5) / atlasCanvas.width;
           const v = 1 - ((Math.floor(slot / ATLAS_COLUMNS) + 1) * cellH - 0.5) / atlasCanvas.height;
           faceCells.setXYZW(faceCount, u, v, (cellW - 1) / atlasCanvas.width, (cellH - 1) / atlasCanvas.height);
+          faceFog.setX(faceCount, away * 0.92);
           faceCount += 1;
         }
       }
@@ -1168,6 +1195,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     faces.count = faceCount;
     faces.instanceMatrix.needsUpdate = true;
     faceCells.needsUpdate = true;
+    faceFog.needsUpdate = true;
     // Covers arrive one by one; upload the atlas a few times a second at most.
     if (atlasDirty) {
       if (clock - atlasUploaded > 0.25) {
@@ -1240,14 +1268,26 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     damp(explode, target, reduced ? 35 : 3.6, dt);
     if (!settled(explode, target)) moving = true;
     if (studyCassette) {
-      const n = studyCassette.parts.prints.length;
-      // Prints peel off one after another rather than as a block.
-      const offsets = studyCassette.parts.prints.map((_, j) => {
-        const depth = n - 1 - j;
+      const prints = studyCassette.parts.prints;
+      const n = prints.length;
+      const lead = Math.min(studyFocus, n - 1);
+      const k = reduced ? 1 : 1 - Math.exp(-dt * 7);
+      // Prints peel off one after another rather than as a block; the one
+      // brought forward takes the front of the stack and the rest keep order.
+      const offsets = prints.map((mesh, j) => {
+        const place = j === lead ? 0 : j < lead ? j + 1 : j;
+        const depth = n - 1 - place;
         const t = reduced
           ? explode.value
-          : MathUtils.clamp(explode.value * (1 + n * 0.06) - (exploded ? j : depth) * 0.06, 0, 1);
-        return MathUtils.lerp(CARD_D / 2 + 0.024 + depth * 0.004, 0.3 + depth * 0.42, smooth(t));
+          : MathUtils.clamp(explode.value * (1 + n * 0.06) - (exploded ? place : depth) * 0.06, 0, 1);
+        const goal = MathUtils.lerp(CARD_D / 2 + 0.024 + depth * 0.004, 0.3 + depth * 0.42, smooth(t));
+        const z = printZ[j] === undefined ? goal : MathUtils.lerp(printZ[j], goal, k);
+        if (Math.abs(z - goal) > 1e-4) moving = true;
+        printZ[j] = z;
+        // Taken apart, the print brought forward rises a little out of the stack.
+        const rise = j === lead && lead > 0 ? 0.35 * smooth(explode.value) : 0;
+        mesh.position.y = MathUtils.lerp(mesh.position.y, CARD_H / 2 + 0.02 + rise, k);
+        return z;
       });
       studyCassette.layout(explode.value, offsets);
       // Keep the exploded stack centred on the orbit target.
@@ -1431,7 +1471,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (!hit) return null;
     if (hit.object === cards && hit.instanceId !== undefined) {
       const cell = instanceCells[hit.instanceId];
-      return cell ? { cell, selected: false } : null;
+      return cell && !locked(cell.lane) ? { cell, selected: false } : null;
     }
     return { cell: selectedCell, selected: true };
   }
@@ -1511,7 +1551,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       canvas.setPointerCapture(e.pointerId);
       return;
     }
-    if (mode === "carousel" || mode === "table" || mode === "stage") {
+    if (mode === "carousel" || mode === "table" || mode === "stage" || mode === "study") {
       down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, rotation: 0 };
       return;
     }
@@ -1564,6 +1604,18 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const elapsed = performance.now() - down.t;
     down = null;
     if (mode === "carousel" || mode === "table" || mode === "stage") return stagePointerUp(e, dx, dy, elapsed);
+    if (mode === "study") {
+      // A tap (not an orbit) on a print brings it forward.
+      if (Math.hypot(dx, dy) >= 6 || elapsed > 600 || !studyCassette) return;
+      const rect = canvas.getBoundingClientRect();
+      pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pointer, studyCamera);
+      const prints = studyCassette.parts.prints;
+      const hit = raycaster.intersectObjects([...prints, studyCassette.parts.cover], true)[0];
+      const index = hit ? prints.indexOf(hit.object as Mesh) : -1;
+      if (index >= 0) options.onStudyPick?.(index);
+      return;
+    }
     if (mode !== "field") return;
     if (overviewTarget || e.type === "pointercancel") return;
     const tap = Math.hypot(dx, dy) < 8 && elapsed < 600;
@@ -1585,8 +1637,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const major = Math.max(Math.abs(dx), Math.abs(dy));
     const minor = Math.min(Math.abs(dx), Math.abs(dy));
     if (major < 36 || major < minor * 1.3 || elapsed > 1400) return;
-    if (Math.abs(dx) > Math.abs(dy)) options.onStep({ axis: "column", direction: dx < 0 ? 1 : -1 });
-    else options.onStep({ axis: "file", direction: dy < 0 ? 1 : -1 });
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (laneLock < 0) options.onStep({ axis: "column", direction: dx < 0 ? 1 : -1 });
+    } else options.onStep({ axis: "file", direction: dy < 0 ? 1 : -1 });
   }
 
   function onPointerLeave() {
@@ -1651,6 +1704,28 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     select,
     setDetail,
     openAlbum,
+    setLane(column) {
+      if (column === laneLock) return;
+      laneLock = column;
+      invalidate();
+    },
+    setStudyFocus(index) {
+      if (index === studyFocus) return;
+      studyFocus = index;
+      const print = studyFile >= 0 ? files[studyFile]?.prints[index] : undefined;
+      const token = studyToken;
+      if (print && studyCassette) {
+        const cassette = studyCassette;
+        loadImage(print.med)
+          .then((image) => {
+            if (token !== studyToken) return;
+            cassette.setPhoto(index, image);
+            invalidate();
+          })
+          .catch(() => undefined);
+      }
+      invalidate();
+    },
     setOverview(next) {
       overviewTarget = next;
       if (next) hoverCell = null;

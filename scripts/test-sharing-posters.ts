@@ -46,6 +46,8 @@ import {
   creditsSpan,
   snapCreditsPosition,
   sizeOrderCost,
+  minSizeCost,
+  POSTER_MIN_SIZE_RATIO,
   containFrame,
   coverCropFromAnchor,
   gatherAlignment,
@@ -1244,6 +1246,38 @@ assert.equal(
       const smallest = mixed.reduce((best, item) => (item.weight < best.weight ? item : best));
       assert.ok(drawn(largest.id) > drawn(smallest.id), `${fit} draws the photograph ranked first larger than the one ranked last (shift ${shift})`);
     }
+  }
+}
+
+// Minimum size (#106): no photograph shrinks to a thumbnail beside the others.
+{
+  assert.equal(minSizeCost([{ weight: 1, logArea: 0 }, { weight: 1, logArea: Math.log(3.9) }]), 0, "within 4:1 is free");
+  assert.ok(minSizeCost([{ weight: 1, logArea: 0 }, { weight: 1, logArea: Math.log(5) }]) > 0, "past 4:1 costs");
+  assert.equal(minSizeCost([{ weight: 0.75, logArea: 0 }, { weight: 1.75, logArea: Math.log(9) }]), 0, "a heavier photograph earns its extra area");
+  assert.ok(
+    minSizeCost([{ weight: 1, logArea: 0 }], [{ weight: 1, logArea: Math.log(5) }]) > 0 &&
+      minSizeCost([{ weight: 1, logArea: Math.log(5) }], [{ weight: 1, logArea: 0 }]) > 0,
+    "the cost between two groups does not depend on which comes first"
+  );
+
+  // Mixes of panoramas, tall portraits and weights that used to leave one
+  // photograph drawn at a fraction of a percent of the largest.
+  const cases: Array<{ fit: "whole" | "collage"; shapes: Array<[number, number]> }> = [
+    { fit: "collage", shapes: [[1, 5], [1.78, 5], [1, 3], [1.33, 4], [3, 5], [3, 2], [0.75, 1], [0.67, 3]] },
+    { fit: "whole", shapes: [[0.33, 1], [2, 5], [0.67, 5], [2, 5], [1, 3], [1, 2], [0.5, 1], [0.75, 4], [1, 5]] }
+  ];
+  const area = { x: 0, y: 0, width: 816, height: 1225 };
+  for (const { fit, shapes } of cases) {
+    const items = shapes.map(([aspect, weight], index) => ({ id: `s${index}`, width: Math.round(1000 * aspect), height: 1000, weight }));
+    const frames = calculateSharingPosterLayout(items, area, 6, fit);
+    const sizes = frames.map((frame, index) => {
+      const rect = fit === "whole" ? containFrame(items[index].width, items[index].height, frame) : frame;
+      return (rect.width * rect.height) / posterWeightScale(items[index].weight);
+    });
+    assert.ok(
+      Math.min(...sizes) >= POSTER_MIN_SIZE_RATIO * Math.max(...sizes) * 0.95,
+      `${fit}: smallest photograph is ${(Math.min(...sizes) / Math.max(...sizes)).toFixed(3)} of the largest for its weight`
+    );
   }
 }
 

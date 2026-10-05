@@ -24,12 +24,33 @@ const sessionSecret = process.env.E2E_SESSION_SECRET ?? process.env.SESSION_SECR
 const allowMutations = process.env.E2E_ALLOW_MUTATIONS === "1";
 
 async function signIn(page: Page, username: string, password: string) {
+  // Callers may have cleared cookies; stay on the classic site these tests cover.
+  await page.context().addCookies([
+    { name: "site_mode", value: "classic", url: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000" }
+  ]);
   await page.goto("/en/login");
   await page.getByLabel("Username").fill(username);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/en\/(dashboard|admin)(?:\/|$)/);
 }
+
+test("entry pages open the new site unless the visitor chose classic @desktop-only", async ({ browser, baseURL }) => {
+  const fresh = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
+  try {
+    for (const [path, target] of [["/en", "/en/3d"], ["/en/login", "/en/3d/login"], ["/en/dashboard", "/en/3d/studio"]]) {
+      const response = await fresh.request.get(path, { maxRedirects: 0 });
+      expect(response.status(), path).toBe(307);
+      expect(new URL(response.headers().location!, baseURL).pathname, path).toBe(target);
+    }
+    // Crawlers keep the canonical classic pages.
+    expect((await fresh.request.get("/en", { maxRedirects: 0, headers: { "user-agent": "Googlebot/2.1" } })).status()).toBe(200);
+    await fresh.addCookies([{ name: "site_mode", value: "classic", url: baseURL! }]);
+    expect((await fresh.request.get("/en", { maxRedirects: 0 })).status()).toBe(200);
+  } finally {
+    await fresh.close();
+  }
+});
 
 async function openAdminDashboard(page: Page) {
   await page.goto("/en/dashboard");

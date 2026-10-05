@@ -213,12 +213,15 @@ export async function setupUpdateFeatures(
  * Final wizard step: seeds a draft album (and a draft booking event, if the
  * booking feature was enabled) so the admin lands on a dashboard with
  * something to look at instead of an empty shell, then marks setup done so
- * the (protected) layout stops redirecting here.
+ * the (protected) layout stops redirecting here. `site=3d` comes from the
+ * 3D Dashboard's setup.
  */
-export async function completeSetup(): Promise<void> {
+export async function completeSetup(formData?: FormData): Promise<void> {
   const { locale, user } = await guard();
   await completeOwnerSetup(user.id);
 
   revalidatePath("/", "layout");
-  redirect(`/${locale}/dashboard`);
+  // The 3D setup finishes in the 3D Dashboard (which finds the account's
+  // username itself, since the first step may have changed it).
+  redirect(formData?.get("site") === "3d" ? `/${locale}/3d/studio` : `/${locale}/dashboard`);
 }

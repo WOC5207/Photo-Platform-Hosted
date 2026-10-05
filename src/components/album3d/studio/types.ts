@@ -32,6 +32,8 @@ export interface StudioEventSummary {
   location: string;
   published: boolean;
   photoCount: number;
+  /** The album's cover (or first photo) as a thumbnail, or "". */
+  cover: string;
 }
 
 export interface StudioEventDetail extends StudioEventSummary {
@@ -366,6 +368,7 @@ export interface StudioSiteValues {
   homeTitleZh: string;
   homeSubtitleEn: string;
   homeSubtitleZh: string;
+  homeStreamLayout: string;
   backgroundColor: string;
   surfaceColor: string;
   fieldColor: string;
@@ -447,4 +450,21 @@ export interface StudioPosters {
   posters: StudioPosterSummary[];
   /** More than the rail carries; the rest are on the classic page. */
   more: boolean;
+}
+
+/** What a new account's first-run setup starts from. */
+export interface StudioSetup {
+  username: string;
+  /** Accounts made outside an invite still have the placeholder login to replace. */
+  needsCredentials: boolean;
+  siteTitleEn: string;
+  siteTitleZh: string;
+  homeTitleEn: string;
+  homeTitleZh: string;
+  homeSubtitleEn: string;
+  homeSubtitleZh: string;
+  bookingEnabled: boolean;
+  lotteryEnabled: boolean;
+  creditProfilesEnabled: boolean;
+  creditTerm: string;
 }

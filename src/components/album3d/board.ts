@@ -47,6 +47,8 @@ export interface BoardTile {
   total: number;
   /** "3 LEFT", "FULL". */
   status: string;
+  /** A picture for an event's card (its album cover), by URL. */
+  image?: string;
 }
 
 export interface Board {
@@ -56,6 +58,8 @@ export interface Board {
   setTiles(variant: BoardVariant, key: string, tiles: BoardTile[], headers: string[], trayLabel: string): void;
   setFocus(index: number): void;
   setCart(ids: string[]): void;
+  /** Grey out every tab that isn't in the cart, once the visitor has moved on to their details. */
+  setDim(dim: boolean): void;
   /** Stamp booked tiles with their labels, then file them away. */
   stamp(ids: string[], labels: string[]): void;
   clearStamps(): void;
@@ -165,6 +169,23 @@ export function createBoard(context: {
   let focusIndex = 0;
   let hoverIndex = -1;
   let cart: string[] = [];
+  let dim = false;
+  // Card pictures by URL, loaded once each; a tile repaints when its arrives.
+  const images = new Map<string, HTMLImageElement>();
+  function imageFor(src: string | undefined): HTMLImageElement | null {
+    if (!src) return null;
+    const known = images.get(src);
+    if (known) return known.complete && known.naturalWidth > 0 ? known : null;
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      for (const tile of list) if (tile.data.image === src) paint(tile);
+      invalidate();
+    };
+    image.src = src;
+    images.set(src, image);
+    return null;
+  }
   let width = 1;
   let height = 1;
   let clock = 0;
@@ -195,6 +216,10 @@ export function createBoard(context: {
     c.textBaseline = "alphabetic";
     if (variant === "slots") paintSlot(c, tile, w, h, pad, full);
     else paintEvent(c, tile, w, h, pad, full);
+    if (dim && !cart.includes(tile.data.id)) {
+      c.fillStyle = palette.dark ? "rgba(20,19,17,0.68)" : "rgba(214,209,201,0.74)";
+      c.fillRect(0, 0, w, h);
+    }
     tile.texture.needsUpdate = true;
   }
 
@@ -227,8 +252,24 @@ export function createBoard(context: {
     lamps(c, tile, x, h - pad - 14, 14, 6, 12);
   }
 
-  // An event: dates, title, place and blurb, with a lamp per place left.
+  // An event: dates, title, place and blurb, with a lamp per place left, and
+  // its picture whole on the right when it has one.
   function paintEvent(c: CanvasRenderingContext2D, tile: Tile, w: number, h: number, pad: number, full: boolean) {
+    const image = imageFor(tile.data.image);
+    if (tile.data.image) {
+      const box = { x: w * 0.6, y: pad, w: w * 0.4 - pad, h: h - pad * 2 };
+      c.fillStyle = palette.dark ? "#1b1916" : "#e8e3db";
+      c.fillRect(box.x, box.y, box.w, box.h);
+      if (image) {
+        const scale = Math.min(box.w / image.naturalWidth, box.h / image.naturalHeight);
+        const iw = image.naturalWidth * scale;
+        const ih = image.naturalHeight * scale;
+        if (full) c.globalAlpha = 0.55;
+        c.drawImage(image, box.x + (box.w - iw) / 2, box.y + (box.h - ih) / 2, iw, ih);
+        c.globalAlpha = 1;
+      }
+      w = box.x - pad * 0.4;
+    }
     let y = pad + 30;
     c.fillStyle = full ? muted() : palette.accent;
     c.font = `600 26px ${palette.fontMeta}`;
@@ -675,6 +716,13 @@ export function createBoard(context: {
     },
     setCart(ids) {
       cart = ids.slice();
+      if (dim) for (const tile of list) paint(tile);
+      invalidate();
+    },
+    setDim(next) {
+      if (next === dim) return;
+      dim = next;
+      for (const tile of list) paint(tile);
       invalidate();
     },
     stamp(ids, labels) {

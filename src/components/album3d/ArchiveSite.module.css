@@ -99,6 +99,19 @@
   left: var(--edge);
   bottom: 3.75rem;
 }
+/* The schedule's Next button, over the board's tray at its right end. */
+.trayNext {
+  position: absolute;
+  right: calc(var(--edge) + 1rem);
+  bottom: 4.75rem;
+  z-index: 10;
+  box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.45);
+}
+@media (max-aspect-ratio: 105/100) {
+  .trayNext {
+    display: none;
+  }
+}
 .roster {
   max-height: 52vh;
   overflow-y: auto;
@@ -199,9 +212,16 @@
 }
 .parts {
   position: absolute;
-  top: 27.8%;
-  right: 4.375rem;
+  top: 13.5rem;
+  right: var(--edge);
   width: 14.375rem;
+}
+.printList {
+  max-height: min(19rem, 42vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 2px;
 }
 .studyFooter {
   position: absolute;
@@ -304,9 +324,12 @@
     top: max(16px, env(safe-area-inset-top));
   }
   .parts {
-    top: 200px;
+    top: 76px;
     right: var(--edge);
-    width: 180px;
+    width: 150px;
+  }
+  .printList {
+    max-height: 30vh;
   }
   .studyFooter {
     bottom: max(28px, env(safe-area-inset-bottom));

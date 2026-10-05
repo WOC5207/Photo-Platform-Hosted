@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { setCoverPhoto } from "@/app/[locale]/dashboard/(protected)/events/actions";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { screenPath } from "@/lib/siteMode";
@@ -110,6 +111,7 @@ export function PhotoScreen({
   owner,
   album,
   index,
+  owned,
   onStep,
   onBack,
   printUp,
@@ -119,6 +121,8 @@ export function PhotoScreen({
   owner: string;
   album: AlbumPhotos;
   index: number;
+  /** The signed-in photographer owns the album, so may make this photo its cover. */
+  owned: boolean;
   onStep: (direction: 1 | -1) => void;
   onBack: () => void;
   /** The scene's print has reached this image's box. */
@@ -130,6 +134,16 @@ export function PhotoScreen({
   const total = album.photos.length;
   const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
   const [loaded, setLoaded] = useState<string | null>(null);
+  const [cover, setCover] = useState(album.coverId);
+  const [saving, startSaving] = useTransition();
+  useEffect(() => setCover(album.coverId), [album.coverId]);
+  const makeCover = () =>
+    startSaving(async () => {
+      const form = new FormData();
+      form.set("photoId", photo.id);
+      await setCoverPhoto(form);
+      setCover(photo.id);
+    });
 
   useEffect(() => {
     const measure = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -211,6 +225,18 @@ export function PhotoScreen({
               </li>
             ))}
           </ul>
+        )}
+        {owned && (
+          <button
+            type="button"
+            onClick={makeCover}
+            disabled={saving || cover === photo.id}
+            aria-busy={saving}
+            className="mt-6 inline-flex min-h-11 items-center gap-3 border border-border-strong px-4 text-xs font-semibold uppercase tracking-[0.08em] transition hover:border-fg disabled:opacity-60"
+          >
+            <span aria-hidden="true">{cover === photo.id ? "★" : "☆"}</span>
+            {cover === photo.id ? t("photoIsCover") : t("photoMakeCover")}
+          </button>
         )}
         <div className="mt-7 flex flex-wrap items-center gap-x-8 gap-y-2">
           <button type="button" onClick={onBack} className="inline-flex min-h-11 items-center gap-3 text-sm hover:text-accent-text">

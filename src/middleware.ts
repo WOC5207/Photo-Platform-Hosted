@@ -5,6 +5,8 @@ import { SITE_MODE_COOKIE, THREE_D_ROOT } from "./lib/siteMode";
 
 const intlMiddleware = createMiddleware(routing);
 
+const CRAWLER = /bot|crawl|spider|slurp|facebookexternalhit|embedly|preview/i;
+
 // Next.js always sets x-forwarded-proto on the request it hands to
 // middleware — reflecting the real header from a proxy in front when one is
 // set, but synthesized from the raw (always-plain-HTTP) connection when
@@ -40,14 +42,18 @@ export default function middleware(req: NextRequest) {
     );
     return NextResponse.redirect(target, 308);
   }
-  // A visitor who chose the 3D site lands on it from the homepage. Only the
-  // bare homepage moves, so the switch back to classic always works. The
-  // target is built from the Host header for the same bind-address reason as
-  // above.
-  const home = /^\/(zh|en)\/?$/.exec(req.nextUrl.pathname);
-  if (home && host && req.cookies.get(SITE_MODE_COOKIE)?.value === "3d") {
+  // The new site is the default: a visitor lands on it from the homepage,
+  // and a photographer lands in its login, Dashboard and first-run setup,
+  // unless they switched to the classic site. Only those bare entry pages
+  // move, so every other classic page (and the switch back to classic) still
+  // opens. Crawlers keep the classic pages, which are the canonical copies.
+  // The target is built from the Host header for the same bind-address
+  // reason as above.
+  const entry = /^\/(zh|en)(\/login|\/dashboard|\/dashboard\/setup)?\/?$/.exec(req.nextUrl.pathname);
+  if (entry && host && req.cookies.get(SITE_MODE_COOKIE)?.value !== "classic" && !CRAWLER.test(req.headers.get("user-agent") ?? "")) {
+    const twin = { "": "", "/login": "/login", "/dashboard": "/studio", "/dashboard/setup": "/studio/setup" }[entry[2] ?? ""];
     const target = new URL(
-      `/${home[1]}${THREE_D_ROOT}${req.nextUrl.search}`,
+      `/${entry[1]}${THREE_D_ROOT}${twin}${req.nextUrl.search}`,
       `${proto === "https" ? "https" : "http"}://${host}`
     );
     return NextResponse.redirect(target, 307);

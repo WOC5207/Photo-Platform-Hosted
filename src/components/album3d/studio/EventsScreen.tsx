@@ -40,7 +40,9 @@ export default function EventsScreen({ account, events }: { account: StudioAccou
         // Drafts are drawn dimmed, as full events are on the booking board; no seat lamps.
         left: event.published ? 1 : 0,
         total: 0,
-        status: event.published ? tw("published") : tw("draft")
+        status: event.published ? tw("published") : tw("draft"),
+        // The album's cover, as its page on the site shows it.
+        image: event.cover || undefined
       })),
     [events, tw]
   );

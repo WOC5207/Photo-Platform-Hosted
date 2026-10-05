@@ -17,6 +17,7 @@ import {
   THEME_COLOR_PATTERN
 } from "@/lib/themeColor";
 import { isSafeExternalHttpUrl } from "@/lib/externalUrl";
+import { HOME_STREAM_LAYOUTS } from "@/lib/homePhotoStreamTypes";
 
 export type SiteSettingsSection =
   | "appearance"
@@ -76,6 +77,7 @@ const homepageSchema = z.object({
   homeTitleZh: z.string().trim().max(200),
   homeSubtitleEn: z.string().trim().max(300),
   homeSubtitleZh: z.string().trim().max(300),
+  homeStreamLayout: z.enum(HOME_STREAM_LAYOUTS),
   announcementsEnabled: z.boolean()
 });
 
@@ -168,6 +170,7 @@ export async function updateSiteSettings(
       homeTitleZh: formData.get("homeTitleZh") ?? "",
       homeSubtitleEn: formData.get("homeSubtitleEn") ?? "",
       homeSubtitleZh: formData.get("homeSubtitleZh") ?? "",
+      homeStreamLayout: formData.get("homeStreamLayout") ?? "GRID",
       announcementsEnabled: formData.get("announcementsEnabled") === "on"
     });
     if (!parsed.success) return { error: "validation" };

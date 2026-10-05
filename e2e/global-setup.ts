@@ -71,6 +71,9 @@ export default async function globalSetup(config: FullConfig) {
   });
   try {
     const context = await browser.newContext();
+    // The new site is the default entry; these workflows cover the classic
+    // site, so the saved state opts into it the way the site switch does.
+    await context.addCookies([{ name: "site_mode", value: "classic", url: baseURL }]);
     const page = await context.newPage();
     await page.goto(`${baseURL}/en/login`);
     await page.getByLabel("Username").fill(username);

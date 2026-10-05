@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { logout3d } from "@/app/[locale]/3d/login/actions";
 import { dismissPlatformNotification } from "@/app/[locale]/dashboard/(protected)/actions";
 import { GameMenu, Rolling, pad, wrap, type MenuItem } from "../hud";
@@ -13,13 +13,14 @@ import type { StudioHome } from "./types";
 /**
  * The 3D Dashboard's menu: the photographer's numbers, the platform's
  * notices, and every section of their backend. Administration still opens
- * on the classic site.
+ * on the classic site. Until they put it away, a new photographer also gets
+ * first steps to follow, each ticked off once done.
  */
 export default function HomeScreen({ home }: { home: StudioHome }) {
   const t = useTranslations("album3d");
   const ta = useTranslations("admin");
   const router = useRouter();
-  const { go } = useStage();
+  const { go, path } = useStage();
   const [focus, setFocus] = useState(0);
   const [leaving, startLeaving] = useTransition();
   const { username } = home.account;
@@ -86,6 +87,7 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
   const share = home.quotaBytes > 0 ? Math.min(1, home.usedBytes / home.quotaBytes) : 0;
 
   return (
+    <>
     <BookingPanel>
       <StudioHeading trail={`@${username}`} title={t("studioTitle")} />
       <dl className="mt-6 flex flex-wrap gap-x-10 gap-y-4">
@@ -131,7 +133,68 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
         </ul>
       )}
 
+      <FirstSteps home={home} path={path} />
+
       <GameMenu label={t("studioTitle")} items={items} focus={at} onFocus={setFocus} className="mt-6 wide:mt-8" />
     </BookingPanel>
+    </>
+  );
+}
+
+/** First steps for a new photographer, remembered as put away per account on this browser. */
+function FirstSteps({ home, path }: { home: StudioHome; path: ReturnType<typeof useStage>["path"] }) {
+  const t = useTranslations("album3d");
+  const { username } = home.account;
+  const storageKey = `studio-first-steps:${username}`;
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    try {
+      setShown(localStorage.getItem(storageKey) !== "done");
+    } catch {
+      setShown(true);
+    }
+  }, [storageKey]);
+  const steps = [
+    { key: "event", done: home.events > 0, href: path({ kind: "studio", username, page: "new" }) },
+    { key: "photos", done: home.photos > 0, href: path({ kind: "studio", username, page: "events" }) },
+    { key: "look", done: false, href: path({ kind: "studio", username, page: "siteAppearance" }) },
+    { key: "publish", done: home.listed, href: path({ kind: "studio", username, page: "events" }) }
+  ] as const;
+  if (!shown || steps.every((s) => s.done)) return null;
+  const hide = () => {
+    try {
+      localStorage.setItem(storageKey, "done");
+    } catch {
+      // Hidden for this visit.
+    }
+    setShown(false);
+  };
+  return (
+    <section aria-labelledby="studio-first-steps" className="mt-6 border border-border-strong bg-page/80 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="studio-first-steps" className={metaLabel}>
+          {t("studioFirstSteps")}
+        </h2>
+        <button type="button" onClick={hide} className="font-meta min-h-8 px-2 text-[0.625rem] uppercase tracking-[0.12em] text-fg-subtle hover:text-fg">
+          {t("studioDismiss")}
+        </button>
+      </div>
+      <ol className="mt-2 grid gap-1">
+        {steps.map((step, i) => (
+          <li key={step.key}>
+            <Link href={step.href} scroll={false} className="group flex min-h-10 items-center gap-3 text-sm">
+              <span aria-hidden="true" className={`font-meta grid h-6 w-6 shrink-0 place-items-center text-[0.625rem] ${step.done ? "bg-accent text-page" : "border border-border-strong"}`}>
+                {step.done ? "✓" : pad(i + 1)}
+              </span>
+              <span className={`min-w-0 flex-1 ${step.done ? "text-fg-subtle line-through" : "group-hover:text-accent-text"}`}>
+                {t(`studioStep_${step.key}`)}
+              </span>
+              {step.done && <span className="sr-only">{t("studioStepDone")}</span>}
+              <span aria-hidden="true" className="text-fg-subtle">→</span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }

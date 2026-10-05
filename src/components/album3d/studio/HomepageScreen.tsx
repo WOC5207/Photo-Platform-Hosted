@@ -5,10 +5,11 @@ import { useLocale, useTranslations } from "next-intl";
 import AnnouncementsManager from "@/components/admin/AnnouncementsManager";
 import PersonalLinksManager from "@/components/admin/PersonalLinksManager";
 import { pickText } from "@/lib/content";
+import { HOME_STREAM_LAYOUTS, resolveHomeStreamLayout } from "@/lib/homePhotoStreamTypes";
 import type { BoardTile } from "../board";
 import { BookingPanel } from "../booking/shared";
 import { ClassicLink, StudioHeading } from "./shared";
-import { Check, Group, Pair, SaveBar, useSiteBoard, useSiteSave } from "./site";
+import { Check, Group, Pair, SaveBar, checkClass, useSiteBoard, useSiteSave } from "./site";
 import type { StudioSite } from "./types";
 
 /**
@@ -72,6 +73,17 @@ export default function HomepageScreen({ site }: { site: StudioSite }) {
           <Check name="announcementsEnabled" defaultChecked={v.announcementsEnabled}>
             {ts("announcementsEnabledLabel")}
           </Check>
+        </Group>
+        <Group title={ts("homeStreamLayoutTitle")} hint={ts("homeStreamLayoutHint")}>
+          {HOME_STREAM_LAYOUTS.map((l) => (
+            <label key={l} className="flex items-start gap-3 border border-border-strong p-3 text-sm has-[:checked]:border-fg">
+              <input type="radio" name="homeStreamLayout" value={l} defaultChecked={resolveHomeStreamLayout(v.homeStreamLayout) === l} className={`mt-0.5 ${checkClass}`} />
+              <span className="grid gap-1">
+                <span className="font-semibold">{ts(l === "GRID" ? "homeStreamLayoutGrid" : "homeStreamLayoutCollage")}</span>
+                <span className="text-xs leading-5 text-fg-subtle">{ts(l === "GRID" ? "homeStreamLayoutGridHint" : "homeStreamLayoutCollageHint")}</span>
+              </span>
+            </label>
+          ))}
         </Group>
         <SaveBar section="homepage" state={state} pending={pending} />
       </form>

@@ -9,8 +9,12 @@ export const RAIL_PICK = 1000;
 export const LAYER_PICK = 2000;
 
 export interface ArchivePrint {
+  id: string;
   thumb: string;
   med: string;
+  full: string;
+  /** The full-resolution original, for the Download button. */
+  download: string;
   width: number;
   height: number;
 }
@@ -59,6 +63,8 @@ export interface AlbumPhotos {
   photos: TablePhoto[];
   /** Photos past the light table's limit, left to the classic page. */
   more: number;
+  /** The album's cover photo, which its owner can change from the photo screen. */
+  coverId: string | null;
 }
 
 // Layout shared by the scene and the HUD, so 3D objects and HTML panels line

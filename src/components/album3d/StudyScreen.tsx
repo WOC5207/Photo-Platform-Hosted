@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { pad } from "./hud";
@@ -10,7 +11,9 @@ const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg
 
 /**
  * The 360° study of one album: the scene holds the assembly, and this layer
- * carries its header, the cover and explode switches and the parts list.
+ * carries its header, the cover and explode switches, and the album's prints
+ * as a picture list. Picking one there (or tapping it in the scene) brings it
+ * to the front of the stack, and it can be downloaded or its link shared.
  */
 export default function StudyScreen({
   file,
@@ -18,6 +21,9 @@ export default function StudyScreen({
   exploded,
   clear,
   touch,
+  focus,
+  shareUrl,
+  onFocus,
   onBack,
   onExplode,
   onClear,
@@ -28,19 +34,33 @@ export default function StudyScreen({
   exploded: boolean;
   clear: boolean;
   touch: boolean;
+  /** The print brought to the front. */
+  focus: number;
+  /** The address of a print's own photo screen, to share. */
+  shareUrl: (photoId: string) => string;
+  onFocus: (index: number) => void;
   onBack: () => void;
   onExplode: (exploded: boolean) => void;
   onClear: (clear: boolean) => void;
   onReset: () => void;
 }) {
   const t = useTranslations("album3d");
-  const parts = [
-    t("partScrews"),
-    t("partCover"),
-    t("partPrints", { count: file.prints.length }),
-    t("partSubstrate"),
-    t("partCarrier")
-  ];
+  const [shared, setShared] = useState<string | null>(null);
+  const at = Math.min(focus, Math.max(0, file.prints.length - 1));
+  const print = file.prints[at];
+
+  const share = async () => {
+    if (!print) return;
+    const url = shareUrl(print.id);
+    try {
+      if (touch && navigator.share) await navigator.share({ title: file.title, url });
+      else await navigator.clipboard.writeText(url);
+      setShared(print.id);
+    } catch {
+      // Dismissed, or no clipboard: show the link to copy by hand.
+      window.prompt(t("studyShareManual"), url);
+    }
+  };
 
   return (
     <main id="main-content" tabIndex={-1} className="outline-none">
@@ -86,20 +106,46 @@ export default function StudyScreen({
         ))}
       </div>
 
-      <aside
-        aria-label={t("assembly")}
-        className={`${styles.parts} pointer-events-none transition duration-400 motion-reduce:transition-none ${exploded ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"}`}
-      >
-        <p className="font-meta mb-6 text-[0.6875rem] uppercase tracking-[0.08em] text-fg-subtle">{t("assembly")}</p>
-        <ol>
-          {parts.map((part, i) => (
-            <li key={part} className="relative mb-4 border-b border-border pb-4 pl-10 text-base">
-              <span className="font-meta absolute left-0 top-0.5 text-[0.6875rem] text-fg-subtle">{pad(i + 1)}</span>
-              {part}
-            </li>
-          ))}
-        </ol>
-      </aside>
+      {print && (
+        <aside aria-labelledby="album3d-prints" className={styles.parts}>
+          <p id="album3d-prints" className="font-meta text-[0.6875rem] uppercase tracking-[0.08em] text-fg-subtle">
+            {t("studyPrints")} <span className="text-fg">{pad(at + 1)}</span> / {pad(file.prints.length)}
+          </p>
+          <ol className={`${styles.printList} mt-3 grid grid-cols-3 gap-1.5`}>
+            {file.prints.map((p, i) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => onFocus(i)}
+                  aria-pressed={i === at}
+                  aria-label={t("studyPrint", { number: i + 1 })}
+                  className={`block aspect-square w-full overflow-hidden bg-control outline-offset-2 transition ${i === at ? "ring-2 ring-accent" : "opacity-75 hover:opacity-100"}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.thumb} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain" />
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-3 grid gap-1.5">
+            <a
+              href={print.download}
+              download
+              className="inline-flex min-h-10 items-center justify-between gap-3 border border-fg/40 bg-page/80 px-3 text-xs uppercase tracking-[0.08em] transition hover:border-fg"
+            >
+              {t("studyDownload")} <span aria-hidden="true">↓</span>
+            </a>
+            <button
+              type="button"
+              onClick={share}
+              className="inline-flex min-h-10 items-center justify-between gap-3 border border-fg/40 bg-page/80 px-3 text-xs uppercase tracking-[0.08em] transition hover:border-fg"
+            >
+              {shared === print.id ? t("studyShared") : t("studyShare")} <span aria-hidden="true">↗</span>
+            </button>
+          </div>
+          <p role="status" className="sr-only">{shared === print.id ? t("studyShared") : ""}</p>
+        </aside>
+      )}
 
       <div className={`${styles.studyFooter} flex flex-col items-center gap-3 wide:flex-row wide:justify-between`}>
         <p className="font-meta hidden w-1/4 flex-wrap gap-x-5 text-xs text-fg-subtle wide:flex">

@@ -98,6 +98,11 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
   useEffect(() => {
     scene?.setCart(cart);
   }, [scene, cart]);
+  // On to the visitor's details, the tabs they didn't pick grey out.
+  useEffect(() => {
+    scene?.setDim(step === "review" && !booked);
+  }, [scene, step, booked]);
+  useEffect(() => () => scene?.setDim(false), [scene]);
   // A new round starts with a clean board.
   useEffect(() => {
     scene?.clearStamps();
@@ -449,6 +454,13 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
           {focused && step === "slots" && !booked ? `${focusedDay.label} ${focused.start}–${focused.end}, ${focused.remaining > 0 ? tb("slotsLeft", { count: focused.remaining }) : tb("full")}` : ""}
         </p>
       </BookingPanel>
+      {!booked && step === "slots" && cart.length > 0 && (
+        // Next, beside the tray on the board, once a slot is in it.
+        <button type="button" onClick={review} className={`${primaryClass} ${styles.trayNext}`}>
+          {t("scheduleNext", { count: cart.length })}
+          <span aria-hidden="true" className="text-lg">→</span>
+        </button>
+      )}
       {!touch && !booked && step === "slots" && bookable && (
         <Hints
           className={styles.menuHint}

@@ -71,6 +71,7 @@ export async function loadStudioSite(user: User, locale: string, termFallback: s
       homeTitleZh: settings.homeTitleZh,
       homeSubtitleEn: settings.homeSubtitleEn,
       homeSubtitleZh: settings.homeSubtitleZh,
+      homeStreamLayout: settings.homeStreamLayout,
       backgroundColor: settings.backgroundColor,
       surfaceColor: settings.surfaceColor,
       fieldColor: settings.fieldColor,

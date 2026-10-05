@@ -14,6 +14,7 @@ export interface SiteSettings {
   homeTitleZh: string;
   homeSubtitleEn: string;
   homeSubtitleZh: string;
+  homeStreamLayout: string;
   backgroundColor: string;
   surfaceColor: string;
   fieldColor: string;
@@ -60,6 +61,7 @@ const DEFAULTS: Omit<SiteSettings, "id" | "ownerId"> = {
   homeTitleZh: "",
   homeSubtitleEn: "",
   homeSubtitleZh: "",
+  homeStreamLayout: "GRID",
   backgroundColor: "",
   surfaceColor: "",
   fieldColor: "",
