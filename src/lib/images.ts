@@ -701,12 +701,59 @@ export async function removeQuarantinedUserFiles(
   await fs.rm(resolved, { recursive: true, force: true });
 }
 
+/** Re-encodes that anonymous downloads trigger, bounded like the public import slot. */
+const withPublicDownloadSlot = createProcessingSlot(() => 1, 8);
+const downloadsInFlight = new Map<string, Promise<string>>();
+
+/**
+ * The photo's stored master, at full resolution, as a visitor may download
+ * it. A master that still carries EXIF, XMP or IPTC (an exact Original keeps
+ * the camera's, GPS included) is re-encoded once at top quality without it,
+ * upright and with its colour profile, into a -dl copy beside it; a clean
+ * master is served as it is. The copy shares the photo-id prefix, so
+ * deletePhotoFiles removes it, and it is rebuilt when the master changes.
+ */
+export async function downloadableOriginal(
+  ownerId: string,
+  eventId: string,
+  photoId: string,
+  filename: string
+): Promise<{ filePath: string; ext: string }> {
+  const dir = eventDir(ownerId, eventId);
+  const ext = path.extname(filename).slice(1).toLowerCase();
+  const origPath = path.join(dir, filename);
+  const meta = await sharp(origPath, { limitInputPixels: config.imageMaxPixels(), pages: 1 }).metadata();
+  if (!meta.exif && !meta.xmp && !meta.iptc) return { filePath: origPath, ext };
+
+  const dlPath = path.join(dir, `${photoId}-dl.${ext}`);
+  const [orig, dl] = await Promise.all([fs.stat(origPath), fs.stat(dlPath).catch(() => null)]);
+  if (dl && dl.mtimeMs >= orig.mtimeMs) return { filePath: dlPath, ext };
+
+  let job = downloadsInFlight.get(dlPath);
+  if (!job) {
+    job = withPublicDownloadSlot(async () => {
+      const tmp = `${dlPath}.${process.pid}.tmp`;
+      const pipeline = sharp(origPath, { limitInputPixels: config.imageMaxPixels(), pages: 1 }).rotate().keepIccProfile();
+      if (ext === "png") await pipeline.png().toFile(tmp);
+      else if (ext === "webp") await pipeline.webp({ quality: 100 }).toFile(tmp);
+      else if (ext === "tif" || ext === "tiff") await pipeline.tiff({ compression: "lzw" }).toFile(tmp);
+      else await pipeline.jpeg({ quality: 100, chromaSubsampling: "4:4:4" }).toFile(tmp);
+      await fs.rename(tmp, dlPath);
+      return dlPath;
+    }).finally(() => downloadsInFlight.delete(dlPath));
+    downloadsInFlight.set(dlPath, job);
+  }
+  return { filePath: await job, ext };
+}
+
 export function photoUrls(eventId: string, photoId: string) {
   const base = `/api/images/${eventId}/${photoId}`;
   return {
     thumb: `${base}-thumb.webp`,
     med: `${base}-med.webp`,
-    full: `${base}-full.webp`
+    full: `${base}-full.webp`,
+    /** The full-resolution master as uploaded, for downloading. */
+    download: `/api/images/${eventId}/download/${photoId}`
   };
 }
 

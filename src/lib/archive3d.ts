@@ -99,7 +99,7 @@ export async function loadArchive(locale: string): Promise<{ files: ArchiveFile[
       href: `${ownerBasePath(event.owner.username)}/gallery/${event.slug}`,
       prints: prints.slice(0, PRINTS_PER_ALBUM).map((p) => {
         const urls = photoUrls(event.id, p.id);
-        return { id: p.id, thumb: urls.thumb, med: urls.med, full: urls.full, width: p.width, height: p.height };
+        return { id: p.id, thumb: urls.thumb, med: urls.med, full: urls.full, download: urls.download, width: p.width, height: p.height };
       })
     });
   }

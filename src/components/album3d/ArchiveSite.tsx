@@ -838,7 +838,6 @@ export default function ArchiveSite({
             <Link href={screenPath({ kind: "title" })} className="block leading-none">
               <span className="block text-xl font-extrabold uppercase tracking-[-0.02em] wide:text-4xl">{t("brandTop")}</span>
               <span className="mt-1 block text-[0.5625rem] font-semibold uppercase tracking-[0.08em] text-fg-muted wide:text-xs">{t("brandMiddle")}</span>
-              <span className="mt-1 block text-base font-light uppercase tracking-[0.02em] wide:text-2xl">{t("brandBottom")}</span>
             </Link>
             <nav aria-label={t("crumbLabel")} className="hidden pt-2 wide:block">
               <ol className="font-meta flex flex-wrap items-center gap-x-2 text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
@@ -855,7 +854,7 @@ export default function ArchiveSite({
               </ol>
             </nav>
           </div>
-          <nav aria-label={t("brandBottom")} className="pointer-events-auto flex items-center justify-end gap-1 sm:gap-3">
+          <nav aria-label={t("headerControls")} className="pointer-events-auto flex items-center justify-end gap-1 sm:gap-3">
             {mode === "archive" && !overview && (
               <button
                 type="button"

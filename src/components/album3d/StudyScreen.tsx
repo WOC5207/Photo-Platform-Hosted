@@ -129,8 +129,8 @@ export default function StudyScreen({
           </ol>
           <div className="mt-3 grid gap-1.5">
             <a
-              href={print.full}
-              download={`${file.slug}-${pad(at + 1)}.webp`}
+              href={print.download}
+              download
               className="inline-flex min-h-10 items-center justify-between gap-3 border border-fg/40 bg-page/80 px-3 text-xs uppercase tracking-[0.08em] transition hover:border-fg"
             >
               {t("studyDownload")} <span aria-hidden="true">↓</span>

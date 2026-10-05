@@ -13,6 +13,8 @@ export interface ArchivePrint {
   thumb: string;
   med: string;
   full: string;
+  /** The full-resolution original, for the Download button. */
+  download: string;
   width: number;
   height: number;
 }
