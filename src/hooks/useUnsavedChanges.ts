@@ -76,6 +76,16 @@ function syncListeners() {
 }
 
 /**
+ * Whether leaving the page now is fine: no draft is open, or the person
+ * confirmed losing it. For navigation that isn't a link click, such as a
+ * keyboard shortcut.
+ */
+export function confirmLeavingDrafts(): boolean {
+  const message = currentMessage();
+  return !message || window.confirm(message);
+}
+
+/**
  * Protect a client-side draft from accidental link navigation or tab close.
  * A shared registry means pages with several editable photo cards prompt once.
  */

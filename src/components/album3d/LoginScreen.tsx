@@ -94,7 +94,7 @@ function AccountMenu({ account }: { account: LoginAccount }) {
     ...(account.listed
       ? [{ key: "archive", label: t("loginArchive"), sub: `@${account.username}`, run: () => go({ kind: "photographer", username: account.username }) }]
       : []),
-    { key: "dashboard", label: t("loginDashboard"), sub: t("loginClassicSub"), external: true, run: () => router.push("/dashboard") },
+    { key: "dashboard", label: t("loginDashboard"), sub: t("loginDashboardSub"), run: () => go({ kind: "studio", username: account.username, page: "home" }) },
     ...(account.admin ? [{ key: "admin", label: t("loginAdmin"), sub: t("loginClassicSub"), external: true, run: () => router.push("/admin") }] : []),
     { key: "signout", label: leaving ? t("loginSigningOut") : t("loginSignOut"), run: () => !leaving && startLeaving(() => logout3d()) }
   ];

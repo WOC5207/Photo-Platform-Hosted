@@ -177,6 +177,8 @@ export interface ArchiveEngine {
   showCarousel(focus: number, standing: boolean): void;
   /** One album's prints on the light table; `raised` lifts the focused one for the photo screen. */
   showTable(key: string, prints: TablePrint[], focus: number, raised: boolean): void;
+  /** Mark picked prints and the cover on the light table (the Dashboard's photo manager). */
+  markTable(picked: number[], cover: number): void;
   /** The booking board, loaded the first time it is shown. */
   showBoard(): Promise<Board | null>;
   /** The prize deck, loaded the first time it is shown. */
@@ -1456,11 +1458,17 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         options.onCard(carousel.focus() + (dx < 0 ? 1 : -1), false);
       }
     } else if (mode === "table" && table && !tableRaised) {
+      // A screen that manages the prints (the Dashboard) takes the table's taps and swipes.
       if (tap) {
         const index = table.pick(e.clientX, e.clientY, rect);
-        if (index >= 0) options.onPrint(index, true);
+        if (index >= 0) {
+          if (stageHandler) stageHandler({ kind: "pick", index });
+          else options.onPrint(index, true);
+        }
       } else if (Math.abs(dy) > 36 && Math.abs(dy) > Math.abs(dx) * 1.3 && elapsed < 1400) {
-        options.onPrint(table.focus() + (dy < 0 ? 1 : -1) * table.columns(), false);
+        const direction = dy < 0 ? 1 : -1;
+        if (stageHandler) stageHandler({ kind: "wheel", direction });
+        else options.onPrint(table.focus() + direction * table.columns(), false);
       }
     } else if (mode === "stage" && stage) {
       if (tap) {
@@ -1607,7 +1615,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         return;
       }
       if (mode === "carousel" && carousel) options.onCard(carousel.focus() + direction, false);
-      else if (table && !tableRaised) options.onPrint(table.focus() + direction * table.columns(), false);
+      else if (table && !tableRaised) {
+        if (stageHandler) stageHandler({ kind: "wheel", direction });
+        else options.onPrint(table.focus() + direction * table.columns(), false);
+      }
       return;
     }
     if (detailTarget || overviewTarget) return;
@@ -1703,6 +1714,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (raised) table.setHover(-1);
       if (enter("table")) table.settle();
       invalidate();
+    },
+    markTable(picked, cover) {
+      table?.setMarks(picked, cover);
     },
     showBoard() {
       return showStage("board", () => import("./board").then((m) => m.createBoard(stageContext())));

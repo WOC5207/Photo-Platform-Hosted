@@ -14,7 +14,8 @@ import {
   findOwnedPhotoForDeletion
 } from "@/lib/ownership";
 import { moderationAllowsPublicPhoto } from "@/lib/photoVisibility";
-import { deleteEventFiles, deletePhotoFiles } from "@/lib/images";
+import { deletePhotoFiles } from "@/lib/images";
+import { deleteOwnedEvent } from "@/lib/eventForms";
 import { deleteOwnedPhotoRowsAndRelease } from "@/lib/quota";
 import { parseCreditsJson, syncCreditProfiles } from "@/lib/photoCredits";
 import { parseShutterSpeed } from "@/lib/exif";
@@ -141,55 +142,7 @@ export async function deleteEvent(formData: FormData): Promise<void> {
   const { locale, user } = await guard();
   const id = formData.get("id");
   if (typeof id !== "string") return;
-
-  const deleted = await prisma.$transaction(
-    async (tx) => {
-      // Pending uploads take this event lock before reserving quota and
-      // inserting their placeholder. Taking the same lock makes the event
-      // either wholly present (including every reservation) or wholly gone;
-      // an upload cannot slip between the byte total and the cascade.
-      const event = await tx.$queryRaw<{ id: string }[]>`
-        SELECT id
-          FROM "Event"
-         WHERE id = ${id}
-           AND "ownerId" = ${user.id}
-         FOR UPDATE
-      `;
-      if (event.length !== 1) return false;
-
-      // Lock in the same Event -> User order as upload reservation. This also
-      // waits for an in-flight image-processing adjustment before summing, and
-      // prevents another account upload/reconcile from changing usedBytes
-      // until this event's rows and counter deduction commit together.
-      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
-      const total = await tx.photo.aggregate({
-        // Deliberately includes ready, processing, pending and deleting rows:
-        // all of them have already reserved the bytes stored on the row.
-        where: { eventId: id },
-        _sum: { bytes: true }
-      });
-
-      // Files first, while the event lock prevents new reservations. Database
-      // rows retain the cleanup path if filesystem removal fails; the database
-      // cascade and quota adjustment below are then one atomic commit.
-      await deleteEventFiles(user.id, id);
-
-      const freed = total._sum.bytes ?? 0;
-      if (freed > 0) {
-        await tx.$executeRaw`
-          UPDATE "User"
-             SET "usedBytes" = GREATEST(0, "usedBytes" - ${BigInt(freed)})
-           WHERE id = ${user.id}
-        `;
-      }
-      await tx.event.delete({ where: { id } });
-      return true;
-    },
-    // Removing a large event directory can take longer than Prisma's default
-    // interactive-transaction timeout. Keep the lock bounded but practical.
-    { maxWait: 10_000, timeout: 60_000 }
-  );
-  if (!deleted) return;
+  if (!(await deleteOwnedEvent(user.id, id))) return;
 
   revalidatePath("/", "layout");
   redirect(`/${locale}/dashboard/events`);

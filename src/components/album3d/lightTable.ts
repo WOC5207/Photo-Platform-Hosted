@@ -44,6 +44,8 @@ export interface LightTable {
   /** Jump to the current targets, for arriving from another screen. */
   settle(): void;
   setRaised(raised: boolean): void;
+  /** The Dashboard's marks: picked prints on an accent mat, and a tab on the cover. */
+  setMarks(picked: number[], cover: number): void;
   setHover(index: number): void;
   pick(clientX: number, clientY: number, rect: DOMRect): number;
   focus(): number;
@@ -66,6 +68,8 @@ const WINDOW_ROWS = 4;
 
 interface Slot {
   group: Group;
+  mat: Mesh;
+  tab: Mesh;
   photo: Mesh;
   face: MeshBasicMaterial;
   w: number;
@@ -104,6 +108,7 @@ export function createLightTable(context: {
   scene.add(surface);
 
   const matMaterial = new MeshStandardMaterial({ color: 0xfbf8f2, roughness: 0.75 });
+  const pickedMaterial = new MeshStandardMaterial({ roughness: 0.6 });
   const unit = new PlaneGeometry(1, 1);
   const prints = new Group();
   scene.add(prints);
@@ -131,6 +136,8 @@ export function createLightTable(context: {
   let hoverIndex = -1;
   let raisedTarget = false;
   let raisedShown = false;
+  let picked = new Set<number>();
+  let coverIndex = -1;
   const pan = spring(0);
   let columnCount = 5;
   let width = 1;
@@ -165,6 +172,7 @@ export function createLightTable(context: {
     surfaceMaterial.needsUpdate = true;
     paper = toColor(palette.control);
     reticleMaterial.color.copy(toColor(palette.fg));
+    pickedMaterial.color.copy(toColor(palette.accent));
     for (const slot of slots) if (!slot.texture) slot.face.color.copy(paper);
   }
 
@@ -205,12 +213,25 @@ export function createLightTable(context: {
       const photo = new Mesh(unit, face);
       photo.scale.set(w, h, 1);
       photo.position.z = 0.002;
-      group.add(mat, photo);
+      // The cover's tab, in the mat's top-left corner.
+      const tab = new Mesh(unit, reticleMaterial);
+      const size = Math.min(w, h) * 0.16;
+      tab.scale.set(size, size, 1);
+      tab.position.set(-w / 2 - MAT + size / 2, h / 2 + MAT - size / 2, 0.004);
+      group.add(mat, photo, tab);
       group.userData.index = i;
       prints.add(group);
       // A steady, slightly hand-placed twist per print.
       const twist = MathUtils.degToRad(((Math.sin(i * 12.9898) * 43758.5453) % 1) * 2.6);
-      return { group, photo, face, w, h, twist, lift: 0, up: spring(0), texture: null, loading: false, used: 0 };
+      return { group, mat, tab, photo, face, w, h, twist, lift: 0, up: spring(0), texture: null, loading: false, used: 0 };
+    });
+    applyMarks();
+  }
+
+  function applyMarks() {
+    slots.forEach((slot, i) => {
+      slot.mat.material = picked.has(i) ? pickedMaterial : matMaterial;
+      slot.tab.visible = i === coverIndex;
     });
   }
 
@@ -368,7 +389,7 @@ export function createLightTable(context: {
     slots.forEach((slot, i) => {
       if (!slot.group.visible) return;
       const focused = i === focusIndex;
-      const liftTarget = focused ? (raisedTarget ? 0 : 0.14) : i === hoverIndex ? 0.07 : 0;
+      const liftTarget = (focused ? (raisedTarget ? 0 : 0.14) : i === hoverIndex ? 0.07 : 0) + (picked.has(i) ? 0.05 : 0);
       const next = reduced ? liftTarget : MathUtils.lerp(slot.lift, liftTarget, 1 - Math.exp(-dt * 12));
       if (Math.abs(next - liftTarget) > 1e-4) moving = true;
       slot.lift = Math.abs(next - liftTarget) > 1e-4 ? next : liftTarget;
@@ -506,6 +527,12 @@ export function createLightTable(context: {
       else dropRaisedTexture();
       invalidate();
     },
+    setMarks(next, cover) {
+      picked = new Set(next);
+      coverIndex = cover;
+      applyMarks();
+      invalidate();
+    },
     setHover(index) {
       if (index === hoverIndex) return;
       hoverIndex = index;
@@ -541,6 +568,7 @@ export function createLightTable(context: {
       clear();
       unit.dispose();
       matMaterial.dispose();
+      pickedMaterial.dispose();
       reticleMaterial.dispose();
       surfaceMaterial.map?.dispose();
       surfaceMaterial.dispose();

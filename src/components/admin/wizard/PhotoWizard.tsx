@@ -25,7 +25,8 @@ export default function PhotoWizard({
   creditProfiles,
   creditTerm,
   subjectTerm,
-  moderationEnabled
+  moderationEnabled,
+  onPublished
 }: {
   eventId: string;
   initialPendingPhotos: PendingPhotoValue[];
@@ -35,6 +36,8 @@ export default function PhotoWizard({
   creditTerm: string;
   subjectTerm: string;
   moderationEnabled: boolean;
+  /** Where to go once published; the classic event page when not given. */
+  onPublished?: () => void;
 }) {
   const t = useTranslations("adminEvents");
   const tw = useTranslations("photoWizard");
@@ -85,6 +88,10 @@ export default function PhotoWizard({
     // before leaving the wizard. Navigating in publish() itself races React's
     // effect cleanup and causes browsers to show a misleading leave-site
     // warning after every successful publish.
+    if (onPublished) {
+      onPublished();
+      return;
+    }
     const eventManagerUrl = new URL(window.location.href);
     eventManagerUrl.pathname = eventManagerUrl.pathname.replace(
       /\/photos\/?$/,
@@ -93,7 +100,7 @@ export default function PhotoWizard({
     eventManagerUrl.search = "";
     eventManagerUrl.hash = "photos";
     window.location.replace(eventManagerUrl);
-  }, [publishPhase]);
+  }, [publishPhase, onPublished]);
 
   const steps = [
     { key: "upload", label: tw("stepUpload") },

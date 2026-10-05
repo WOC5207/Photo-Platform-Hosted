@@ -163,13 +163,16 @@ export default function ArchiveSite({
   // Booking and the poster creators draw their own panels, from their pages (see StageContext).
   const booking = screen.kind === "booking" || screen.kind === "book" || screen.kind === "draw";
   const creator = screen.kind === "cosplan" || screen.kind === "sharepost";
+  // The Dashboard's pages draw their own panels too; its home is a menu.
+  const studio = screen.kind === "studio";
+  const studioHome = studio && screen.page === "home";
   const missing =
-    ("username" in screen && columnIndex < 0 && !booking) ||
+    ("username" in screen && columnIndex < 0 && !booking && !studio) ||
     (inAlbum && fileIndex < 0) ||
     (screen.kind === "photo" && albumHere !== null && photoIndex < 0);
   const mode: Mode = missing
     ? "archive"
-    : booking || creator
+    : booking || creator || (studio && !studioHome)
       ? "booking"
       : screen.kind === "album"
       ? screen.study
@@ -178,7 +181,7 @@ export default function ArchiveSite({
       : screen.kind === "table" || screen.kind === "photo"
         ? screen.kind
         : "archive";
-  const overview = missing || MENU_SCREENS.includes(screen.kind);
+  const overview = missing || studioHome || MENU_SCREENS.includes(screen.kind);
   const carouselScreen = !missing && (screen.kind === "photographers" || screen.kind === "photographer");
 
   const [status, setStatus] = useState<EngineStatus>("loading");
@@ -675,8 +678,8 @@ export default function ArchiveSite({
         }
         return;
       }
-      // The login screen's form and menu take their own keys.
-      if (screen.kind === "login") return;
+      // The login screen's form and menu, and the Dashboard's, take their own keys.
+      if (screen.kind === "login" || studio) return;
       if (mode === "table" && albumHere && albumHere.photos.length > 0) {
         const columnsAcross = tableColumns(window.innerWidth, window.innerHeight);
         const moves: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columnsAcross, ArrowDown: columnsAcross };
@@ -766,7 +769,14 @@ export default function ArchiveSite({
   // Where the visitor is, as a trail of links back up the screens.
   const crumbs: { label: string; href?: string }[] = [{ label: t("crumbMenu"), href: screenPath({ kind: "title" }) }];
   if (screen.kind === "albums") crumbs.push({ label: t("menuAllAlbums") });
-  if (here && !missing) {
+  if (screen.kind === "studio") {
+    const { username, page, id } = screen;
+    crumbs.push({ label: t("studioTitle"), href: screenPath({ kind: "studio", username, page: "home" }) });
+    if (page !== "home") crumbs.push({ label: t("studioEvents"), href: screenPath({ kind: "studio", username, page: "events" }) });
+    if (page === "new") crumbs.push({ label: t("studioNewEvent") });
+    if (id) crumbs.push({ label: t("studioEvent"), href: screenPath({ kind: "studio", username, page: "event", id }) });
+    if (page === "photos" || page === "upload") crumbs.push({ label: t(page === "photos" ? "studioPhotos" : "studioUpload") });
+  } else if (here && !missing) {
     crumbs.push({ label: t("menuPhotographers"), href: screenPath({ kind: "photographers" }) });
     crumbs.push({ label: here.name, href: screenPath({ kind: "photographer", username: here.username }) });
     if (albumsHere) crumbs.push({ label: t("menuAlbums"), href: screenPath({ kind: "albumSelect", username: here.username }) });
@@ -1288,7 +1298,7 @@ export default function ArchiveSite({
         </div>
       )}
 
-      {(status === "unsupported" || status === "lost") && mode !== "booking" && (
+      {(status === "unsupported" || status === "lost") && mode !== "booking" && !studio && (
         <div className="absolute inset-0 z-20 overflow-y-auto bg-page px-4 pb-10 pt-32 sm:px-8">
           <div className="mx-auto max-w-4xl">
             <h2 className="text-xl font-bold">{t(status === "lost" ? "lostTitle" : "unsupportedTitle")}</h2>
