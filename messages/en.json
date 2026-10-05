@@ -2455,6 +2455,8 @@
     "studioBack": "{done}/{total} back",
     "studioReminders": "Reminders",
     "studioRemove": "Remove from list",
+    "studioAddCategory": "+ Add category",
+    "studioCategoryError": "The category could not be created. Try a different name.",
     "studioHintItem": "Item",
     "studioOnSheet": "On sheet",
     "studioToSheet": "Add to sheet",

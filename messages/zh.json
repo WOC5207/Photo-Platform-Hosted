@@ -2455,6 +2455,8 @@
     "studioBack": "已收回 {done}/{total}",
     "studioReminders": "提醒事项",
     "studioRemove": "从清单移除",
+    "studioAddCategory": "+ 添加分类",
+    "studioCategoryError": "无法创建分类，请换一个名称再试。",
     "studioHintItem": "查看",
     "studioOnSheet": "已加入",
     "studioToSheet": "加入标签页",
