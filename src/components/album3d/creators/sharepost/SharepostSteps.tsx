@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
-import type { Screen, SharepostStep } from "@/lib/siteMode";
+import type { SharepostStep } from "@/lib/siteMode";
 import { pad } from "../../hud";
 import { useStage } from "../../booking/shared";
 import { useSharepostStudio } from "./SharepostStudio";
@@ -16,8 +16,6 @@ const STEPS: { step: Step; label: string }[] = [
   { step: "print", label: "creatorPrint" }
 ];
 
-const screenOf = (step: Step): Screen => (step === "photos" ? { kind: "sharepost" } : { kind: "sharepost", step });
-
 /**
  * The Sharepost steps at the top of each screen's panel: Back (one step
  * back, the same as Esc, and the only way back on touch screens) and every
@@ -27,7 +25,7 @@ const screenOf = (step: Step): Screen => (step === "photos" ? { kind: "sharepost
 export function SharepostSteps({ current }: { current: Step }) {
   const t = useTranslations("album3d");
   const { back, path } = useStage();
-  const { photos } = useSharepostStudio();
+  const { photos, screen } = useSharepostStudio();
   return (
     <nav aria-label={t("creatorStepsLabel")} className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2">
       <button
@@ -60,7 +58,7 @@ export function SharepostSteps({ current }: { current: Step }) {
                   {text}
                 </span>
               ) : (
-                <Link href={path(screenOf(step))} scroll={false} className={`${base} border-transparent text-fg-muted transition hover:border-fg-subtle hover:text-fg`}>
+                <Link href={path(screen(step === "photos" ? undefined : step))} scroll={false} className={`${base} border-transparent text-fg-muted transition hover:border-fg-subtle hover:text-fg`}>
                   {text}
                 </Link>
               )}
@@ -76,12 +74,12 @@ export function SharepostSteps({ current }: { current: Step }) {
 export function SharepostNext({ to }: { to: SharepostStep }) {
   const t = useTranslations("album3d");
   const { path } = useStage();
-  const { photos } = useSharepostStudio();
+  const { photos, screen } = useSharepostStudio();
   if (to === "print" && photos.length === 0) return null;
   const label = to === "layout" ? "creatorLayout" : to === "credits" ? "creatorCredits" : "creatorPrint";
   return (
     <Link
-      href={path(screenOf(to))}
+      href={path(screen(to))}
       scroll={false}
       className="mt-6 inline-flex min-h-12 w-full items-center justify-between gap-4 bg-fg px-5 text-sm font-semibold uppercase tracking-[0.08em] text-page transition hover:bg-accent-text"
     >

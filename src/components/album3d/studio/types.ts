@@ -324,3 +324,127 @@ export interface StudioSlotSheet {
   events: { id: string; title: string }[];
   event: string | null;
 }
+
+export interface StudioStorageEvent {
+  id: string;
+  title: string;
+  bytes: number;
+  photos: number;
+  pending: number;
+}
+
+/** Disk use: the quota, the split between photos and site images, and each event's share. */
+export interface StudioStorage {
+  account: StudioAccount;
+  usedBytes: number;
+  quotaBytes: number;
+  photosBytes: number;
+  siteImagesBytes: number;
+  /** Largest first, as the classic page lists them. */
+  events: StudioStorageEvent[];
+}
+
+export interface StudioCreditProfile {
+  id: string;
+  name: string;
+  links: { platform: string; url: string }[];
+}
+
+/** The credit profiles photos are credited to, when the photographer has them turned on. */
+export interface StudioCredits {
+  account: StudioAccount;
+  enabled: boolean;
+  term: string;
+  profiles: StudioCreditProfile[];
+}
+
+/** Every site setting the classic settings form edits, as it reads them. */
+export interface StudioSiteValues {
+  siteTitleEn: string;
+  siteTitleZh: string;
+  homeTitleEn: string;
+  homeTitleZh: string;
+  homeSubtitleEn: string;
+  homeSubtitleZh: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  fieldColor: string;
+  textColor: string;
+  themeColor: string;
+  darkBackgroundColor: string;
+  darkSurfaceColor: string;
+  darkFieldColor: string;
+  darkTextColor: string;
+  darkThemeColor: string;
+  dashboardThemeMode: string;
+  creditTermEn: string;
+  creditTermZh: string;
+  subjectTermEn: string;
+  subjectTermZh: string;
+  homeCreditsLabelEn: string;
+  homeCreditsLabelZh: string;
+  bookingEnabled: boolean;
+  bookingPriceEnabled: boolean;
+  timeZone: string;
+  lotteryEnabled: boolean;
+  creditProfilesEnabled: boolean;
+  announcementsEnabled: boolean;
+  contactEnabled: boolean;
+  contactTitleEn: string;
+  contactTitleZh: string;
+  contactUrlEn: string;
+  contactUrlZh: string;
+}
+
+export interface StudioPersonalLink {
+  id: string;
+  labelEn: string;
+  labelZh: string;
+  url: string;
+}
+
+export interface StudioAnnouncement {
+  id: string;
+  titleEn: string;
+  titleZh: string;
+  bodyEn: string;
+  bodyZh: string;
+  imageUrl: string;
+}
+
+/** The site settings, their images, links and announcements, for the settings pages. */
+export interface StudioSite {
+  account: StudioAccount;
+  /** The address of the photographer's public homepage. */
+  homeUrl: string;
+  displayName: string;
+  email: string;
+  values: StudioSiteValues;
+  images: { logo: string; background: string; contactQrEn: string; contactQrZh: string };
+  links: StudioPersonalLink[];
+  announcements: StudioAnnouncement[];
+  priceNotice: { title: string; body: string; version: number };
+  timeZones: string[];
+  creditTerm: string;
+}
+
+export interface StudioPosterSummary {
+  id: string;
+  name: string;
+  photos: number;
+  ratio: string;
+  /** Width over height, for the easel. */
+  aspect: number;
+  updated: string;
+  /** The first photograph, small for the rail and larger for the easel; empty without one. */
+  thumb: string;
+  cover: string;
+}
+
+/** The photographer's saved Sharepost posters, newest change first. */
+export interface StudioPosters {
+  account: StudioAccount;
+  posters: StudioPosterSummary[];
+  /** More than the rail carries; the rest are on the classic page. */
+  more: boolean;
+}

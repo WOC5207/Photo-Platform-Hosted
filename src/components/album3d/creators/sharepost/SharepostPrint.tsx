@@ -73,8 +73,8 @@ export default function SharepostPrint() {
         ...(printed && canShareFile(printed.file) ? [{ key: "share", label: ts("share"), sub: printed.file.name, run: () => void share() }] : []),
         { key: "format", label: ts("format"), value: format === "png" ? "PNG" : "JPEG · 92%", run: setFormat, adjust: () => setFormat() },
         { key: "edge", label: ts("longestEdge"), value: `${edge} PX`, run: () => setEdge(1), adjust: setEdge },
-        { key: "photos", label: t("creatorBackToPhotos"), sub: t("creatorSharepostCount", { photos: photos.length }), run: () => go({ kind: "sharepost" }) },
-        { key: "classic", label: t("creatorEditClassic"), sub: t("creatorEditClassicSub"), external: true, run: () => router.push("/sharing-poster") }
+        { key: "photos", label: t("creatorBackToPhotos"), sub: t("creatorSharepostCount", { photos: photos.length }), run: () => go(studio.screen()) },
+        { key: "classic", label: t("creatorEditClassic"), sub: t("creatorEditClassicSub"), external: true, run: () => router.push(studio.classicHref) }
       ]
     : [];
   const at = Math.min(focus, Math.max(0, items.length - 1));

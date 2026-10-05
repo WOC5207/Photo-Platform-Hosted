@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import type { Screen, SharepostStep } from "@/lib/siteMode";
 import type {
   SharingPosterComposition,
   SharingPosterCreditKind,
@@ -18,7 +19,22 @@ import type { PosterStage } from "../../poster";
  * so the photographs, layout, credits and print screens share one draft. It
  * is the classic public editor's draft (/sharing-poster): the visitor's
  * photographs stay in this browser, kept in IndexedDB.
+ *
+ * Given a saved project instead (the 3D Dashboard's posters), it edits that:
+ * photographs come from the photographer's galleries, and changes save to
+ * the server with the project's revision, as the classic dashboard editor.
  */
+
+/** A photographer's saved poster, as the Dashboard's poster pages load it. */
+export interface SharepostProject {
+  id: string;
+  username: string;
+  name: string;
+  revision: number;
+  composition: SharingPosterComposition;
+  photos: SharingPosterResolvedPhoto[];
+  events: { id: string; title: string }[];
+}
 
 // The poster code (layout, glass, schema) loads with the draft, not with the page.
 const loadTools = () =>
@@ -39,6 +55,11 @@ export type Metrics = Pick<SharingPosterRenderResult, "footerTooTall" | "wrapped
 
 export interface SharepostStudio {
   status: "reading" | "ready";
+  /** The saved project being edited, or null for the browser draft. */
+  project: SharepostProject | null;
+  /** Where a step lives: under /3d/sharepost, or under the project's Dashboard page. */
+  screen(step?: SharepostStep): Screen;
+  classicHref: string;
   tools: SharepostTools | null;
   name: string;
   setName(name: string): void;
@@ -51,6 +72,8 @@ export interface SharepostStudio {
   /** A thumbnail for the rail, loaded on first ask. */
   thumb(src: string | undefined): HTMLImageElement | null;
   addFiles(files: File[]): Promise<void>;
+  /** A gallery photograph, for a saved project. */
+  addPhoto(source: SharingPosterPhotoValue): void;
   reading: { done: number; total: number } | null;
   readNotice: { failed: number; skipped: number };
   removePhoto(id: string): void;
@@ -62,10 +85,12 @@ export interface SharepostStudio {
   setCreditValue(id: string, value: string): void;
   updateCreditLines(change: (lines: SharingPosterCreditLine[]) => SharingPosterCreditLine[]): void;
   metrics: Metrics | null;
-  saved: "idle" | "dirty" | "saved" | "error";
+  saved: Saved;
   /** Paints the poster on the easel and measures it; `selected` rings a photograph. */
   paint(scene: PosterStage, options?: { selected?: string | null; composition?: SharingPosterComposition; key?: string }): Metrics | null;
 }
+
+type Saved = "idle" | "dirty" | "saved" | "error" | "conflict";
 
 const StudioContext = createContext<SharepostStudio | null>(null);
 
@@ -85,7 +110,22 @@ function newCreditLineId(kind: SharingPosterCreditKind, lines: SharingPosterCred
   }
 }
 
-export default function SharepostStudioProvider({ children }: { children: ReactNode }) {
+const PROJECT_STEPS = { layout: "posterLayout", credits: "posterCredits", print: "posterPrint" } as const;
+
+/** Keeps a project on the server; a 409 means someone saved it elsewhere first. */
+async function saveProject(id: string, body: object, keepalive = false): Promise<number> {
+  const response = await fetch(`/api/dashboard/sharing-posters/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    keepalive
+  });
+  if (response.status === 409) throw new Error("conflict");
+  if (!response.ok) throw new Error("save_failed");
+  return ((await response.json()) as { revision: number }).revision;
+}
+
+export default function SharepostStudioProvider({ project = null, children }: { project?: SharepostProject | null; children: ReactNode }) {
   const t = useTranslations("sharingPosters");
   const ta = useTranslations("album3d");
   const locale = useLocale();
@@ -98,7 +138,10 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
   const [reading, setReading] = useState<{ done: number; total: number } | null>(null);
   const [readNotice, setReadNotice] = useState({ failed: 0, skipped: 0 });
   const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [saved, setSaved] = useState<"idle" | "dirty" | "saved" | "error">("idle");
+  const [saved, setSaved] = useState<Saved>("idle");
+  const [cycle, setCycle] = useState(0);
+  const saving = useRef(false);
+  const revision = useRef(project?.revision ?? 0);
   const cache = useRef(new Map<string, HTMLImageElement | "loading" | "failed">());
   const [imageVersion, setImageVersion] = useState(0);
   // Gallery-derived credits refill as photographs arrive until the visitor edits one, as in the classic editor.
@@ -111,7 +154,9 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
       .then(async (loaded) => {
         const fresh = loaded.defaultSharingPosterComposition(locale, "");
         // Without IndexedDB (a private window) the visitor still edits; nothing is kept.
-        const stored = await loaded.readLocalPosterDraft(fresh).catch(() => null);
+        const stored = project
+          ? { name: project.name, composition: project.composition, photos: project.photos }
+          : await loaded.readLocalPosterDraft(fresh).catch(() => null);
         if (!live) return;
         const draftName = stored?.name || t("localDefaultName");
         const draft = stored?.composition ?? fresh;
@@ -128,6 +173,8 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
     return () => {
       live = false;
     };
+    // The project is read once; after that this draft is the newer copy.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locale, t]);
 
   const photos = useMemo<SharingPosterResolvedPhoto[]>(
@@ -137,23 +184,37 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
   const photosRef = useRef(photos);
   photosRef.current = photos;
 
-  // Autosave like the classic public editor: shortly after the last change, while the poster has a name.
+  // Autosave like the classic editors: shortly after the last change, while
+  // the poster has a name. A project saves one request at a time, each with
+  // the revision the last one returned, and stops on a conflict.
   const signature = useMemo(() => (composition ? JSON.stringify({ name, composition }) : ""), [name, composition]);
+  const projectId = project?.id;
   useEffect(() => {
-    if (!tools || !composition || signature === lastSaved.current) return;
+    if (!tools || !composition || signature === lastSaved.current || saving.current || saved === "conflict") return;
     setSaved("dirty");
     if (!name.trim()) return;
     const timer = window.setTimeout(() => {
-      tools
-        .saveLocalPosterDraft({ name, composition })
+      saving.current = true;
+      (projectId
+        ? saveProject(projectId, { name, composition, revision: revision.current }).then((next) => {
+            revision.current = next;
+          })
+        : tools.saveLocalPosterDraft({ name, composition })
+      )
         .then(() => {
           lastSaved.current = signature;
           setSaved("saved");
         })
-        .catch(() => setSaved("error"));
+        .catch((error: Error) => setSaved(error.message === "conflict" ? "conflict" : "error"))
+        .finally(() => {
+          saving.current = false;
+          setCycle((value) => value + 1);
+        });
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [tools, composition, name, signature]);
+    // `saved` is left out so a finished save doesn't restart the timer by itself; `cycle` does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tools, composition, name, signature, projectId, cycle]);
 
   // Leaving the screen, closing the tab or opening the classic editor saves
   // a change the timer above hadn't reached yet.
@@ -163,9 +224,13 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
     if (!tools) return;
     const flush = () => {
       const latest = pending.current;
-      if (!latest || !latest.name.trim() || latest.signature === lastSaved.current) return;
+      if (!latest || !latest.name.trim() || latest.signature === lastSaved.current || saving.current) return;
       lastSaved.current = latest.signature;
-      void tools.saveLocalPosterDraft({ name: latest.name, composition: latest.composition }).then(() => setSaved("saved"), () => undefined);
+      const body = { name: latest.name, composition: latest.composition };
+      void (projectId
+        ? saveProject(projectId, { ...body, revision: revision.current }, true).then((next) => void (revision.current = next))
+        : tools.saveLocalPosterDraft(body)
+      ).then(() => setSaved("saved"), () => undefined);
     };
     const onVisibility = () => document.visibilityState === "hidden" && flush();
     window.addEventListener("pagehide", flush);
@@ -175,7 +240,7 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
       document.removeEventListener("visibilitychange", onVisibility);
       flush();
     };
-  }, [tools]);
+  }, [tools, projectId]);
 
   const update = useCallback((change: (current: SharingPosterComposition) => SharingPosterComposition) => {
     setComposition((current) => (current ? change(current) : current));
@@ -268,6 +333,27 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
       setReadNotice({ failed, skipped: pictures.length - accepted.length });
     },
     [tools, reading, update, syncMetadata]
+  );
+
+  const addPhoto = useCallback(
+    (source: SharingPosterPhotoValue) => {
+      const current = photosRef.current;
+      const max = tools?.SHARING_POSTER_MAX_PHOTOS ?? 9;
+      if (current.some((photo) => photo.photoId === source.id) || current.length >= max) return;
+      const entry = { photoId: source.id, weight: source.homeWeight, focalX: 0.5, focalY: 0.5, crop: { mode: "auto" as const } };
+      const next = [...current, { photoId: source.id, composition: entry, source }];
+      photosRef.current = next;
+      setSources((sources) => new Map(sources).set(source.id, source));
+      update((value) => (value.photos.length >= max ? value : { ...value, photos: [...value.photos, entry] }));
+      syncMetadata(next);
+    },
+    [tools, update, syncMetadata]
+  );
+
+  const screen = useCallback(
+    (step?: SharepostStep): Screen =>
+      project ? { kind: "studio", username: project.username, page: step ? PROJECT_STEPS[step] : "poster", id: project.id } : step ? { kind: "sharepost", step } : { kind: "sharepost" },
+    [project]
   );
 
   const removePhoto = useCallback(
@@ -403,6 +489,9 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
   const value = useMemo<SharepostStudio>(
     () => ({
       status,
+      project,
+      screen,
+      classicHref: project ? `/dashboard/sharing-posters/${project.id}` : "/sharing-poster",
       tools,
       name,
       setName,
@@ -413,6 +502,7 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
       layerImages,
       thumb: load,
       addFiles,
+      addPhoto,
       reading,
       readNotice,
       removePhoto,
@@ -426,7 +516,7 @@ export default function SharepostStudioProvider({ children }: { children: ReactN
       saved,
       paint
     }),
-    [status, tools, name, composition, update, photos, images, layerImages, load, addFiles, reading, readNotice, removePhoto, movePhoto, resizePhoto, setFit, addCreditLine, setCreditValue, updateCreditLines, metrics, saved, paint]
+    [status, project, screen, tools, name, composition, update, photos, images, layerImages, load, addFiles, addPhoto, reading, readNotice, removePhoto, movePhoto, resizePhoto, setFit, addCreditLine, setCreditValue, updateCreditLines, metrics, saved, paint]
   );
 
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;

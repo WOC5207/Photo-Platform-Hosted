@@ -131,9 +131,10 @@ export async function changePassword(
 /**
  * Signs this account out on every device. Plain logout only clears this
  * browser's cookie, so a copied cookie would stay valid until it expires;
- * bumping credentialVersion invalidates every session cookie at once.
+ * bumping credentialVersion invalidates every session cookie at once. The 3D
+ * Dashboard sends site=3d, so it lands on the 3D sign-in instead.
  */
-export async function logoutEverywhere(): Promise<void> {
+export async function logoutEverywhere(formData?: FormData): Promise<void> {
   const locale = await getLocale();
   const user = await requireUser(locale);
   await prisma.user.update({
@@ -142,5 +143,5 @@ export async function logoutEverywhere(): Promise<void> {
   });
   const session = await getSession();
   session.destroy();
-  redirect(`/${locale}/login`);
+  redirect(`/${locale}${formData?.get("site") === "3d" ? "/3d/login" : "/login"}`);
 }
