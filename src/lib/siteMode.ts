@@ -40,9 +40,24 @@ export type Screen =
  * "home" is its menu, "events" their events (drafts too), "new" creates one,
  * and "event", "photos" and "upload" are one event's details, its photos on
  * the light table, and adding photos to it (`id` names the event).
+ * "bookings" lists their booking events; "booking", "bookingDetails" and
+ * "lottery" are one booking event's schedule, its settings and its prize
+ * draw (`id` names the booking event).
  */
-export type StudioPage = "home" | "events" | "new" | "event" | "photos" | "upload";
+export type StudioPage =
+  | "home"
+  | "events"
+  | "new"
+  | "event"
+  | "photos"
+  | "upload"
+  | "bookings"
+  | "booking"
+  | "bookingDetails"
+  | "lottery";
 const EVENT_PAGES = ["photos", "upload"] as const;
+/** A booking event's pages after its schedule, by their path segment. */
+const BOOKING_PAGES: Record<string, StudioPage> = { details: "bookingDetails", lottery: "lottery" };
 
 /**
  * The poster creators' steps after their first screen: Cosplan picks a
@@ -108,6 +123,13 @@ export function parseScreen(path: string): Screen | null {
 
 function parseStudio(username: string, rest: string[]): Screen | null {
   if (rest.length === 0) return { kind: "studio", username, page: "home" };
+  if (rest[0] === "bookings") {
+    if (rest.length === 1) return { kind: "studio", username, page: "bookings" };
+    if (!SEGMENT.test(rest[1])) return null;
+    if (rest.length === 2) return { kind: "studio", username, page: "booking", id: rest[1] };
+    const page = rest.length === 3 && Object.hasOwn(BOOKING_PAGES, rest[2]) ? BOOKING_PAGES[rest[2]] : null;
+    return page ? { kind: "studio", username, page, id: rest[1] } : null;
+  }
   if (rest[0] !== "events") return null;
   if (rest.length === 1) return { kind: "studio", username, page: "events" };
   if (rest.length === 2 && rest[1] === "new") return { kind: "studio", username, page: "new" };
@@ -124,6 +146,7 @@ const enc = encodeURIComponent;
 /** A Dashboard page's path under /studio, and its classic twin's under /dashboard. */
 function studioTail(screen: Extract<Screen, { kind: "studio" }>, classic = false): string {
   const event = `/events/${enc(screen.id ?? "")}`;
+  const booking = `/bookings/${enc(screen.id ?? "")}`;
   switch (screen.page) {
     case "home":
       return "";
@@ -138,6 +161,15 @@ function studioTail(screen: Extract<Screen, { kind: "studio" }>, classic = false
       return classic ? event : `${event}/photos`;
     case "upload":
       return `${event}/${classic ? "photos" : "upload"}`;
+    case "bookings":
+      return "/bookings";
+    case "booking":
+      return booking;
+    // The classic booking page keeps the event's settings in its overview tab.
+    case "bookingDetails":
+      return classic ? `${booking}?section=overview` : `${booking}/details`;
+    case "lottery":
+      return `${booking}/lottery`;
   }
 }
 
@@ -218,6 +250,9 @@ export function parentScreen(screen: Screen): Screen | null {
       if (screen.page === "home") return { kind: "title" };
       if (screen.page === "events") return { kind: "studio", username, page: "home" };
       if (screen.page === "photos" || screen.page === "upload") return { kind: "studio", username, page: "event", id };
+      if (screen.page === "bookings") return { kind: "studio", username, page: "home" };
+      if (screen.page === "bookingDetails" || screen.page === "lottery") return { kind: "studio", username, page: "booking", id };
+      if (screen.page === "booking") return { kind: "studio", username, page: "bookings" };
       return { kind: "studio", username, page: "events" };
     }
   }
@@ -292,6 +327,7 @@ export function threeDTwin(path: string): string {
 
 /** The Dashboard page under /3d/studio for a classic /dashboard page's segments. */
 function studioFromClassic(rest: string[], path: string): string {
+  if (rest[0] === "bookings") return bookingsFromClassic(rest, path);
   // Sections without a 3D page yet open the Dashboard's menu.
   if (rest[0] !== "events") return "";
   if (rest.length === 1) return "/events";
@@ -303,6 +339,18 @@ function studioFromClassic(rest: string[], path: string): string {
   }
   if (rest.length === 3 && rest[2] === "photos" && SEGMENT.test(id)) return `/events/${enc(id)}/upload`;
   return SEGMENT.test(id) ? `/events/${enc(id)}` : "/events";
+}
+
+/** The Dashboard's booking page for a classic /dashboard/bookings page's segments. */
+function bookingsFromClassic(rest: string[], path: string): string {
+  if (rest.length === 1) return "/bookings";
+  const id = rest[1];
+  // New booking events are made with their gallery, from "New event".
+  if (id === "new") return "/events/new";
+  if (!SEGMENT.test(id)) return "/bookings";
+  if (rest.length === 3 && rest[2] === "lottery") return `/bookings/${enc(id)}/lottery`;
+  // The overview and advanced tabs hold the settings; the schedule is the default.
+  return /[?&]section=(overview|advanced)\b/.test(path) ? `/bookings/${enc(id)}/details` : `/bookings/${enc(id)}`;
 }
 
 /** Cookie string that remembers the visitor's site. */

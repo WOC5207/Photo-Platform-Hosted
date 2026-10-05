@@ -19,6 +19,17 @@ export function formatBytes(bytes: number): string {
   return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 }
 
+/** The days from the first to the last, as the event form's calendar sends them. */
+export function daysBetween(first: string, last: string): string[] {
+  if (!first) return [];
+  const start = Date.parse(`${first}T00:00:00Z`);
+  const end = last ? Date.parse(`${last}T00:00:00Z`) : start;
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return [];
+  const days: string[] = [];
+  for (let t = start; t <= end && days.length < 60; t += 86_400_000) days.push(new Date(t).toISOString().slice(0, 10));
+  return days;
+}
+
 /** The meta line, title and callout rule every Dashboard panel opens with. */
 export function StudioHeading({ trail, title, children }: { trail: string; title: string; children?: ReactNode }) {
   const t = useTranslations("album3d");

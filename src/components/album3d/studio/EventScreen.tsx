@@ -67,6 +67,12 @@ export default function EventScreen({
             {event.pendingCount > 0 ? ta("resumePhotos", { count: event.pendingCount }) : ta("addPhotos")}
             <span aria-hidden="true" className="ml-auto">+</span>
           </Link>
+          {event.bookingId && (
+            <Link href={path({ kind: "studio", username, page: "booking", id: event.bookingId })} scroll={false} className={secondaryClass}>
+              {t("studioBookingPage")}
+              <span aria-hidden="true" className="ml-auto">→</span>
+            </Link>
+          )}
           {event.publicPath && (
             <Link href={event.publicPath} className={secondaryClass}>
               {t("studioViewAlbum")}

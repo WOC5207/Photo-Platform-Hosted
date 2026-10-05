@@ -41,10 +41,11 @@ const routeBudgets = [
   // steps share a studio layout that holds the draft, so it counts too. The
   // Cosplan board carries the arranging and text panels; the Sharepost
   // credits step reuses the classic editor's credit layers, and every
-  // Sharepost step carries the step bar with its Back button.
+  // Sharepost step carries the step bar with its Back button. The Dashboard's
+  // routes in the shared 3D code add a little to each.
   { label: "3D Cosplan", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/page"], limitKb: 152 },
   { label: "3D Cosplan board", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/board/page"], limitKb: 158 },
-  { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/page"], limitKb: 149 },
+  { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/page"], limitKb: 150 },
   { label: "3D Sharepost credits", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/credits/page"], limitKb: 176 },
   // The 3D Dashboard's screens come with their pages. Adding photos carries
   // the classic photo wizard and its upload queue.
@@ -52,7 +53,12 @@ const routeBudgets = [
   { label: "3D Dashboard events", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/page"], limitKb: 145 },
   { label: "3D Dashboard event", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/[id]/page"], limitKb: 145 },
   { label: "3D Dashboard photos", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/[id]/photos/page"], limitKb: 146 },
-  { label: "3D Dashboard upload", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/[id]/upload/page"], limitKb: 157 }
+  { label: "3D Dashboard upload", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/[id]/upload/page"], limitKb: 157 },
+  // The booking pages reuse the classic slot, status and prize-draw forms.
+  { label: "3D Dashboard bookings", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/bookings/page"], limitKb: 145 },
+  { label: "3D Dashboard schedule", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/bookings/[id]/page"], limitKb: 151 },
+  { label: "3D Dashboard booking settings", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/bookings/[id]/details/page"], limitKb: 146 },
+  { label: "3D Dashboard prize draw", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/bookings/[id]/lottery/page"], limitKb: 151 }
 ];
 
 for (const budget of routeBudgets) {

@@ -2423,6 +2423,22 @@
     "studioScreening_pending": "正在审核",
     "studioScreening_review": "等待人工审核",
     "studioScreening_rejected": "审核未通过，已隐藏",
-    "studioScreening_error": "审核出错"
+    "studioScreening_error": "审核出错",
+    "studioBookings": "预约",
+    "studioBookingsSub": "时间表、预约与抽奖",
+    "studioBooking": "时间表",
+    "studioBookingDetails": "预约设置",
+    "studioLottery": "抽奖",
+    "studioBookingCount": "预约页",
+    "studioBookingPage": "预约页面",
+    "studioAlbum": "相册",
+    "studioSlot": "时间段",
+    "studioSlotBookings": "{count} 个已确认预约",
+    "studioNoBookings": "这个时间段还没有预约。",
+    "studioNoDays": "这个预约页面还没有日期，请在设置中添加。",
+    "studioHintSlot": "时间段",
+    "studioHintBookings": "预约",
+    "studioDrawFor": "为参与者抽奖",
+    "studioDraw": "抽奖"
   }
 }

@@ -36,7 +36,11 @@ const screens = [
   "/3d/u/george/studio/events/new",
   "/3d/u/george/studio/events/cmevent1",
   "/3d/u/george/studio/events/cmevent1/photos",
-  "/3d/u/george/studio/events/cmevent1/upload"
+  "/3d/u/george/studio/events/cmevent1/upload",
+  "/3d/u/george/studio/bookings",
+  "/3d/u/george/studio/bookings/cmbook1",
+  "/3d/u/george/studio/bookings/cmbook1/details",
+  "/3d/u/george/studio/bookings/cmbook1/lottery"
 ];
 for (const path of screens) {
   const screen = parseScreen(path);
@@ -50,7 +54,7 @@ assert.deepEqual(parseScreen("/3d/u/george/albums/fan-expo-2026?x=1"), {
   slug: "fan-expo-2026",
   study: false
 });
-for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/cosplan/board/x", "/3d/sharepost/board", "/3d/sharing-poster", "/3d/u/george/studio/bookings", "/3d/u/george/studio/events/cmevent1/setup", "/3d/u/george/studio/events/cmevent1/photos/x"]) {
+for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/cosplan/board/x", "/3d/sharepost/board", "/3d/sharing-poster", "/3d/u/george/studio/booking", "/3d/u/george/studio/bookings/new/x", "/3d/u/george/studio/bookings/cmbook1/constructor", "/3d/u/george/studio/bookings/cmbook1/lottery/x", "/3d/u/george/studio/events/cmevent1/setup", "/3d/u/george/studio/events/cmevent1/photos/x"]) {
   assert.equal(parseScreen(path), null, `${path} is not a 3D screen`);
 }
 
@@ -96,6 +100,14 @@ assert.deepEqual(climb("/3d/u/george/studio/events/cmevent1/upload"), [
   "/3d/u/george/studio",
   "/3d"
 ]);
+assert.deepEqual(climb("/3d/u/george/studio/bookings/cmbook1/lottery"), [
+  "/3d/u/george/studio/bookings/cmbook1/lottery",
+  "/3d/u/george/studio/bookings/cmbook1",
+  "/3d/u/george/studio/bookings",
+  "/3d/u/george/studio",
+  "/3d"
+]);
+assert.deepEqual(climb("/3d/u/george/studio/bookings/cmbook1/details")[1], "/3d/u/george/studio/bookings/cmbook1");
 assert.deepEqual(climb("/3d/u/george/studio/events/new").slice(0, 2), ["/3d/u/george/studio/events/new", "/3d/u/george/studio/events"]);
 assert.deepEqual(climb("/3d/u/george/studio/events/cmevent1/photos")[1], "/3d/u/george/studio/events/cmevent1");
 
@@ -154,14 +166,21 @@ const dashboardTwins: [threeD: string, classic: string, back: string][] = [
   ["/3d/u/george/studio/events/new", "/dashboard/events/new", "/3d/studio/events/new"],
   ["/3d/u/george/studio/events/cmevent1", "/dashboard/events/cmevent1", "/3d/studio/events/cmevent1"],
   ["/3d/u/george/studio/events/cmevent1/photos", "/dashboard/events/cmevent1", "/3d/studio/events/cmevent1"],
-  ["/3d/u/george/studio/events/cmevent1/upload", "/dashboard/events/cmevent1/photos", "/3d/studio/events/cmevent1/upload"]
+  ["/3d/u/george/studio/events/cmevent1/upload", "/dashboard/events/cmevent1/photos", "/3d/studio/events/cmevent1/upload"],
+  ["/3d/u/george/studio/bookings", "/dashboard/bookings", "/3d/studio/bookings"],
+  ["/3d/u/george/studio/bookings/cmbook1", "/dashboard/bookings/cmbook1", "/3d/studio/bookings/cmbook1"],
+  ["/3d/u/george/studio/bookings/cmbook1/details", "/dashboard/bookings/cmbook1?section=overview", "/3d/studio/bookings/cmbook1/details"],
+  ["/3d/u/george/studio/bookings/cmbook1/lottery", "/dashboard/bookings/cmbook1/lottery", "/3d/studio/bookings/cmbook1/lottery"]
 ];
 for (const [threeD, classic, back] of dashboardTwins) {
   assert.equal(classicTwin(threeD), classic, `${threeD} -> classic`);
   assert.equal(threeDTwin(classic), back, `${classic} -> 3D`);
 }
 assert.equal(threeDTwin("/dashboard/events/cmevent1#photos"), "/3d/studio/events/cmevent1/photos");
-assert.equal(threeDTwin("/dashboard/bookings/abc"), "/3d/studio");
+assert.equal(threeDTwin("/dashboard/bookings/abc?section=advanced"), "/3d/studio/bookings/abc/details");
+assert.equal(threeDTwin("/dashboard/bookings/abc?section=schedule"), "/3d/studio/bookings/abc");
+assert.equal(threeDTwin("/dashboard/bookings/new"), "/3d/studio/events/new");
+assert.equal(threeDTwin("/dashboard/equipment"), "/3d/studio");
 assert.equal(threeDTwin("/dashboard/events/cmevent1/setup"), "/3d/studio/events/cmevent1");
 
 // Usernames and slugs that need escaping survive the trip.

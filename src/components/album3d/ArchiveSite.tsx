@@ -8,7 +8,7 @@ import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
 import EmptyState from "@/components/ui/EmptyState";
 import SiteModeSwitch, { useLeaveFor } from "@/components/SiteModeSwitch";
-import { classicTwin, parentScreen, parseScreen, screenPath, type Screen } from "@/lib/siteMode";
+import { classicTwin, parentScreen, parseScreen, screenPath, type Screen, type StudioPage } from "@/lib/siteMode";
 import { GameMenu, Hints, MENU_SCREENS, Rolling, pad, wrap, type MenuItem } from "./hud";
 import { AlbumPhotosContext } from "./AlbumPhotosFeed";
 import { StageContext } from "./StageContext";
@@ -24,6 +24,20 @@ type MotionPreference = "system" | "reduced" | "full";
 type ThemePreference = "system" | "light" | "dark";
 
 const MOTION_KEY = "album3d-motion";
+
+/** Each Dashboard page's crumb. */
+const STUDIO_CRUMBS = {
+  home: "studioTitle",
+  events: "studioEvents",
+  new: "studioNewEvent",
+  event: "studioEvent",
+  photos: "studioPhotos",
+  upload: "studioUpload",
+  bookings: "studioBookings",
+  booking: "studioBooking",
+  bookingDetails: "studioBookingDetails",
+  lottery: "studioLottery"
+} as const satisfies Record<StudioPage, string>;
 
 // The photo screens load with their own chunk, only when visited.
 // The search overlay loads the first time it opens.
@@ -770,12 +784,12 @@ export default function ArchiveSite({
   const crumbs: { label: string; href?: string }[] = [{ label: t("crumbMenu"), href: screenPath({ kind: "title" }) }];
   if (screen.kind === "albums") crumbs.push({ label: t("menuAllAlbums") });
   if (screen.kind === "studio") {
-    const { username, page, id } = screen;
-    crumbs.push({ label: t("studioTitle"), href: screenPath({ kind: "studio", username, page: "home" }) });
-    if (page !== "home") crumbs.push({ label: t("studioEvents"), href: screenPath({ kind: "studio", username, page: "events" }) });
-    if (page === "new") crumbs.push({ label: t("studioNewEvent") });
-    if (id) crumbs.push({ label: t("studioEvent"), href: screenPath({ kind: "studio", username, page: "event", id }) });
-    if (page === "photos" || page === "upload") crumbs.push({ label: t(page === "photos" ? "studioPhotos" : "studioUpload") });
+    // The Dashboard's crumbs climb its own tree, so each page's parents link.
+    const trail: Extract<Screen, { kind: "studio" }>[] = [];
+    for (let at: Screen | null = screen; at?.kind === "studio"; at = parentScreen(at)) trail.unshift(at);
+    for (const at of trail) {
+      crumbs.push({ label: t(STUDIO_CRUMBS[at.page]), href: at === screen ? undefined : screenPath(at) });
+    }
   } else if (here && !missing) {
     crumbs.push({ label: t("menuPhotographers"), href: screenPath({ kind: "photographers" }) });
     crumbs.push({ label: here.name, href: screenPath({ kind: "photographer", username: here.username }) });
