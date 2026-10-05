@@ -1,6 +1,8 @@
 import {
   CanvasTexture,
   ClampToEdgeWrapping,
+  MeshBasicMaterial,
+  type MeshBasicMaterialParameters,
   DirectionalLight,
   HemisphereLight,
   PMREMGenerator,
@@ -17,14 +19,19 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
  * study, the photographer carousel and the light table).
  */
 
+/**
+ * An image, decoded before it resolves: decode() runs off the main thread,
+ * where a first draw of an undecoded image would decode it mid-frame.
+ */
 export function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.decoding = "async";
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = src;
-  });
+  const image = new Image();
+  image.decoding = "async";
+  image.src = src;
+  return image.decode().then(
+    () => image,
+    // decode() can reject for an image that loaded and can still be drawn.
+    (error) => (image.naturalWidth ? image : Promise.reject(error))
+  );
 }
 
 export function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
@@ -32,6 +39,14 @@ export function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: n
   let end = text.length;
   while (end > 1 && ctx.measureText(`${text.slice(0, end)}…`).width > maxWidth) end -= 1;
   return `${text.slice(0, end)}…`;
+}
+
+/**
+ * For photographs and posters: shown exactly as they are, without the
+ * scene's lighting, reflections or tone mapping, which washed them out.
+ */
+export function imageMaterial(parameters: MeshBasicMaterialParameters = {}) {
+  return new MeshBasicMaterial({ toneMapped: false, ...parameters });
 }
 
 export function makeTexture(canvas: HTMLCanvasElement, renderer: WebGLRenderer) {

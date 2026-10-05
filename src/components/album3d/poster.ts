@@ -6,6 +6,7 @@ import {
   MathUtils,
   Mesh,
   MeshStandardMaterial,
+  type MeshBasicMaterial,
   PerspectiveCamera,
   PlaneGeometry,
   Plane,
@@ -17,7 +18,7 @@ import {
   type CanvasTexture,
   type WebGLRenderer
 } from "three";
-import { addLighting, fitText, gridTexture, makeTexture } from "./kit";
+import { addLighting, fitText, gridTexture, imageMaterial, makeTexture } from "./kit";
 import { damp, settled, spring } from "./motion";
 import { LAYER_PICK, RAIL_PICK, sceneArea } from "./types";
 import type { EnginePalette } from "./engine";
@@ -158,7 +159,7 @@ export function createPosterStage(context: {
   const board = new Mesh(boardGeo, boardMaterial);
   board.castShadow = !lowPower;
   const faceGeo = new PlaneGeometry(1, 1);
-  const faceMaterial = new MeshStandardMaterial({ roughness: 0.55 });
+  const faceMaterial = imageMaterial();
   const face = new Mesh(faceGeo, faceMaterial);
   face.position.z = BOARD_D / 2 + 0.002;
   posterGroup.add(board, face);
@@ -189,7 +190,7 @@ export function createPosterStage(context: {
   const reticleMaterial = new MeshStandardMaterial({ roughness: 0.5 });
   const reticle = new Mesh(new PlaneGeometry(CARD_W + 0.1, CARD_H + 0.1), reticleMaterial);
   rail.add(reticle);
-  type BuiltCard = { mesh: Mesh; material: MeshStandardMaterial; canvas: HTMLCanvasElement; texture: CanvasTexture; painted: string };
+  type BuiltCard = { mesh: Mesh; material: MeshBasicMaterial; canvas: HTMLCanvasElement; texture: CanvasTexture; painted: string };
   const built = new Map<string, BuiltCard>();
   let railCards: RailCard[] = [];
   let railFocus = 0;
@@ -199,7 +200,7 @@ export function createPosterStage(context: {
 
   // The layers of a taken-apart poster.
   const layerGeo = new PlaneGeometry(1, 1);
-  type BuiltLayer = { mesh: Mesh; material: MeshStandardMaterial; texture: CanvasTexture; width: number; height: number; canvas: HTMLCanvasElement };
+  type BuiltLayer = { mesh: Mesh; material: MeshBasicMaterial; texture: CanvasTexture; width: number; height: number; canvas: HTMLCanvasElement };
   const layerMeshes = new Map<string, BuiltLayer>();
   let layerOrder: string[] = [];
   let layerSelected = -1;
@@ -324,7 +325,7 @@ export function createPosterStage(context: {
       cardCanvas.width = cardEdge;
       cardCanvas.height = Math.round((cardEdge * CARD_H) / CARD_W);
       const texture = makeTexture(cardCanvas, renderer);
-      const material = new MeshStandardMaterial({ map: texture, roughness: 0.6, transparent: true });
+      const material = imageMaterial({ map: texture, transparent: true });
       const mesh = new Mesh(cardGeo, material);
       mesh.castShadow = !lowPower;
       rail.add(mesh);
@@ -379,7 +380,8 @@ export function createPosterStage(context: {
       layer.mesh.visible = e > 0.001;
       layer.mesh.scale.set(posterW, POSTER_H, 1);
       layer.mesh.position.set(lift * 0.12 * e, lift * 0.1 * e, BOARD_D / 2 + 0.004 + (i + 1) * (0.002 + gap * e));
-      layer.material.emissiveIntensity = lift ? 0.18 : 0;
+      // The picked layer glows a little brighter than the rest.
+      layer.material.color.setScalar(lift ? 1.18 : 1);
     });
   }
 
@@ -485,8 +487,9 @@ export function createPosterStage(context: {
     scene,
     camera,
     setPoster(nextKey, nextAspect, longEdge = 2048) {
-      // Phones and the lowest quality tier keep the live texture at 1024 px.
-      const edge = Math.min(longEdge, lowPower || context.tier() >= 2 ? 1024 : 2048);
+      // Phones keep the live texture at 1024 px; elsewhere it stays sharp
+      // whatever the quality tier, since the poster is what is being made.
+      const edge = Math.min(longEdge, lowPower ? 1024 : 2048);
       const w = Math.max(2, Math.round(nextAspect >= 1 ? edge : edge * nextAspect));
       const h = Math.max(2, Math.round(nextAspect >= 1 ? edge / nextAspect : edge));
       if (nextKey !== key) {
@@ -569,10 +572,7 @@ export function createPosterStage(context: {
           }
           if (!layer) {
             const texture = makeTexture(item.canvas, renderer);
-            const material = new MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.02, roughness: 0.6, depthWrite: false });
-            material.emissive.set(0xffffff);
-            material.emissiveMap = texture;
-            material.emissiveIntensity = 0;
+            const material = imageMaterial({ map: texture, transparent: true, alphaTest: 0.02, depthWrite: false });
             const mesh = new Mesh(layerGeo, material);
             posterGroup.add(mesh);
             layer = { mesh, material, texture, width: item.canvas.width, height: item.canvas.height, canvas: item.canvas };

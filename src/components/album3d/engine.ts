@@ -13,6 +13,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  type MeshBasicMaterial,
   OrthographicCamera,
   PCFShadowMap,
   PerspectiveCamera,
@@ -27,7 +28,7 @@ import {
   type IUniform
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { addLighting, fitText, forgetShadowLights, loadImage, makeTexture, photoTexture, setShadows } from "./kit";
+import { addLighting, fitText, forgetShadowLights, imageMaterial, loadImage, makeTexture, photoTexture, setShadows } from "./kit";
 import { createCarousel, type Carousel, type CarouselCard } from "./carousel";
 import { createLightTable, type LightTable, type TablePrint } from "./lightTable";
 import type { Board } from "./board";
@@ -133,6 +134,8 @@ export interface EngineOptions {
   archiveLabel: string;
   onPick: (fileIndex: number) => void;
   onOpen: (fileIndex: number) => void;
+  /** The raised album was tapped: open its light table. */
+  onEnter: (fileIndex: number) => void;
   onStep: (move: EngineMove) => void;
   /** Photographer select cards, in column order. */
   cards: CarouselCard[];
@@ -140,6 +143,8 @@ export interface EngineOptions {
   onCard: (index: number, open: boolean) => void;
   /** A print on the light table was tapped, or the wheel moved the focus. */
   onPrint: (index: number, open: boolean) => void;
+  /** The opened print reached the photo box (true) or started back down. */
+  onRaised?: (raised: boolean) => void;
   /**
    * The scene can't carry on well: "slow" once frames stay slow at the lowest
    * quality, "lost" when the browser dropped WebGL and didn't give it back.
@@ -154,6 +159,11 @@ export interface ArchiveEngine {
   setDetail(detail: boolean): void;
   /** Title and menu screens: pull back and let the field idle behind the HUD. */
   setOverview(overview: boolean): void;
+  /**
+   * Take the raised album apart, then call `done` to move on to its light
+   * table; at once when the album isn't raised or motion is reduced.
+   */
+  openAlbum(done: () => void): void;
   openStudy(fileIndex: number): void;
   closeStudy(): void;
   setExploded(exploded: boolean): void;
@@ -195,6 +205,8 @@ const PREVIEW_LIFT = 2.3;
 const DETAIL_LIFT = 4.05;
 const HOVER_LIFT = 0.28;
 const MAX_ROTATION = 0.8;
+// Opening an album turns it this far so its parts fan out as they separate.
+const APART_TURN = 0.5;
 const PHOTO_W = 4.25;
 const PHOTO_H = 3.0;
 
@@ -300,7 +312,7 @@ function buildCassette(
   group.add(substrate);
 
   // Prints: the first fills the window, the rest fit inside it.
-  const photoMaterials: MeshStandardMaterial[] = [];
+  const photoMaterials: MeshBasicMaterial[] = [];
   const photoAspects: number[] = [];
   const printEdge = own(new MeshStandardMaterial({ color: 0xfbf8f2, roughness: 0.7 }));
   const printMeshes = prints.map((print, j) => {
@@ -311,7 +323,9 @@ function buildCassette(
       if (aspect > PHOTO_W / PHOTO_H) h = PHOTO_W / aspect;
       else w = PHOTO_H * aspect;
     }
-    const face = own(new MeshStandardMaterial({ color: color(palette.control), roughness: 0.62 }));
+    // The raised card leans away from the camera into the field's fog;
+    // its photographs stay clear of it.
+    const face = own(imageMaterial({ color: color(palette.control), fog: false }));
     photoMaterials.push(face);
     photoAspects.push(w / h);
     const mesh = new Mesh(own(new BoxGeometry(w, h, 0.006)), [printEdge, printEdge, printEdge, printEdge, face, printEdge]);
@@ -336,7 +350,7 @@ function buildCassette(
       `#include <color_fragment>
       float sweep = uClarity * 1.3 - 0.15;
       float frost = smoothstep(sweep - 0.12, sweep + 0.12, 1.0 - vMapUv.y);
-      diffuseColor.a *= mix(0.05, 0.88, frost);`
+      diffuseColor.a *= mix(0.0, 0.88, frost);`
     );
   };
   coverMaterial.customProgramCacheKey = () => "album-archive-cover";
@@ -523,7 +537,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   field.add(cards, cardScrews);
   let instanceCells: Cell[] = [];
 
-  // Every other card shows its album's cover behind a light veil, so the
+  // Every other card shows its album's cover, so the
   // field reads as albums and any of them can be found by its picture. The
   // covers share one atlas, filled as their cards come into view; when it is
   // full, the cover seen longest ago gives up its cell.
@@ -589,7 +603,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   faceGeo.setAttribute("aCell", faceCells);
   const veil = { value: 0 };
   const veilColor = { value: new Color() };
-  const faceMaterial = new MeshStandardMaterial({ map: atlas, roughness: 0.62 });
+  const faceMaterial = imageMaterial({ map: atlas });
   // Just in front of the card face; offset the depth test, not the geometry.
   faceMaterial.polygonOffset = true;
   faceMaterial.polygonOffsetFactor = -1;
@@ -608,7 +622,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   };
   faceMaterial.customProgramCacheKey = () => "album-archive-faces";
   const faces = new InstancedMesh(faceGeo, faceMaterial, MAX_INSTANCES);
-  faces.receiveShadow = !lowPower;
   faces.frustumCulled = false;
   faces.count = 0;
   field.add(faces);
@@ -636,6 +649,11 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const rail = spring(SLOT_Z - selectedCell.row * ROW_SPACING);
   const rotation = spring(0);
   let targetRotation = 0;
+  // Opening the raised album takes it apart before the light table wipes in.
+  const apart = spring(0);
+  let apartTarget = 0;
+  let opened: (() => void) | null = null;
+  let openTimer = 0;
   const outgoing = new Map<string, { cell: Cell; lift: Spring }>();
   const hoverLifts = new Map<string, number>();
   let hoverCell: Cell | null = null;
@@ -661,6 +679,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     cassette.parts.carrier.castShadow = !lowPower;
     field.add(cassette.group);
     selected = cassette;
+    apart.value = apart.velocity = 0;
     const token = ++selectedToken;
     const cover = file.prints[0];
     sharpenSelected = null;
@@ -697,6 +716,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       cell = { lane, row: nearestOccurrence(home.row, selectedCell.row, period) };
     }
     pendingCell = null;
+    cancelOpen();
     const first = selectedIndex < 0;
     const changed = cell.lane !== selectedCell.lane || cell.row !== selectedCell.row;
     if (changed) {
@@ -732,8 +752,38 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (next) {
       sharpenSelected?.();
       sharpenSelected = null;
-    } else targetRotation = 0;
+    } else {
+      targetRotation = 0;
+      cancelOpen();
+    }
     invalidate();
+  }
+
+  function openAlbum(done: () => void) {
+    if (mode !== "field" || !detailTarget || !selected || reduced) return done();
+    const first = !opened;
+    opened = done;
+    if (!first) return;
+    apartTarget = 1;
+    targetRotation = targetRotation < -0.2 ? -APART_TURN : APART_TURN;
+    // Hidden tabs draw no frames; move on regardless.
+    openTimer = window.setTimeout(finishOpen, 1200);
+    lastInteraction = clock;
+    invalidate();
+  }
+
+  function finishOpen() {
+    window.clearTimeout(openTimer);
+    const done = opened;
+    opened = null;
+    done?.();
+  }
+
+  /** Put the album back together, dropping a pending open. */
+  function cancelOpen() {
+    window.clearTimeout(openTimer);
+    opened = null;
+    apartTarget = 0;
   }
 
   // -------------------------------------------------------------- framing --
@@ -867,6 +917,11 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     snapshot();
     settleUntil = performance.now() + 1000;
     if (mode === "study") leaveStudy();
+    // An album taken apart on the way out goes back together on return.
+    if (mode === "field") {
+      cancelOpen();
+      targetRotation = 0;
+    }
     if (mode === "carousel") carousel?.setHover(-1);
     if (mode === "table") table?.setHover(-1);
     if (mode === "stage") stage?.setHover(-1);
@@ -947,7 +1002,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const rect = canvas.parentElement?.getBoundingClientRect();
     width = Math.max(1, Math.round(rect?.width ?? canvas.clientWidth));
     height = Math.max(1, Math.round(rect?.height ?? canvas.clientHeight));
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXELS[tier]));
+    renderer.setPixelRatio(tierPixels());
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     studyCamera.aspect = width / height;
@@ -960,6 +1015,14 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     stages.poster?.resize(width, height);
     snapCamera = true;
     invalidate();
+  }
+
+  const tierPixels = () => Math.min(window.devicePixelRatio || 1, TIER_PIXELS[tier]);
+  const restPixels = () => Math.min(window.devicePixelRatio || 1, TIER_PIXELS[0]);
+  function setPixels(ratio: number) {
+    if (renderer.getPixelRatio() === ratio) return;
+    renderer.setPixelRatio(ratio);
+    renderer.setSize(width, height, false);
   }
 
   // ----------------------------------------------------------------- loop --
@@ -997,6 +1060,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     damp(trackX, selectedCell.lane * COLUMN_SPACING, rate(3.7), dt);
     damp(rail, railTarget, rate(3.7), dt);
     damp(rotation, targetRotation, rate(9), dt);
+    damp(apart, apartTarget, rate(4.5), dt);
+    moving ||= !settled(apart, apartTarget);
+    if (opened && apart.value > 0.8) finishOpen();
     // Turn back to face the slot before descending, as the reference does.
     const liftTarget = overviewTarget ? 0 : detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
     damp(lift, liftTarget, rate(4.2), dt);
@@ -1040,7 +1106,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const clarityTarget = !overviewTarget && lift.value > PREVIEW_LIFT - 0.5 ? 1 : 0;
     if (selected) {
       const c = selected.clarity;
-      const next = reduced ? clarityTarget : MathUtils.lerp(c.value, clarityTarget, 1 - Math.exp(-dt * (clarityTarget ? 1.8 : 9)));
+      const next = reduced ? clarityTarget : MathUtils.lerp(c.value, clarityTarget, 1 - Math.exp(-dt * (clarityTarget ? 3.2 : 9)));
       if (Math.abs(next - clarityTarget) > 1e-3) {
         c.value = next;
         moving = true;
@@ -1109,8 +1175,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       }
       moving = true;
     }
-    // Menus quiet the covers down to plain cards behind their text.
-    veil.value = MathUtils.lerp(0.16, 1, overview);
+    // Covers show as they are; menus quiet them down to plain cards
+    // behind their text.
+    veil.value = overview;
+    faces.visible = overview < 0.99;
 
     cardPosition.set(
       selectedCell.lane * COLUMN_SPACING - trackX.value,
@@ -1120,6 +1188,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (selected) {
       selected.group.position.copy(cardPosition);
       selected.group.rotation.y = rotation.value;
+      selected.layout(apart.value);
     }
 
     // The camera holds still in the archive (the array moves under it), then
@@ -1224,6 +1293,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     else if (mode === "stage" && stage) moving = stage.step(dt);
     else if (mode === "study") moving = stepStudy(dt);
     else moving = stepField(dt);
+    // The tier's pixel ratio holds while things move; the frame things come
+    // to rest on is drawn at the screen's own, so a still poster, cover or
+    // print is never left upscaled and soft.
+    setPixels(moving || wipe < 1 ? tierPixels() : restPixels());
     renderer.render(...view());
     rendered = true;
     if (wipe < 1) {
@@ -1361,6 +1434,15 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     return { cell: selectedCell, selected: true };
   }
 
+  /** Whether a point on the canvas lies on the selected card. */
+  function onSelected(clientX: number, clientY: number) {
+    if (!selected) return false;
+    const rect = canvas.getBoundingClientRect();
+    pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    raycaster.setFromCamera(pointer, camera);
+    return raycaster.intersectObject(selected.group, true).length > 0;
+  }
+
   /** Taps and swipes on the carousel and the light table. */
   function stagePointerUp(e: PointerEvent, dx: number, dy: number, elapsed: number) {
     if (e.type === "pointercancel") return;
@@ -1437,16 +1519,21 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     }
     if (mode === "carousel" || mode === "table" || mode === "stage") return stagePointerMove(e);
     if (mode !== "field") return;
-    if (down && down.id === e.pointerId && detailTarget && lift.value > 3.3) {
+    if (down && down.id === e.pointerId && detailTarget && !opened && lift.value > 3.3) {
       // Drag to inspect the raised card, within the reference's ±0.8 rad.
       targetRotation = MathUtils.clamp(down.rotation + (e.clientX - down.x) * 0.006, -MAX_ROTATION, MAX_ROTATION);
       lastInteraction = clock;
       invalidate();
       return;
     }
-    if (e.pointerType !== "mouse" || detailTarget || overviewTarget || hoverFrame) return;
+    if (e.pointerType !== "mouse" || overviewTarget || hoverFrame) return;
     hoverFrame = requestAnimationFrame(() => {
       hoverFrame = 0;
+      // The raised album opens on a tap; the cards below it don't.
+      if (detailTarget) {
+        canvas.style.cursor = onSelected(e.clientX, e.clientY) ? "pointer" : "";
+        return;
+      }
       const hit = pick(e.clientX, e.clientY);
       canvas.style.cursor = hit ? "pointer" : "";
       const next = hit && !hit.selected ? hit.cell : null;
@@ -1470,8 +1557,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     down = null;
     if (mode === "carousel" || mode === "table" || mode === "stage") return stagePointerUp(e, dx, dy, elapsed);
     if (mode !== "field") return;
-    if (detailTarget || overviewTarget || e.type === "pointercancel") return;
-    if (Math.hypot(dx, dy) < 8 && elapsed < 600) {
+    if (overviewTarget || e.type === "pointercancel") return;
+    const tap = Math.hypot(dx, dy) < 8 && elapsed < 600;
+    if (detailTarget) {
+      if (tap && onSelected(e.clientX, e.clientY)) options.onEnter(selectedIndex);
+      return;
+    }
+    if (tap) {
       const hit = pick(e.clientX, e.clientY);
       if (!hit) return;
       if (hit.selected) options.onOpen(selectedIndex);
@@ -1547,6 +1639,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     },
     select,
     setDetail,
+    openAlbum,
     setOverview(next) {
       overviewTarget = next;
       if (next) hoverCell = null;
@@ -1600,7 +1693,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     },
     showTable(key, prints, focus, raised) {
       if (!table) {
-        table = createLightTable(stageContext());
+        table = createLightTable({ ...stageContext(), onRaised: options.onRaised });
         table.resize(width, height);
       }
       table.setPrints(key, prints);
@@ -1631,6 +1724,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       disposed = true;
       cancelAnimationFrame(raf);
       clearTimeout(lostTimer);
+      clearTimeout(openTimer);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
       wipeTexture?.dispose();

@@ -12,6 +12,7 @@ import { paintBlankPoster } from "../shared";
 import { photoAt, useMatPaint } from "./mat";
 import { SaveState } from "./SharepostPhotos";
 import { useSharepostStudio } from "./SharepostStudio";
+import { SharepostNext, SharepostSteps } from "./SharepostSteps";
 
 type Frame = { key: string; label: string; width: number; height: number; adaptive?: boolean; custom?: boolean };
 
@@ -154,6 +155,7 @@ export default function SharepostLayout() {
   if (status !== "ready" || !composition || !tools) {
     return (
       <BookingPanel>
+        <SharepostSteps current="layout" />
         <p className={metaLabel}>{t("menuPoster")}</p>
         <h1 className="mt-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em]">{t("creatorReading")}</h1>
       </BookingPanel>
@@ -171,6 +173,7 @@ export default function SharepostLayout() {
   return (
     <>
       <BookingPanel>
+        <SharepostSteps current="layout" />
         <p className={metaLabel}>
           {t("creatorLayout")}
           <span aria-hidden="true" className="mx-2">／</span>
@@ -274,6 +277,7 @@ export default function SharepostLayout() {
             </>
           )}
         </section>
+        <SharepostNext to="credits" />
         <SaveState />
       </BookingPanel>
       {!touch && (

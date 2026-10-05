@@ -199,6 +199,8 @@ export default function ArchiveSite({
   }, [indexOpen]);
   const [touch, setTouch] = useState(false);
   const [tableFocus, setTableFocus] = useState(0);
+  // The opened print is in place, so the photo screen can fade its image in.
+  const [printUp, setPrintUp] = useState(false);
   const [motion, setMotion] = useState<MotionPreference>("system");
   const [theme, setTheme] = useState<ThemePreference>("system");
   const [gamepad, setGamepad] = useState(false);
@@ -326,6 +328,17 @@ export default function ArchiveSite({
     [files, columns, choose, go]
   );
 
+  /** An album's light table; the raised album comes apart on the way. */
+  const openTable = useCallback(
+    (username: string, slug: string) => {
+      const next = () => go({ kind: "table", username, slug });
+      const engine = engineRef.current;
+      if (engine && mode === "detail") engine.openAlbum(next);
+      else next();
+    },
+    [mode, go]
+  );
+
   /** Photographer select: the focused name brings its lane into view. */
   const focusPhotographer = useCallback(
     (index: number) => {
@@ -385,10 +398,13 @@ export default function ArchiveSite({
   );
 
   // Latest callbacks for the engine, which is created once.
-  const handlers = useRef({ step, openDetail, choose, onCard, onPrint });
+  const enterAlbum = useCallback(() => {
+    if (screen.kind === "album" && !screen.study) openTable(screen.username, screen.slug);
+  }, [screen, openTable]);
+  const handlers = useRef({ step, openDetail, choose, onCard, onPrint, enterAlbum });
   useEffect(() => {
-    handlers.current = { step, openDetail, choose, onCard, onPrint };
-  }, [step, openDetail, choose, onCard, onPrint]);
+    handlers.current = { step, openDetail, choose, onCard, onPrint, enterAlbum };
+  }, [step, openDetail, choose, onCard, onPrint, enterAlbum]);
 
   // ----------------------------------------------------------------- engine --
   // Create the engine once; three.js loads only after the overlay is up.
@@ -421,6 +437,7 @@ export default function ArchiveSite({
           archiveLabel: t("archiveLabel"),
           onPick: (index) => handlers.current.choose(index),
           onOpen: (index) => handlers.current.openDetail(index),
+          onEnter: () => handlers.current.enterAlbum(),
           onStep: (move) => handlers.current.step(move.axis, move.direction),
           cards: columns.map((c) => {
             const cover = files[c.fileIndexes[0]]?.prints[0];
@@ -433,6 +450,7 @@ export default function ArchiveSite({
           }),
           onCard: (index, open) => handlers.current.onCard(index, open),
           onPrint: (index, open) => handlers.current.onPrint(index, open),
+          onRaised: setPrintUp,
           onTrouble: (kind) => (kind === "lost" ? setStatus("lost") : setSlow(true))
         });
         engineRef.current = engine;
@@ -516,6 +534,7 @@ export default function ArchiveSite({
     },
     { key: "cosplan", label: t("menuCosplan"), sub: t("menuCosplanSub"), run: () => go({ kind: "cosplan" }) },
     { key: "poster", label: t("menuPoster"), sub: t("menuPosterSub"), run: () => go({ kind: "sharepost" }) },
+    { key: "login", label: t("menuLogin"), sub: t("menuLoginSub"), run: () => go({ kind: "login" }) },
     { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), run: () => go({ kind: "settings" }) },
     { key: "classic", label: t("menuClassic"), sub: t("menuClassicSub"), external: true, run: () => leaveFor("classic", "/") }
   ];
@@ -656,6 +675,8 @@ export default function ArchiveSite({
         }
         return;
       }
+      // The login screen's form and menu take their own keys.
+      if (screen.kind === "login") return;
       if (mode === "table" && albumHere && albumHere.photos.length > 0) {
         const columnsAcross = tableColumns(window.innerWidth, window.innerHeight);
         const moves: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columnsAcross, ArrowDown: columnsAcross };
@@ -677,7 +698,7 @@ export default function ArchiveSite({
       }
       if (mode === "detail" && e.key === "Enter" && !isInteractive(e.target) && screen.kind === "album") {
         e.preventDefault();
-        go({ kind: "table", username: screen.username, slug: screen.slug });
+        openTable(screen.username, screen.slug);
         return;
       }
       if (mode !== "archive") return;
@@ -700,7 +721,7 @@ export default function ArchiveSite({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go]);
+  }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go, openTable]);
 
   // Controller glyphs replace key names while a controller is in use.
   const key = useCallback(
@@ -764,6 +785,7 @@ export default function ArchiveSite({
     if (screen.kind !== "booking") crumbs.push({ label: t(screen.kind === "draw" ? "crumbDraw" : "crumbSchedule") });
   }
   else if (screen.kind === "settings") crumbs.push({ label: t("menuSettings") });
+  else if (screen.kind === "login") crumbs.push({ label: t("menuLogin") });
   else if (screen.kind === "cosplan" || screen.kind === "sharepost") {
     crumbs.push({ label: t(screen.kind === "cosplan" ? "menuCosplan" : "menuPoster"), href: screenPath({ kind: screen.kind }) });
     if (screen.kind === "cosplan" && screen.step === "print") crumbs.push({ label: t("crumbBoard"), href: screenPath({ kind: "cosplan", step: "board" }) });
@@ -902,6 +924,7 @@ export default function ArchiveSite({
           index={photoIndex}
           onStep={stepPhoto}
           onBack={back}
+          printUp={printUp || status !== "ready"}
           classicHref={classicTwin(pathname)}
         />
       )}
@@ -1175,6 +1198,11 @@ export default function ArchiveSite({
               <Link
                 href={screenPath({ kind: "table", username: column.username, slug: file.slug })}
                 scroll={false}
+                onClick={(e) => {
+                  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                  e.preventDefault();
+                  openTable(column.username, file.slug);
+                }}
                 className="inline-flex min-h-12 items-center justify-between gap-4 bg-fg px-5 text-sm font-semibold uppercase tracking-[0.08em] text-page transition hover:bg-accent-text"
               >
                 {t("openLightTable")}

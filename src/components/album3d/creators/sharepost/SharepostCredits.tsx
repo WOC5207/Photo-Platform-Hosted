@@ -11,6 +11,7 @@ import { paintBlankPoster } from "../shared";
 import { matPoint, useMatPaint } from "./mat";
 import { SaveState } from "./SharepostPhotos";
 import { useSharepostStudio } from "./SharepostStudio";
+import { SharepostNext, SharepostSteps } from "./SharepostSteps";
 
 const POSITIONS = [0, 0.5, 1] as const;
 
@@ -71,6 +72,7 @@ export default function SharepostCredits() {
   if (status !== "ready" || !composition || !tools) {
     return (
       <BookingPanel>
+        <SharepostSteps current="credits" />
         <p className={metaLabel}>{t("menuPoster")}</p>
         <h1 className="mt-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em]">{t("creatorReading")}</h1>
       </BookingPanel>
@@ -85,6 +87,7 @@ export default function SharepostCredits() {
           onFocus={(event) => setTyping(event.target instanceof HTMLInputElement && event.target.type === "text")}
           onBlur={(event) => !(event.relatedTarget instanceof HTMLInputElement && event.relatedTarget.type === "text") && setTyping(false)}
         >
+          <SharepostSteps current="credits" />
           <p className={metaLabel}>
             {t("creatorCredits")}
             <span aria-hidden="true" className="mx-2">／</span>
@@ -138,6 +141,7 @@ export default function SharepostCredits() {
             />
             {studio.metrics?.footerTooTall && <p role="alert" className="text-sm text-warning">{ts("footerTooTall")}</p>}
           </section>
+          <SharepostNext to="print" />
           <SaveState />
         </div>
       </BookingPanel>

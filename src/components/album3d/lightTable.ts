@@ -17,8 +17,8 @@ import {
   type Texture,
   type WebGLRenderer
 } from "three";
-import { addLighting, gridTexture, loadImage, photoTexture } from "./kit";
-import { damp, settled, spring } from "./motion";
+import { addLighting, gridTexture, imageMaterial, loadImage, photoTexture } from "./kit";
+import { damp, settled, spring, type Spring } from "./motion";
 import { photoRect, sceneArea, tableColumns } from "./types";
 import type { EnginePalette } from "./engine";
 
@@ -67,11 +67,13 @@ const WINDOW_ROWS = 4;
 interface Slot {
   group: Group;
   photo: Mesh;
-  face: MeshStandardMaterial;
+  face: MeshBasicMaterial;
   w: number;
   h: number;
   twist: number;
   lift: number;
+  /** 0 on the table, 1 raised into the photo box; each print has its own. */
+  up: Spring;
   texture: Texture | null;
   loading: boolean;
   used: number;
@@ -83,6 +85,8 @@ export function createLightTable(context: {
   reduced: () => boolean;
   lowPower: boolean;
   invalidate: () => void;
+  /** The focused print reached the photo box (true) or started down (false). */
+  onRaised?: (raised: boolean) => void;
 }): LightTable {
   const { renderer, lowPower, invalidate } = context;
   let palette = context.palette;
@@ -126,7 +130,7 @@ export function createLightTable(context: {
   let focusIndex = 0;
   let hoverIndex = -1;
   let raisedTarget = false;
-  const raise = spring(0);
+  let raisedShown = false;
   const pan = spring(0);
   let columnCount = 5;
   let width = 1;
@@ -134,6 +138,8 @@ export function createLightTable(context: {
   let clock = 0;
   let raisedToken = 0;
   let raisedTexture: Texture | null = null;
+  /** The larger rendition, held until its print stops moving. */
+  let pendingImage: { index: number; image: HTMLImageElement } | null = null;
 
   const toColor = (css: string) => new Color().setStyle(css, SRGBColorSpace);
   let paper = toColor(palette.control);
@@ -195,7 +201,7 @@ export function createLightTable(context: {
       const mat = new Mesh(unit, matMaterial);
       mat.scale.set(w + MAT * 2, h + MAT * 2, 1);
       mat.castShadow = !lowPower;
-      const face = new MeshStandardMaterial({ color: paper.clone(), roughness: 0.55 });
+      const face = imageMaterial({ color: paper.clone() });
       const photo = new Mesh(unit, face);
       photo.scale.set(w, h, 1);
       photo.position.z = 0.002;
@@ -204,7 +210,7 @@ export function createLightTable(context: {
       prints.add(group);
       // A steady, slightly hand-placed twist per print.
       const twist = MathUtils.degToRad(((Math.sin(i * 12.9898) * 43758.5453) % 1) * 2.6);
-      return { group, photo, face, w, h, twist, lift: 0, texture: null, loading: false, used: 0 };
+      return { group, photo, face, w, h, twist, lift: 0, up: spring(0), texture: null, loading: false, used: 0 };
     });
   }
 
@@ -250,7 +256,11 @@ export function createLightTable(context: {
     }
   }
 
-  /** The raised print gets the larger rendition. */
+  /**
+   * The raised print gets the larger rendition. Uploading it is a long task,
+   * so it waits until the print has stopped moving rather than stalling the
+   * rise halfway.
+   */
   function sharpenRaised() {
     const token = ++raisedToken;
     const index = focusIndex;
@@ -259,20 +269,29 @@ export function createLightTable(context: {
     loadImage(source.med)
       .then((image) => {
         if (token !== raisedToken || index !== focusIndex) return;
-        const slot = slots[index];
-        if (!slot) return;
-        raisedTexture?.dispose();
-        raisedTexture = photoTexture(image, renderer, slot.w / slot.h);
-        slot.face.map = raisedTexture;
-        slot.face.color.set(0xffffff);
-        slot.face.needsUpdate = true;
+        pendingImage = { index, image };
         invalidate();
       })
       .catch(() => undefined);
   }
 
+  function applyRaisedTexture() {
+    if (!pendingImage) return;
+    const { index, image } = pendingImage;
+    pendingImage = null;
+    const slot = slots[index];
+    if (!slot || index !== focusIndex) return;
+    raisedTexture?.dispose();
+    raisedTexture = photoTexture(image, renderer, slot.w / slot.h);
+    renderer.initTexture(raisedTexture);
+    slot.face.map = raisedTexture;
+    slot.face.color.set(0xffffff);
+    slot.face.needsUpdate = true;
+  }
+
   function dropRaisedTexture() {
     raisedToken += 1;
+    pendingImage = null;
     if (!raisedTexture) return;
     for (const slot of slots) {
       if (slot.face.map === raisedTexture) {
@@ -331,9 +350,6 @@ export function createLightTable(context: {
     const panTarget = Math.max(0, rowOf(focusIndex) - 0.6) * CELL_D;
     damp(pan, panTarget, rate(5), dt);
     if (!settled(pan, panTarget)) moving = true;
-    const raiseTarget = raisedTarget ? 1 : 0;
-    damp(raise, raiseTarget, rate(4.4), dt);
-    if (!settled(raise, raiseTarget)) moving = true;
     frame();
     lights.key.position.set(aim.x - 4, 10, aim.z - 3);
     lights.key.target.position.copy(aim);
@@ -356,10 +372,16 @@ export function createLightTable(context: {
       const next = reduced ? liftTarget : MathUtils.lerp(slot.lift, liftTarget, 1 - Math.exp(-dt * 12));
       if (Math.abs(next - liftTarget) > 1e-4) moving = true;
       slot.lift = Math.abs(next - liftTarget) > 1e-4 ? next : liftTarget;
+      // The print being opened rises while one being put back settles, so
+      // stepping between photos trades them rather than cutting.
+      const upTarget = focused && raisedTarget ? 1 : 0;
+      damp(slot.up, upTarget, rate(4.4), dt);
+      if (settled(slot.up, upTarget)) slot.up.value = upTarget;
+      else moving = true;
       home(i, pose);
       pose.y += slot.lift;
       twisted.setFromAxisAngle(yAxis, focused ? 0 : slot.twist).multiply(flat);
-      const t = focused ? MathUtils.clamp(raise.value, 0, 1) : 0;
+      const t = MathUtils.clamp(slot.up.value, 0, 1);
       if (t > 1e-4) {
         // Fit the photo (not its mat) into the box, as object-fit: contain.
         const aspect = slot.w / slot.h;
@@ -382,8 +404,19 @@ export function createLightTable(context: {
       slot.group.position.copy(pose);
     });
 
-    // The brackets glide to the focused print and fade out while it is raised.
+    // Once the opened print is in place: sharpen it, and let the photo
+    // screen fade its full-size image in over it.
     const focusedSlot = slots[focusIndex];
+    // The spring takes a while to settle completely; 99% of the way is
+    // already still to the eye.
+    const inPlace = raisedTarget && !!focusedSlot && focusedSlot.up.value > 0.99;
+    if (inPlace && pendingImage) applyRaisedTexture();
+    if (inPlace !== raisedShown) {
+      raisedShown = inPlace;
+      context.onRaised?.(inPlace);
+    }
+
+    // The brackets glide to the focused print and fade out while it is raised.
     if (focusedSlot) {
       home(focusIndex, pose);
       const k = reduced ? 1 : 1 - Math.exp(-dt * 14);
@@ -459,8 +492,11 @@ export function createLightTable(context: {
     },
     settle() {
       pan.value = Math.max(0, rowOf(focusIndex) - 0.6) * CELL_D;
-      raise.value = raisedTarget ? 1 : 0;
-      pan.velocity = raise.velocity = 0;
+      pan.velocity = 0;
+      slots.forEach((slot, i) => {
+        slot.up.value = i === focusIndex && raisedTarget ? 1 : 0;
+        slot.up.velocity = 0;
+      });
       invalidate();
     },
     setRaised(next) {

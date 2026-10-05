@@ -14,6 +14,7 @@ const screens = [
   "/3d/albums",
   "/3d/photographers",
   "/3d/settings",
+  "/3d/login",
   "/3d/cosplan",
   "/3d/cosplan/board",
   "/3d/cosplan/print",
@@ -101,9 +102,16 @@ assert.deepEqual(parentScreen({ kind: "cosplan" }), { kind: "title" });
 assert.deepEqual(parentScreen({ kind: "sharepost" }), { kind: "title" });
 assert.deepEqual(parentScreen({ kind: "cosplan", step: "board" }), { kind: "cosplan" });
 assert.deepEqual(parentScreen({ kind: "cosplan", step: "print" }), { kind: "cosplan", step: "board" });
-for (const step of ["layout", "credits", "print"] as const) {
-  assert.deepEqual(parentScreen({ kind: "sharepost", step }), { kind: "sharepost" });
-}
+// The photographer login has a 3D twin of the classic one.
+assert.deepEqual(parseScreen("/3d/login"), { kind: "login" });
+assert.equal(screenPath({ kind: "login" }), "/3d/login");
+assert.deepEqual(parentScreen({ kind: "login" }), { kind: "title" });
+assert.equal(classicTwin("/3d/login"), "/login");
+assert.equal(threeDTwin("/login"), "/3d/login");
+// Sharepost steps go back one at a time.
+assert.deepEqual(parentScreen({ kind: "sharepost", step: "layout" }), { kind: "sharepost" });
+assert.deepEqual(parentScreen({ kind: "sharepost", step: "credits" }), { kind: "sharepost", step: "layout" });
+assert.deepEqual(parentScreen({ kind: "sharepost", step: "print" }), { kind: "sharepost", step: "credits" });
 // Every creator step's classic twin is its editor, where the same draft opens.
 assert.equal(classicTwin("/3d/cosplan/board"), "/cosplan");
 assert.equal(classicTwin("/3d/sharepost/credits"), "/sharing-poster");

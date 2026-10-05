@@ -10,6 +10,7 @@ import { canShareFile, download, paintBlankPoster, printPoster, safeFilename, sh
 import { useMatPaint } from "./mat";
 import { SaveState } from "./SharepostPhotos";
 import { useSharepostStudio } from "./SharepostStudio";
+import { SharepostSteps } from "./SharepostSteps";
 
 const EDGES = [2160, 4096, 8192] as const;
 
@@ -97,6 +98,7 @@ export default function SharepostPrint() {
   return (
     <>
       <BookingPanel>
+        <SharepostSteps current="print" />
         <p className={metaLabel}>{t("menuPoster")}</p>
         <h1 className="mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[3.25rem]">{status === "ready" ? ts("exportTitle") : t("creatorReading")}</h1>
         <div aria-hidden="true" className={styles.calloutRule} />

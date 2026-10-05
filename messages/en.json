@@ -2374,6 +2374,21 @@
     "drawClassic": "Classic prize draw page",
     "drawEntered": "You're entered. Keep your token to come back to this draw.",
     "hintPrize": "prizes",
-    "hintDraw": "draw"
+    "hintDraw": "draw",
+    "creatorStepPhotos": "Photos",
+    "creatorStepsLabel": "Sharepost steps",
+    "creatorBack": "Back",
+    "creatorNextStep": "Next: {step}",
+    "menuLogin": "Photographer login",
+    "menuLoginSub": "Sign in to your archive",
+    "loginTitle": "Photographer login",
+    "loginHint": "Sign in with your photographer account. Your dashboard still opens on the classic site while its 3D version is built.",
+    "loginSignedIn": "Signed in",
+    "loginArchive": "My 3D archive",
+    "loginDashboard": "Dashboard",
+    "loginAdmin": "Platform admin",
+    "loginClassicSub": "Opens on the classic site",
+    "loginSignOut": "Sign out",
+    "loginSigningOut": "Signing out…"
   }
 }

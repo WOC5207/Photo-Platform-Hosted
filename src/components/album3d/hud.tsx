@@ -9,7 +9,7 @@ import styles from "./ArchiveSite.module.css";
 export const pad = (n: number, width = 2) => String(n).padStart(width, "0");
 export const wrap = (value: number, count: number) => ((value % count) + count) % count;
 /** Screens drawn as a menu over the scene. */
-export const MENU_SCREENS: Screen["kind"][] = ["title", "settings", "photographers", "photographer"];
+export const MENU_SCREENS: Screen["kind"][] = ["title", "settings", "login", "photographers", "photographer"];
 
 /** Digits that roll in when they change, as the reference's counters do. */
 export function Rolling({ value }: { value: string }) {
