@@ -1,5 +1,7 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
+import { z } from "zod";
+import { prisma } from "@/lib/db";
 
 /** Caller authenticates the owner; every write independently enforces ownership. */
 export async function setSlotFinished(tx: Prisma.TransactionClient, ownerId: string, id: string, finished: boolean) {
@@ -23,4 +25,48 @@ export async function pickEquipment(tx: Prisma.TransactionClient, ownerId: strin
     data: equipment.map((item, index) => ({ checklistId, equipmentId: item.id, label: item.name, sortOrder: (last._max.sortOrder ?? -1) + index + 1 })),
     skipDuplicates: true
   });
+}
+
+const checklistSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  shootDate: z.string().trim().max(10),
+  notes: z.string().trim().max(1000)
+});
+
+function optionalShootDate(value: string): Date | null | undefined {
+  if (!value) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const parsed = new Date(`${value}T12:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+/** A standalone packing checklist from its form; the new id, or null when the form is invalid. */
+export async function createOwnedChecklist(ownerId: string, formData: FormData): Promise<string | null> {
+  const parsed = checklistSchema.safeParse({
+    name: String(formData.get("name") ?? ""),
+    shootDate: String(formData.get("shootDate") ?? ""),
+    notes: String(formData.get("notes") ?? "")
+  });
+  if (!parsed.success) return null;
+  const shootDate = optionalShootDate(parsed.data.shootDate);
+  if (shootDate === undefined) return null;
+  const checklist = await prisma.equipmentChecklist.create({
+    data: { ownerId, name: parsed.data.name, shootDate, notes: parsed.data.notes },
+    select: { id: true }
+  });
+  return checklist.id;
+}
+
+/**
+ * Delete one of the owner's checklists. Resolves to the booking event its
+ * day belongs to ("" for a standalone list), or null when there was none.
+ */
+export async function deleteOwnedChecklist(ownerId: string, id: string): Promise<string | null> {
+  const checklist = await prisma.equipmentChecklist.findFirst({
+    where: { id, ownerId },
+    select: { bookingDay: { select: { bookingEventId: true } } }
+  });
+  if (!checklist) return null;
+  await prisma.equipmentChecklist.deleteMany({ where: { id, ownerId } });
+  return checklist.bookingDay?.bookingEventId ?? "";
 }

@@ -43,21 +43,43 @@ export type Screen =
  * "bookings" lists their booking events; "booking", "bookingDetails" and
  * "lottery" are one booking event's schedule, its settings and its prize
  * draw (`id` names the booking event).
+ * "equipment" is their inventory, with "equipmentNew", "equipmentItem" (`id`
+ * names the item), "categories", "contact" (the QR page's contact details)
+ * and "labels" (the QR label sheet) under it. "preparation" lists their
+ * packing checklists, "checklist" is one of them (`id`), and "slotSheet" is
+ * their booked slots to mark finished.
  */
-export type StudioPage =
-  | "home"
-  | "events"
-  | "new"
-  | "event"
-  | "photos"
-  | "upload"
-  | "bookings"
-  | "booking"
-  | "bookingDetails"
-  | "lottery";
-const EVENT_PAGES = ["photos", "upload"] as const;
-/** A booking event's pages after its schedule, by their path segment. */
-const BOOKING_PAGES: Record<string, StudioPage> = { details: "bookingDetails", lottery: "lottery" };
+export type StudioPage = keyof typeof STUDIO;
+
+/**
+ * Each Dashboard page: its path under /studio (":id" stands for its id), the
+ * page Esc climbs to, and its classic twin's path under /dashboard when that
+ * differs. A page with a fixed segment comes before one with an id there.
+ */
+const STUDIO = {
+  home: ["", null],
+  events: ["/events", "home"],
+  new: ["/events/new", "events"],
+  event: ["/events/:id", "events"],
+  // The classic event page manages its photos; its /photos page adds them.
+  photos: ["/events/:id/photos", "event", "/events/:id"],
+  upload: ["/events/:id/upload", "event", "/events/:id/photos"],
+  bookings: ["/bookings", "home"],
+  booking: ["/bookings/:id", "bookings"],
+  // The classic booking page keeps the event's settings in its overview tab.
+  bookingDetails: ["/bookings/:id/details", "booking", "/bookings/:id?section=overview"],
+  lottery: ["/bookings/:id/lottery", "booking"],
+  equipment: ["/equipment", "home"],
+  equipmentNew: ["/equipment/new", "equipment"],
+  categories: ["/equipment/categories", "equipment", "/equipment/manage"],
+  contact: ["/equipment/contact", "equipment"],
+  labels: ["/equipment/labels", "equipment", "/equipment/qr-labels"],
+  equipmentItem: ["/equipment/:id", "equipment"],
+  // The classic preparation pages are tabs: booked slots and checklists.
+  preparation: ["/preparation", "home", "/preparation/equipment"],
+  slotSheet: ["/preparation/slots", "preparation"],
+  checklist: ["/preparation/:id", "preparation", "/preparation/equipment/:id"]
+} as const satisfies Record<string, readonly [string, string | null, string?]>;
 
 /**
  * The poster creators' steps after their first screen: Cosplan picks a
@@ -121,56 +143,28 @@ export function parseScreen(path: string): Screen | null {
   return null;
 }
 
-function parseStudio(username: string, rest: string[]): Screen | null {
-  if (rest.length === 0) return { kind: "studio", username, page: "home" };
-  if (rest[0] === "bookings") {
-    if (rest.length === 1) return { kind: "studio", username, page: "bookings" };
-    if (!SEGMENT.test(rest[1])) return null;
-    if (rest.length === 2) return { kind: "studio", username, page: "booking", id: rest[1] };
-    const page = rest.length === 3 && Object.hasOwn(BOOKING_PAGES, rest[2]) ? BOOKING_PAGES[rest[2]] : null;
-    return page ? { kind: "studio", username, page, id: rest[1] } : null;
-  }
-  if (rest[0] !== "events") return null;
-  if (rest.length === 1) return { kind: "studio", username, page: "events" };
-  if (rest.length === 2 && rest[1] === "new") return { kind: "studio", username, page: "new" };
-  if (!SEGMENT.test(rest[1])) return null;
-  if (rest.length === 2) return { kind: "studio", username, page: "event", id: rest[1] };
-  if (rest.length === 3 && (EVENT_PAGES as readonly string[]).includes(rest[2])) {
-    return { kind: "studio", username, page: rest[2] as StudioPage, id: rest[1] };
+/** The Dashboard page at these segments under /studio, or (`classic`) under /dashboard. */
+function matchStudio(rest: string[], classic = false): { page: StudioPage; id?: string } | null {
+  for (const [page, [tail, , twin]] of Object.entries(STUDIO) as [StudioPage, readonly [string, string | null, string?]][]) {
+    const want = (classic ? (twin ?? tail) : tail).split("?")[0].split("/").filter(Boolean);
+    if (want.length !== rest.length) continue;
+    const at = want.indexOf(":id");
+    if (want.every((part, i) => (i === at ? SEGMENT.test(rest[i]) : part === rest[i]))) return at < 0 ? { page } : { page, id: rest[at] };
   }
   return null;
+}
+
+function parseStudio(username: string, rest: string[]): Screen | null {
+  const match = matchStudio(rest);
+  return match && { kind: "studio", username, ...match };
 }
 
 const enc = encodeURIComponent;
 
 /** A Dashboard page's path under /studio, and its classic twin's under /dashboard. */
 function studioTail(screen: Extract<Screen, { kind: "studio" }>, classic = false): string {
-  const event = `/events/${enc(screen.id ?? "")}`;
-  const booking = `/bookings/${enc(screen.id ?? "")}`;
-  switch (screen.page) {
-    case "home":
-      return "";
-    case "events":
-      return "/events";
-    case "new":
-      return "/events/new";
-    case "event":
-      return event;
-    // The classic event page manages its photos; its /photos page adds them.
-    case "photos":
-      return classic ? event : `${event}/photos`;
-    case "upload":
-      return `${event}/${classic ? "photos" : "upload"}`;
-    case "bookings":
-      return "/bookings";
-    case "booking":
-      return booking;
-    // The classic booking page keeps the event's settings in its overview tab.
-    case "bookingDetails":
-      return classic ? `${booking}?section=overview` : `${booking}/details`;
-    case "lottery":
-      return `${booking}/lottery`;
-  }
+  const [tail, , twin] = STUDIO[screen.page] as readonly [string, string | null, string?];
+  return ((classic && twin) || tail).replace(":id", enc(screen.id ?? ""));
 }
 
 /** The address of a 3D screen. */
@@ -246,14 +240,10 @@ export function parentScreen(screen: Screen): Screen | null {
     case "draw":
       return { kind: "booking", username: screen.username };
     case "studio": {
-      const { username, id } = screen;
-      if (screen.page === "home") return { kind: "title" };
-      if (screen.page === "events") return { kind: "studio", username, page: "home" };
-      if (screen.page === "photos" || screen.page === "upload") return { kind: "studio", username, page: "event", id };
-      if (screen.page === "bookings") return { kind: "studio", username, page: "home" };
-      if (screen.page === "bookingDetails" || screen.page === "lottery") return { kind: "studio", username, page: "booking", id };
-      if (screen.page === "booking") return { kind: "studio", username, page: "bookings" };
-      return { kind: "studio", username, page: "events" };
+      const parent = STUDIO[screen.page][1];
+      if (!parent) return { kind: "title" };
+      const up: Screen = { kind: "studio", username: screen.username, page: parent };
+      return STUDIO[parent][0].includes(":id") ? { ...up, id: screen.id } : up;
     }
   }
 }
@@ -325,32 +315,31 @@ export function threeDTwin(path: string): string {
   return screenPath({ kind: "photographer", username });
 }
 
-/** The Dashboard page under /3d/studio for a classic /dashboard page's segments. */
+/**
+ * The Dashboard page under /3d/studio for a classic /dashboard page's
+ * segments: the nearest page up its path, so a classic page without a 3D
+ * one opens its parent (or the Dashboard's menu).
+ */
 function studioFromClassic(rest: string[], path: string): string {
-  if (rest[0] === "bookings") return bookingsFromClassic(rest, path);
-  // Sections without a 3D page yet open the Dashboard's menu.
-  if (rest[0] !== "events") return "";
-  if (rest.length === 1) return "/events";
-  const id = rest[1];
-  if (rest.length === 2) {
-    if (id === "new") return "/events/new";
-    // The classic page opens on its photo manager with #photos.
-    return SEGMENT.test(id) ? `/events/${enc(id)}${path.includes("#photos") ? "/photos" : ""}` : "/events";
-  }
-  if (rest.length === 3 && rest[2] === "photos" && SEGMENT.test(id)) return `/events/${enc(id)}/upload`;
-  return SEGMENT.test(id) ? `/events/${enc(id)}` : "/events";
-}
-
-/** The Dashboard's booking page for a classic /dashboard/bookings page's segments. */
-function bookingsFromClassic(rest: string[], path: string): string {
-  if (rest.length === 1) return "/bookings";
-  const id = rest[1];
   // New booking events are made with their gallery, from "New event".
-  if (id === "new") return "/events/new";
-  if (!SEGMENT.test(id)) return "/bookings";
-  if (rest.length === 3 && rest[2] === "lottery") return `/bookings/${enc(id)}/lottery`;
-  // The overview and advanced tabs hold the settings; the schedule is the default.
-  return /[?&]section=(overview|advanced)\b/.test(path) ? `/bookings/${enc(id)}/details` : `/bookings/${enc(id)}`;
+  if (rest[0] === "bookings" && rest[1] === "new") return "/events/new";
+  const query = new URLSearchParams(path.split("?")[1]?.split("#")[0] ?? "");
+  for (let n = rest.length; n > 0; n--) {
+    for (const classic of [true, false]) {
+      const match = matchStudio(rest.slice(0, n), classic);
+      if (!match) continue;
+      let { page } = match;
+      // The classic booking page's overview and advanced tabs hold the settings,
+      // and the classic event page opens on its photo manager with #photos.
+      if (page === "booking" && /^(overview|advanced)$/.test(query.get("section") ?? "")) page = "bookingDetails";
+      if (page === "event" && path.includes("#photos")) page = "photos";
+      // The classic preparation tabs narrow to one event with ?event=; so do these.
+      const event = query.get("event");
+      const keep = (page === "preparation" || page === "slotSheet") && event && SEGMENT.test(event) ? `?event=${enc(event)}` : "";
+      return studioTail({ kind: "studio", username: "", ...match, page }) + keep;
+    }
+  }
+  return "";
 }
 
 /** Cookie string that remembers the visitor's site. */

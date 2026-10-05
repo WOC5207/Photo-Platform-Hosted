@@ -137,16 +137,23 @@ export async function setEquipmentStatus(formData: FormData): Promise<void> {
 }
 
 export async function createEquipmentCategory(formData: FormData): Promise<void> {
+  await addEquipmentCategory(formData);
+}
+
+/** Creates (or renames, by name) a category and returns it, for adding one from the equipment form. */
+export async function addEquipmentCategory(formData: FormData): Promise<{ id?: string; name?: string }> {
   const parsed = categorySchema.safeParse(text(formData, "name"));
-  if (!parsed.success) return;
+  if (!parsed.success) return {};
   const owner = await ownerId();
   const normalizedName = parsed.data.toLowerCase();
-  await prisma.equipmentCategory.upsert({
+  const category = await prisma.equipmentCategory.upsert({
     where: { ownerId_normalizedName: { ownerId: owner, normalizedName } },
     update: { name: parsed.data },
-    create: { ownerId: owner, name: parsed.data, normalizedName }
+    create: { ownerId: owner, name: parsed.data, normalizedName },
+    select: { id: true, name: true }
   });
   refreshEquipment();
+  return category;
 }
 
 export async function deleteEquipmentCategory(formData: FormData): Promise<void> {

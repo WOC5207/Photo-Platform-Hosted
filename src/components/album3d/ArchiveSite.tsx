@@ -36,7 +36,16 @@ const STUDIO_CRUMBS = {
   bookings: "studioBookings",
   booking: "studioBooking",
   bookingDetails: "studioBookingDetails",
-  lottery: "studioLottery"
+  lottery: "studioLottery",
+  equipment: "studioEquipment",
+  equipmentNew: "studioGearNew",
+  equipmentItem: "studioGear",
+  categories: "studioCategories",
+  contact: "studioContact",
+  labels: "studioLabels",
+  preparation: "studioPreparation",
+  checklist: "studioChecklist",
+  slotSheet: "studioSlotSheet"
 } as const satisfies Record<StudioPage, string>;
 
 // The photo screens load with their own chunk, only when visited.

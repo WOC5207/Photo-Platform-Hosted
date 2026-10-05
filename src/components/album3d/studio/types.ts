@@ -192,3 +192,135 @@ export interface StudioLottery {
   /** Confirmed bookings not yet entered. */
   available: { id: string; name: string; subject: string }[];
 }
+
+export type StudioGearStatus = "IN_INVENTORY" | "SIGNED_OUT" | "MAINTENANCE" | "BROKEN" | "OTHER";
+
+/** One piece of equipment, as its ID card shows it. */
+export interface StudioGear {
+  id: string;
+  name: string;
+  brand: string;
+  model: string;
+  categoryId: string;
+  category: string;
+  status: StudioGearStatus;
+  statusNote: string;
+  serialNumber: string;
+  notes: string;
+  /** The reference photo, or "". */
+  photoUrl: string;
+  qrToken: string;
+}
+
+export interface StudioGearCategory {
+  id: string;
+  name: string;
+  count: number;
+}
+
+/** The inventory, sorted by category and then the owner's order. */
+export interface StudioEquipment {
+  account: StudioAccount;
+  items: StudioGear[];
+  categories: StudioGearCategory[];
+}
+
+export interface StudioGearContact {
+  method: string;
+  label: string;
+  value: string;
+}
+
+/** The QR label sheet's inventory and the site logo it can print. */
+export interface StudioLabels {
+  items: StudioGear[];
+  categories: string[];
+  logoUrl: string;
+  /** Items to start with on the sheet (?selected=). */
+  selected: string[];
+}
+
+export type StudioChecklistState = "PLANNED" | "AT_EVENT" | "RETURNED" | "BROKEN";
+
+export interface StudioChecklistSummary {
+  id: string;
+  name: string;
+  date: string;
+  notes: string;
+  /** The booking event the checklist's day belongs to, if any. */
+  eventTitle: string;
+  items: number;
+  /** Inventory items on the list, and how far along they are. */
+  gear: number;
+  atEvent: number;
+  returned: number;
+  broken: number;
+}
+
+export interface StudioPreparation {
+  account: StudioAccount;
+  checklists: StudioChecklistSummary[];
+  events: { id: string; title: string }[];
+  /** The booking event the list is narrowed to (?event=), or null. */
+  event: string | null;
+}
+
+export interface StudioChecklistItem {
+  id: string;
+  label: string;
+  /** Null for a custom reminder. */
+  equipmentId: string | null;
+  categoryId: string;
+  category: string;
+  state: StudioChecklistState;
+  inventoryStatus: StudioGearStatus | null;
+}
+
+export interface StudioChecklist {
+  id: string;
+  name: string;
+  date: string;
+  notes: string;
+  bookingEventId: string | null;
+  eventTitle: string;
+  items: StudioChecklistItem[];
+  /** Inventory not on the list yet, for the picker. */
+  available: { id: string; name: string; categoryId: string; category: string; status: StudioGearStatus }[];
+  inventoryEmpty: boolean;
+}
+
+export interface StudioSheetBooking {
+  id: string;
+  name: string;
+  subject: string;
+  contact: string;
+  email: string;
+  notes: string;
+}
+
+export interface StudioSheetSlot {
+  id: string;
+  bookingEventId: string;
+  eventTitle: string;
+  location: string;
+  dayKey: string;
+  day: string;
+  start: string;
+  end: string;
+  finished: boolean;
+  booked: number;
+  capacity: number;
+  price: string;
+  description: string;
+  bookings: StudioSheetBooking[];
+}
+
+/** Booked slots (confirmed bookings only), to mark finished after the shoot. */
+export interface StudioSlotSheet {
+  account: StudioAccount;
+  slots: StudioSheetSlot[];
+  /** More slots matched than the sheet carries; the rest are on the classic page. */
+  more: boolean;
+  events: { id: string; title: string }[];
+  event: string | null;
+}
