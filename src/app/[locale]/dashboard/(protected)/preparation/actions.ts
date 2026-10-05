@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { pickEquipment, setSlotFinished } from "@/lib/preparation";
+import { createOwnedChecklist, deleteOwnedChecklist, pickEquipment, setSlotFinished } from "@/lib/preparation";
 
 export async function finishSlot(formData: FormData): Promise<void> {
   const id = text(formData, "id");
@@ -23,12 +23,6 @@ export async function addSelectedEquipment(formData: FormData): Promise<void> {
   await prisma.$transaction(tx => pickEquipment(tx, owner, checklistId, ids));
   refreshPreparation();
 }
-
-const checklistSchema = z.object({
-  name: z.string().trim().min(1).max(160),
-  shootDate: z.string().trim().max(10),
-  notes: z.string().trim().max(1000)
-});
 
 const customItemSchema = z.string().trim().min(1).max(200);
 const quickEquipmentStatusSchema = z.enum([
@@ -50,52 +44,21 @@ function text(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "");
 }
 
-function optionalShootDate(value: string): Date | null | undefined {
-  if (!value) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
-  const parsed = new Date(`${value}T12:00:00.000Z`);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-}
-
 export async function createChecklist(formData: FormData): Promise<void> {
-  const parsed = checklistSchema.safeParse({
-    name: text(formData, "name"),
-    shootDate: text(formData, "shootDate"),
-    notes: text(formData, "notes")
-  });
-  if (!parsed.success) return;
-  const shootDate = optionalShootDate(parsed.data.shootDate);
-  if (shootDate === undefined) return;
-
-  const checklist = await prisma.equipmentChecklist.create({
-    data: {
-      ownerId: await ownerId(),
-      name: parsed.data.name,
-      shootDate,
-      notes: parsed.data.notes
-    }
-  });
+  const id = await createOwnedChecklist(await ownerId(), formData);
+  if (!id) return;
   refreshPreparation();
-  redirect("/" + await getLocale() + "/dashboard/preparation/equipment/" + checklist.id);
+  redirect("/" + await getLocale() + "/dashboard/preparation/equipment/" + id);
 }
 
 export async function deleteChecklist(formData: FormData): Promise<void> {
   const id = text(formData, "id");
   if (!id) return;
   const locale = await getLocale();
-  const owner = await ownerId();
-  const checklist = await prisma.equipmentChecklist.findFirst({
-    where: { id, ownerId: owner },
-    select: { bookingDay: { select: { bookingEventId: true } } }
-  });
-  if (!checklist) return;
-  await prisma.equipmentChecklist.deleteMany({
-    where: { id, ownerId: owner }
-  });
+  const bookingEventId = await deleteOwnedChecklist(await ownerId(), id);
+  if (bookingEventId === null) return;
   refreshPreparation();
-  const eventQuery = checklist.bookingDay
-    ? `?event=${checklist.bookingDay.bookingEventId}`
-    : "";
+  const eventQuery = bookingEventId ? `?event=${bookingEventId}` : "";
   redirect(`/${locale}/dashboard/preparation/equipment${eventQuery}`);
 }
 

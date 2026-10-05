@@ -19,319 +19,31 @@ import {
   type EquipmentQrLogoPlacement
 } from "@/lib/equipmentQrSheet";
 
-export type EquipmentQrLabelItem = {
-  id: string;
-  name: string;
-  category: string;
-  qrToken: string;
-};
+import {
+  CENTER_LOGO_BACKING_MM,
+  createQrDataUrl,
+  downloadLabelPdf,
+  downloadLabelPngs,
+  equipmentUid,
+  labelScanUrl,
+  loadImage,
+  printLabels as printLabelSheet,
+  type EquipmentQrLabelItem,
+  type LabelArtwork,
+  type LabelRotation
+} from "@/lib/equipmentQrLabel";
+
+export type { EquipmentQrLabelItem };
 
 type SavedSize = { widthMm: number; heightMm: number };
-type LabelRotation = 0 | 90 | 180 | 270;
 
 const STORAGE_KEY = "photo-platform:equipment-qr-label-size:v2";
 const DEFAULT_SIZE: SavedSize = { widthMm: 50, heightMm: 70 };
 const DEFAULT_TEXT_SIZE_PT = 10;
 const DEFAULT_LOGO_HEIGHT_MM = 7;
 const DEFAULT_ELEMENT_GAP_MM = 3;
-const CENTER_LOGO_BACKING_MM = 1.2;
-const PX_PER_MM = 300 / 25.4;
 const DEFAULT_BACKGROUND_OPACITY = 30;
 const MAX_BACKGROUND_BYTES = 12 * 1024 * 1024;
-
-async function createQrDataUrl(value: string, width: number): Promise<string> {
-  const { default: QRCode } = await import("qrcode");
-  return QRCode.toDataURL(value, {
-    errorCorrectionLevel: "H",
-    margin: 1,
-    width,
-    color: { dark: "#111111", light: "#ffffff" }
-  });
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Image could not be loaded"));
-    image.src = src;
-  });
-}
-
-function fittedText(
-  context: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number
-): string {
-  if (context.measureText(text).width <= maxWidth) return text;
-  let value = text;
-  while (value.length > 1 && context.measureText(`${value}…`).width > maxWidth) {
-    value = value.slice(0, -1);
-  }
-  return `${value}…`;
-}
-
-function equipmentUid(item: EquipmentQrLabelItem): string {
-  return item.qrToken.slice(0, 8).toUpperCase();
-}
-
-async function renderLabelCanvas({
-  item,
-  scanUrl,
-  widthMm,
-  heightMm,
-  layout,
-  includeName,
-  includeUid,
-  logo,
-  logoPlacement,
-  background,
-  backgroundOpacity
-}: {
-  item: EquipmentQrLabelItem;
-  scanUrl: string;
-  widthMm: number;
-  heightMm: number;
-  layout: EquipmentQrLabelLayout;
-  includeName: boolean;
-  includeUid: boolean;
-  logo: HTMLImageElement | null;
-  logoPlacement: EquipmentQrLogoPlacement;
-  background: HTMLImageElement | null;
-  backgroundOpacity: number;
-}): Promise<HTMLCanvasElement> {
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(widthMm * PX_PER_MM);
-  canvas.height = Math.round(heightMm * PX_PER_MM);
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Canvas is unavailable");
-
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  if (background) {
-    const scale = Math.max(
-      canvas.width / background.naturalWidth,
-      canvas.height / background.naturalHeight
-    );
-    const backgroundWidth = background.naturalWidth * scale;
-    const backgroundHeight = background.naturalHeight * scale;
-    context.save();
-    context.globalAlpha = Math.min(1, Math.max(0, backgroundOpacity / 100));
-    context.drawImage(
-      background,
-      (canvas.width - backgroundWidth) / 2,
-      (canvas.height - backgroundHeight) / 2,
-      backgroundWidth,
-      backgroundHeight
-    );
-    context.restore();
-  }
-  let cursorY = layout.paddingMm * PX_PER_MM;
-
-  if (logo && logoPlacement === "ABOVE") {
-    const maxLogoWidth = canvas.width - 16 * PX_PER_MM;
-    const maxLogoHeight = layout.logoHeightMm * PX_PER_MM;
-    const scale = Math.min(
-      maxLogoWidth / logo.naturalWidth,
-      maxLogoHeight / logo.naturalHeight
-    );
-    const logoWidth = logo.naturalWidth * scale;
-    const logoHeight = logo.naturalHeight * scale;
-    context.drawImage(
-      logo,
-      (canvas.width - logoWidth) / 2,
-      cursorY,
-      logoWidth,
-      logoHeight
-    );
-    cursorY += layout.logoSlotMm * PX_PER_MM;
-  }
-
-  const qrDataUrl = await createQrDataUrl(
-    scanUrl,
-    Math.max(600, Math.round(layout.qrSizeMm * PX_PER_MM))
-  );
-  const qrImage = await loadImage(qrDataUrl);
-  const qrSize = layout.qrSizeMm * PX_PER_MM;
-  context.imageSmoothingEnabled = false;
-  const qrX = (canvas.width - qrSize) / 2;
-  const qrY = cursorY;
-  context.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
-
-  if (logo && logoPlacement === "CENTER") {
-    const maxLogoSize = layout.logoHeightMm * PX_PER_MM;
-    const scale = Math.min(
-      maxLogoSize / logo.naturalWidth,
-      maxLogoSize / logo.naturalHeight
-    );
-    const logoWidth = logo.naturalWidth * scale;
-    const logoHeight = logo.naturalHeight * scale;
-    const logoX = qrX + (qrSize - logoWidth) / 2;
-    const logoY = qrY + (qrSize - logoHeight) / 2;
-    const backing = (CENTER_LOGO_BACKING_MM * PX_PER_MM) / 2;
-    context.imageSmoothingEnabled = true;
-    context.fillStyle = "#ffffff";
-    context.fillRect(
-      logoX - backing,
-      logoY - backing,
-      logoWidth + backing * 2,
-      logoHeight + backing * 2
-    );
-    context.drawImage(logo, logoX, logoY, logoWidth, logoHeight);
-  }
-  cursorY += qrSize;
-  cursorY += layout.textBlockGapMm * PX_PER_MM;
-
-  if (includeName) {
-    const fontSize = layout.nameTextSizePt * (300 / 72);
-    context.imageSmoothingEnabled = true;
-    context.fillStyle = "#211d18";
-    context.font = `600 ${fontSize}px "Avenir Next", "Segoe UI", "Microsoft YaHei", sans-serif`;
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(
-      fittedText(context, item.name, canvas.width - 8 * PX_PER_MM),
-      canvas.width / 2,
-      cursorY + (layout.nameSlotMm * PX_PER_MM) / 2
-    );
-    cursorY += layout.nameSlotMm * PX_PER_MM;
-  }
-
-  if (includeUid) {
-    cursorY += layout.nameUidGapMm * PX_PER_MM;
-    const fontSize = layout.uidTextSizePt * (300 / 72);
-    context.imageSmoothingEnabled = true;
-    context.fillStyle = "#514a41";
-    context.font = `500 ${fontSize}px "SFMono-Regular", Consolas, "Liberation Mono", monospace`;
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(
-      equipmentUid(item),
-      canvas.width / 2,
-      cursorY + (layout.uidSlotMm * PX_PER_MM) / 2
-    );
-  }
-  return canvas;
-}
-
-function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("PNG could not be generated"))),
-      "image/png"
-    );
-  });
-}
-
-function rotateLabelCanvas(
-  source: HTMLCanvasElement,
-  rotation: LabelRotation
-): HTMLCanvasElement {
-  if (rotation === 0) return source;
-
-  const rotated = document.createElement("canvas");
-  const swapsDimensions = rotation === 90 || rotation === 270;
-  rotated.width = swapsDimensions ? source.height : source.width;
-  rotated.height = swapsDimensions ? source.width : source.height;
-  const context = rotated.getContext("2d");
-  if (!context) throw new Error("Canvas is unavailable");
-
-  if (rotation === 90) {
-    context.translate(rotated.width, 0);
-    context.rotate(Math.PI / 2);
-  } else if (rotation === 180) {
-    context.translate(rotated.width, rotated.height);
-    context.rotate(Math.PI);
-  } else {
-    context.translate(0, rotated.height);
-    context.rotate(-Math.PI / 2);
-  }
-  context.drawImage(source, 0, 0);
-  return rotated;
-}
-
-function safeFileName(value: string): string {
-  const normalized = value
-    .normalize("NFKD")
-    .replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 70);
-  return normalized || "equipment";
-}
-
-function triggerDownload(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function waitForImages(images: HTMLImageElement[]): Promise<void> {
-  return Promise.all(
-    images.map((image) =>
-      image.complete && image.naturalWidth > 0
-        ? Promise.resolve()
-        : new Promise<void>((resolve, reject) => {
-            image.onload = () => resolve();
-            image.onerror = () => reject(new Error("Label image could not be loaded"));
-          })
-    )
-  ).then(() => undefined);
-}
-
-async function printLabelImages(
-  blobs: Blob[],
-  widthMm: number,
-  heightMm: number
-): Promise<void> {
-  const urls = blobs.map((blob) => URL.createObjectURL(blob));
-  const frame = document.createElement("iframe");
-  frame.setAttribute("aria-hidden", "true");
-  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
-  document.body.appendChild(frame);
-  let cleanedUp = false;
-  const cleanup = () => {
-    if (cleanedUp) return;
-    cleanedUp = true;
-    frame.remove();
-    urls.forEach((url) => URL.revokeObjectURL(url));
-  };
-
-  try {
-    const frameWindow = frame.contentWindow;
-    const frameDocument = frame.contentDocument;
-    if (!frameWindow || !frameDocument) throw new Error("Print frame is unavailable");
-    frameDocument.open();
-    frameDocument.write(`<!doctype html><html><head><title>QR labels</title><style>
-@page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }
-html, body { margin: 0; padding: 0; background: #fff; }
-img { display: block; width: ${widthMm}mm; height: ${heightMm}mm; break-after: page; page-break-after: always; }
-img:last-child { break-after: auto; page-break-after: auto; }
-</style></head><body></body></html>`);
-    frameDocument.close();
-    const images = urls.map((url) => {
-      const image = frameDocument.createElement("img");
-      image.alt = "";
-      image.src = url;
-      frameDocument.body.appendChild(image);
-      return image;
-    });
-    await waitForImages(images);
-    frameWindow.addEventListener("afterprint", () => window.setTimeout(cleanup, 0), { once: true });
-    // Some browsers return from print() before the dialog closes and never
-    // fire afterprint; keep the frame alive long enough for the dialog.
-    window.setTimeout(cleanup, 10 * 60 * 1000);
-    frameWindow.focus();
-    frameWindow.print();
-  } catch (error) {
-    cleanup();
-    throw error;
-  }
-}
 
 function isSavedSize(value: unknown): value is SavedSize {
   if (!value || typeof value !== "object") return false;
@@ -498,11 +210,7 @@ export default function EquipmentQrSheetBuilder({
   useEffect(() => {
     if (!previewItem) return;
     let active = true;
-    const scanUrl = new URL(
-      `/${locale}/equipment/${encodeURIComponent(previewItem.qrToken)}`,
-      window.location.origin
-    ).toString();
-    createQrDataUrl(scanUrl, 360)
+    createQrDataUrl(labelScanUrl(locale, previewItem.qrToken), 360)
       .then((dataUrl) => {
         if (active) setPreviewQrs((current) => ({ ...current, [previewItem.id]: dataUrl }));
       })
@@ -577,63 +285,35 @@ export default function EquipmentQrSheetBuilder({
     setMessage(null);
   }
 
+  const artwork = (): LabelArtwork | null =>
+    layout
+      ? {
+          widthMm: labelWidthMm,
+          heightMm: labelHeightMm,
+          layout,
+          includeName,
+          includeUid,
+          logoUrl: includeLogo ? logoUrl : "",
+          logoPlacement,
+          backgroundUrl,
+          backgroundOpacity,
+          rotation: labelRotation
+        }
+      : null;
+
   async function downloadPdf() {
-    if (!layout || selectedEquipment.length === 0) {
+    const art = artwork();
+    if (!art || selectedEquipment.length === 0) {
       setMessage({
         kind: "error",
-        text: layout ? t("selectBeforeDownload") : t("labelInvalid")
+        text: art ? t("selectBeforeDownload") : t("labelInvalid")
       });
       return;
     }
     setExporting("pdf");
     setMessage(null);
     try {
-      const [{ jsPDF }, logo, background] = await Promise.all([
-        import("jspdf"),
-        includeLogo && logoUrl ? loadImage(logoUrl) : Promise.resolve(null),
-        backgroundUrl ? loadImage(backgroundUrl) : Promise.resolve(null)
-      ]);
-      const orientation = outputWidthMm > outputHeightMm ? "landscape" : "portrait";
-      const document = new jsPDF({
-        unit: "mm",
-        format: [outputWidthMm, outputHeightMm],
-        orientation,
-        compress: true
-      });
-
-      for (let index = 0; index < selectedEquipment.length; index += 1) {
-        const item = selectedEquipment[index];
-        if (index > 0) document.addPage([outputWidthMm, outputHeightMm], orientation);
-        const scanUrl = new URL(
-          `/${locale}/equipment/${encodeURIComponent(item.qrToken)}`,
-          window.location.origin
-        ).toString();
-        const label = rotateLabelCanvas(await renderLabelCanvas({
-          item,
-          scanUrl,
-          widthMm: labelWidthMm,
-          heightMm: labelHeightMm,
-          layout,
-          includeName,
-          includeUid,
-          logo,
-          logoPlacement,
-          background,
-          backgroundOpacity
-        }), labelRotation);
-        document.addImage(
-          label.toDataURL("image/png"),
-          "PNG",
-          0,
-          0,
-          outputWidthMm,
-          outputHeightMm,
-          undefined,
-          "FAST"
-        );
-      }
-
-      document.save(`equipment-qr-labels-${new Date().toISOString().slice(0, 10)}.pdf`);
+      await downloadLabelPdf(selectedEquipment, art, locale);
       setMessage({ kind: "success", text: t("downloadReady") });
     } catch {
       setMessage({ kind: "error", text: t("downloadError") });
@@ -643,43 +323,18 @@ export default function EquipmentQrSheetBuilder({
   }
 
   async function downloadPng() {
-    if (!layout || selectedEquipment.length === 0) {
+    const art = artwork();
+    if (!art || selectedEquipment.length === 0) {
       setMessage({
         kind: "error",
-        text: layout ? t("selectBeforeDownload") : t("labelInvalid")
+        text: art ? t("selectBeforeDownload") : t("labelInvalid")
       });
       return;
     }
     setExporting("png");
     setMessage(null);
     try {
-      const [logo, background] = await Promise.all([
-        includeLogo && logoUrl ? loadImage(logoUrl) : Promise.resolve(null),
-        backgroundUrl ? loadImage(backgroundUrl) : Promise.resolve(null)
-      ]);
-      for (const item of selectedEquipment) {
-        const scanUrl = new URL(
-          `/${locale}/equipment/${encodeURIComponent(item.qrToken)}`,
-          window.location.origin
-        ).toString();
-        const label = rotateLabelCanvas(await renderLabelCanvas({
-          item,
-          scanUrl,
-          widthMm: labelWidthMm,
-          heightMm: labelHeightMm,
-          layout,
-          includeName,
-          includeUid,
-          logo,
-          logoPlacement,
-          background,
-          backgroundOpacity
-        }), labelRotation);
-        triggerDownload(
-          await canvasBlob(label),
-          `${safeFileName(item.name)}-qr-label.png`
-        );
-      }
+      await downloadLabelPngs(selectedEquipment, art, locale);
       setMessage({
         kind: "success",
         text: t("pngDownloadReady", { count: selectedEquipment.length })
@@ -692,42 +347,18 @@ export default function EquipmentQrSheetBuilder({
   }
 
   async function printLabels() {
-    if (!layout || selectedEquipment.length === 0) {
+    const art = artwork();
+    if (!art || selectedEquipment.length === 0) {
       setMessage({
         kind: "error",
-        text: layout ? t("selectBeforePrint") : t("labelInvalid")
+        text: art ? t("selectBeforePrint") : t("labelInvalid")
       });
       return;
     }
     setExporting("print");
     setMessage(null);
     try {
-      const [logo, background] = await Promise.all([
-        includeLogo && logoUrl ? loadImage(logoUrl) : Promise.resolve(null),
-        backgroundUrl ? loadImage(backgroundUrl) : Promise.resolve(null)
-      ]);
-      const blobs: Blob[] = [];
-      for (const item of selectedEquipment) {
-        const scanUrl = new URL(
-          `/${locale}/equipment/${encodeURIComponent(item.qrToken)}`,
-          window.location.origin
-        ).toString();
-        const label = rotateLabelCanvas(await renderLabelCanvas({
-          item,
-          scanUrl,
-          widthMm: labelWidthMm,
-          heightMm: labelHeightMm,
-          layout,
-          includeName,
-          includeUid,
-          logo,
-          logoPlacement,
-          background,
-          backgroundOpacity
-        }), labelRotation);
-        blobs.push(await canvasBlob(label));
-      }
-      await printLabelImages(blobs, outputWidthMm, outputHeightMm);
+      await printLabelSheet(selectedEquipment, art, locale);
     } catch {
       setMessage({ kind: "error", text: t("printError") });
     } finally {

@@ -26,6 +26,7 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
   const t = useTranslations("album3d");
   const tb = useTranslations("adminBookings");
   const tc = useTranslations("common");
+  const tp = useTranslations("preparation");
   const { path, key, touch } = useStage();
   const scene = useScene("board");
   const { username } = account;
@@ -141,6 +142,20 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
               <span aria-hidden="true" className="ml-auto">→</span>
             </Link>
           ) : null}
+        </div>
+
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {(["slotSheet", "preparation"] as const).map((page) => (
+            <Link
+              key={page}
+              href={`${path({ kind: "studio", username, page })}?event=${encodeURIComponent(schedule.id)}`}
+              scroll={false}
+              className={secondaryClass}
+            >
+              {page === "slotSheet" ? tp("slots") : tp("equipment")}
+              <span aria-hidden="true" className="ml-auto">→</span>
+            </Link>
+          ))}
         </div>
 
         <div className="mt-4 border border-border-strong p-3">

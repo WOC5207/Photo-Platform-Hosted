@@ -44,7 +44,18 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
       sub: t("studioBookingsSub"),
       run: () => go({ kind: "studio", username, page: "bookings" })
     },
-    classic("equipment", ta("equipment"), "/dashboard/equipment"),
+    {
+      key: "preparation",
+      label: t("studioPreparation"),
+      sub: t("studioPreparationSub"),
+      run: () => go({ kind: "studio", username, page: "preparation" })
+    },
+    {
+      key: "equipment",
+      label: ta("equipment"),
+      sub: t("studioEquipmentSub"),
+      run: () => go({ kind: "studio", username, page: "equipment" })
+    },
     classic("posters", ta("sharingPosters"), "/dashboard/sharing-posters"),
     classic("credits", ta("credits", { term: home.creditTerm }), "/dashboard/credits"),
     classic("site", ta("site"), "/dashboard/settings"),

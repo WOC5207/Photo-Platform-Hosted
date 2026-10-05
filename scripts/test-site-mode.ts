@@ -40,7 +40,16 @@ const screens = [
   "/3d/u/george/studio/bookings",
   "/3d/u/george/studio/bookings/cmbook1",
   "/3d/u/george/studio/bookings/cmbook1/details",
-  "/3d/u/george/studio/bookings/cmbook1/lottery"
+  "/3d/u/george/studio/bookings/cmbook1/lottery",
+  "/3d/u/george/studio/equipment",
+  "/3d/u/george/studio/equipment/new",
+  "/3d/u/george/studio/equipment/categories",
+  "/3d/u/george/studio/equipment/contact",
+  "/3d/u/george/studio/equipment/labels",
+  "/3d/u/george/studio/equipment/cmgear1",
+  "/3d/u/george/studio/preparation",
+  "/3d/u/george/studio/preparation/slots",
+  "/3d/u/george/studio/preparation/cmlist1"
 ];
 for (const path of screens) {
   const screen = parseScreen(path);
@@ -54,7 +63,7 @@ assert.deepEqual(parseScreen("/3d/u/george/albums/fan-expo-2026?x=1"), {
   slug: "fan-expo-2026",
   study: false
 });
-for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/cosplan/board/x", "/3d/sharepost/board", "/3d/sharing-poster", "/3d/u/george/studio/booking", "/3d/u/george/studio/bookings/new/x", "/3d/u/george/studio/bookings/cmbook1/constructor", "/3d/u/george/studio/bookings/cmbook1/lottery/x", "/3d/u/george/studio/events/cmevent1/setup", "/3d/u/george/studio/events/cmevent1/photos/x"]) {
+for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/cosplan/board/x", "/3d/sharepost/board", "/3d/sharing-poster", "/3d/u/george/studio/booking", "/3d/u/george/studio/bookings/new/x", "/3d/u/george/studio/bookings/cmbook1/constructor", "/3d/u/george/studio/bookings/cmbook1/lottery/x", "/3d/u/george/studio/events/cmevent1/setup", "/3d/u/george/studio/events/cmevent1/photos/x", "/3d/u/george/studio/equipment/cmgear1/edit", "/3d/u/george/studio/preparation/equipment/cmlist1", "/3d/u/george/studio/gear"]) {
   assert.equal(parseScreen(path), null, `${path} is not a 3D screen`);
 }
 
@@ -110,6 +119,12 @@ assert.deepEqual(climb("/3d/u/george/studio/bookings/cmbook1/lottery"), [
 assert.deepEqual(climb("/3d/u/george/studio/bookings/cmbook1/details")[1], "/3d/u/george/studio/bookings/cmbook1");
 assert.deepEqual(climb("/3d/u/george/studio/events/new").slice(0, 2), ["/3d/u/george/studio/events/new", "/3d/u/george/studio/events"]);
 assert.deepEqual(climb("/3d/u/george/studio/events/cmevent1/photos")[1], "/3d/u/george/studio/events/cmevent1");
+for (const page of ["new", "categories", "contact", "labels", "cmgear1"]) {
+  assert.deepEqual(climb(`/3d/u/george/studio/equipment/${page}`).slice(1, 3), ["/3d/u/george/studio/equipment", "/3d/u/george/studio"]);
+}
+for (const page of ["slots", "cmlist1"]) {
+  assert.deepEqual(climb(`/3d/u/george/studio/preparation/${page}`).slice(1, 3), ["/3d/u/george/studio/preparation", "/3d/u/george/studio"]);
+}
 
 // The switch lands on the matching page on the other side.
 const twins: [classic: string, threeD: string][] = [
@@ -170,7 +185,16 @@ const dashboardTwins: [threeD: string, classic: string, back: string][] = [
   ["/3d/u/george/studio/bookings", "/dashboard/bookings", "/3d/studio/bookings"],
   ["/3d/u/george/studio/bookings/cmbook1", "/dashboard/bookings/cmbook1", "/3d/studio/bookings/cmbook1"],
   ["/3d/u/george/studio/bookings/cmbook1/details", "/dashboard/bookings/cmbook1?section=overview", "/3d/studio/bookings/cmbook1/details"],
-  ["/3d/u/george/studio/bookings/cmbook1/lottery", "/dashboard/bookings/cmbook1/lottery", "/3d/studio/bookings/cmbook1/lottery"]
+  ["/3d/u/george/studio/bookings/cmbook1/lottery", "/dashboard/bookings/cmbook1/lottery", "/3d/studio/bookings/cmbook1/lottery"],
+  ["/3d/u/george/studio/equipment", "/dashboard/equipment", "/3d/studio/equipment"],
+  ["/3d/u/george/studio/equipment/new", "/dashboard/equipment/new", "/3d/studio/equipment/new"],
+  ["/3d/u/george/studio/equipment/categories", "/dashboard/equipment/manage", "/3d/studio/equipment/categories"],
+  ["/3d/u/george/studio/equipment/contact", "/dashboard/equipment/contact", "/3d/studio/equipment/contact"],
+  ["/3d/u/george/studio/equipment/labels", "/dashboard/equipment/qr-labels", "/3d/studio/equipment/labels"],
+  ["/3d/u/george/studio/equipment/cmgear1", "/dashboard/equipment/cmgear1", "/3d/studio/equipment/cmgear1"],
+  ["/3d/u/george/studio/preparation", "/dashboard/preparation/equipment", "/3d/studio/preparation"],
+  ["/3d/u/george/studio/preparation/slots", "/dashboard/preparation/slots", "/3d/studio/preparation/slots"],
+  ["/3d/u/george/studio/preparation/cmlist1", "/dashboard/preparation/equipment/cmlist1", "/3d/studio/preparation/cmlist1"]
 ];
 for (const [threeD, classic, back] of dashboardTwins) {
   assert.equal(classicTwin(threeD), classic, `${threeD} -> classic`);
@@ -180,7 +204,11 @@ assert.equal(threeDTwin("/dashboard/events/cmevent1#photos"), "/3d/studio/events
 assert.equal(threeDTwin("/dashboard/bookings/abc?section=advanced"), "/3d/studio/bookings/abc/details");
 assert.equal(threeDTwin("/dashboard/bookings/abc?section=schedule"), "/3d/studio/bookings/abc");
 assert.equal(threeDTwin("/dashboard/bookings/new"), "/3d/studio/events/new");
-assert.equal(threeDTwin("/dashboard/equipment"), "/3d/studio");
+assert.equal(threeDTwin("/dashboard/preparation"), "/3d/studio/preparation");
+assert.equal(threeDTwin("/dashboard/preparation/equipment?event=cmbook1"), "/3d/studio/preparation?event=cmbook1");
+assert.equal(threeDTwin("/dashboard/preparation/slots?event=cmbook1&status=pending"), "/3d/studio/preparation/slots?event=cmbook1");
+assert.equal(threeDTwin("/dashboard/equipment?category=x&page=2"), "/3d/studio/equipment");
+assert.equal(threeDTwin("/dashboard/sharing-posters"), "/3d/studio");
 assert.equal(threeDTwin("/dashboard/events/cmevent1/setup"), "/3d/studio/events/cmevent1");
 
 // Usernames and slugs that need escaping survive the trip.

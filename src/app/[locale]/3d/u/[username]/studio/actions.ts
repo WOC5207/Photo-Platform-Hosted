@@ -6,6 +6,7 @@ import { getLocale } from "next-intl/server";
 import type { User } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { createEventFromForm, deleteOwnedBookingEvent, deleteOwnedEvent } from "@/lib/eventForms";
+import { createOwnedChecklist, deleteOwnedChecklist } from "@/lib/preparation";
 
 /**
  * The 3D Dashboard's own actions: the ones whose classic versions end on a
@@ -47,4 +48,22 @@ export async function deleteBookingEvent3d(formData: FormData): Promise<void> {
   if (typeof id !== "string" || !(await deleteOwnedBookingEvent(user, id))) return;
   revalidatePath("/", "layout");
   redirect(studioPath(locale, user, "/bookings"));
+}
+
+export async function createChecklist3d(formData: FormData): Promise<void> {
+  const { locale, user } = await guard();
+  const id = await createOwnedChecklist(user.id, formData);
+  if (!id) return;
+  revalidatePath("/", "layout");
+  redirect(studioPath(locale, user, `/preparation/${encodeURIComponent(id)}`));
+}
+
+export async function deleteChecklist3d(formData: FormData): Promise<void> {
+  const { locale, user } = await guard();
+  const id = formData.get("id");
+  if (typeof id !== "string") return;
+  const bookingEventId = await deleteOwnedChecklist(user.id, id);
+  if (bookingEventId === null) return;
+  revalidatePath("/", "layout");
+  redirect(studioPath(locale, user, `/preparation${bookingEventId ? `?event=${encodeURIComponent(bookingEventId)}` : ""}`));
 }
