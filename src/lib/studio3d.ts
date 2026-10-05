@@ -46,8 +46,21 @@ export async function requireStudioUser(username: string, locale: string): Promi
   if (!user) redirect(`/${locale}/3d/login`);
   if (user.username !== username) redirect(`/${locale}/3d/u/${encodeURIComponent(user.username)}/studio`);
   if (user.role !== "admin" && !(await getSiteSettings(user.id)).setupCompleted) {
-    redirect(`/${locale}/dashboard/setup`);
+    redirect(`/${locale}/3d/u/${encodeURIComponent(user.username)}/studio/setup`);
   }
+  return user;
+}
+
+/**
+ * The first-run setup's guard: the signed-in photographer's own, and only
+ * until it is done (admins skip it, as on the classic dashboard).
+ */
+export async function requireSetupUser(username: string, locale: string): Promise<User> {
+  const user = await getCurrentUser();
+  if (!user) redirect(`/${locale}/3d/login`);
+  const home = `/${locale}/3d/u/${encodeURIComponent(user.username)}/studio`;
+  if (user.username !== username) redirect(`${home}/setup`);
+  if (user.role === "admin" || (await getSiteSettings(user.id)).setupCompleted) redirect(home);
   return user;
 }
 
@@ -90,6 +103,9 @@ const summarySelect = {
   dateEnd: true,
   location: true,
   published: true,
+  coverPhotoId: true,
+  // The card's picture when no cover is set: the album's first photo.
+  photos: { where: { pendingBatchId: null }, orderBy: { sortOrder: "asc" }, take: 1, select: { id: true } },
   _count: { select: { photos: { where: { pendingBatchId: null } } } }
 } as const;
 
@@ -103,16 +119,20 @@ function summary(
     dateEnd: Date | null;
     location: string;
     published: boolean;
+    coverPhotoId: string | null;
+    photos: { id: string }[];
     _count: { photos: number };
   }
 ): StudioEventSummary {
+  const cover = event.coverPhotoId ?? event.photos[0]?.id;
   return {
     id: event.id,
     title: pickText(locale, event.titleEn, event.titleZh),
     dateLabel: formatDateRange(event.dateStart, event.dateEnd),
     location: event.location,
     published: event.published,
-    photoCount: event._count.photos
+    photoCount: event._count.photos,
+    cover: cover ? photoUrls(event.id, cover).thumb : ""
   };
 }
 

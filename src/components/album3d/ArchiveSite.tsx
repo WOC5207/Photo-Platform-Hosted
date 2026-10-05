@@ -134,10 +134,13 @@ function isInteractive(target: EventTarget | null): boolean {
 export default function ArchiveSite({
   files,
   columns,
+  viewer,
   children
 }: {
   files: ArchiveFile[];
   columns: ArchiveColumn[];
+  /** The signed-in photographer, if any. */
+  viewer: { username: string; name: string } | null;
   children?: ReactNode;
 }) {
   const t = useTranslations("album3d");
@@ -184,6 +187,8 @@ export default function ArchiveSite({
         : "archive";
   const overview = missing || studioHome || MENU_SCREENS.includes(screen.kind);
   const carouselScreen = !missing && (screen.kind === "photographers" || screen.kind === "photographer");
+  // One photographer's albums keep to their lane, so a visitor can't wander into someone else's by accident.
+  const lane = !missing && (screen.kind === "albumSelect" || screen.kind === "album") ? columnIndex : -1;
 
   const [status, setStatus] = useState<EngineStatus>("loading");
   // Frames stayed slow at the lowest quality: offer the classic page once.
@@ -195,6 +200,7 @@ export default function ArchiveSite({
   });
   const [menuFocus, setMenuFocus] = useState(0);
   const [exploded, setExploded] = useState(false);
+  const [studyFocus, setStudyFocus] = useState(0);
   const [clear, setClear] = useState(true);
   const [indexOpen, setIndexOpen] = useState(false);
   const [indexUsed, setIndexUsed] = useState(false);
@@ -207,27 +213,7 @@ export default function ArchiveSite({
   const [printUp, setPrintUp] = useState(false);
   const [motion, setMotion] = useState<MotionPreference>("system");
   const [theme, setTheme] = useState<ThemePreference>("system");
-  const [gamepad, setGamepad] = useState(false);
   const locale = useLocale();
-  // The controller code loads once a controller connects.
-  useEffect(() => {
-    if (typeof navigator.getGamepads !== "function") return;
-    let stop: (() => void) | undefined;
-    let cancelled = false;
-    const load = () => {
-      window.removeEventListener("gamepadconnected", load);
-      import("./gamepad").then(({ watchGamepads }) => {
-        if (!cancelled) stop = watchGamepads(setGamepad);
-      });
-    };
-    if (Array.from(navigator.getGamepads()).some((p) => p?.connected)) load();
-    else window.addEventListener("gamepadconnected", load);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("gamepadconnected", load);
-      stop?.();
-    };
-  }, []);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
@@ -245,7 +231,10 @@ export default function ArchiveSite({
       setSelected(columns[columnIndex].fileIndexes[0] ?? 0);
     }
     setMenuFocus(screen.kind === "photographers" && columnIndex < 0 ? (files[selectedRef.current]?.column ?? 0) : 0);
-    if (screen.kind === "album" && screen.study) setExploded(false);
+    if (screen.kind === "album" && screen.study) {
+      setExploded(false);
+      setStudyFocus(0);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
@@ -455,6 +444,7 @@ export default function ArchiveSite({
           onCard: (index, open) => handlers.current.onCard(index, open),
           onPrint: (index, open) => handlers.current.onPrint(index, open),
           onRaised: setPrintUp,
+          onStudyPick: setStudyFocus,
           onTrouble: (kind) => (kind === "lost" ? setStatus("lost") : setSlow(true))
         });
         engineRef.current = engine;
@@ -517,12 +507,20 @@ export default function ArchiveSite({
   }, [mode, overview, ready, carouselScreen, carouselFocus, screen.kind, tableKey, tableFocus, photoIndex]);
 
   useEffect(() => {
+    if (ready) engineRef.current?.setLane(lane);
+  }, [lane, ready]);
+
+  useEffect(() => {
     if (ready) engineRef.current?.setReducedMotion(prefersReduced(motion));
   }, [motion, ready]);
 
   useEffect(() => {
     if (ready && mode === "study") engineRef.current?.setExploded(exploded);
   }, [exploded, mode, ready]);
+
+  useEffect(() => {
+    if (ready && mode === "study") engineRef.current?.setStudyFocus(studyFocus);
+  }, [studyFocus, mode, ready]);
 
   useEffect(() => {
     if (ready) engineRef.current?.setClear(clear);
@@ -538,7 +536,8 @@ export default function ArchiveSite({
     },
     { key: "cosplan", label: t("menuCosplan"), sub: t("menuCosplanSub"), run: () => go({ kind: "cosplan" }) },
     { key: "poster", label: t("menuPoster"), sub: t("menuPosterSub"), run: () => go({ kind: "sharepost" }) },
-    { key: "login", label: t("menuLogin"), sub: t("menuLoginSub"), run: () => go({ kind: "login" }) },
+    // Signed in, this opens the account's menu: their archive, Dashboard and sign out.
+    { key: "login", label: t("menuMySite"), sub: viewer ? `@${viewer.username}` : t("menuLoginSub"), run: () => go({ kind: "login" }) },
     { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), run: () => go({ kind: "settings" }) },
     { key: "classic", label: t("menuClassic"), sub: t("menuClassicSub"), external: true, run: () => leaveFor("classic", "/") }
   ];
@@ -709,8 +708,10 @@ export default function ArchiveSite({
       const keys: Record<string, () => void> = {
         ArrowUp: () => step("file", -1),
         ArrowDown: () => step("file", 1),
-        ArrowLeft: () => step("column", -1),
-        ArrowRight: () => step("column", 1),
+        ...(lane < 0 && {
+          ArrowLeft: () => step("column", -1),
+          ArrowRight: () => step("column", 1)
+        }),
         "/": () => setIndexOpen(true)
       };
       if (e.key === "Enter" && !isInteractive(e.target)) {
@@ -725,15 +726,11 @@ export default function ArchiveSite({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go, openTable]);
+  }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go, openTable, lane]);
 
-  // Controller glyphs replace key names while a controller is in use.
   const key = useCallback(
-    (name: "move" | "confirm" | "back" | "sides" | "alt") =>
-      gamepad
-        ? { move: "✛", confirm: "Ⓐ", back: "Ⓑ", sides: "◀ ▶", alt: "Ⓨ" }[name]
-        : { move: "↑ ↓", confirm: "ENTER", back: "ESC", sides: "← →", alt: "/" }[name],
-    [gamepad]
+    (name: "move" | "confirm" | "back" | "sides" | "alt") => ({ move: "↑ ↓", confirm: "ENTER", back: "ESC", sides: "← →", alt: "/" })[name],
+    []
   );
   const stage = useMemo(
     () => ({ engine: ready ? engineRef.current : null, go, path: screenPath, back, key, touch }),
@@ -797,7 +794,7 @@ export default function ArchiveSite({
     if (screen.kind !== "booking") crumbs.push({ label: t(screen.kind === "draw" ? "crumbDraw" : "crumbSchedule") });
   }
   else if (screen.kind === "settings") crumbs.push({ label: t("menuSettings") });
-  else if (screen.kind === "login") crumbs.push({ label: t("menuLogin") });
+  else if (screen.kind === "login") crumbs.push({ label: t("menuMySite") });
   else if (screen.kind === "cosplan" || screen.kind === "sharepost") {
     crumbs.push({ label: t(screen.kind === "cosplan" ? "menuCosplan" : "menuPoster"), href: screenPath({ kind: screen.kind }) });
     if (screen.kind === "cosplan" && screen.step === "print") crumbs.push({ label: t("crumbBoard"), href: screenPath({ kind: "cosplan", step: "board" }) });
@@ -874,6 +871,17 @@ export default function ArchiveSite({
                 <kbd className="font-meta hidden border border-border-strong px-1 text-[0.625rem] font-normal sm:inline">/</kbd>
               </button>
             )}
+            {viewer && (
+              <Link
+                href={screenPath({ kind: "studio", username: viewer.username, page: "home" })}
+                scroll={false}
+                aria-label={t("signedInAs", { name: viewer.name })}
+                className="inline-flex min-h-11 max-w-40 items-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text"
+              >
+                <i aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+                <span className="truncate">{viewer.name}</span>
+              </Link>
+            )}
             <span className="hidden sm:contents">
               <SiteModeSwitch current="3d" />
             </span>
@@ -909,9 +917,6 @@ export default function ArchiveSite({
           </h1>
           <div aria-hidden="true" className={styles.calloutRule} />
           <GameMenu label={t("settingsTitle")} items={settings} focus={menuFocus} onFocus={setMenuFocus} className="mt-8 wide:mt-12" />
-          <p className="font-meta mt-6 text-[0.625rem] uppercase tracking-[0.12em] text-fg-subtle">
-            {gamepad ? t("controllerOn") : t("controllerHint")}
-          </p>
         </main>
       )}
 
@@ -934,6 +939,7 @@ export default function ArchiveSite({
           owner={here.name}
           album={albumHere}
           index={photoIndex}
+          owned={viewer?.username === here.username}
           onStep={stepPhoto}
           onBack={back}
           printUp={printUp || status !== "ready"}
@@ -1023,7 +1029,7 @@ export default function ArchiveSite({
           className={styles.menuHint}
           parts={
             mode === "table"
-              ? [`${gamepad ? "✛" : "← → ↑ ↓"} ${t("hintPrint")}`, `${key("confirm")} ${t("hintOpen")}`, `${key("back")} ${t("hintBack")}`]
+              ? [`← → ↑ ↓ ${t("hintPrint")}`, `${key("confirm")} ${t("hintOpen")}`, `${key("back")} ${t("hintBack")}`]
               : [`${key("sides")} ${t("hintPhoto")}`, `${key("back")} ${t("hintTable")}`]
           }
         />
@@ -1112,7 +1118,7 @@ export default function ArchiveSite({
             <button type="button" onClick={() => step("file", 1)} aria-label={t("nextFile")} className={square}>↓</button>
           </div>
 
-          {columns.length > 1 && (
+          {columns.length > 1 && lane < 0 && (
             <div className={`${styles.columnNav} flex items-center gap-2 wide:gap-6`}>
               <button type="button" onClick={() => step("column", -1)} aria-label={t("prevColumn")} className={square}>←</button>
               <div className="grid min-w-[6.25rem] gap-1 wide:min-w-36 wide:gap-2">
@@ -1130,7 +1136,12 @@ export default function ArchiveSite({
               t("hintTouch")
             ) : (
               <>
-                ← → {t("hintPhotographer")} <span aria-hidden="true" className="mx-3">／</span> ↑ ↓ {t("hintAlbum")}
+                {lane < 0 && (
+                  <>
+                    ← → {t("hintPhotographer")} <span aria-hidden="true" className="mx-3">／</span>{" "}
+                  </>
+                )}
+                ↑ ↓ {t("hintAlbum")}
                 <span aria-hidden="true" className="mx-3">／</span> ENTER {t("hintOpen")}
                 <span aria-hidden="true" className="mx-3">／</span> ESC {t("hintBack")}
               </>
@@ -1248,6 +1259,9 @@ export default function ArchiveSite({
           exploded={exploded}
           clear={clear}
           touch={touch}
+          focus={studyFocus}
+          shareUrl={(photoId) => `${window.location.origin}/${locale}${screenPath({ kind: "photo", username: column.username, slug: file.slug, photoId })}`}
+          onFocus={setStudyFocus}
           onBack={back}
           onExplode={setExploded}
           onClear={setClear}

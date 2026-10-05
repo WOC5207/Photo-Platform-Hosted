@@ -24,8 +24,8 @@ const QUICK_ON = {
 
 /**
  * The equipment inventory: the photographer's gear as ID cards on the rail
- * in front of the easel, sorted by category, and the focused card standing
- * large on the easel with its photo, status and QR code. The panel filters
+ * in front of an open camera case, sorted by category, and the focused card
+ * standing large in the case with its photo, status and QR code. The panel filters
  * by category or search, flips the focused item between the everyday
  * statuses, and opens its editor, its label, or the inventory's other pages.
  */
@@ -36,7 +36,7 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
   const tq = useTranslations("equipmentQrPrint");
   const locale = useLocale();
   const { go, path, key, touch } = useStage();
-  const scene = useScene("poster");
+  const scene = useScene("case");
   const image = useImages();
   const { username } = equipment.account;
   const [category, setCategory] = useState("");

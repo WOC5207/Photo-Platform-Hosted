@@ -40,14 +40,16 @@ export default function middleware(req: NextRequest) {
     );
     return NextResponse.redirect(target, 308);
   }
-  // A visitor who chose the 3D site lands on it from the homepage. Only the
-  // bare homepage moves, so the switch back to classic always works. The
-  // target is built from the Host header for the same bind-address reason as
-  // above.
-  const home = /^\/(zh|en)\/?$/.exec(req.nextUrl.pathname);
-  if (home && host && req.cookies.get(SITE_MODE_COOKIE)?.value === "3d") {
+  // A visitor who chose the 3D site lands on it from the homepage, and a
+  // photographer who did lands in the 3D login, Dashboard and first-run
+  // setup. Only those bare entry pages move, so every other classic page
+  // (and the switch back to classic) still opens. The target is built from
+  // the Host header for the same bind-address reason as above.
+  const entry = /^\/(zh|en)(\/login|\/dashboard|\/dashboard\/setup)?\/?$/.exec(req.nextUrl.pathname);
+  if (entry && host && req.cookies.get(SITE_MODE_COOKIE)?.value === "3d") {
+    const twin = { "": "", "/login": "/login", "/dashboard": "/studio", "/dashboard/setup": "/studio/setup" }[entry[2] ?? ""];
     const target = new URL(
-      `/${home[1]}${THREE_D_ROOT}${req.nextUrl.search}`,
+      `/${entry[1]}${THREE_D_ROOT}${twin}${req.nextUrl.search}`,
       `${proto === "https" ? "https" : "http"}://${host}`
     );
     return NextResponse.redirect(target, 307);

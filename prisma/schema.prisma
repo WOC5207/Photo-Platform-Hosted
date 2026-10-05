@@ -758,6 +758,10 @@ model SiteSettings {
   homeTitleZh                       String    @default("")
   homeSubtitleEn                    String    @default("")
   homeSubtitleZh                    String    @default("")
+  // Homepage photo stream layout: "GRID" fills a justified contact sheet with
+  // cropped frames; "COLLAGE" packs uncropped photos at their true aspect
+  // ratios into justified rows.
+  homeStreamLayout                  String    @default("GRID")
   // Empty = use the contact-sheet canvas. Otherwise a CSS hex like "#0a0a0a".
   backgroundColor                   String    @default("")
   // Optional semantic palette overrides for the photographer's public site.

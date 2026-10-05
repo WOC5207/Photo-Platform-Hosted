@@ -33,20 +33,31 @@ export function useStage(): Stage {
   return useContext(StageContext) ?? fallbackStage;
 }
 
-type Scenes = { board: Board; deck: Deck; poster: PosterStage };
+type Scenes = { board: Board; deck: Deck; poster: PosterStage; case: PosterStage };
 
-/** The booking board, the prize deck or the poster easel, once the scene has it on screen. */
+/**
+ * The booking board, the prize deck or the poster easel, once the scene has
+ * it on screen. "case" is the easel's stage with the camera case in place of
+ * the easel, for the equipment screens.
+ */
 export function useScene<K extends keyof Scenes>(kind: K): Scenes[K] | null {
   const { engine } = useStage();
   const [scene, setScene] = useState<Scenes[keyof Scenes] | null>(null);
   useEffect(() => {
     if (!engine) return;
     let live = true;
+    let prop: PosterStage | null = null;
     (kind === "board" ? engine.showBoard() : kind === "deck" ? engine.showDeck() : engine.showPoster()).then((next) => {
-      if (live) setScene(next);
+      if (!live) return;
+      if (kind === "case" && next) {
+        prop = next as PosterStage;
+        prop.setProp("case");
+      }
+      setScene(next);
     });
     return () => {
       live = false;
+      prop?.setProp("easel");
       setScene(null);
     };
   }, [engine, kind]);

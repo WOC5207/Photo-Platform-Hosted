@@ -29,6 +29,10 @@ import type { EnginePalette } from "./engine";
  * foot that the poster slides into while the download renders. A rail of
  * cards (backgrounds, characters, photographs) can rise in front of the
  * easel, and the poster can be taken apart into its layers.
+ *
+ * The equipment screens swap the easel for an open camera case: the focused
+ * item's ID card rises out of the case's foam, and sinks back into it when
+ * another is picked.
  */
 
 /** A card on the rail: an image over a label, like the photographer ID cards. */
@@ -46,6 +50,8 @@ export interface PosterLayerPlane {
   canvas: HTMLCanvasElement;
 }
 
+export type PosterProp = "easel" | "case";
+
 export interface PosterStage {
   scene: Scene;
   camera: PerspectiveCamera;
@@ -59,6 +65,8 @@ export interface PosterStage {
   refresh(): void;
   /** The site's accent colour as rgb(), for guides painted on the poster. */
   accent(): string;
+  /** What the poster stands on: the easel, or the open camera case. */
+  setProp(prop: PosterProp): void;
   /** Slide the poster into the print slot, or back up onto the easel. */
   setPrinting(printing: boolean): void;
   /** Resolves once the poster is down in the slot (at once if it isn't printing). */
@@ -104,6 +112,8 @@ const RAIL_Z = 2.05;
 const RAIL_RISE = 0.1;
 /** Cards built either side of the focus; the rest wait until the rail turns to them. */
 const RAIL_REACH = 6;
+/** The camera case's height off the floor, to the top of its foam. */
+const CASE_H = 0.62;
 
 export function createPosterStage(context: {
   renderer: WebGLRenderer;
@@ -183,6 +193,44 @@ export function createPosterStage(context: {
   housing.add(housingBody, slotMouth, lamp);
   scene.add(housing);
 
+  // The camera case: a hard shell with a foam insert, its lid swung open
+  // behind the card, latches and a handle on the front.
+  const shellMaterial = new MeshStandardMaterial({ roughness: 0.42, metalness: 0.35 });
+  const rimMaterial = new MeshStandardMaterial({ roughness: 0.3, metalness: 0.8 });
+  const foamMaterial = new MeshStandardMaterial({ roughness: 1 });
+  const caseGroup = new Group();
+  const caseBox = new BoxGeometry(1, 1, 1);
+  const caseBase = new Mesh(caseBox, shellMaterial);
+  caseBase.castShadow = !lowPower;
+  const caseRim = new Mesh(caseBox, rimMaterial);
+  const caseFoam = new Mesh(caseBox, foamMaterial);
+  // The pocket the focused card stands in, cut darker into the foam.
+  const pocket = new Mesh(caseBox, slotMaterial);
+  // Smaller cutouts either side, as for lenses and bodies.
+  const cutouts = [0, 1, 2, 3].map(() => {
+    const cut = new Mesh(caseBox, slotMaterial);
+    caseGroup.add(cut);
+    return cut;
+  });
+  const lid = new Group();
+  const lidShell = new Mesh(caseBox, shellMaterial);
+  lidShell.castShadow = !lowPower;
+  const lidFoam = new Mesh(caseBox, foamMaterial);
+  const lidRim = new Mesh(caseBox, rimMaterial);
+  lid.add(lidShell, lidFoam, lidRim);
+  const latches = [-1, 1].map((side) => {
+    const latch = new Mesh(caseBox, rimMaterial);
+    latch.userData.side = side;
+    caseGroup.add(latch);
+    return latch;
+  });
+  const handle = new Mesh(caseBox, rimMaterial);
+  caseGroup.add(caseBase, caseRim, caseFoam, pocket, lid, handle);
+  caseGroup.visible = false;
+  scene.add(caseGroup);
+  let prop: PosterProp = "easel";
+  const caseOpen = spring(0);
+
   // The rail: ID cards with a reticle behind the focused one.
   const rail = new Group();
   scene.add(rail);
@@ -234,6 +282,9 @@ export function createPosterStage(context: {
     woodMaterial.color.copy(palette.dark ? new Color(0x5a4636) : new Color(0x9c7a58));
     boardMaterial.color.copy(palette.dark ? toColor(palette.raised) : toColor(palette.raised).lerp(page, 0.2));
     housingMaterial.color.copy(palette.dark ? new Color(0x23201c) : new Color(0x34302a));
+    shellMaterial.color.copy(palette.dark ? new Color(0x2a2724) : new Color(0x3b3833));
+    rimMaterial.color.copy(palette.dark ? new Color(0x8d8880) : new Color(0xb9b4ab));
+    foamMaterial.color.copy(palette.dark ? new Color(0x1b1a18) : new Color(0x2b2926));
     lampMaterial.color.copy(toColor(palette.accent));
     lampMaterial.emissive.copy(toColor(palette.accent));
     reticleMaterial.color.copy(toColor(palette.accent));
@@ -264,6 +315,44 @@ export function createPosterStage(context: {
     easel.rotation.x = LEAN;
     housing.scale.x = posterW * 0.95 + 0.2;
     housing.position.set(0, FLOOR_Y + 0.18, 1.15);
+    shapeCase();
+  }
+
+  /** The case sits on the floor under the card, wide enough for the card's pocket and a row of cutouts either side. */
+  function shapeCase() {
+    const w = posterW + 2.3;
+    const d = 1.7;
+    const h = CASE_H;
+    caseGroup.position.set(0, FLOOR_Y, 0.1);
+    caseBase.scale.set(w, h - 0.05, d);
+    caseBase.position.set(0, (h - 0.05) / 2, 0);
+    caseRim.scale.set(w + 0.04, 0.05, d + 0.04);
+    caseRim.position.set(0, h - 0.025, 0);
+    caseFoam.scale.set(w - 0.16, 0.04, d - 0.16);
+    caseFoam.position.set(0, h - 0.03, 0);
+    pocket.scale.set(posterW + 0.16, 0.012, 0.3);
+    pocket.position.set(0, h - 0.004, 0);
+    const side = (w - posterW) / 2;
+    cutouts.forEach((cut, i) => {
+      const right = i % 2 === 0 ? 1 : -1;
+      const front = i < 2;
+      cut.scale.set(side * (front ? 0.62 : 0.46), 0.012, front ? 0.62 : 0.42);
+      cut.position.set(right * (posterW / 2 + side / 2 + 0.02), h - 0.004, front ? 0.28 : -0.42);
+    });
+    // The lid is hinged on the back edge and swung open past upright.
+    lid.position.set(0, h, -d / 2);
+    lidShell.scale.set(w, d, 0.22);
+    lidShell.position.set(0, d / 2, -0.11);
+    lidFoam.scale.set(w - 0.16, d - 0.16, 0.05);
+    lidFoam.position.set(0, d / 2, 0.02);
+    lidRim.scale.set(w + 0.04, d + 0.04, 0.03);
+    lidRim.position.set(0, d / 2, -0.005);
+    for (const latch of latches) {
+      latch.scale.set(0.26, 0.18, 0.06);
+      latch.position.set(latch.userData.side * w * 0.3, h - 0.16, d / 2 + 0.03);
+    }
+    handle.scale.set(0.9, 0.06, 0.12);
+    handle.position.set(0, h * 0.5, d / 2 + 0.08);
   }
 
   // ---------------------------------------------------------------- rail --
@@ -423,6 +512,8 @@ export function createPosterStage(context: {
     damp(railShow, railOn ? 1 : 0, reduced ? 60 : 5, dt);
     damp(railPos, railFocus, reduced ? 60 : 9, dt);
     damp(explode, layersOn ? 1 : 0, reduced ? 60 : 4.5, dt);
+    damp(caseOpen, prop === "case" ? 1 : 0, reduced ? 60 : 3, dt);
+    if (!settled(caseOpen, prop === "case" ? 1 : 0)) moving = true;
     if (!settled(intro, 1) || !settled(print, printing ? 1 : 0)) moving = true;
     if (!settled(railShow, railOn ? 1 : 0) || !settled(railPos, railFocus) || !settled(explode, layersOn ? 1 : 0)) moving = true;
     lights.key.position.set(aim.x - 5, 10, 7);
@@ -433,7 +524,13 @@ export function createPosterStage(context: {
     // slides down into it until only its top edge shows.
     const p = MathUtils.smootherstep(print.value, 0, 1);
     const lift = hover && !printing ? 0.06 : 0;
-    const introDrop = (1 - intro.value) * 1.2;
+    const inCase = prop === "case";
+    // A new card drops onto the easel, or rises out of the case's pocket.
+    const introDrop = (1 - intro.value) * (inCase ? POSTER_H + 0.4 : 1.2);
+    easel.visible = housing.visible = !inCase;
+    caseGroup.visible = inCase;
+    // The lid swings open as the case comes on screen.
+    if (inCase) lid.rotation.x = MathUtils.degToRad(50 - 64 * MathUtils.smootherstep(caseOpen.value, 0, 1));
     const up = MathUtils.smoothstep(p, 0, 0.35);
     const down = MathUtils.smoothstep(p, 0.35, 1);
     posterGroup.position.set(
@@ -443,7 +540,9 @@ export function createPosterStage(context: {
     );
     // Taken apart, the poster turns side-on so its layers fan out toward the viewer.
     const apart = MathUtils.smootherstep(explode.value, 0, 1);
-    posterGroup.rotation.set(MathUtils.lerp(LEAN, 0, Math.max(up, apart * 0.6)), apart * -0.72, 0);
+    posterGroup.rotation.set(MathUtils.lerp(inCase ? 0 : LEAN, 0, Math.max(up, apart * 0.6)), apart * -0.72, 0);
+    // Upright, its foot down in the pocket.
+    if (inCase) posterGroup.position.y -= 0.4;
     posterGroup.position.x += apart * -0.35;
     placeLayers();
     placeRail();
@@ -517,6 +616,11 @@ export function createPosterStage(context: {
     },
     accent() {
       return palette.accent;
+    },
+    setProp(next) {
+      if (next === prop) return;
+      prop = next;
+      invalidate();
     },
     setPrinting(next) {
       if (next === printing) return;
@@ -642,8 +746,8 @@ export function createPosterStage(context: {
         layer.material.dispose();
       }
       layerMeshes.clear();
-      for (const thing of [legGeo, ledgeGeo, boardGeo, faceGeo, housingGeo, slotGeo, lampGeo, floor.geometry, cardGeo, reticle.geometry, layerGeo]) thing.dispose();
-      for (const material of [woodMaterial, boardMaterial, faceMaterial, housingMaterial, slotMaterial, lampMaterial, reticleMaterial]) material.dispose();
+      for (const thing of [legGeo, ledgeGeo, boardGeo, faceGeo, housingGeo, slotGeo, lampGeo, floor.geometry, cardGeo, reticle.geometry, layerGeo, caseBox]) thing.dispose();
+      for (const material of [woodMaterial, boardMaterial, faceMaterial, housingMaterial, slotMaterial, lampMaterial, reticleMaterial, shellMaterial, rimMaterial, foamMaterial]) material.dispose();
       floorMaterial.map?.dispose();
       floorMaterial.dispose();
       lights.environment.dispose();

@@ -34,8 +34,10 @@ const routeBudgets = [
   // lives in the /3d layout, which the page entry doesn't list. The header
   // controls (mode, language and theme switches) come as a chunk shared with
   // the homepage, which gzips about 1 KB worse than when they were inlined.
-  // The 3D Dashboard's routes and crumbs add about half a KB.
-  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 138 },
+  // The 3D Dashboard's routes and crumbs add about half a KB, and the
+  // signed-in name, the album pages' lane lock and the 360° picture list's
+  // wiring a little more.
+  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 139 },
   // The poster creators open from the title menu; their poster code and the
   // easel scene load with the draft, after the panel paints. Each creator's
   // steps share a studio layout that holds the draft, so it counts too. The
@@ -88,7 +90,8 @@ const routeBudgets = [
   { label: "3D Dashboard homepage", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/site/homepage/page"], limitKb: 150 },
   { label: "3D Dashboard visitor contact", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/site/contact/page"], limitKb: 148 },
   { label: "3D Dashboard features", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/site/features/page"], limitKb: 146 },
-  { label: "3D Dashboard account", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/site/account/page"], limitKb: 147 }
+  { label: "3D Dashboard account", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/site/account/page"], limitKb: 147 },
+  { label: "3D Dashboard setup", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/setup/page"], limitKb: 147 }
 ];
 
 for (const budget of routeBudgets) {

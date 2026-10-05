@@ -7,6 +7,7 @@ import PublicImage from "@/components/ui/PublicImage";
 import { homePhotoWeightScale } from "@/lib/homePhotoWeight";
 import type {
   HomePhotoStreamPage,
+  HomeStreamLayout,
   StreamEvent
 } from "@/lib/homePhotoStreamTypes";
 import { mergeStreamEvents } from "@/lib/homePhotoStreamMerge";
@@ -27,6 +28,7 @@ export default function EventPhotoStream({
   locale,
   events: initialEvents,
   nextCursor: initialCursor,
+  layout = "GRID",
   labels
 }: {
   /** Root of the owner's site, e.g. "/u/alice" — locale is added by Link. */
@@ -35,6 +37,8 @@ export default function EventPhotoStream({
   locale: string;
   events: StreamEvent[];
   nextCursor: string | null;
+  /** The photographer's homepage setting; see HOME_STREAM_LAYOUTS. */
+  layout?: HomeStreamLayout;
   labels: {
     openPhoto: string;
     loadMore: string;
@@ -112,6 +116,8 @@ export default function EventPhotoStream({
 
   if (events.length === 0) return null;
 
+  const collage = layout === "COLLAGE";
+
   return (
     <div className="flex flex-col gap-10" aria-busy={status === "loading"}>
       {events.map((event) => (
@@ -128,13 +134,35 @@ export default function EventPhotoStream({
             </span>
           </Link>
           {/*
-            Justified contact sheet. Aspect ratio and the photographer's 1–5
-            display weight determine each frame's share of the row.
+            Grid: justified contact sheet. Aspect ratio and the photographer's
+            1–5 display weight determine each frame's share of the row, and
+            frames stretched to the row's height crop their photo.
+
+            Collage: justified rows of uncropped photos. Every frame grows in
+            proportion to its own aspect ratio, so all frames in a row resolve
+            to the same height and keep the photo's true shape. The display
+            weight is not applied here — scaling one frame would make it taller
+            than its neighbours and break the row. A frame may grow to at most
+            twice the target row height, so a short row (one beside a
+            panorama that wrapped) stays readable, and a zero-basis spacer
+            absorbs the last row's slack instead of blowing it up.
           */}
-          <ul className="flex flex-wrap gap-1 [--row-h:140px] sm:[--row-h:190px] lg:[--row-h:230px]">
+          <ul
+            data-layout={collage ? "collage" : "grid"}
+            className={`flex flex-wrap gap-1 [--row-h:140px] sm:[--row-h:190px] lg:[--row-h:230px] ${
+              collage
+                ? "items-start after:grow-[999] after:content-['']"
+                : ""
+            }`}
+          >
             {event.photos.map((photo, index) => {
-              const ar = photo.height ? photo.width / photo.height : 1;
-              const weightScale = homePhotoWeightScale(photo.homeWeight);
+              const ar =
+                photo.width > 0 && photo.height > 0
+                  ? photo.width / photo.height
+                  : 1;
+              const weightScale = collage
+                ? 1
+                : homePhotoWeightScale(photo.homeWeight);
               const fallbackLabel = `${event.title} — ${labels.openPhoto} ${index + 1}`;
               const linkLabel = photo.alt
                 ? `${labels.openPhoto}: ${photo.alt}`
@@ -146,7 +174,13 @@ export default function EventPhotoStream({
                   className="overflow-hidden rounded-md"
                   style={{
                     flexGrow: ar * weightScale,
-                    flexBasis: `calc(${ar * weightScale} * var(--row-h))`
+                    flexBasis: `calc(${ar * weightScale} * var(--row-h))`,
+                    ...(collage
+                      ? {
+                          aspectRatio: String(ar),
+                          maxWidth: `calc(${ar * 2} * var(--row-h))`
+                        }
+                      : null)
                   }}
                 >
                   <Link
@@ -160,7 +194,9 @@ export default function EventPhotoStream({
                       loading="lazy"
                       width={photo.width}
                       height={photo.height}
-                      className="block h-full w-full object-cover transition-opacity duration-150 group-hover:opacity-90"
+                      className={`block h-full w-full ${
+                        collage ? "object-contain" : "object-cover"
+                      } transition-opacity duration-150 group-hover:opacity-90`}
                     />
                     <PhotoCreditOverlay credit={photo.alt} />
                   </Link>

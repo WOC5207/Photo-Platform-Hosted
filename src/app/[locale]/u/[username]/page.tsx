@@ -31,6 +31,7 @@ import PersonalLinksList, {
 import { wallClockNow } from "@/lib/timeZone";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
 import { getPublicHomePhotoStreamPage } from "@/lib/homePhotoStream";
+import { resolveHomeStreamLayout } from "@/lib/homePhotoStreamTypes";
 import { getCurrentUser } from "@/lib/auth";
 import EmptyState from "@/components/ui/EmptyState";
 import { buttonClasses } from "@/components/ui/Button";
@@ -296,6 +297,7 @@ export default async function HomePage({
               locale={locale}
               events={streamEvents}
               nextCursor={streamPage.nextCursor}
+              layout={resolveHomeStreamLayout(settings.homeStreamLayout)}
               labels={{
                 openPhoto: tg("openPhoto"),
                 loadMore: t("streamLoadMore"),

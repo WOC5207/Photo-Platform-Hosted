@@ -100,6 +100,7 @@ export default async function SiteSettingsPage({
           homeTitleZh: settings.homeTitleZh,
           homeSubtitleEn: settings.homeSubtitleEn,
           homeSubtitleZh: settings.homeSubtitleZh,
+          homeStreamLayout: settings.homeStreamLayout,
           backgroundColor: settings.backgroundColor,
           surfaceColor: settings.surfaceColor,
           fieldColor: settings.fieldColor,

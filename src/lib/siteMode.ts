@@ -51,6 +51,7 @@ export type Screen =
  * Sharepost posters, and "poster" (`id`) opens one in the editor, whose
  * steps follow. "credits", "storage" and "site" are their credit profiles,
  * disk use and site settings, with a page per settings group under "site".
+ * "setup" is a new account's first-run setup.
  */
 export type StudioPage = keyof typeof STUDIO;
 
@@ -61,6 +62,8 @@ export type StudioPage = keyof typeof STUDIO;
  */
 const STUDIO = {
   home: ["", null],
+  // First-run setup, before the rest of the Dashboard opens.
+  setup: ["/setup", "home"],
   events: ["/events", "home"],
   new: ["/events/new", "events"],
   event: ["/events/:id", "events"],

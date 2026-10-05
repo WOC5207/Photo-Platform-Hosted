@@ -16,7 +16,7 @@ export interface Stage {
   go(screen: Screen): void;
   path(screen: Screen): string;
   back(): void;
-  /** Key names for hints; controller buttons while one is in use. "alt" is / (the Y button). */
+  /** Key names for hints. "alt" is /. */
   key(name: "move" | "confirm" | "back" | "sides" | "alt"): string;
   touch: boolean;
 }

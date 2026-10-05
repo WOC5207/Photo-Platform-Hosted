@@ -39,6 +39,10 @@ import {
   type SiteThemeColors,
   type SiteThemeMode
 } from "@/lib/themeColor";
+import {
+  HOME_STREAM_LAYOUTS,
+  resolveHomeStreamLayout
+} from "@/lib/homePhotoStreamTypes";
 
 const inputCls =
   "h-10 rounded-lg border border-border-strong bg-surface px-3 text-sm text-fg outline-none transition focus:border-fg-subtle focus:ring-2 focus:ring-fg-faint/20";
@@ -117,6 +121,7 @@ export default function SiteSettingsForm({
     homeTitleZh: string;
     homeSubtitleEn: string;
     homeSubtitleZh: string;
+    homeStreamLayout: string;
     backgroundColor: string;
     surfaceColor: string;
     fieldColor: string;
@@ -650,6 +655,47 @@ export default function SiteSettingsForm({
                 className={inputCls}
               />
             </label>
+          </div>
+          <div className="border-t border-border pt-5">
+            <SectionHeading
+              title={t("homeStreamLayoutTitle")}
+              description={t("homeStreamLayoutHint")}
+            />
+            <div
+              role="radiogroup"
+              aria-label={t("homeStreamLayoutTitle")}
+              className="mt-4 grid gap-3 sm:grid-cols-2"
+            >
+              {HOME_STREAM_LAYOUTS.map((layout) => (
+                <label
+                  key={layout}
+                  className="relative flex min-h-24 cursor-pointer gap-3 rounded-xl border border-border bg-raised p-4 transition-[background-color,border-color,box-shadow] focus-within:ring-2 focus-within:ring-accent/40 hover:border-border-strong has-[:checked]:border-accent/45 has-[:checked]:bg-accent-surface"
+                >
+                  <input
+                    form={FORM_ID}
+                    type="radio"
+                    name="homeStreamLayout"
+                    value={layout}
+                    defaultChecked={
+                      resolveHomeStreamLayout(initial.homeStreamLayout) === layout
+                    }
+                    className="mt-0.5 h-5 w-5 shrink-0 accent-accent"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-fg">
+                      {layout === "GRID"
+                        ? t("homeStreamLayoutGrid")
+                        : t("homeStreamLayoutCollage")}
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed text-fg-subtle">
+                      {layout === "GRID"
+                        ? t("homeStreamLayoutGridHint")
+                        : t("homeStreamLayoutCollageHint")}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </div>
           {personalLinksSlot}
           <div className="border-t border-border pt-6">

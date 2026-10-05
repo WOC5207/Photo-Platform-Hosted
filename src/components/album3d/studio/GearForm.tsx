@@ -33,7 +33,7 @@ export function draftOf(gear: StudioGear): GearDraft {
 export function useGearCard(draft: GearDraft, categories: StudioGearCategory[], photoUrl: string, qrToken: string) {
   const te = useTranslations("equipment");
   const locale = useLocale();
-  const scene = useScene("poster");
+  const scene = useScene("case");
   const image = useImages();
   const qr = useQrImage(locale, qrToken);
   useEffect(() => {

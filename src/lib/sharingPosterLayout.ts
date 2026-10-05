@@ -221,6 +221,37 @@ export function sizeOrderCost(first: Array<{ weight: number; logArea: number }>,
   return SIZE_ORDER_WEIGHT * cost;
 }
 
+/**
+ * The smallest a photograph may be drawn, against the most generously drawn
+ * photograph on the poster, once both are divided by their weights: a quarter
+ * of the area (half the width and height). Equal weights never differ by more
+ * than 4:1 in area; a weight-1 photograph beside a weight-5 one keeps at least
+ * a ninth of its area. Cropped frames follow weight exactly and always pass,
+ * but whole photographs that do not fit their frames, and collages packed by
+ * shape, would otherwise shrink an odd-shaped photograph to a thumbnail.
+ */
+export const POSTER_MIN_SIZE_RATIO = 0.25;
+/** Cost per unit of log area a pair is past the minimum: high enough to act as a rule. */
+export const POSTER_MIN_SIZE_WEIGHT = 20;
+const POSTER_MIN_SIZE_LOG = Math.log(POSTER_MIN_SIZE_RATIO);
+
+/**
+ * The cost of photographs drawn below the minimum size, over every pair: each
+ * photograph's log area less its log weight may trail any other's by at most
+ * `ln POSTER_MIN_SIZE_RATIO`. Pairs within the minimum cost nothing.
+ */
+export function minSizeCost(first: Array<{ weight: number; logArea: number }>, second: Array<{ weight: number; logArea: number }> = first): number {
+  let cost = 0;
+  for (const a of first) {
+    for (const b of second) {
+      const difference = a.logArea - Math.log(a.weight) - (b.logArea - Math.log(b.weight));
+      cost += Math.max(0, POSTER_MIN_SIZE_LOG - difference);
+      if (second !== first) cost += Math.max(0, POSTER_MIN_SIZE_LOG + difference);
+    }
+  }
+  return POSTER_MIN_SIZE_WEIGHT * cost;
+}
+
 function better(current: Candidate | null, next: Candidate): Candidate {
   if (!current || next.cost < current.cost - 0.000001) return next;
   return current;
@@ -275,8 +306,11 @@ export function calculateSharingPosterLayout(
       const area = rect.width * rect.height * Math.min(item.imageAspect / frameAspect, frameAspect / item.imageAspect);
       return { weight: item.weightScale, logArea: Math.log(Math.max(1e-6, area)) };
     });
+  // Whole photographs are also held to the minimum size; cropped frames meet
+  // it by construction, so fill layouts are unchanged.
   const orderCost = (first: PosterLayoutRect[], second: PosterLayoutRect[]) =>
-    ranked ? sizeOrderCost(drawn(first), drawn(second)) : 0;
+    (ranked ? sizeOrderCost(drawn(first), drawn(second)) : 0) +
+    (fit === "whole" ? minSizeCost(drawn(first), drawn(second)) : 0);
 
   function solve(start: number, end: number, rect: PosterRect): Candidate {
     if (end - start === 1) {
@@ -639,11 +673,16 @@ export const COLLAGE_BALANCE_WEIGHT = 0.6;
 function collageImbalance(logShares: number[], logWeights: number[]): number {
   // Spread of ln(share / weight share): zero when every photograph's area is
   // exactly proportional to its weight, whatever the overall scale. Heavier
-  // photographs drawn no larger than lighter ones add their order cost.
+  // photographs drawn no larger than lighter ones add their order cost, and
+  // photographs drawn below the minimum size their minimum-size cost.
   const deviations = logShares.map((share, index) => share - logWeights[index]);
   const mean = deviations.reduce((sum, value) => sum + value, 0) / deviations.length;
   const spread = deviations.reduce((sum, value) => sum + (value - mean) ** 2, 0) / deviations.length;
-  return spread + sizeOrderCost(logShares.map((logArea, index) => ({ weight: logWeights[index], logArea })));
+  return (
+    spread +
+    sizeOrderCost(logShares.map((logArea, index) => ({ weight: logWeights[index], logArea }))) +
+    minSizeCost(logShares.map((logArea, index) => ({ weight: Math.exp(logWeights[index]), logArea })))
+  );
 }
 
 function combineCollage(
