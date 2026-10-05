@@ -4,7 +4,10 @@ import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { pickText } from "@/lib/content";
-import { formatDateRange } from "@/lib/datetime";
+import { config } from "@/lib/config";
+import { formatDate, formatDateRange, formatDayTab, formatTime } from "@/lib/datetime";
+import { activeWinnerWhere, ensureLotteryDraw } from "@/lib/lottery";
+import { formatInstantInTimeZone } from "@/lib/timeZone";
 import { photoUrls } from "@/lib/images";
 import { ownerName } from "@/lib/owner";
 import { getActiveNotificationsForUser } from "@/lib/platformNotifications";
@@ -13,10 +16,14 @@ import { getQuotaUsage } from "@/lib/quota";
 import { getSiteSettings, resolveCreditTerm } from "@/lib/settings";
 import type {
   StudioAccount,
+  StudioBookingSettings,
+  StudioBookings,
   StudioEventDetail,
   StudioEventSummary,
   StudioHome,
-  StudioPhoto
+  StudioLottery,
+  StudioPhoto,
+  StudioSchedule
 } from "@/components/album3d/studio/types";
 
 /**
@@ -128,7 +135,8 @@ export async function loadStudioEvent(user: User, id: string, locale: string): P
       ...summarySelect,
       slug: true,
       descriptionEn: true,
-      descriptionZh: true
+      descriptionZh: true,
+      bookingEvent: { select: { id: true } }
     }
   });
   if (!event) return null;
@@ -147,7 +155,8 @@ export async function loadStudioEvent(user: User, id: string, locale: string): P
     descriptionZh: event.descriptionZh,
     pendingCount,
     publicPath:
-      publicCount > 0 ? `/3d/u/${encodeURIComponent(user.username)}/albums/${encodeURIComponent(event.slug)}` : null
+      publicCount > 0 ? `/3d/u/${encodeURIComponent(user.username)}/albums/${encodeURIComponent(event.slug)}` : null,
+    bookingId: event.bookingEvent?.id ?? null
   };
 }
 
@@ -198,4 +207,170 @@ export async function loadStudioPhotos(user: User, eventId: string): Promise<Stu
       subject: photo.credits[0]?.subject ?? ""
     };
   });
+}
+
+const dayRange = (days: { date: Date }[]) =>
+  days.length > 0 ? formatDateRange(days[0].date, days[days.length - 1].date) : "";
+
+/** Every booking event of the photographer's, as the classic bookings list orders them. */
+export async function loadStudioBookings(user: User, locale: string): Promise<StudioBookings> {
+  const [settings, events] = await Promise.all([
+    getSiteSettings(user.id),
+    prisma.bookingEvent.findMany({
+      where: { ownerId: user.id },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      include: {
+        days: { orderBy: { date: "asc" }, select: { date: true } },
+        lotteryDraw: { select: { id: true } },
+        slots: { include: { _count: { select: { bookings: { where: { status: "confirmed" } } } } } }
+      }
+    })
+  ]);
+  return {
+    account: studioAccount(user),
+    bookingEnabled: settings.bookingEnabled,
+    events: events.map((event) => ({
+      id: event.id,
+      title: pickText(locale, event.titleEn, event.titleZh),
+      dates: dayRange(event.days),
+      location: event.location,
+      dayCount: event.days.length,
+      open: settings.bookingEnabled && event.open,
+      booked: event.slots.reduce((n, s) => n + s._count.bookings, 0),
+      capacity: event.slots.reduce((n, s) => n + s.capacity, 0),
+      hasLottery: event.lotteryEnabled || Boolean(event.lotteryDraw)
+    }))
+  };
+}
+
+/** One booking event's days and slots, with every booking, as the classic schedule tab shows them. */
+export async function loadStudioSchedule(user: User, id: string, locale: string): Promise<StudioSchedule | null> {
+  const event = await prisma.bookingEvent.findFirst({
+    where: { id, ownerId: user.id },
+    include: {
+      lotteryDraw: { select: { id: true } },
+      days: {
+        orderBy: { date: "asc" },
+        include: {
+          slots: { orderBy: { startTime: "asc" }, include: { bookings: { orderBy: { createdAt: "asc" } } } }
+        }
+      }
+    }
+  });
+  if (!event) return null;
+  const settings = await getSiteSettings(user.id);
+  const base = config.appBaseUrl();
+  return {
+    id: event.id,
+    title: pickText(locale, event.titleEn, event.titleZh),
+    dates: dayRange(event.days),
+    location: event.location,
+    open: event.open,
+    bookingEnabled: settings.bookingEnabled,
+    shareUrl: `${base}/${locale}/book/${event.token}`,
+    galleryId: event.galleryEventId,
+    lottery: event.lotteryEnabled || Boolean(event.lotteryDraw),
+    priceEnabled: settings.bookingPriceEnabled,
+    allowMultiDaySync: event.days.length > 1 && !event.slotsInitialized && event.days.every((day) => day.slots.length === 0),
+    days: event.days.map((day) => ({
+      id: day.id,
+      label: formatDayTab(day.date, locale),
+      slots: day.slots.map((slot) => ({
+        id: slot.id,
+        start: formatTime(slot.startTime),
+        end: formatTime(slot.endTime),
+        capacity: slot.capacity,
+        booked: slot.bookings.filter((b) => b.status === "confirmed").length,
+        price: settings.bookingPriceEnabled ? slot.pricePerPerson : "",
+        description: pickText(locale, slot.descriptionEn, slot.descriptionZh),
+        bookings: slot.bookings.map((b) => ({
+          id: b.id,
+          status: b.status,
+          name: b.name,
+          subject: b.subject,
+          contact: [b.contactMethod, b.contactValue].filter(Boolean).join(": "),
+          notes: b.notes,
+          bookedAt: formatInstantInTimeZone(b.createdAt, locale, settings.timeZone),
+          manageUrl: `${base}/${b.locale}/my-booking/${b.cancelToken}`
+        }))
+      }))
+    }))
+  };
+}
+
+/** A booking event's settings form, as the classic overview and advanced tabs fill it. */
+export async function loadStudioBookingSettings(user: User, id: string, locale: string): Promise<StudioBookingSettings | null> {
+  const event = await prisma.bookingEvent.findFirst({
+    where: { id, ownerId: user.id },
+    include: { lotteryDraw: { select: { id: true } }, days: { orderBy: { date: "asc" }, select: { date: true } } }
+  });
+  if (!event) return null;
+  const settings = await getSiteSettings(user.id);
+  return {
+    id: event.id,
+    title: pickText(locale, event.titleEn, event.titleZh),
+    titleEn: event.titleEn,
+    titleZh: event.titleZh,
+    dates: event.days.map((day) => formatDate(day.date)),
+    location: event.location,
+    descriptionEn: event.descriptionEn,
+    descriptionZh: event.descriptionZh,
+    visitorEditsEnabled: event.visitorEditsEnabled,
+    visitorEditCutoffHours: event.visitorEditCutoffHours,
+    open: event.open,
+    bookingEnabled: settings.bookingEnabled,
+    showLottery: settings.lotteryEnabled || event.lotteryEnabled || Boolean(event.lotteryDraw),
+    lotteryEnabled: event.lotteryEnabled,
+    hasGallery: Boolean(event.galleryEventId)
+  };
+}
+
+/**
+ * A booking event's prize draw, made on first visit as the classic page
+ * does. Null when the event isn't theirs; "off" when the draw was never
+ * switched on, which the classic page also turns away.
+ */
+export async function loadStudioLottery(user: User, id: string, locale: string): Promise<StudioLottery | "off" | null> {
+  const owned = await prisma.bookingEvent.findFirst({
+    where: { id, ownerId: user.id },
+    select: { id: true, lotteryEnabled: true, lotteryDraw: { select: { id: true } } }
+  });
+  if (!owned) return null;
+  if (!owned.lotteryEnabled && !owned.lotteryDraw) return "off";
+  if (!owned.lotteryDraw) await ensureLotteryDraw(owned.id);
+
+  const [event, settings] = await Promise.all([
+    prisma.bookingEvent.findFirst({
+      where: { id, ownerId: user.id },
+      include: {
+        slots: { include: { bookings: { where: { status: "confirmed" }, include: { lotteryEntry: true } } } },
+        lotteryDraw: {
+          include: {
+            entries: { orderBy: { createdAt: "asc" } },
+            prizes: {
+              orderBy: { sortOrder: "asc" },
+              include: { _count: { select: { winners: { where: activeWinnerWhere } } } }
+            }
+          }
+        }
+      }
+    }),
+    getSiteSettings(user.id)
+  ]);
+  if (!event || !event.lotteryDraw) return null;
+  const draw = event.lotteryDraw;
+  return {
+    id: event.id,
+    title: pickText(locale, event.titleEn, event.titleZh),
+    drawId: draw.id,
+    shareUrl: `${config.appBaseUrl()}/${locale}/draw/${draw.token}`,
+    open: draw.open,
+    public: settings.lotteryEnabled && event.lotteryEnabled,
+    prizes: draw.prizes.map((p) => ({ id: p.id, name: p.name, quantity: p.quantity, weight: p.weight, wonCount: p._count.winners })),
+    entries: draw.entries.map((e) => ({ id: e.id, token: e.token, name: e.name, subject: e.subject, wonPrizeId: e.wonPrizeId })),
+    available: event.slots
+      .flatMap((slot) => slot.bookings)
+      .filter((b) => !b.lotteryEntry)
+      .map((b) => ({ id: b.id, name: b.name, subject: b.subject }))
+  };
 }

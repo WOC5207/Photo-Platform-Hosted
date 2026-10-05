@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getLocale } from "next-intl/server";
 import type { User } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
-import { createEventFromForm, deleteOwnedEvent } from "@/lib/eventForms";
+import { createEventFromForm, deleteOwnedBookingEvent, deleteOwnedEvent } from "@/lib/eventForms";
 
 /**
  * The 3D Dashboard's own actions: the ones whose classic versions end on a
@@ -39,4 +39,12 @@ export async function deleteEvent3d(formData: FormData): Promise<void> {
   if (typeof id !== "string" || !(await deleteOwnedEvent(user.id, id))) return;
   revalidatePath("/", "layout");
   redirect(studioPath(locale, user, "/events"));
+}
+
+export async function deleteBookingEvent3d(formData: FormData): Promise<void> {
+  const { locale, user } = await guard();
+  const id = formData.get("id");
+  if (typeof id !== "string" || !(await deleteOwnedBookingEvent(user, id))) return;
+  revalidatePath("/", "layout");
+  redirect(studioPath(locale, user, "/bookings"));
 }

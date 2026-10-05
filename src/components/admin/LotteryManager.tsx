@@ -242,7 +242,7 @@ export default function LotteryManager({
   );
 }
 
-function PrizeManager({
+export function PrizeManager({
   bookingEventId,
   prizes,
   locked
@@ -409,7 +409,7 @@ function PrizeRow({
   );
 }
 
-function EntryManager({
+export function EntryManager({
   bookingEventId,
   availableBookings,
   entries

@@ -22,7 +22,12 @@ import {
 } from "@/lib/booking";
 import { getSiteSettings } from "@/lib/settings";
 import { ensureDayChecklists } from "@/lib/eventWorkspace";
-import { createEventFromForm, parseBookingEventForm, parseSelectedDates } from "@/lib/eventForms";
+import {
+  createEventFromForm,
+  deleteOwnedBookingEvent,
+  parseBookingEventForm,
+  parseSelectedDates
+} from "@/lib/eventForms";
 
 class DayHasBookingsError extends Error {}
 
@@ -171,10 +176,7 @@ export async function deleteBookingEvent(formData: FormData): Promise<void> {
 
   // Was an unscoped delete straight from the posted id — it took any event,
   // and its slots, bookings and lottery draw down with it via cascade.
-  const event = await findOwnedBookingEvent(id, user);
-  if (!event) return;
-
-  await prisma.bookingEvent.delete({ where: { id: event.id } }).catch(() => {});
+  if (!(await deleteOwnedBookingEvent(user, id))) return;
   revalidatePath("/", "layout");
   redirect(`/${locale}/dashboard/bookings`);
 }

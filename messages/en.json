@@ -2423,6 +2423,22 @@
     "studioScreening_pending": "Being screened",
     "studioScreening_review": "Waiting for review",
     "studioScreening_rejected": "Hidden by screening",
-    "studioScreening_error": "Screening failed"
+    "studioScreening_error": "Screening failed",
+    "studioBookings": "Bookings",
+    "studioBookingsSub": "Schedules, bookings and prize draws",
+    "studioBooking": "Schedule",
+    "studioBookingDetails": "Booking settings",
+    "studioLottery": "Prize draw",
+    "studioBookingCount": "Booking page",
+    "studioBookingPage": "Booking page",
+    "studioAlbum": "Album",
+    "studioSlot": "Slot",
+    "studioSlotBookings": "{count, plural, one {# confirmed booking} other {# confirmed bookings}}",
+    "studioNoBookings": "No bookings in this slot yet.",
+    "studioNoDays": "This booking page has no days. Set them in its settings.",
+    "studioHintSlot": "slot",
+    "studioHintBookings": "bookings",
+    "studioDrawFor": "Draw for an entrant",
+    "studioDraw": "Draw"
   }
 }

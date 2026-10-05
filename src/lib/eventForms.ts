@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { acceptBookingPriceNotice } from "@/lib/bookingPriceNotice";
 import { createEventWorkspace, validEventDates } from "@/lib/eventWorkspace";
 import { deleteEventFiles } from "@/lib/images";
+import { findOwnedBookingEvent } from "@/lib/ownership";
 
 /**
  * Creating and deleting an event, shared by the classic dashboard's actions
@@ -134,4 +135,15 @@ export async function deleteOwnedEvent(ownerId: string, id: string): Promise<boo
     // interactive-transaction timeout. Keep the lock bounded but practical.
     { maxWait: 10_000, timeout: 60_000 }
   );
+}
+
+/**
+ * Deletes one of the owner's booking pages; its days, slots, bookings and
+ * prize draw go with it, and its album stays. False when it isn't theirs.
+ */
+export async function deleteOwnedBookingEvent(user: User, id: string): Promise<boolean> {
+  const event = await findOwnedBookingEvent(id, user);
+  if (!event) return false;
+  await prisma.bookingEvent.delete({ where: { id: event.id } }).catch(() => {});
+  return true;
 }

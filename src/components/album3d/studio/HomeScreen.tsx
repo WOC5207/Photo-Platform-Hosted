@@ -18,7 +18,6 @@ import type { StudioHome } from "./types";
 export default function HomeScreen({ home }: { home: StudioHome }) {
   const t = useTranslations("album3d");
   const ta = useTranslations("admin");
-  const tw = useTranslations("eventWorkspace");
   const router = useRouter();
   const { go } = useStage();
   const [focus, setFocus] = useState(0);
@@ -39,7 +38,12 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
       sub: t("studioEventsSub", { count: home.events, drafts: home.drafts }),
       run: () => go({ kind: "studio", username, page: "events" })
     },
-    classic("bookings", tw("allBookings"), "/dashboard/bookings"),
+    {
+      key: "bookings",
+      label: t("studioBookings"),
+      sub: t("studioBookingsSub"),
+      run: () => go({ kind: "studio", username, page: "bookings" })
+    },
     classic("equipment", ta("equipment"), "/dashboard/equipment"),
     classic("posters", ta("sharingPosters"), "/dashboard/sharing-posters"),
     classic("credits", ta("credits", { term: home.creditTerm }), "/dashboard/credits"),
