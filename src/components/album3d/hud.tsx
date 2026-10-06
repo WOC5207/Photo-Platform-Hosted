@@ -76,7 +76,7 @@ export function GameMenu({
                 {pad(i + 1)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-lg font-bold uppercase tracking-[0.02em] wide:text-[1.625rem]">{item.label}</span>
+                <span className="block truncate text-lg font-bold uppercase tracking-[0.02em] wide:text-[1.625rem] max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:leading-tight">{item.label}</span>
                 {item.sub && (
                   <span className="font-meta mt-0.5 block truncate text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle max-sm:line-clamp-2 max-sm:whitespace-normal">{item.sub}</span>
                 )}
