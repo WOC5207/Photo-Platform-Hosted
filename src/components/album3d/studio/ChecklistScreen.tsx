@@ -17,7 +17,7 @@ import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { STATUS_KEY } from "./gear";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import type { StudioAccount, StudioChecklist, StudioChecklistItem, StudioChecklistState } from "./types";
 
 const STATE_KEY = {
@@ -330,7 +330,6 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
             </form>
           </div>
         </details>
-        <ClassicLink href={`/dashboard/preparation/equipment/${encodeURIComponent(checklist.id)}`} />
       </BookingPanel>
       {!touch && tiles.length > 0 && (
         <Hints className={styles.menuHint} parts={[`← → ↑ ↓ ${t("hintSelect")}`, `${key("confirm")} ${t("studioHintItem")}`, `${key("back")} ${t("hintBack")}`]} />

@@ -8,7 +8,7 @@ import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, useStage } from "../booking/shared";
 import type { StudioPage } from "@/lib/siteMode";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import { useSiteBoard } from "./site";
 import type { StudioSite } from "./types";
 
@@ -68,7 +68,6 @@ export default function SiteScreen({ site }: { site: StudioSite }) {
         <StudioHeading trail={t("studioCrumbs.site")} title={ts("title")} />
         <p className="mt-4 text-sm text-fg-muted">{ts("intro")}</p>
         <GameMenu label={ts("title")} items={items} focus={at} onFocus={(i) => i < GROUPS.length && setFocus(i)} className="mt-6" />
-        <ClassicLink href="/dashboard/settings" />
       </BookingPanel>
       {!touch && <Hints className={styles.menuHint} parts={[`${key("move")} ${t("hintSelect")}`, `${key("confirm")} ${t("hintOpen")}`, `${key("back")} ${t("hintBack")}`]} />}
     </>

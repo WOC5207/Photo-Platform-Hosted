@@ -87,22 +87,22 @@ export default function CosplanBackgrounds() {
     setMenuFocus(0);
   };
   const turn = (delta: number) => templates.length && setFocus((f) => Math.max(0, Math.min(templates.length - 1, f + delta)));
+  // The classic editor is offered only when there is nothing to do here.
   const classic: MenuItem = { key: "classic", label: t("creatorEditClassic"), sub: t("creatorEditClassicSub"), external: true, run: () => router.push("/cosplan") };
 
-  const items: MenuItem[] = rail
+  const choices: MenuItem[] = rail
     ? [
         ...(template ? [{ key: "use", label: t("creatorUseBackground"), sub: `${template.width} × ${template.height} PX`, run: choose }] : []),
-        ...(composition ? [{ key: "keep", label: t("creatorKeepBackground"), sub: composition.templateTitle, run: () => setRailOpen(false) }] : []),
-        classic
+        ...(composition ? [{ key: "keep", label: t("creatorKeepBackground"), sub: composition.templateTitle, run: () => setRailOpen(false) }] : [])
       ]
     : composition
       ? [
           { key: "continue", label: t("creatorContinue"), sub: composition.templateTitle, run: () => go({ kind: "cosplan", step: "board" }) },
           { key: "change", label: tc("changeTemplate"), sub: t("creatorChangeBackgroundSub"), run: () => openRail(false) },
-          { key: "new", label: tc("startNew"), sub: t("creatorStartNewSub"), run: () => openRail(true) },
-          classic
+          { key: "new", label: tc("startNew"), sub: t("creatorStartNewSub"), run: () => openRail(true) }
         ]
-      : [classic];
+      : [];
+  const items = choices.length > 0 ? choices : [classic];
   const menuAt = Math.min(menuFocus, items.length - 1);
 
   useScreenKeys((k, target) => {

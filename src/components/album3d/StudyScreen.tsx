@@ -68,7 +68,7 @@ export default function StudyScreen({
           className="pointer-events-auto flex min-h-11 items-center gap-3 py-3 text-xl transition hover:text-accent-text wide:gap-5"
         >
           <span aria-hidden="true">←</span>
-          <span className="text-sm wide:text-[0.9375rem]">{t("backToFile")}</span>
+          <span className="text-sm wide:text-[0.9375rem]">{t("back")}</span>
           <kbd className="font-meta ml-2 hidden border border-border-strong p-1 text-[0.625rem] text-fg-subtle wide:inline">ESC</kbd>
         </button>
         <div className="ml-16 hidden pt-3 wide:block">

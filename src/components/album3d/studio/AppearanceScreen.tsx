@@ -16,7 +16,7 @@ import {
 } from "@/lib/themeColor";
 import type { BoardTile } from "../board";
 import { BookingPanel, metaLabel } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import { Group, Pair, SaveBar, checkClass, useSiteBoard, useSiteSave } from "./site";
 import type { StudioSite } from "./types";
 
@@ -134,7 +134,6 @@ export default function AppearanceScreen({ site }: { site: StudioSite }) {
         <SiteImageUploader kind="logo" currentUrl={site.images.logo} />
         <SiteImageUploader kind="background" currentUrl={site.images.background} />
       </div>
-      <ClassicLink href="/dashboard/settings?section=appearance" />
     </BookingPanel>
   );
 }

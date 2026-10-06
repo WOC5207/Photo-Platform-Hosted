@@ -477,7 +477,9 @@ export function createPosterStage(context: {
   // -------------------------------------------------------------- layout --
   const aim = new Vector3();
   function frame() {
-    const area = sceneArea(width, height);
+    const base = sceneArea(width, height);
+    // The equipment case stands further right, clear of the long form beside it.
+    const area = prop === "case" && base.x > 0.5 ? { ...base, x: Math.min(base.x + 0.08, 1 - base.width / 2 + 0.06) } : base;
     const viewAspect = width / height;
     const halfH = Math.tan(MathUtils.degToRad(FOV / 2));
     const halfW = halfH * viewAspect;

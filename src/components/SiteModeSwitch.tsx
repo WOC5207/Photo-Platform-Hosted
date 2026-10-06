@@ -15,11 +15,21 @@ export function useLeaveFor() {
 }
 
 /**
- * The switch between the classic site and the 3D archive. On the classic
- * homepage it opens the 3D site; inside the 3D site it reads as already on and
- * takes the visitor back to the classic twin of the current screen.
+ * The switch between the classic site and the new one, beside the account in
+ * each site's header. On the classic site it opens the new site's twin of the
+ * page; inside the new site it reads as already on and takes the visitor to
+ * the classic twin of the current screen.
  */
-export default function SiteModeSwitch({ current, className = "" }: { current: SiteMode; className?: string }) {
+export default function SiteModeSwitch({
+  current,
+  compact = false,
+  className = ""
+}: {
+  current: SiteMode;
+  /** On phones only the switch shows; its label is still read out. */
+  compact?: boolean;
+  className?: string;
+}) {
   const t = useTranslations("album3d");
   const leaveFor = useLeaveFor();
   const on = current === "3d";
@@ -32,7 +42,7 @@ export default function SiteModeSwitch({ current, className = "" }: { current: S
       onClick={() => leaveFor(on ? "classic" : "3d")}
       className={`group inline-flex min-h-10 items-center gap-2.5 px-2 text-sm font-semibold text-fg-muted transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${className}`}
     >
-      <span>{t("siteSwitch")}</span>
+      <span className={compact ? "max-sm:sr-only" : undefined}>{t("siteSwitch")}</span>
       <span
         aria-hidden="true"
         className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 ${

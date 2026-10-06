@@ -59,7 +59,6 @@ export interface SharepostStudio {
   project: SharepostProject | null;
   /** Where a step lives: under /3d/sharepost, or under the project's Dashboard page. */
   screen(step?: SharepostStep): Screen;
-  classicHref: string;
   tools: SharepostTools | null;
   name: string;
   setName(name: string): void;
@@ -491,7 +490,6 @@ export default function SharepostStudioProvider({ project = null, children }: { 
       status,
       project,
       screen,
-      classicHref: project ? `/dashboard/sharing-posters/${project.id}` : "/sharing-poster",
       tools,
       name,
       setName,

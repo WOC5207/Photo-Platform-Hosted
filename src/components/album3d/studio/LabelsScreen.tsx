@@ -31,7 +31,7 @@ import { BookingPanel, fieldClass, isInteractive, metaLabel, primaryClass, secon
 import { paintBlankPoster } from "../creators/shared";
 import { RAIL_PICK } from "../types";
 import { useImages } from "./gear";
-import { ClassicLink, FormNote, StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import type { StudioAccount, StudioLabels } from "./types";
 
 /** The classic label tool's saved size, so both sites start from the same label. */
@@ -523,7 +523,6 @@ export default function LabelsScreen({ account, labels }: { account: StudioAccou
           <p className="text-xs text-fg-subtle">{tq("printHint")}</p>
           <div aria-live="polite">{message && <FormNote tone={message.tone}>{message.text}</FormNote>}</div>
         </section>
-        <ClassicLink href="/dashboard/equipment/qr-labels" />
       </BookingPanel>
       {!touch && items.length > 0 && (
         <Hints className={styles.menuHint} parts={[`← → ${t("hintSelect")}`, `${key("confirm")} ${t("studioHintSheet")}`, `${key("back")} ${t("hintBack")}`]} />

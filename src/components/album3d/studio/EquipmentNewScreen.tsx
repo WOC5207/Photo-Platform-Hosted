@@ -7,7 +7,7 @@ import { createEquipment } from "@/app/[locale]/dashboard/(protected)/equipment/
 import { uploadEquipmentPhoto } from "@/components/equipment/EquipmentPhotoUploader";
 import { BookingPanel, fieldClass, useStage } from "../booking/shared";
 import { GearForm, blankGear, useGearCard } from "./GearForm";
-import { ClassicLink, FormNote, StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import type { StudioAccount, StudioGearCategory } from "./types";
 
 /**
@@ -85,7 +85,6 @@ export default function EquipmentNewScreen({
         </label>
         {error && <FormNote tone="error">{te("equipmentSaveError")}</FormNote>}
       </GearForm>
-      <ClassicLink href="/dashboard/equipment/new" />
     </BookingPanel>
   );
 }

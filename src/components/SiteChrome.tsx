@@ -5,6 +5,7 @@ import { Link } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import MobileNav from "@/components/MobileNav";
 import ThemeToggle from "@/components/ThemeToggle";
+import SiteModeSwitch from "@/components/SiteModeSwitch";
 import ScrollBlurBackground from "@/components/ScrollBlurBackground";
 import ContactUsButton from "@/components/ContactUsButton";
 import { getCurrentUser } from "@/lib/auth";
@@ -138,6 +139,7 @@ export default async function SiteChrome({
                 className="inline-flex min-h-11 items-center rounded-lg px-3 font-semibold text-fg-muted transition hover:bg-accent-surface hover:text-fg"
               />
             )}
+            <SiteModeSwitch current="classic" />
             <Link
               href={accountHref}
               className="inline-flex min-h-11 items-center rounded-lg border border-border-strong bg-raised px-3 font-semibold text-fg-muted transition hover:border-accent/30 hover:text-fg"

@@ -2,7 +2,6 @@
 
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
 import { GameMenu, Hints, pad, wrap, type MenuItem } from "../../hud";
 import styles from "../../ArchiveSite.module.css";
 import { BookingPanel, isInteractive, metaLabel, useScene, useScreenKeys, useStage, useStageDrag, useStageInput } from "../../booking/shared";
@@ -25,7 +24,6 @@ const SharepostGallery = lazy(() => import("./SharepostGallery"));
 export default function SharepostPhotos() {
   const t = useTranslations("album3d");
   const ts = useTranslations("sharingPosters");
-  const router = useRouter();
   const { key, touch, go } = useStage();
   const scene = useScene("poster");
   const studio = useSharepostStudio();
@@ -80,8 +78,7 @@ export default function SharepostPhotos() {
     ...(focused ? [{ key: "remove", label: ts("removePhoto"), sub: `${pad(at + 1)} / ${pad(photos.length)}`, run: () => studio.removePhoto(focused.photoId) }] : []),
     { key: "layout", label: t("creatorLayout"), sub: t("creatorLayoutSub"), run: () => go(studio.screen("layout")) },
     { key: "credits", label: t("creatorCredits"), sub: t("creatorCreditsSub"), run: () => go(studio.screen("credits")) },
-    ...(photos.length ? [{ key: "print", label: t("creatorPrint"), sub: t("creatorPrintSharepostSub"), run: () => go(studio.screen("print")) }] : []),
-    { key: "classic", label: t("creatorEditClassic"), sub: t("creatorEditClassicSub"), external: true, run: () => router.push(studio.classicHref) }
+    ...(photos.length ? [{ key: "print", label: t("creatorPrint"), sub: t("creatorPrintSharepostSub"), run: () => go(studio.screen("print")) }] : [])
   ];
   const menuAt = Math.min(menuFocus, items.length - 1);
 

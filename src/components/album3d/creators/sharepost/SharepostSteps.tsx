@@ -34,7 +34,7 @@ export function SharepostSteps({ current }: { current: Step }) {
         className="inline-flex min-h-11 items-center gap-2 border border-border-strong px-3 text-sm uppercase tracking-[0.06em] transition hover:border-fg"
       >
         <span aria-hidden="true">←</span>
-        {t("creatorBack")}
+        {t("back")}
       </button>
       <ol className="flex flex-wrap items-center">
         {STEPS.map(({ step, label }, i) => {

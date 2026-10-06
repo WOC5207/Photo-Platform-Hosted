@@ -8,7 +8,7 @@ import { GameMenu, Hints, Rolling, pad, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, primaryClass, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import type { StudioChecklistSummary, StudioPreparation } from "./types";
 
 /**
@@ -207,7 +207,6 @@ export default function PreparationScreen({ preparation }: { preparation: Studio
             </form>
           </details>
         )}
-        <ClassicLink href={`/dashboard/preparation/equipment${query}`} />
       </BookingPanel>
       {!touch && lists.length > 0 && (
         <Hints className={styles.menuHint} parts={[`${key("move")} ${t("hintSelect")}`, `${key("sides")} ${t("studioHintEvent")}`, `${key("confirm")} ${t("hintOpen")}`, `${key("back")} ${t("hintBack")}`]} />

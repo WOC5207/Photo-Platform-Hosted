@@ -12,7 +12,7 @@ import { Hints, Rolling, pad } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import type { StudioAccount, StudioSchedule } from "./types";
 
 /**
@@ -252,7 +252,6 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
             </div>
           </details>
         )}
-        <ClassicLink href={`/dashboard/bookings/${encodeURIComponent(schedule.id)}`} />
       </BookingPanel>
       {!touch && tiles.length > 0 && (
         <Hints

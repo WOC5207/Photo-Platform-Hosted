@@ -7,7 +7,7 @@ import { GameMenu, Hints, Rolling, pad, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, isInteractive, metaLabel, primaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import type { StudioAccount, StudioEventSummary } from "./types";
 
 /**
@@ -108,7 +108,6 @@ export default function EventsScreen({ account, events }: { account: StudioAccou
             />
           </>
         )}
-        <ClassicLink href="/dashboard/events" />
       </BookingPanel>
       {!touch && events.length > 0 && (
         <Hints

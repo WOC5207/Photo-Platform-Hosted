@@ -2,7 +2,6 @@
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Link } from "@/i18n/navigation";
 import {
   recoverLotteryEntry,
   spinMyLotteryEntry,
@@ -255,11 +254,6 @@ function Draw({ draw }: { draw: PrizeDraw }) {
             </ul>
           </section>
         )}
-        <p className="mt-5 text-xs text-fg-muted">
-          <Link href={`/draw/${draw.token}`} className="underline-offset-4 hover:text-fg hover:underline">
-            {t("drawClassic")} ↗
-          </Link>
-        </p>
       </BookingPanel>
       {!touch && entry && !winner && (
         <Hints

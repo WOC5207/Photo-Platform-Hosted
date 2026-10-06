@@ -7,7 +7,7 @@ import { Hints, Rolling, pad, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { ClassicLink, StudioHeading, formatBytes } from "./shared";
+import { StudioHeading, formatBytes } from "./shared";
 import type { StudioStorage } from "./types";
 
 /** Lamps on an event's card: its share of the photos' bytes, in tenths. */
@@ -144,7 +144,6 @@ export default function StorageScreen({ storage }: { storage: StudioStorage }) {
             <p className="text-sm text-fg-subtle">{ts("noEvents")}</p>
           )}
         </section>
-        <ClassicLink href="/dashboard/storage" />
       </BookingPanel>
       {!touch && events.length > 0 && (
         <Hints className={styles.menuHint} parts={[`${key("move")} ${t("hintSelect")}`, `${key("confirm")} ${t("hintOpen")}`, `${key("back")} ${t("hintBack")}`]} />

@@ -9,7 +9,7 @@ import styles from "../ArchiveSite.module.css";
 import { BookingPanel, isInteractive, metaLabel, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { RAIL_PICK } from "../types";
 import { paintBlankPoster } from "../creators/shared";
-import { ClassicLink, FormNote, StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import type { StudioPosterSummary, StudioPosters } from "./types";
 
 /** The focused poster on the easel: its first photograph over its name, as a stand-in until it opens. */
@@ -195,7 +195,6 @@ export default function PostersScreen({ posters: list }: { posters: StudioPoster
           </div>
         )}
         {list.more && <p className="mt-3 text-xs text-fg-subtle">{t("studioPostersMore")}</p>}
-        <ClassicLink href="/dashboard/sharing-posters" />
       </BookingPanel>
       {dialog}
       {!touch && (
