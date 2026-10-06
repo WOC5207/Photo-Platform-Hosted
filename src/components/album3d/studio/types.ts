@@ -283,6 +283,8 @@ export interface StudioChecklistItem {
   category: string;
   state: StudioChecklistState;
   inventoryStatus: StudioGearStatus | null;
+  /** The label code under the QR code, "" for a custom reminder. */
+  uid: string;
 }
 
 export interface StudioChecklist {

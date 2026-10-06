@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { pickText } from "@/lib/content";
 import { formatDate, formatTime } from "@/lib/datetime";
 import { equipmentName, equipmentPhotoUrl } from "@/lib/equipment";
+import { equipmentUid } from "@/lib/equipmentQrLabel";
 import { siteImageUrl } from "@/lib/images";
 import { getSiteSettings } from "@/lib/settings";
 import { studioAccount } from "@/lib/studio3d";
@@ -198,7 +199,8 @@ export async function loadStudioChecklist(user: User, id: string, locale: string
       categoryId: item.equipment?.categoryId ?? "",
       category: item.equipment?.category.name ?? "",
       state: item.eventState,
-      inventoryStatus: item.equipment?.status ?? null
+      inventoryStatus: item.equipment?.status ?? null,
+      uid: item.equipment ? equipmentUid(item.equipment) : ""
     })),
     available: all
       .filter((item) => !listed.has(item.id))

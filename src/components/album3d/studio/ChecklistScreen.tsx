@@ -1,20 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
-import {
-  addCustomChecklistItem,
-  addSelectedEquipment,
-  removeChecklistItem,
-  setChecklistEquipmentStatus
-} from "@/app/[locale]/dashboard/(protected)/preparation/actions";
-import { deleteChecklist3d } from "@/app/[locale]/3d/u/[username]/studio/actions";
+import { addCustomChecklistItem, addSelectedEquipment, removeChecklistItem } from "@/app/[locale]/dashboard/(protected)/preparation/actions";
+import { deleteChecklist3d, setChecklistItemState3d } from "@/app/[locale]/3d/u/[username]/studio/actions";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import EquipmentScanner from "@/components/equipment/EquipmentScanner";
 import { Hints, Rolling, pad } from "../hud";
 import styles from "../ArchiveSite.module.css";
-import type { BoardTile } from "../board";
+import type { RackTag } from "../rack";
+import { RACK_STATES } from "../types";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { STATUS_KEY } from "./gear";
 import { StudioHeading } from "./shared";
@@ -27,29 +23,22 @@ const STATE_KEY = {
   BROKEN: "eventStateBroken"
 } as const satisfies Record<StudioChecklistState, string>;
 
-/** Steps left on the event-day journey: out to the event, then back home. */
-const STEPS_LEFT: Record<StudioChecklistState, number> = { PLANNED: 2, AT_EVENT: 1, RETURNED: 0, BROKEN: 0 };
-
-/** The three marks a scan can make, as buttons: the inventory status each sets, and the checklist state it shows. */
-const MARKS = [
-  ["SIGNED_OUT", "AT_EVENT", "eventStateAtEvent"],
-  ["IN_INVENTORY", "RETURNED", "eventStateReturned"],
-  ["BROKEN", "BROKEN", "quickStatusBroken"]
-] as const;
+/** Where Space moves an item next on the event day: out to the event, then back home. */
+const NEXT_STATE: Record<StudioChecklistState, StudioChecklistState> = { PLANNED: "AT_EVENT", AT_EVENT: "RETURNED", RETURNED: "RETURNED", BROKEN: "BROKEN" };
 
 /**
- * One packing checklist on the board: a column per category (custom
- * reminders in their own), each piece of equipment a tab lit for the steps
- * still ahead of it, out to the event and back. The panel keeps the classic
- * scanner (a 2D overlay over the scene), marks the focused item by hand,
- * and adds or removes items.
+ * One packing checklist as gear tags on a pegboard: a column per category
+ * (custom reminders in their own), each tag with the item's whole name, its
+ * label UID and a status switch that both shows and sets where it is on the
+ * event day. The panel keeps the classic scanner (a 2D overlay over the
+ * scene), the same switch for the focused item, and adds or removes items.
  */
 export default function ChecklistScreen({ account, checklist }: { account: StudioAccount; checklist: StudioChecklist }) {
   const t = useTranslations("album3d");
   const te = useTranslations("equipment");
   const tp = useTranslations("preparation");
   const { path, key, touch } = useStage();
-  const scene = useScene("board");
+  const scene = useScene("rack");
   const { username } = account;
   const [column, setColumn] = useState(0);
   const [row, setRow] = useState(0);
@@ -58,12 +47,20 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
   // Open on an empty list, then left as the photographer sets it, so adding
   // the first items doesn't fold the section away mid-task.
   const [adding, setAdding] = useState(checklist.items.length === 0);
+  // Switched on the tags ahead of the server, until the list comes back.
+  const [switched, setSwitched] = useState<Record<string, StudioChecklistState>>({});
+  const [, startSwitch] = useTransition();
+  useEffect(() => setSwitched({}), [checklist.items]);
+  const items = useMemo(
+    () => checklist.items.map((it) => (switched[it.id] && it.equipmentId ? { ...it, state: switched[it.id] } : it)),
+    [checklist.items, switched]
+  );
 
   // Columns: each category in the list, then the custom reminders.
   const columns = useMemo(() => {
     const byCategory = new Map<string, { title: string; items: StudioChecklistItem[] }>();
     const reminders: StudioChecklistItem[] = [];
-    for (const item of checklist.items) {
+    for (const item of items) {
       if (!item.equipmentId) {
         reminders.push(item);
         continue;
@@ -75,37 +72,37 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
     const list = [...byCategory.values()].sort((a, b) => a.title.localeCompare(b.title));
     if (reminders.length) list.push({ title: t("studioReminders"), items: reminders });
     return list;
-  }, [checklist.items, t]);
+  }, [items, t]);
   const col = Math.min(column, Math.max(0, columns.length - 1));
   const lane = columns[col];
   const at = Math.min(row, Math.max(0, (lane?.items.length ?? 1) - 1));
   const item = lane?.items[at] ?? null;
 
-  const tiles = useMemo<BoardTile[]>(
+  const tiles = useMemo<RackTag[]>(
     () =>
       columns.flatMap((c, ci) =>
         c.items.map((it, r) => ({
           id: it.id,
           column: ci,
           row: r,
-          kicker: it.inventoryStatus ? te(STATUS_KEY[it.inventoryStatus]) : "",
-          main: it.label,
-          detail: [],
-          left: it.equipmentId ? STEPS_LEFT[it.state] : 1,
-          total: it.equipmentId ? 2 : 0,
-          status: it.equipmentId ? te(STATE_KEY[it.state]) : ""
+          category: it.equipmentId ? it.category : c.title,
+          name: it.label,
+          uid: it.uid,
+          note: it.inventoryStatus ? `${te("inventoryStatus")}: ${te(STATUS_KEY[it.inventoryStatus])}` : te("customItem"),
+          state: it.equipmentId ? it.state : null
         }))
       ),
     [columns, te]
   );
+  const stateLabels = useMemo(() => RACK_STATES.map((s) => te(STATE_KEY[s])), [te]);
   const flat = useMemo(() => {
     let n = 0;
     for (let c = 0; c < col; c++) n += columns[c].items.length;
     return n + at;
   }, [columns, col, at]);
   useEffect(() => {
-    scene?.setTiles("slots", `studio-checklist:${checklist.id}`, tiles, columns.map((c) => c.title), "");
-  }, [scene, tiles, columns, checklist.id]);
+    scene?.setTags(`studio-checklist:${checklist.id}`, tiles, columns.map((c) => c.title), stateLabels);
+  }, [scene, tiles, columns, checklist.id, stateLabels]);
   useEffect(() => {
     scene?.setFocus(flat);
   }, [scene, flat]);
@@ -120,6 +117,13 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
     if (count) setRow(Math.max(0, Math.min(count - 1, at + delta)));
   };
   const showItem = () => document.getElementById("studio-checklist-item")?.focus();
+  /** Flip an item's switch: on its tag at once, then on the server. */
+  const setState = (target: StudioChecklistItem | null, state: StudioChecklistState) => {
+    if (!target?.equipmentId || target.state === state) return;
+    const equipmentId = target.equipmentId;
+    setSwitched((now) => ({ ...now, [target.id]: state }));
+    startSwitch(() => setChecklistItemState3d(checklist.id, equipmentId, state));
+  };
 
   useScreenKeys((k, target) => {
     const lanes = scene?.columns() ?? 1;
@@ -130,6 +134,8 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
     } else if (k === "ArrowUp") moveRow(-lanes);
     else if (k === "ArrowDown") moveRow(lanes);
     else if (k === "Enter" && item && !isInteractive(target)) showItem();
+    else if (/^[1-4]$/.test(k) && item?.equipmentId) setState(item, RACK_STATES[Number(k) - 1]);
+    else if (k === " " && item?.equipmentId && !isInteractive(target)) setState(item, NEXT_STATE[item.state]);
     else return false;
     return true;
   });
@@ -137,7 +143,13 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
     if (input.kind === "pick") {
       const tile = tiles[input.index];
       if (!tile) return;
-      if (input.index === flat) showItem();
+      const part = input.part ?? -1;
+      if (part >= 0 && tile.state) {
+        // A switch flips where it's tapped, on any tag; the tag takes the focus too.
+        setColumn(tile.column);
+        setRow(tile.row);
+        setState(columns[tile.column]?.items[tile.row] ?? null, RACK_STATES[part]);
+      } else if (input.index === flat) showItem();
       else {
         setColumn(tile.column);
         setRow(tile.row);
@@ -151,7 +163,7 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
     }
   });
 
-  const gear = checklist.items.filter((i) => i.equipmentId);
+  const gear = items.filter((i) => i.equipmentId);
   const progress = {
     total: gear.length,
     planned: gear.filter((i) => i.state === "PLANNED").length,
@@ -223,25 +235,25 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
                   {te("eventStatus")}: {te(STATE_KEY[item.state])}
                   {item.inventoryStatus && ` · ${te("inventoryStatus")}: ${te(STATUS_KEY[item.inventoryStatus])}`}
                 </p>
-                <form action={setChecklistEquipmentStatus} className="grid grid-cols-3 gap-1" aria-label={`${te("setInventoryStatus")}: ${item.label}`}>
-                  <input type="hidden" name="checklistId" value={checklist.id} />
-                  <input type="hidden" name="equipmentId" value={item.equipmentId} />
-                  {MARKS.map(([status, state, label]) => (
+                <p className="font-meta text-xs tracking-[0.1em] text-fg-subtle">UID {item.uid}</p>
+                <div role="group" aria-label={`${te("eventStatus")}: ${item.label}`} className="grid grid-cols-4 gap-1 border border-border-strong bg-page/60 p-1">
+                  {RACK_STATES.map((state, i) => (
                     <button
-                      key={status}
-                      type="submit"
-                      name="status"
-                      value={status}
+                      key={state}
+                      type="button"
                       aria-pressed={item.state === state}
-                      disabled={item.state === state}
-                      className={`min-h-11 border px-2 text-xs font-semibold uppercase tracking-[0.06em] transition ${
-                        item.state === state ? (status === "BROKEN" ? "border-danger bg-danger text-page" : "border-fg bg-fg text-page") : "border-border-strong hover:border-fg"
+                      onClick={() => setState(item, state)}
+                      className={`min-h-11 px-1 text-[0.6875rem] font-semibold uppercase tracking-[0.04em] transition ${
+                        item.state === state ? (state === "BROKEN" ? "bg-danger text-page" : state === "PLANNED" ? "bg-fg-muted text-page" : state === "RETURNED" ? "bg-success text-page" : "bg-accent text-page") : "text-fg-muted hover:bg-fg/10 hover:text-fg"
                       }`}
                     >
-                      {te(label)}
+                      <span className="font-meta mr-1 text-[0.5625rem] opacity-70" aria-hidden="true">
+                        {i + 1}
+                      </span>
+                      {te(STATE_KEY[state])}
                     </button>
                   ))}
-                </form>
+                </div>
               </>
             ) : (
               <p className="text-sm text-fg-muted">{te("customItem")}</p>
@@ -332,7 +344,7 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
         </details>
       </BookingPanel>
       {!touch && tiles.length > 0 && (
-        <Hints className={styles.menuHint} parts={[`← → ↑ ↓ ${t("hintSelect")}`, `${key("confirm")} ${t("studioHintItem")}`, `${key("back")} ${t("hintBack")}`]} />
+        <Hints className={styles.menuHint} parts={[`← → ↑ ↓ ${t("hintSelect")}`, `1–4 ${t("studioHintStatus")}`, `${key("confirm")} ${t("studioHintItem")}`, `${key("back")} ${t("hintBack")}`]} />
       )}
     </>
   );

@@ -6,7 +6,7 @@ import { getLocale } from "next-intl/server";
 import type { User } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { createEventFromForm, deleteOwnedBookingEvent, deleteOwnedEvent } from "@/lib/eventForms";
-import { createOwnedChecklist, deleteOwnedChecklist } from "@/lib/preparation";
+import { createOwnedChecklist, deleteOwnedChecklist, setChecklistItemState, type ChecklistItemState } from "@/lib/preparation";
 
 /**
  * The 3D Dashboard's own actions: the ones whose classic versions end on a
@@ -66,4 +66,15 @@ export async function deleteChecklist3d(formData: FormData): Promise<void> {
   if (bookingEventId === null) return;
   revalidatePath("/", "layout");
   redirect(studioPath(locale, user, `/preparation${bookingEventId ? `?event=${encodeURIComponent(bookingEventId)}` : ""}`));
+}
+
+const CHECKLIST_STATES: readonly ChecklistItemState[] = ["PLANNED", "AT_EVENT", "RETURNED", "BROKEN"];
+
+/** The status switch on a packing list's gear tag, Planned included. */
+export async function setChecklistItemState3d(checklistId: string, equipmentId: string, state: string): Promise<void> {
+  const { user } = await guard();
+  const next = CHECKLIST_STATES.find((s) => s === state);
+  if (!next || typeof checklistId !== "string" || typeof equipmentId !== "string" || !checklistId || !equipmentId) return;
+  await setChecklistItemState(user.id, checklistId, equipmentId, next);
+  revalidatePath("/", "layout");
 }

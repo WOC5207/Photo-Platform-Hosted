@@ -2541,6 +2541,7 @@
     "studioReelUploadSub": "Upload to this album",
     "studioReelEarlier": "Earlier",
     "studioReelLater": "Later",
-    "studioHintAction": "action"
+    "studioHintAction": "action",
+    "studioHintStatus": "status"
   }
 }

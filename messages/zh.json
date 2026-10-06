@@ -2541,6 +2541,7 @@
     "studioReelUploadSub": "上传到这个相册",
     "studioReelEarlier": "更早",
     "studioReelLater": "更晚",
-    "studioHintAction": "操作"
+    "studioHintAction": "操作",
+    "studioHintStatus": "状态"
   }
 }
