@@ -125,6 +125,37 @@ export function BookingPanel({ expanded = false, children }: { expanded?: boolea
   );
 }
 
+/**
+ * Previous and next for a panel that shows one item of the stage at a time.
+ * On phones the expanded panel covers the stage, so taps and swipes can't
+ * reach the other items there; these can.
+ */
+export function StepButtons({ onStep, atStart, atEnd }: { onStep: (delta: -1 | 1) => void; atStart: boolean; atEnd: boolean }) {
+  const t = useTranslations("album3d");
+  const step = "grid h-11 w-11 shrink-0 place-items-center text-xl transition hover:bg-accent-surface disabled:opacity-30";
+  return (
+    <span className="flex shrink-0">
+      <button type="button" onClick={() => onStep(-1)} disabled={atStart} aria-label={t("creatorPrevious")} className={step}>
+        ←
+      </button>
+      <button type="button" onClick={() => onStep(1)} disabled={atEnd} aria-label={t("creatorNext")} className={step}>
+        →
+      </button>
+    </span>
+  );
+}
+
+/** The column and row `delta` items on from this one, reading lane by lane; null past either end. */
+export function stepLanes(lengths: number[], column: number, row: number, delta: number): [number, number] | null {
+  let flat = row + lengths.slice(0, column).reduce((n, len) => n + len, 0) + delta;
+  if (flat < 0) return null;
+  for (let c = 0; c < lengths.length; c++) {
+    if (flat < lengths[c]) return [c, flat];
+    flat -= lengths[c];
+  }
+  return null;
+}
+
 /** An unknown photographer, event or draw, or one that is no longer open. */
 export function NotFoundPanel() {
   const t = useTranslations("album3d");

@@ -11,7 +11,8 @@ const LABELS: Record<AppLocale, string> = {
   en: "EN"
 };
 
-export default function LanguageSwitcher() {
+/** `compact`: on phones only the other language shows, as one button. */
+export default function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const current = useLocale();
@@ -49,6 +50,8 @@ export default function LanguageSwitcher() {
             aria-label={locale === "zh" ? "中文" : "English"}
             aria-current={locale === current ? "page" : undefined}
             className={`inline-flex h-full min-w-11 items-center justify-center rounded-md px-2 transition-colors ${
+              compact && locale === current ? "max-sm:hidden " : ""
+            }${
               locale === current
                 ? "bg-raised font-semibold text-fg"
                 : "text-fg-subtle hover:bg-raised hover:text-fg"

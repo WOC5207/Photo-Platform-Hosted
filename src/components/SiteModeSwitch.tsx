@@ -40,7 +40,7 @@ export default function SiteModeSwitch({
       role="switch"
       aria-checked={on}
       onClick={() => leaveFor(on ? "classic" : "3d")}
-      className={`group inline-flex min-h-10 items-center gap-2.5 px-2 text-sm font-semibold text-fg-muted transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${className}`}
+      className={`group inline-flex min-h-10 items-center gap-2.5 px-2 text-sm ${compact ? "max-sm:px-0" : ""} font-semibold text-fg-muted transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${className}`}
     >
       <span className={compact ? "max-sm:sr-only" : undefined}>{t("siteSwitch")}</span>
       <span

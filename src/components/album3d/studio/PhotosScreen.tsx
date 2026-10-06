@@ -20,6 +20,7 @@ import {
   metaLabel,
   primaryClass,
   secondaryClass,
+  StepButtons,
   useScreenKeys,
   useStage,
   useStageInput
@@ -138,19 +139,22 @@ export default function PhotosScreen({
     <>
       <BookingPanel expanded>
         <StudioHeading trail={event.title} title={t("studioPhotos")}>
-          <p className="font-meta mt-3 text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
-            {photos.length > 0 ? (
-              <>
-                {t("studioPrint")}{" "}
-                <span className="text-fg">
-                  <Rolling value={pad(focus + 1)} />
-                </span>{" "}
-                / {pad(photos.length)}
-              </>
-            ) : (
-              ta("photosCount", { count: 0 })
-            )}
-          </p>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="font-meta text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
+              {photos.length > 0 ? (
+                <>
+                  {t("studioPrint")}{" "}
+                  <span className="text-fg">
+                    <Rolling value={pad(focus + 1)} />
+                  </span>{" "}
+                  / {pad(photos.length)}
+                </>
+              ) : (
+                ta("photosCount", { count: 0 })
+              )}
+            </p>
+            {photos.length > 1 && <StepButtons onStep={moveFocus} atStart={focus === 0} atEnd={focus >= photos.length - 1} />}
+          </div>
         </StudioHeading>
 
         <div className="mt-6 grid gap-2">

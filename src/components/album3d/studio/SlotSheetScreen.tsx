@@ -7,7 +7,7 @@ import { finishSlot } from "@/app/[locale]/dashboard/(protected)/preparation/act
 import { Hints, Rolling, pad } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
-import { BookingPanel, LocalTimeNote, fieldClass, isInteractive, metaLabel, primaryClass, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
+import { BookingPanel, LocalTimeNote, StepButtons, fieldClass, isInteractive, metaLabel, primaryClass, secondaryClass, stepLanes, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { StudioHeading } from "./shared";
 import type { StudioSheetSlot, StudioSlotSheet } from "./types";
 
@@ -94,6 +94,13 @@ export default function SlotSheetScreen({ sheet }: { sheet: StudioSlotSheet }) {
     const count = focusedDay?.slots.length ?? 0;
     if (count) setRow(Math.max(0, Math.min(count - 1, at + delta)));
   };
+  const lengths = days.map((dd) => dd.slots.length);
+  const stepSlot = (delta: number) => {
+    const next = stepLanes(lengths, d, at, delta);
+    if (!next) return;
+    setDay(next[0]);
+    setRow(next[1]);
+  };
   const showSlot = () => document.getElementById("studio-sheet-slot")?.focus();
 
   useScreenKeys((k, target) => {
@@ -172,13 +179,16 @@ export default function SlotSheetScreen({ sheet }: { sheet: StudioSlotSheet }) {
               <h2 id="studio-sheet-slot-title" className="font-meta text-lg">
                 {slot.day} · {slot.start}–{slot.end}
               </h2>
-              <p className={metaLabel}>
-                {t("studioSlot")}{" "}
-                <span className="text-fg">
-                  <Rolling value={pad(at + 1)} />
-                </span>{" "}
-                / {pad(focusedDay.slots.length)}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className={metaLabel}>
+                  {t("studioSlot")}{" "}
+                  <span className="text-fg">
+                    <Rolling value={pad(at + 1)} />
+                  </span>{" "}
+                  / {pad(focusedDay.slots.length)}
+                </p>
+                {tiles.length > 1 && <StepButtons onStep={stepSlot} atStart={flat === 0} atEnd={flat >= tiles.length - 1} />}
+              </div>
             </div>
             <div>
               <Link href={path({ kind: "studio", username, page: "booking", id: slot.bookingEventId })} scroll={false} className="font-semibold underline-offset-4 hover:underline">

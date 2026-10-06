@@ -11,7 +11,7 @@ import { Hints, Rolling, pad } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { RackTag } from "../rack";
 import { RACK_STATES } from "../types";
-import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
+import { BookingPanel, StepButtons, fieldClass, isInteractive, metaLabel, secondaryClass, stepLanes, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { STATUS_KEY } from "./gear";
 import { StudioHeading } from "./shared";
 import type { StudioAccount, StudioChecklist, StudioChecklistItem, StudioChecklistState } from "./types";
@@ -115,6 +115,12 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
   const moveRow = (delta: number) => {
     const count = lane?.items.length ?? 0;
     if (count) setRow(Math.max(0, Math.min(count - 1, at + delta)));
+  };
+  const stepItem = (delta: number) => {
+    const next = stepLanes(columns.map((c) => c.items.length), col, at, delta);
+    if (!next) return;
+    setColumn(next[0]);
+    setRow(next[1]);
   };
   const showItem = () => document.getElementById("studio-checklist-item")?.focus();
   /** Flip an item's switch: on its tag at once, then on the server. */
@@ -221,13 +227,16 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
               <h2 id="studio-checklist-item-title" className="text-lg font-bold">
                 {item.label}
               </h2>
-              <p className={metaLabel}>
-                {lane.title}{" "}
-                <span className="text-fg">
-                  <Rolling value={pad(at + 1)} />
-                </span>{" "}
-                / {pad(lane.items.length)}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className={metaLabel}>
+                  {lane.title}{" "}
+                  <span className="text-fg">
+                    <Rolling value={pad(at + 1)} />
+                  </span>{" "}
+                  / {pad(lane.items.length)}
+                </p>
+                {tiles.length > 1 && <StepButtons onStep={stepItem} atStart={flat === 0} atEnd={flat >= tiles.length - 1} />}
+              </div>
             </div>
             {item.equipmentId ? (
               <>

@@ -11,7 +11,7 @@ import SlotAdder from "@/components/admin/SlotAdder";
 import { Hints, Rolling, pad } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
-import { BookingPanel, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
+import { BookingPanel, StepButtons, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { StudioHeading } from "./shared";
 import type { StudioAccount, StudioSchedule } from "./types";
 
@@ -193,13 +193,16 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
               <h2 id="studio-slot-title" className="font-meta text-lg">
                 {focusedDay.label} · {slot.start}–{slot.end}
               </h2>
-              <p className={metaLabel}>
-                {t("studioSlot")}{" "}
-                <span className="text-fg">
-                  <Rolling value={pad(at + 1)} />
-                </span>{" "}
-                / {pad(focusedDay.slots.length)}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className={metaLabel}>
+                  {t("studioSlot")}{" "}
+                  <span className="text-fg">
+                    <Rolling value={pad(at + 1)} />
+                  </span>{" "}
+                  / {pad(focusedDay.slots.length)}
+                </p>
+                {focusedDay.slots.length > 1 && <StepButtons onStep={moveRow} atStart={at === 0} atEnd={at >= focusedDay.slots.length - 1} />}
+              </div>
             </div>
             <p className="text-sm text-fg-muted">
               {[tb("booked", { booked: slot.booked, capacity: slot.capacity }), slot.price && tb("pricePerPersonDisplay", { price: slot.price }), slot.description]
