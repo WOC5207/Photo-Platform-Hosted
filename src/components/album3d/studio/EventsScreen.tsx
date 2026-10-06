@@ -168,7 +168,7 @@ export default function EventsScreen({ account, events }: { account: StudioAccou
                   type="button"
                   aria-pressed={f === filter}
                   onClick={() => choose(f)}
-                  className={`-mb-px inline-flex min-h-11 items-center gap-2 border-b-2 px-2 text-xs uppercase tracking-[0.08em] transition ${
+                  className={`-mb-px inline-flex min-h-11 items-center gap-1.5 border-b-2 px-1.5 text-xs uppercase tracking-[0.04em] transition sm:gap-2 sm:px-2 sm:tracking-[0.08em] ${
                     f === filter ? "border-accent font-semibold text-fg" : "border-transparent text-fg-muted hover:text-fg"
                   }`}
                 >

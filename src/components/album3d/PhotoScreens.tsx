@@ -44,7 +44,7 @@ export function TableScreen({
       <p className={metaLabel}>
         {owner}
       </p>
-      <h1 className="mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[3.75rem]">
+      <h1 className="mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] max-sm:line-clamp-2 max-sm:text-[1.75rem] wide:text-[3.75rem]">
         {file.title}
       </h1>
       <div aria-hidden="true" className={styles.calloutRule} />

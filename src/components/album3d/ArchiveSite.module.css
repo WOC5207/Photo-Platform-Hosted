@@ -125,6 +125,17 @@
     top: 84px;
   }
 }
+.platformLinksInline {
+  display: none;
+}
+@media (max-aspect-ratio: 105/100) {
+  .platformLinks {
+    display: none;
+  }
+  .platformLinksInline {
+    display: flex;
+  }
+}
 /* A form's Save button, kept at the bottom right while its panel scrolls. */
 @media (min-aspect-ratio: 105/100) {
   .traySave {
@@ -196,6 +207,36 @@
   left: var(--edge);
   right: var(--edge);
   bottom: 1.75rem;
+}
+
+/* The site switch's label, under the switch on phones where the header has no room beside it. */
+@media (max-width: 639px) {
+  .switchCaption {
+    position: absolute;
+    top: calc(100% - 0.25rem);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-size: 0.625rem;
+    line-height: 1;
+    pointer-events: none;
+  }
+  :global(html:lang(zh)) .switchCaption {
+    font-size: 0.75rem;
+  }
+}
+
+/* On phones the panels reach the bottom edge, where the status line would sit under their last row. */
+@media (max-aspect-ratio: 105/100) {
+  .footer {
+    display: none;
+  }
+}
+
+/* Chinese can't be read at the 8–11 px the meta labels use for Latin capitals. */
+:global(html:lang(zh)) .root :is([class*="text-[0.5rem]"], [class*="text-[0.5625rem]"], [class*="text-[0.625rem]"], [class*="text-[0.6875rem]"]) {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
 }
 
 /* ---------------------------------------------------------------- detail -- */

@@ -892,7 +892,7 @@ export default function ArchiveSite({
                 <span className="truncate max-sm:sr-only">{viewer.name}</span>
               </Link>
             )}
-            <SiteModeSwitch current="3d" compact />
+            <SiteModeSwitch current="3d" compact caption={styles.switchCaption} />
             <LanguageSwitcher compact />
             {/* Phones choose the theme under Settings; the header has no room for it beside the account. */}
             <span className="max-sm:hidden">
@@ -1287,7 +1287,7 @@ export default function ArchiveSite({
       )}
 
       {slow && (
-        <div role="status" className="absolute bottom-24 left-1/2 z-30 flex w-max max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-3 border border-border-strong bg-page/95 px-4 py-3 text-sm">
+        <div role="status" className="absolute bottom-24 left-1/2 z-30 flex max-sm:bottom-auto max-sm:top-[5.5rem] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-3 border border-border-strong bg-page/95 px-4 py-3 text-sm">
           {t("slowNotice")}
           <button type="button" onClick={() => leaveFor("classic", classicTwin(pathname))} className="font-semibold underline underline-offset-4">
             {t("unsupportedClassic")}

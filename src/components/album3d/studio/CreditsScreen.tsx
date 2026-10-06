@@ -92,6 +92,12 @@ export default function CreditsScreen({ credits }: { credits: StudioCredits }) {
   const term = credits.term;
   // Only web addresses open; anything else typed in a link stays in the form.
   const platforms = (profile?.links ?? []).filter((l) => /^https?:\/\//i.test(l.url.trim()));
+  const platformButtons = platforms.map((link, i) => (
+    <a key={`${link.url}-${i}`} href={link.url.trim()} target="_blank" rel="noopener noreferrer" className={`${secondaryClass} bg-page/80`}>
+      {link.platform || t("studioCreditPlatform")}
+      <span aria-hidden="true" className="ml-2">↗</span>
+    </a>
+  ));
 
   const tiles = useMemo<BoardTile[]>(
     () =>
@@ -169,6 +175,12 @@ export default function CreditsScreen({ credits }: { credits: StudioCredits }) {
                     </span>{" "}
                     / {pad(profiles.length)}
                   </p>
+                  {platforms.length > 0 && (
+                    // On phones the platform buttons sit with the credit, not floating over the stage.
+                    <nav aria-label={t("studioCreditPlatforms", { name: profile.name })} className={`${styles.platformLinksInline} flex-wrap gap-2`}>
+                      {platformButtons}
+                    </nav>
+                  )}
                   <ProfileForm key={`${profile.id}:${profile.name}:${profile.links.length}`} profile={profile} term={term} />
                 </>
               ) : (
@@ -181,12 +193,7 @@ export default function CreditsScreen({ credits }: { credits: StudioCredits }) {
       {profile && platforms.length > 0 && (
         // The focused card's linked platforms, one button each, at the top right.
         <nav aria-label={t("studioCreditPlatforms", { name: profile.name })} className={`${styles.platformLinks} flex flex-wrap justify-end gap-2`}>
-          {platforms.map((link, i) => (
-            <a key={`${link.url}-${i}`} href={link.url.trim()} target="_blank" rel="noopener noreferrer" className={`${secondaryClass} bg-page/80`}>
-              {link.platform || t("studioCreditPlatform")}
-              <span aria-hidden="true" className="ml-2">↗</span>
-            </a>
-          ))}
+          {platformButtons}
         </nav>
       )}
       {!touch && profiles.length > 0 && (
