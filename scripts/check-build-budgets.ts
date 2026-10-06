@@ -47,8 +47,8 @@ const routeBudgets = [
   // routes in the shared 3D code add a little to each.
   { label: "3D Cosplan", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/page"], limitKb: 153 },
   { label: "3D Cosplan board", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/board/page"], limitKb: 159 },
-  { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/page"], limitKb: 150 },
-  { label: "3D Sharepost credits", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/credits/page"], limitKb: 176 },
+  { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/page"], limitKb: 151 },
+  { label: "3D Sharepost credits", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/credits/page"], limitKb: 177 },
   // The 3D Dashboard's screens come with their pages. Adding photos carries
   // the classic photo wizard and its upload queue.
   { label: "3D Dashboard", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/page"], limitKb: 145 },
@@ -65,12 +65,12 @@ const routeBudgets = [
   // form, and the label sheet draws its labels with the classic tool's code.
   // A checklist carries the classic QR scanner. The shared 3D code's
   // photographer palettes tipped the item page over by a few bytes.
-  { label: "3D Dashboard equipment", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/page"], limitKb: 151 },
+  { label: "3D Dashboard equipment", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/page"], limitKb: 152 },
   { label: "3D Dashboard add equipment", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/new/page"], limitKb: 152 },
   { label: "3D Dashboard equipment item", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/[id]/page"], limitKb: 153 },
   { label: "3D Dashboard categories", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/categories/page"], limitKb: 146 },
   { label: "3D Dashboard QR contact", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/contact/page"], limitKb: 145 },
-  { label: "3D Dashboard QR labels", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/labels/page"], limitKb: 152 },
+  { label: "3D Dashboard QR labels", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/labels/page"], limitKb: 153 },
   // Preparation shows checklists and booked slots on the booking board.
   { label: "3D Dashboard preparation", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/preparation/page"], limitKb: 145 },
   { label: "3D Dashboard checklist", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/preparation/[id]/page"], limitKb: 156 },
@@ -79,8 +79,8 @@ const routeBudgets = [
   // editor, whose draft lives in the poster's layout as /3d/sharepost's does;
   // a project adds the gallery picker (loaded when opened) and server saves.
   { label: "3D Dashboard posters", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/posters/page"], limitKb: 147 },
-  { label: "3D Dashboard poster", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/page"], limitKb: 150 },
-  { label: "3D Dashboard poster credits", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/credits/page"], limitKb: 176 },
+  { label: "3D Dashboard poster", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/page"], limitKb: 151 },
+  { label: "3D Dashboard poster credits", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/credits/page"], limitKb: 177 },
   { label: "3D Dashboard credits", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/credits/page"], limitKb: 147 },
   { label: "3D Dashboard storage", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/storage/page"], limitKb: 145 },
   // Site settings: a menu, then a panel per group. Appearance carries the

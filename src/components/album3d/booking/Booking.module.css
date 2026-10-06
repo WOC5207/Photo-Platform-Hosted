@@ -30,7 +30,9 @@
     right: 0;
     width: auto;
     max-height: 46dvh;
-    padding: 16px var(--edge) max(20px, env(safe-area-inset-bottom));
+    /* Read by sticky headers (the Sharepost steps) to cover this padding. */
+    --panel-pad-top: 16px;
+    padding: var(--panel-pad-top) var(--edge) max(20px, env(safe-area-inset-bottom));
     background: color-mix(in srgb, var(--color-page) 94%, transparent);
     border-top: 1px solid var(--color-border-strong);
   }
