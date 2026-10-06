@@ -2536,6 +2536,8 @@
     "studioStep_look": "选择网站的配色和标志",
     "studioStep_publish": "发布相册，让它出现在档案中",
     "studioStepDone": "已完成",
-    "headerControls": "网站控制"
+    "headerControls": "网站控制",
+    "studioOtherLists": "其他清单",
+    "studioHintEvent": "活动"
   }
 }

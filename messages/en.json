@@ -2536,6 +2536,8 @@
     "studioStep_look": "Choose your site's colours and logo",
     "studioStep_publish": "Publish an album so it shows in the archive",
     "studioStepDone": "Done",
-    "headerControls": "Site controls"
+    "headerControls": "Site controls",
+    "studioOtherLists": "Other lists",
+    "studioHintEvent": "event"
   }
 }

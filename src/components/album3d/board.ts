@@ -328,9 +328,16 @@ export function createBoard(context: {
     const c = canvas.getContext("2d") as CanvasRenderingContext2D;
     c.clearRect(0, 0, canvas.width, canvas.height);
     c.fillStyle = ink();
-    c.font = `700 40px ${palette.fontSans}`;
+    // Long headings (event names) shrink a little before they are cut short.
+    const label = (headerLabels[index] ?? "").toUpperCase();
+    let size = 40;
+    c.font = `700 ${size}px ${palette.fontSans}`;
+    while (size > 28 && c.measureText(label).width > canvas.width - 16) {
+      size -= 2;
+      c.font = `700 ${size}px ${palette.fontSans}`;
+    }
     c.textBaseline = "middle";
-    c.fillText(fitText(c, (headerLabels[index] ?? "").toUpperCase(), canvas.width - 16), 6, canvas.height / 2 - 6);
+    c.fillText(fitText(c, label, canvas.width - 16), 6, canvas.height / 2 - 6);
     c.fillStyle = palette.accent;
     c.fillRect(6, canvas.height - 12, 54, 5);
     entry.texture.needsUpdate = true;
