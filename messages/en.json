@@ -2345,7 +2345,7 @@
     "bookAgain": "Book another time",
     "inTray": "In tray",
     "scheduleHint": "Pick a time on the board and press Enter to load it into the tray.",
-    "scheduleTouchHint": "Tap a time to select it, then tap it again to load it into the tray.",
+    "scheduleTouchHint": "Tap a time in the list to load it into the tray, or tap one on the board twice.",
     "hintDay": "day",
     "hintTime": "time",
     "hintToggle": "load or unload",

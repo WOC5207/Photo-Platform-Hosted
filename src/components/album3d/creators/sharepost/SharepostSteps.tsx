@@ -20,33 +20,35 @@ const STEPS: { step: Step; label: string }[] = [
  * The Sharepost steps at the top of each screen's panel: Back (one step
  * back, the same as Esc, and the only way back on touch screens) and every
  * step, so any one is a click away. Print waits for a photograph, as it
- * does on the menu. The bar stays at the top while the panel scrolls.
+ * does on the menu. The bar stays at the top while the panel scrolls, on one
+ * row: on phones Back and the steps other than this one show only their
+ * arrow and number (their names are still read out).
  */
 export function SharepostSteps({ current }: { current: Step }) {
   const t = useTranslations("album3d");
   const { back, path } = useStage();
   const { photos, screen } = useSharepostStudio();
   return (
-    <nav aria-label={t("creatorStepsLabel")} className="sticky top-[calc(var(--panel-pad-top,0px)*-1)] z-10 mt-[calc(var(--panel-pad-top,0px)*-1)] mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-page/95 pt-[var(--panel-pad-top,0px)] pb-2 backdrop-blur-sm">
+    <nav aria-label={t("creatorStepsLabel")} className="sticky top-[calc(var(--panel-pad-top,0px)*-1)] z-10 mt-[calc(var(--panel-pad-top,0px)*-1)] mb-6 flex items-center gap-x-2 border-b border-border bg-page/95 pt-[var(--panel-pad-top,0px)] pb-2 backdrop-blur-sm">
       <button
         type="button"
         onClick={back}
-        className="inline-flex min-h-11 items-center gap-2 border border-border-strong px-3 text-sm uppercase tracking-[0.06em] transition hover:border-fg"
+        className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 border border-border-strong px-3 text-sm uppercase tracking-[0.06em] transition hover:border-fg sm:mr-2"
       >
         <span aria-hidden="true">←</span>
-        {t("back")}
+        <span className="max-sm:sr-only">{t("back")}</span>
       </button>
-      <ol className="flex flex-wrap items-center">
+      <ol className="flex min-w-0 flex-wrap items-center">
         {STEPS.map(({ step, label }, i) => {
           const here = step === current;
           const closed = step === "print" && photos.length === 0;
           const text = (
             <>
-              <span className="font-meta mr-1.5 text-[0.625rem] text-fg-subtle">{pad(i + 1)}</span>
-              {t(label)}
+              <span className={`font-meta text-[0.625rem] text-fg-subtle ${here ? "mr-1.5" : "sm:mr-1.5"}`}>{pad(i + 1)}</span>
+              <span className={here ? undefined : "max-sm:sr-only"}>{t(label)}</span>
             </>
           );
-          const base = "inline-flex min-h-11 items-center border-b-2 px-2 text-xs uppercase tracking-[0.08em]";
+          const base = "inline-flex min-h-11 min-w-11 items-center justify-center border-b-2 px-2 text-xs uppercase tracking-[0.08em]";
           return (
             <li key={step}>
               {here ? (

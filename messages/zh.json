@@ -2345,7 +2345,7 @@
     "bookAgain": "再预约一个时段",
     "inTray": "已装载",
     "scheduleHint": "在时间表上选择时段，按回车装入托盘。",
-    "scheduleTouchHint": "点一下选择时段，再点一下装入托盘。",
+    "scheduleTouchHint": "在列表中点一下时段即可装入托盘；在时间表上需点两下。",
     "hintDay": "日期",
     "hintTime": "时段",
     "hintToggle": "装入或取出",
