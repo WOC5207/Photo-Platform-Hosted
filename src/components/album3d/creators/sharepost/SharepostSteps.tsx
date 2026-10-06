@@ -20,14 +20,14 @@ const STEPS: { step: Step; label: string }[] = [
  * The Sharepost steps at the top of each screen's panel: Back (one step
  * back, the same as Esc, and the only way back on touch screens) and every
  * step, so any one is a click away. Print waits for a photograph, as it
- * does on the menu.
+ * does on the menu. The bar stays at the top while the panel scrolls.
  */
 export function SharepostSteps({ current }: { current: Step }) {
   const t = useTranslations("album3d");
   const { back, path } = useStage();
   const { photos, screen } = useSharepostStudio();
   return (
-    <nav aria-label={t("creatorStepsLabel")} className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2">
+    <nav aria-label={t("creatorStepsLabel")} className="sticky top-[calc(var(--panel-pad-top,0px)*-1)] z-10 mt-[calc(var(--panel-pad-top,0px)*-1)] mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-page/95 pt-[var(--panel-pad-top,0px)] pb-2 backdrop-blur-sm">
       <button
         type="button"
         onClick={back}
