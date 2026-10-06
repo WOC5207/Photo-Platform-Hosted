@@ -8,7 +8,7 @@ import { deleteEvent3d } from "@/app/[locale]/3d/u/[username]/studio/actions";
 import { Hints } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import { BookingPanel, fieldClass, isInteractive, primaryClass, secondaryClass, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { ClassicLink, FormNote, StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import { useStudioTable } from "./table";
 import type { StudioAccount, StudioEventDetail, StudioPhoto } from "./types";
 
@@ -147,7 +147,6 @@ export default function EventScreen({
             </button>
           )}
         </div>
-        <ClassicLink href={`/dashboard/events/${encodeURIComponent(event.id)}`} />
       </BookingPanel>
       {!touch && (
         <Hints className={styles.menuHint} parts={[`${key("confirm")} ${t("studioPhotos")}`, `${key("back")} ${t("hintBack")}`]} />

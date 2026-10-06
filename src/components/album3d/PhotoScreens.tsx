@@ -75,7 +75,7 @@ export function TableScreen({
               <span aria-hidden="true" className="text-2xl transition-transform group-hover:translate-x-2 motion-reduce:transition-none">→</span>
             </button>
             <button type="button" onClick={onBack} className="inline-flex min-h-11 items-center gap-2 text-sm text-fg-muted hover:text-fg">
-              <span aria-hidden="true">←</span> {t("backToFile")}
+              <span aria-hidden="true">←</span> {t("back")}
             </button>
           </div>
           {album.more > 0 && (
@@ -114,8 +114,7 @@ export function PhotoScreen({
   owned,
   onStep,
   onBack,
-  printUp,
-  classicHref
+  printUp
 }: {
   file: ArchiveFile;
   owner: string;
@@ -127,7 +126,6 @@ export function PhotoScreen({
   onBack: () => void;
   /** The scene's print has reached this image's box. */
   printUp: boolean;
-  classicHref: string;
 }) {
   const t = useTranslations("album3d");
   const photo = album.photos[index];
@@ -240,12 +238,9 @@ export function PhotoScreen({
         )}
         <div className="mt-7 flex flex-wrap items-center gap-x-8 gap-y-2">
           <button type="button" onClick={onBack} className="inline-flex min-h-11 items-center gap-3 text-sm hover:text-accent-text">
-            <span aria-hidden="true" className="text-xl">←</span> {t("backToTable")}
+            <span aria-hidden="true" className="text-xl">←</span> {t("back")}
             <kbd className="font-meta hidden border border-border-strong p-1 text-[0.625rem] text-fg-subtle wide:inline">ESC</kbd>
           </button>
-          <Link href={classicHref} className="inline-flex min-h-11 items-center gap-2 text-sm text-fg-muted hover:text-fg">
-            {t("photoClassic")} <span aria-hidden="true">↗</span>
-          </Link>
         </div>
       </section>
     </main>

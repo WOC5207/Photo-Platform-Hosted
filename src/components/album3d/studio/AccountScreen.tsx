@@ -6,7 +6,7 @@ import { changePassword, logoutEverywhere, updateProfile, type ChangePasswordSta
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import type { BoardTile } from "../board";
 import { BookingPanel, fieldClass, primaryClass } from "../booking/shared";
-import { ClassicLink, FormNote, StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import { Group, labelClass, useSiteBoard } from "./site";
 import type { StudioSite } from "./types";
 
@@ -99,7 +99,6 @@ export default function AccountScreen({ site }: { site: StudioSite }) {
           </form>
         </Group>
       </div>
-      <ClassicLink href="/dashboard/settings?section=profile" />
     </BookingPanel>
   );
 }

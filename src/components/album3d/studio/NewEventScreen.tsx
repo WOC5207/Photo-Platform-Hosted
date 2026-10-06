@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { createEvent3d, type StudioEventState } from "@/app/[locale]/3d/u/[username]/studio/actions";
 import { BookingPanel, fieldClass, primaryClass } from "../booking/shared";
-import { ClassicLink, FormNote, StudioHeading, daysBetween } from "./shared";
+import { FormNote, StudioHeading, daysBetween } from "./shared";
 
 /**
  * A new event, as the classic "New event" form makes one: its gallery
@@ -69,7 +69,6 @@ export default function NewEventScreen() {
           <span aria-hidden="true" className="text-lg">→</span>
         </button>
       </form>
-      <ClassicLink href="/dashboard/events/new" />
     </BookingPanel>
   );
 }

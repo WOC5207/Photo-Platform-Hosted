@@ -6,7 +6,7 @@ import { updateBookingEvent, type BookingEventFormState } from "@/app/[locale]/d
 import { deleteBookingEvent3d } from "@/app/[locale]/3d/u/[username]/studio/actions";
 import LotteryEnabledToggle from "@/components/admin/LotteryEnabledToggle";
 import { BookingPanel, fieldClass, metaLabel, primaryClass, secondaryClass } from "../booking/shared";
-import { ClassicLink, FormNote, StudioHeading, daysBetween } from "./shared";
+import { FormNote, StudioHeading, daysBetween } from "./shared";
 import type { StudioBookingSettings } from "./types";
 
 /**
@@ -156,7 +156,6 @@ export default function BookingDetailsScreen({ booking }: { booking: StudioBooki
           </button>
         )}
       </div>
-      <ClassicLink href={`/dashboard/bookings/${encodeURIComponent(booking.id)}?section=overview`} />
     </BookingPanel>
   );
 }

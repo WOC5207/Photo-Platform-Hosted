@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { addEquipmentCategory } from "@/app/[locale]/dashboard/(protected)/equipment/actions";
 import { EQUIPMENT_STATUSES, equipmentName } from "@/lib/equipment";
+import styles from "../ArchiveSite.module.css";
 import { fieldClass, primaryClass, secondaryClass, useScene } from "../booking/shared";
 import { GEAR_CARD_ASPECT, STATUS_KEY, paintGearCard, useImages, useQrImage } from "./gear";
 import type { StudioGear, StudioGearCategory, StudioGearStatus } from "./types";
@@ -214,7 +215,7 @@ export function GearForm({
         <textarea name="notes" rows={3} maxLength={2000} value={draft.notes} onChange={(e) => set("notes", e.target.value)} className={fieldClass} />
       </label>
       {children}
-      <button type="submit" disabled={pending || adding || options.length === 0} className={primaryClass}>
+      <button type="submit" disabled={pending || adding || options.length === 0} className={`${primaryClass} ${styles.traySave}`}>
         {pending ? te("savingEquipment") : submitLabel}
         <span aria-hidden="true" className="text-lg">→</span>
       </button>

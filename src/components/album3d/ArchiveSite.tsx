@@ -259,8 +259,10 @@ export default function ArchiveSite({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
-  // Esc walks back up the screens; a step back to where the visitor came
-  // from uses the browser's history so Forward still works.
+  // Esc and every Back button return to the previous page, as the browser's
+  // Back does. Only a page opened directly, with none of the site's pages
+  // behind it, climbs to the screen above instead. Browsers without the
+  // Navigation API fall back to the pages this visit has walked through.
   const trail = useRef<string[]>([]);
   useEffect(() => {
     const steps = trail.current;
@@ -274,12 +276,13 @@ export default function ArchiveSite({
   );
 
   const back = useCallback(() => {
+    const history = (window as { navigation?: { canGoBack?: boolean } }).navigation;
+    if (typeof history?.canGoBack === "boolean" ? history.canGoBack : trail.current.length >= 2) {
+      router.back();
+      return;
+    }
     const parent = missing ? { kind: "title" as const } : parentScreen(screen);
-    if (!parent) return;
-    const target = screenPath(parent);
-    const steps = trail.current;
-    if (steps.length >= 2 && steps[steps.length - 2] === target) router.back();
-    else router.push(target, { scroll: false });
+    if (parent) router.push(screenPath(parent), { scroll: false });
   }, [missing, screen, router]);
 
   // ------------------------------------------------------------- selection --
@@ -538,8 +541,7 @@ export default function ArchiveSite({
     { key: "poster", label: t("menuPoster"), sub: t("menuPosterSub"), run: () => go({ kind: "sharepost" }) },
     // Signed in, this opens the account's menu: their archive, Dashboard and sign out.
     { key: "login", label: t("menuMySite"), sub: viewer ? `@${viewer.username}` : t("menuLoginSub"), run: () => go({ kind: "login" }) },
-    { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), run: () => go({ kind: "settings" }) },
-    { key: "classic", label: t("menuClassic"), sub: t("menuClassicSub"), external: true, run: () => leaveFor("classic", "/") }
+    { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), run: () => go({ kind: "settings" }) }
   ];
 
   // Settings change in place: Enter or → steps forward, ← steps back.
@@ -615,14 +617,7 @@ export default function ArchiveSite({
                 run: () => go({ kind: "booking", username: here.username })
               }
             ]
-          : []),
-        {
-          key: "classic",
-          label: t("menuClassicPage"),
-          sub: t("menuClassicPageSub"),
-          external: true,
-          run: () => leaveFor("classic", `/u/${encodeURIComponent(here.username)}`)
-        }
+          : [])
       ]
     : [];
 
@@ -881,9 +876,7 @@ export default function ArchiveSite({
                 <span className="truncate">{viewer.name}</span>
               </Link>
             )}
-            <span className="hidden sm:contents">
-              <SiteModeSwitch current="3d" />
-            </span>
+            <SiteModeSwitch current="3d" compact />
             <LanguageSwitcher />
             <ThemeToggle label={tc("toggleTheme")} />
           </nav>
@@ -942,7 +935,6 @@ export default function ArchiveSite({
           onStep={stepPhoto}
           onBack={back}
           printUp={printUp || status !== "ready"}
-          classicHref={classicTwin(pathname)}
         />
       )}
 
@@ -1157,7 +1149,7 @@ export default function ArchiveSite({
             className={`${styles.back} z-10 flex min-h-11 items-center gap-2 px-2 text-2xl transition hover:text-accent-text wide:gap-5 wide:px-0`}
           >
             <span aria-hidden="true">←</span>
-            <span className="text-[0.625rem] uppercase tracking-[0.1em] wide:text-xs">{t("archiveOverview")}</span>
+            <span className="text-[0.625rem] uppercase tracking-[0.1em] wide:text-xs">{t("back")}</span>
             <kbd className="font-meta ml-4 hidden border border-border-strong p-1 text-[0.625rem] text-fg-subtle wide:inline">ESC</kbd>
           </button>
 
@@ -1274,13 +1266,6 @@ export default function ArchiveSite({
             <i aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success" />
             {t("connected")}
           </span>
-          <button
-            type="button"
-            onClick={() => leaveFor("classic", classicTwin(pathname))}
-            className="pointer-events-auto inline-flex min-h-7 items-center uppercase hover:text-fg"
-          >
-            {t("classic")} <span aria-hidden="true" className="ml-2">↗</span>
-          </button>
         </footer>
       )}
 

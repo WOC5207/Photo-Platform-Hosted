@@ -12,6 +12,7 @@ import { useSearchParams } from "next/navigation";
 import { Link, usePathname } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
+import SiteModeSwitch from "@/components/SiteModeSwitch";
 
 export type ManagementWorkspace = "site" | "platform";
 
@@ -595,6 +596,7 @@ export default function ManagementShell({
             <LanguageSwitcher />
             <ThemeToggle label={labels.theme} />
           </div>
+          <SiteModeSwitch current="classic" className="mb-2 w-full justify-between" />
           <ProfileMenu
             labels={labels}
             username={username}
@@ -636,6 +638,7 @@ export default function ManagementShell({
               compact
             />
           </div>
+          <SiteModeSwitch current="classic" compact />
           <ProfileMenu
             compact
             labels={labels}

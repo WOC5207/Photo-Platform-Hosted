@@ -8,7 +8,7 @@ import { Hints, Rolling, pad } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, LocalTimeNote, fieldClass, isInteractive, metaLabel, primaryClass, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import type { StudioSheetSlot, StudioSlotSheet } from "./types";
 
 type Filter = "all" | "pending" | "finished";
@@ -126,7 +126,6 @@ export default function SlotSheetScreen({ sheet }: { sheet: StudioSlotSheet }) {
     }
   });
 
-  const query = sheet.event ? `?event=${encodeURIComponent(sheet.event)}` : "";
   const total = days.reduce((n, dd) => n + dd.slots.length, 0);
 
   return (
@@ -225,7 +224,6 @@ export default function SlotSheetScreen({ sheet }: { sheet: StudioSlotSheet }) {
             <p className="text-sm text-fg-muted">{tp("emptySlotsHint")}</p>
           </div>
         )}
-        <ClassicLink href={`/dashboard/preparation/slots${query}`} />
       </BookingPanel>
       {!touch && tiles.length > 0 && (
         <Hints className={styles.menuHint} parts={[`← → ↑ ↓ ${t("studioHintSlot")}`, `${key("confirm")} ${t("studioHintBookings")}`, `${key("back")} ${t("hintBack")}`]} />

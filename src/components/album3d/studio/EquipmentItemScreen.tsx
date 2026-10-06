@@ -8,7 +8,7 @@ import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import { uploadEquipmentPhoto } from "@/components/equipment/EquipmentPhotoUploader";
 import { BookingPanel, metaLabel, secondaryClass } from "../booking/shared";
 import { GearForm, draftOf, useGearCard } from "./GearForm";
-import { ClassicLink, FormNote, StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import type { StudioGear, StudioGearCategory } from "./types";
 
 /**
@@ -97,7 +97,6 @@ export default function EquipmentItemScreen({ gear, categories }: { gear: Studio
         {photo === "quotaExceeded" && <FormNote tone="error">{te("photoQuotaExceeded")}</FormNote>}
         {photo === "error" && <FormNote tone="error">{te("photoUploadError")}</FormNote>}
       </section>
-      <ClassicLink href={`/dashboard/equipment/${encodeURIComponent(gear.id)}`} />
     </BookingPanel>
   );
 }

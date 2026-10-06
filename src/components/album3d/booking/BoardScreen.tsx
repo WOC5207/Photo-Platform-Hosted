@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Link } from "@/i18n/navigation";
 import { GameMenu, Hints, Rolling, pad, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
@@ -125,11 +124,6 @@ function Board({ board }: { board: BookingBoard }) {
           </>
         )}
         <LocalTimeNote />
-        <p className="mt-4 text-xs text-fg-muted">
-          <Link href={`/u/${encodeURIComponent(board.username)}/booking`} className="underline-offset-4 hover:text-fg hover:underline">
-            {t("bookingClassic")} ↗
-          </Link>
-        </p>
       </BookingPanel>
       {!touch && events.length > 0 && (
         <Hints

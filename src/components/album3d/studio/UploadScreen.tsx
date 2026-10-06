@@ -6,7 +6,7 @@ import { useRouter } from "@/i18n/navigation";
 import PhotoWizard from "@/components/admin/wizard/PhotoWizard";
 import { confirmLeavingDrafts } from "@/hooks/useUnsavedChanges";
 import { BookingPanel, useScreenKeys, useStage } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import { useStudioTable } from "./table";
 import type { StudioAccount, StudioEventDetail, StudioPhoto } from "./types";
 
@@ -44,7 +44,6 @@ export default function UploadScreen({
       <div className="mt-6">
         <PhotoWizard {...wizard} onPublished={published} />
       </div>
-      <ClassicLink href={`/dashboard/events/${encodeURIComponent(event.id)}/photos`} />
     </BookingPanel>
   );
 }

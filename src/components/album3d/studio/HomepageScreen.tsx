@@ -8,7 +8,7 @@ import { pickText } from "@/lib/content";
 import { HOME_STREAM_LAYOUTS, resolveHomeStreamLayout } from "@/lib/homePhotoStreamTypes";
 import type { BoardTile } from "../board";
 import { BookingPanel } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import { Check, Group, Pair, SaveBar, checkClass, useSiteBoard, useSiteSave } from "./site";
 import type { StudioSite } from "./types";
 
@@ -91,7 +91,6 @@ export default function HomepageScreen({ site }: { site: StudioSite }) {
         <PersonalLinksManager links={site.links} />
         <AnnouncementsManager announcements={site.announcements} />
       </div>
-      <ClassicLink href="/dashboard/settings?section=homepage" />
     </BookingPanel>
   );
 }

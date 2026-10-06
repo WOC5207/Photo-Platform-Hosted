@@ -10,7 +10,7 @@ import { Hints } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { DeckCard } from "../deck";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, primaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import type { StudioLottery } from "./types";
 
 type Winner = Extract<SpinResult, { ok: true }>["winner"];
@@ -179,7 +179,6 @@ export default function LotteryScreen({ lottery }: { lottery: StudioLottery }) {
           <PrizeManager bookingEventId={lottery.id} prizes={prizes} locked={drawing} />
           <EntryManager bookingEventId={lottery.id} availableBookings={lottery.available} entries={lottery.entries} />
         </div>
-        <ClassicLink href={`/dashboard/bookings/${encodeURIComponent(lottery.id)}/lottery`} />
       </BookingPanel>
       {!touch && (
         <Hints className={styles.menuHint} parts={[`← → ${t("hintSelect")}`, `${key("confirm")} ${t("studioDraw")}`, `${key("back")} ${t("hintBack")}`]} />

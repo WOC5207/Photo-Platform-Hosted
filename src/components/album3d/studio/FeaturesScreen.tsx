@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { BoardTile } from "../board";
 import { BookingPanel, fieldClass, secondaryClass } from "../booking/shared";
-import { ClassicLink, FormNote, StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import { Check, Group, Pair, SaveBar, labelClass, useSiteBoard, useSiteSave } from "./site";
 import type { StudioSite } from "./types";
 
@@ -140,7 +140,6 @@ export default function FeaturesScreen({ site }: { site: StudioSite }) {
         </Group>
         <SaveBar section="features" state={state} pending={pending} />
       </form>
-      <ClassicLink href="/dashboard/settings?section=features" />
     </BookingPanel>
   );
 }

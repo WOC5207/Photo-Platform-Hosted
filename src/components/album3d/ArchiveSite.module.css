@@ -112,6 +112,30 @@
     display: none;
   }
 }
+/* Links out from the focused card, at the top right under the header. */
+.platformLinks {
+  position: absolute;
+  top: max(128px, 16%);
+  right: var(--edge);
+  z-index: 10;
+  max-width: 40%;
+}
+@media (max-width: 1099px), (max-aspect-ratio: 105/100) {
+  .platformLinks {
+    top: 84px;
+  }
+}
+/* A form's Save button, kept at the bottom right while its panel scrolls. */
+@media (min-aspect-ratio: 105/100) {
+  .traySave {
+    position: fixed;
+    right: calc(var(--edge) + 1rem);
+    bottom: 4.75rem;
+    z-index: 10;
+    min-width: 16rem;
+    box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.45);
+  }
+}
 .roster {
   max-height: 52vh;
   overflow-y: auto;

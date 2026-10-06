@@ -24,7 +24,7 @@ import {
   useStage,
   useStageInput
 } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import { useStudioTable } from "./table";
 import type { StudioAccount, StudioEventDetail, StudioPhoto } from "./types";
 
@@ -283,7 +283,6 @@ export default function PhotosScreen({
             </div>
           )}
         </div>
-        <ClassicLink href={`/dashboard/events/${encodeURIComponent(event.id)}#photos`} />
       </BookingPanel>
       {!touch && photos.length > 0 && (
         <Hints

@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import SiteImageUploader from "@/components/admin/SiteImageUploader";
 import type { BoardTile } from "../board";
 import { BookingPanel, fieldClass, metaLabel } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import { Check, Group, SaveBar, labelClass, useSiteBoard, useSiteSave } from "./site";
 import type { StudioSite } from "./types";
 
@@ -68,7 +68,6 @@ export default function SiteContactScreen({ site }: { site: StudioSite }) {
         <SiteImageUploader kind="contactQrEn" currentUrl={site.images.contactQrEn} />
         <SiteImageUploader kind="contactQrZh" currentUrl={site.images.contactQrZh} />
       </div>
-      <ClassicLink href="/dashboard/settings?section=contact" />
     </BookingPanel>
   );
 }

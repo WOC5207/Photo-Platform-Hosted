@@ -4,7 +4,7 @@ import { startTransition, useActionState, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { saveEquipmentContact } from "@/app/[locale]/dashboard/(protected)/equipment/contact/actions";
 import { BookingPanel, fieldClass, primaryClass, useScene } from "../booking/shared";
-import { ClassicLink, FormNote, StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import type { StudioGearContact } from "./types";
 
 const METHODS = ["", "phone", "email", "wechat", "other"] as const;
@@ -125,7 +125,6 @@ export default function ContactScreen({ name, contact }: { name: string; contact
           <span aria-hidden="true" className="text-lg">→</span>
         </button>
       </form>
-      <ClassicLink href="/dashboard/equipment/contact" />
     </BookingPanel>
   );
 }

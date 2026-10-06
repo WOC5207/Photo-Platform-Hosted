@@ -8,7 +8,7 @@ import { Hints, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import type { StudioGearCategory } from "./types";
 
 /**
@@ -102,7 +102,6 @@ export default function CategoriesScreen({ username, categories }: { username: s
           </ul>
         )}
         {category && <span className="sr-only" aria-live="polite">{category.name}</span>}
-        <ClassicLink href="/dashboard/equipment/manage" />
       </BookingPanel>
       {!touch && categories.length > 0 && (
         <Hints className={styles.menuHint} parts={[`${key("move")} ${t("hintSelect")}`, `${key("back")} ${t("hintBack")}`]} />

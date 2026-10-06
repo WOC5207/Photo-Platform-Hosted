@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
 import { exportCosplanPng, loadCosplanImages, renderCosplan } from "@/lib/cosplanCanvas";
 import { GameMenu, Hints, wrap, type MenuItem } from "../../hud";
 import styles from "../../ArchiveSite.module.css";
@@ -18,7 +17,6 @@ export default function CosplanPrint() {
   const t = useTranslations("album3d");
   const tc = useTranslations("cosplan");
   const ts = useTranslations("sharingPosters");
-  const router = useRouter();
   const { key, touch, go } = useStage();
   const scene = useScene("poster");
   const { composition, images, status } = useCosplanStudio();
@@ -66,8 +64,7 @@ export default function CosplanPrint() {
         ...(printed && canShareFile(printed.file)
           ? [{ key: "share", label: ts("share"), sub: printed.file.name, run: () => void shareFile(printed.file, composition.templateTitle).then((ok) => setShareFailed(!ok)) }]
           : []),
-        { key: "board", label: t("creatorBackToBoard"), sub: t("creatorBackToBoardSub"), run: () => go({ kind: "cosplan", step: "board" }) },
-        { key: "classic", label: t("creatorEditClassic"), sub: t("creatorEditClassicSub"), external: true, run: () => router.push("/cosplan") }
+        { key: "board", label: t("creatorBackToBoard"), sub: t("creatorBackToBoardSub"), run: () => go({ kind: "cosplan", step: "board" }) }
       ]
     : [{ key: "choose", label: tc("chooseBackground"), run: () => go({ kind: "cosplan" }) }];
   const at = Math.min(focus, items.length - 1);

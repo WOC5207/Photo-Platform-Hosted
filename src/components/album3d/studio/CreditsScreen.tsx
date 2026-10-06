@@ -9,7 +9,7 @@ import { Hints, Rolling, pad, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { ClassicLink, FormNote, StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import type { StudioCreditProfile, StudioCredits } from "./types";
 
 /** Lamps on a profile's card: one per remembered link. */
@@ -90,6 +90,8 @@ export default function CreditsScreen({ credits }: { credits: StudioCredits }) {
   const at = Math.min(focus, Math.max(0, profiles.length - 1));
   const profile = profiles[at];
   const term = credits.term;
+  // Only web addresses open; anything else typed in a link stays in the form.
+  const platforms = (profile?.links ?? []).filter((l) => /^https?:\/\//i.test(l.url.trim()));
 
   const tiles = useMemo<BoardTile[]>(
     () =>
@@ -175,8 +177,18 @@ export default function CreditsScreen({ credits }: { credits: StudioCredits }) {
             </section>
           </>
         )}
-        <ClassicLink href={credits.enabled ? "/dashboard/credits" : "/dashboard/settings?section=features"} />
       </BookingPanel>
+      {profile && platforms.length > 0 && (
+        // The focused card's linked platforms, one button each, at the top right.
+        <nav aria-label={t("studioCreditPlatforms", { name: profile.name })} className={`${styles.platformLinks} flex flex-wrap justify-end gap-2`}>
+          {platforms.map((link, i) => (
+            <a key={`${link.url}-${i}`} href={link.url.trim()} target="_blank" rel="noopener noreferrer" className={`${secondaryClass} bg-page/80`}>
+              {link.platform || t("studioCreditPlatform")}
+              <span aria-hidden="true" className="ml-2">↗</span>
+            </a>
+          ))}
+        </nav>
+      )}
       {!touch && profiles.length > 0 && (
         <Hints className={styles.menuHint} parts={[`${key("move")} ${t("hintSelect")}`, `${key("confirm")} ${t("hintChange")}`, `${key("back")} ${t("hintBack")}`]} />
       )}

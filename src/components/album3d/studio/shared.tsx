@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { Link } from "@/i18n/navigation";
 import styles from "../ArchiveSite.module.css";
 import { metaLabel } from "../booking/shared";
 
@@ -44,18 +43,6 @@ export function StudioHeading({ trail, title, children }: { trail: string; title
       {children}
       <div aria-hidden="true" className={styles.calloutRule} />
     </>
-  );
-}
-
-/** The same page on the classic dashboard, for whatever this screen can't do yet. */
-export function ClassicLink({ href, label }: { href: string; label?: string }) {
-  const t = useTranslations("album3d");
-  return (
-    <p className="mt-5 text-xs text-fg-muted">
-      <Link href={href} className="underline-offset-4 hover:text-fg hover:underline">
-        {label ?? t("studioClassic")} ↗
-      </Link>
-    </p>
   );
 }
 

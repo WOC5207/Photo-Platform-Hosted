@@ -12,7 +12,7 @@ import styles from "../ArchiveSite.module.css";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, primaryClass, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { RAIL_PICK } from "../types";
 import { GEAR_CARD_ASPECT, STATUS_KEY, paintGearCard, useImages, useQrImage } from "./gear";
-import { ClassicLink, StudioHeading } from "./shared";
+import { StudioHeading } from "./shared";
 import type { StudioEquipment } from "./types";
 
 /** Quick status buttons, coloured like the ID card's status bar when on. */
@@ -243,7 +243,6 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
             {equipment.items.length === 0 ? te("emptyInventory") : te("emptyCategory", { name: equipment.categories.find((c) => c.id === category)?.name ?? "" })}
           </p>
         )}
-        <ClassicLink href="/dashboard/equipment" />
       </BookingPanel>
       {!touch && items.length > 0 && (
         <Hints className={styles.menuHint} parts={[`← → ${t("hintSelect")}`, `${key("confirm")} ${te("editEquipment")}`, `${key("back")} ${t("hintBack")}`]} />
