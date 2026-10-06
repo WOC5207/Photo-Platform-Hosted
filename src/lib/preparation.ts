@@ -27,6 +27,34 @@ export async function pickEquipment(tx: Prisma.TransactionClient, ownerId: strin
   });
 }
 
+export type ChecklistItemState = "PLANNED" | "AT_EVENT" | "RETURNED" | "BROKEN";
+
+/**
+ * Moves one piece of equipment on a packing list along the event day, and
+ * its inventory status with it: out at the event, back in inventory, broken,
+ * or (undoing a mark) planned again and in inventory.
+ */
+export async function setChecklistItemState(ownerId: string, checklistId: string, equipmentId: string, state: ChecklistItemState) {
+  const now = new Date();
+  const change = {
+    PLANNED: { item: { signedOutAt: null, returnedAt: null, brokenAt: null }, status: "IN_INVENTORY" },
+    AT_EVENT: { item: { signedOutAt: now, returnedAt: null, brokenAt: null }, status: "SIGNED_OUT" },
+    RETURNED: { item: { returnedAt: now }, status: "IN_INVENTORY" },
+    BROKEN: { item: { brokenAt: now }, status: "BROKEN" }
+  } as const;
+  await prisma.$transaction(async (tx) => {
+    const member = await tx.equipmentChecklistItem.findFirst({
+      where: { checklistId, equipmentId, checklist: { ownerId } },
+      select: { id: true }
+    });
+    if (!member) return;
+    await Promise.all([
+      tx.equipmentChecklistItem.update({ where: { id: member.id }, data: { eventState: state, ...change[state].item } }),
+      tx.equipmentItem.updateMany({ where: { id: equipmentId, ownerId }, data: { status: change[state].status } })
+    ]);
+  });
+}
+
 const checklistSchema = z.object({
   name: z.string().trim().min(1).max(160),
   shootDate: z.string().trim().max(10),

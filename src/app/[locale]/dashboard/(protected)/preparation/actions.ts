@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { createOwnedChecklist, deleteOwnedChecklist, pickEquipment, setSlotFinished } from "@/lib/preparation";
+import { createOwnedChecklist, deleteOwnedChecklist, pickEquipment, setChecklistItemState, setSlotFinished } from "@/lib/preparation";
 
 export async function finishSlot(formData: FormData): Promise<void> {
   const id = text(formData, "id");
@@ -102,41 +102,11 @@ export async function setChecklistEquipmentStatus(formData: FormData): Promise<v
   const equipmentId = text(formData, "equipmentId");
   const parsed = quickEquipmentStatusSchema.safeParse(text(formData, "status"));
   if (!checklistId || !equipmentId || !parsed.success) return;
-  const owner = await ownerId();
-
-  const now = new Date();
   const eventState = {
     SIGNED_OUT: "AT_EVENT",
     IN_INVENTORY: "RETURNED",
     BROKEN: "BROKEN"
   } as const;
-
-  await prisma.$transaction(async (tx) => {
-    const member = await tx.equipmentChecklistItem.findFirst({
-      where: {
-        checklistId,
-        equipmentId,
-        checklist: { ownerId: owner }
-      },
-      select: { id: true }
-    });
-    if (!member) return;
-
-    await Promise.all([
-      tx.equipmentChecklistItem.update({
-        where: { id: member.id },
-        data: {
-          eventState: eventState[parsed.data],
-          ...(parsed.data === "SIGNED_OUT" ? { signedOutAt: now, returnedAt: null, brokenAt: null } : {}),
-          ...(parsed.data === "IN_INVENTORY" ? { returnedAt: now } : {}),
-          ...(parsed.data === "BROKEN" ? { brokenAt: now } : {})
-        }
-      }),
-      tx.equipmentItem.updateMany({
-        where: { id: equipmentId, ownerId: owner },
-        data: { status: parsed.data }
-      })
-    ]);
-  });
+  await setChecklistItemState(await ownerId(), checklistId, equipmentId, eventState[parsed.data]);
   refreshPreparation();
 }

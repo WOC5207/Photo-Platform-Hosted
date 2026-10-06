@@ -2528,6 +2528,20 @@
     "studioOtherLists": "Other lists",
     "studioHintEvent": "event",
     "studioCreditPlatforms": "{name}'s linked platforms",
-    "studioCreditPlatform": "Open link"
+    "studioCreditPlatform": "Open link",
+    "studioReelFilter": "Show events",
+    "studioReelAll": "All",
+    "studioReelUpcoming": "Upcoming",
+    "studioReelPast": "Past",
+    "studioReelDrafts": "Drafts",
+    "studioReelNone": "No events here.",
+    "studioReelToday": "Today",
+    "studioReelOpen": "Open event",
+    "studioReelOpenSub": "Details, dates and publishing",
+    "studioReelUploadSub": "Upload to this album",
+    "studioReelEarlier": "Earlier",
+    "studioReelLater": "Later",
+    "studioHintAction": "action",
+    "studioHintStatus": "status"
   }
 }

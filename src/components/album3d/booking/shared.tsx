@@ -6,6 +6,8 @@ import { StageContext, type Stage } from "../StageContext";
 import type { Board } from "../board";
 import type { Deck } from "../deck";
 import type { PosterStage } from "../poster";
+import type { Reel } from "../reel";
+import type { Rack } from "../rack";
 import type { StageDrag, StageInput } from "../engine";
 import { GameMenu } from "../hud";
 import styles from "./Booking.module.css";
@@ -33,11 +35,11 @@ export function useStage(): Stage {
   return useContext(StageContext) ?? fallbackStage;
 }
 
-type Scenes = { board: Board; deck: Deck; poster: PosterStage; case: PosterStage };
+type Scenes = { board: Board; deck: Deck; poster: PosterStage; case: PosterStage; reel: Reel; rack: Rack };
 
 /**
- * The booking board, the prize deck or the poster easel, once the scene has
- * it on screen. "case" is the easel's stage with the camera case in place of
+ * The booking board, the prize deck, the poster easel, the events reel or the gear rack,
+ * once the scene has it on screen. "case" is the easel's stage with the camera case in place of
  * the easel, for the equipment screens.
  */
 export function useScene<K extends keyof Scenes>(kind: K): Scenes[K] | null {
@@ -47,7 +49,7 @@ export function useScene<K extends keyof Scenes>(kind: K): Scenes[K] | null {
     if (!engine) return;
     let live = true;
     let prop: PosterStage | null = null;
-    (kind === "board" ? engine.showBoard() : kind === "deck" ? engine.showDeck() : engine.showPoster()).then((next) => {
+    (kind === "board" ? engine.showBoard() : kind === "deck" ? engine.showDeck() : kind === "reel" ? engine.showReel() : kind === "rack" ? engine.showRack() : engine.showPoster()).then((next) => {
       if (!live) return;
       if (kind === "case" && next) {
         prop = next as PosterStage;

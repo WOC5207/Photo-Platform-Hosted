@@ -157,7 +157,7 @@ function FirstSteps({ home, path }: { home: StudioHome; path: ReturnType<typeof 
   const steps = [
     { key: "event", done: home.events > 0, href: path({ kind: "studio", username, page: "new" }) },
     { key: "photos", done: home.photos > 0, href: path({ kind: "studio", username, page: "events" }) },
-    { key: "look", done: false, href: path({ kind: "studio", username, page: "siteAppearance" }) },
+    { key: "look", done: home.styled, href: path({ kind: "studio", username, page: "siteAppearance" }) },
     { key: "publish", done: home.listed, href: path({ kind: "studio", username, page: "events" }) }
   ] as const;
   if (!shown || steps.every((s) => s.done)) return null;

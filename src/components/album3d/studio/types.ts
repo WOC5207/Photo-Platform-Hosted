@@ -16,6 +16,8 @@ export interface StudioHome {
   account: StudioAccount;
   /** The archive lists them: they have a published album visitors can see. */
   listed: boolean;
+  /** They've set a logo, background image or any of their site's colours. */
+  styled: boolean;
   events: number;
   drafts: number;
   photos: number;
@@ -34,6 +36,10 @@ export interface StudioEventSummary {
   photoCount: number;
   /** The album's cover (or first photo) as a thumbnail, or "". */
   cover: string;
+  /** The same picture larger, for the events reel's prints near the focus. */
+  coverLarge: string;
+  /** The first day, YYYY-MM-DD, or "" without dates. */
+  day: string;
 }
 
 export interface StudioEventDetail extends StudioEventSummary {
@@ -277,6 +283,8 @@ export interface StudioChecklistItem {
   category: string;
   state: StudioChecklistState;
   inventoryStatus: StudioGearStatus | null;
+  /** The label code under the QR code, "" for a custom reminder. */
+  uid: string;
 }
 
 export interface StudioChecklist {

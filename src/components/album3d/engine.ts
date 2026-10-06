@@ -33,6 +33,8 @@ import { createLightTable, type LightTable, type TablePrint } from "./lightTable
 import type { Board } from "./board";
 import type { Deck } from "./deck";
 import type { PosterStage } from "./poster";
+import type { Reel } from "./reel";
+import type { Rack } from "./rack";
 import {
   columnStrength,
   damp,
@@ -95,7 +97,7 @@ export type EngineMove = { axis: "file" | "column"; direction: 1 | -1 };
 
 /** Taps, swipes and the wheel on the booking board or the prize deck, for the screen to act on. */
 export type StageInput =
-  | { kind: "pick"; index: number }
+  | { kind: "pick"; index: number; part?: number }
   | { kind: "swipe"; x: -1 | 0 | 1; y: -1 | 0 | 1 }
   | { kind: "wheel"; direction: 1 | -1 };
 
@@ -116,6 +118,8 @@ interface StageModule {
   settle(): void;
   setHover(index: number): void;
   pick(clientX: number, clientY: number, rect: DOMRect): number;
+  /** A part of the picked thing, such as a switch position, when the stage has parts. */
+  pickPart?(clientX: number, clientY: number, rect: DOMRect): number;
   step(dt: number): boolean;
   resize(width: number, height: number): void;
   setPalette(palette: EnginePalette): void;
@@ -192,6 +196,9 @@ export interface ArchiveEngine {
   showDeck(): Promise<Deck | null>;
   /** The poster creators' easel, loaded the first time it is shown. */
   showPoster(): Promise<PosterStage | null>;
+  /** The Dashboard's events reel, loaded the first time it is shown. */
+  showReel(): Promise<Reel | null>;
+  showRack(): Promise<Rack | null>;
   /** Where taps, swipes and the wheel on the board or the deck go. */
   setStageHandler(handler: ((input: StageInput) => void) | null): void;
   /** Where raw pointers on the stage go first (see StageDrag). */
@@ -279,6 +286,21 @@ interface Cassette {
   dispose(): void;
 }
 
+/** Behind the menus the raised card's photograph softens with the field's covers. */
+interface MenuBlur {
+  amount: { value: number };
+  color: { value: Color };
+}
+
+/**
+ * The map sampled softened by `uBlur` (0 to 1, up to `levels` mip levels
+ * down) and veiled toward `uVeilColor` by `veil`, for photographs that sit
+ * behind the menus.
+ */
+function blurredMap(levels: number, veil: string) {
+  return `#ifdef USE_MAP\n  vec4 sampledDiffuseColor = texture2D( map, vMapUv, uBlur * ${levels.toFixed(1)} );\n  diffuseColor *= sampledDiffuseColor;\n#endif\n  diffuseColor.rgb = mix(diffuseColor.rgb, uVeilColor, ${veil});`;
+}
+
 function buildCassette(
   renderer: WebGLRenderer,
   palette: EnginePalette,
@@ -286,7 +308,8 @@ function buildCassette(
   carrierMaterial: MeshStandardMaterial,
   carrierGeometry: BoxGeometry,
   file: EngineFile,
-  prints: EnginePrint[]
+  prints: EnginePrint[],
+  blur?: MenuBlur
 ): Cassette {
   const owned: { dispose(): void }[] = [];
   const own = <T extends { dispose(): void }>(thing: T) => {
@@ -334,6 +357,14 @@ function buildCassette(
     // The raised card leans away from the camera into the field's fog;
     // its photographs stay clear of it.
     const face = own(imageMaterial({ color: color(palette.control), fog: false }));
+    if (blur) {
+      face.onBeforeCompile = (shader) => {
+        shader.uniforms.uBlur = blur.amount;
+        shader.uniforms.uVeilColor = blur.color;
+        shader.fragmentShader = `uniform float uBlur;\nuniform vec3 uVeilColor;\n${shader.fragmentShader}`.replace("#include <map_fragment>", blurredMap(3.5, "uBlur * 0.5"));
+      };
+      face.customProgramCacheKey = () => "album-archive-raised-print";
+    }
     photoMaterials.push(face);
     photoAspects.push(w / h);
     const mesh = new Mesh(own(new BoxGeometry(w, h, 0.006)), [printEdge, printEdge, printEdge, printEdge, face, printEdge]);
@@ -565,6 +596,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   faceGeo.setAttribute("aFog", faceFog);
   const veil = { value: 0 };
   const veilColor = { value: new Color() };
+  const blur = { value: 0 };
   const faceMaterial = imageMaterial({ map: atlas });
   // Just in front of the card face; offset the depth test, not the geometry.
   faceMaterial.polygonOffset = true;
@@ -573,13 +605,14 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   faceMaterial.onBeforeCompile = (shader) => {
     shader.uniforms.uVeil = veil;
     shader.uniforms.uVeilColor = veilColor;
+    shader.uniforms.uBlur = blur;
     shader.vertexShader = `attribute vec4 aCell;\nattribute float aFog;\nvarying float vFog;\n${shader.vertexShader}`.replace(
       "#include <uv_vertex>",
       "#include <uv_vertex>\n  vMapUv = aCell.xy + uv * aCell.zw;\n  vFog = aFog;"
     );
-    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\nvarying float vFog;\n${shader.fragmentShader}`.replace(
+    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\nuniform float uBlur;\nvarying float vFog;\n${shader.fragmentShader}`.replace(
       "#include <map_fragment>",
-      "#include <map_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, uVeilColor, max(uVeil, vFog));"
+      blurredMap(2.4, "max(uVeil, vFog)")
     );
   };
   faceMaterial.customProgramCacheKey = () => "album-archive-faces";
@@ -641,7 +674,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     selected?.group.removeFromParent();
     selected?.dispose();
     const file = files[index];
-    const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, cardGeo, file, file.prints.slice(0, 1));
+    const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, cardGeo, file, file.prints.slice(0, 1), { amount: blur, color: veilColor });
     cassette.parts.carrier.castShadow = !lowPower;
     field.add(cassette.group);
     selected = cassette;
@@ -805,9 +838,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let mode: "field" | "study" | "carousel" | "table" | "stage" = "field";
   let carousel: Carousel | null = null;
   let table: LightTable | null = null;
-  // The booking board, the prize deck and the poster easel: loaded on demand, one shown at a time.
+  // The booking board, the prize deck, the poster easel and the events reel: loaded on demand, one shown at a time.
   let stage: StageModule | null = null;
-  const stages: { board?: Board; deck?: Deck; poster?: PosterStage } = {};
+  const stages: { board?: Board; deck?: Deck; poster?: PosterStage; reel?: Reel; rack?: Rack } = {};
   let stageToken = 0;
   let stageHandler: ((input: StageInput) => void) | null = null;
   let stageDrag: ((input: StageDrag) => boolean) | null = null;
@@ -960,9 +993,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (studyFile >= 0) buildStudy(studyFile);
     carousel?.setPalette(palette);
     table?.setPalette(palette);
-    stages.board?.setPalette(palette);
-    stages.deck?.setPalette(palette);
-    stages.poster?.setPalette(palette);
+    for (const module of Object.values(stages)) module.setPalette(palette);
   }
 
   // --------------------------------------------------------------- sizing --
@@ -979,9 +1010,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     studyCamera.updateProjectionMatrix();
     carousel?.resize(width, height);
     table?.resize(width, height);
-    stages.board?.resize(width, height);
-    stages.deck?.resize(width, height);
-    stages.poster?.resize(width, height);
+    for (const module of Object.values(stages)) module.resize(width, height);
     snapCamera = true;
     invalidate();
   }
@@ -1139,10 +1168,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       }
       moving = true;
     }
-    // Covers show as they are; menus quiet them down to plain cards
-    // behind their text.
-    veil.value = overview;
-    faces.visible = overview < 0.99;
+    // Covers show as they are; menus soften and veil them behind their
+    // text, the raised card's photograph with them.
+    veil.value = overview * 0.5;
+    blur.value = overview;
 
     cardPosition.set(
       selectedCell.lane * COLUMN_SPACING - trackX.value,
@@ -1442,7 +1471,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     } else if (mode === "stage" && stage) {
       if (tap) {
         const index = stage.pick(e.clientX, e.clientY, rect);
-        if (index >= 0) stageHandler?.({ kind: "pick", index });
+        if (index >= 0) stageHandler?.({ kind: "pick", index, part: stage.pickPart?.(e.clientX, e.clientY, rect) ?? -1 });
         return;
       }
       const major = Math.max(Math.abs(dx), Math.abs(dy));
@@ -1727,6 +1756,12 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     showPoster() {
       return showStage("poster", () => import("./poster").then((m) => m.createPosterStage(stageContext())));
     },
+    showReel() {
+      return showStage("reel", () => import("./reel").then((m) => m.createReel(stageContext())));
+    },
+    showRack() {
+      return showStage("rack", () => import("./rack").then((m) => m.createRack(stageContext())));
+    },
     setStageHandler(handler) {
       stageHandler = handler;
     },
@@ -1759,9 +1794,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       studyCassette?.dispose();
       carousel?.dispose();
       table?.dispose();
-      stages.board?.dispose();
-      stages.deck?.dispose();
-      stages.poster?.dispose();
+      for (const module of Object.values(stages)) module.dispose();
       for (const thing of [cardGeo, screwGeo, cardMaterial, screwMaterial, faceGeo, faceMaterial, atlas, fieldLights.environment, studyLights.environment])
         thing.dispose();
       cards.dispose();

@@ -10,6 +10,10 @@ import type { CSSProperties } from "react";
 export const RAIL_PICK = 1000;
 export const LAYER_PICK = 2000;
 
+/** The four positions of a packing-list tag's status switch on the gear rack, in order. */
+export const RACK_STATES = ["PLANNED", "AT_EVENT", "RETURNED", "BROKEN"] as const;
+export type RackState = (typeof RACK_STATES)[number];
+
 export interface ArchivePrint {
   id: string;
   thumb: string;
