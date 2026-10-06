@@ -33,6 +33,7 @@ import { createLightTable, type LightTable, type TablePrint } from "./lightTable
 import type { Board } from "./board";
 import type { Deck } from "./deck";
 import type { PosterStage } from "./poster";
+import type { Reel } from "./reel";
 import {
   columnStrength,
   damp,
@@ -192,6 +193,8 @@ export interface ArchiveEngine {
   showDeck(): Promise<Deck | null>;
   /** The poster creators' easel, loaded the first time it is shown. */
   showPoster(): Promise<PosterStage | null>;
+  /** The Dashboard's events reel, loaded the first time it is shown. */
+  showReel(): Promise<Reel | null>;
   /** Where taps, swipes and the wheel on the board or the deck go. */
   setStageHandler(handler: ((input: StageInput) => void) | null): void;
   /** Where raw pointers on the stage go first (see StageDrag). */
@@ -805,9 +808,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let mode: "field" | "study" | "carousel" | "table" | "stage" = "field";
   let carousel: Carousel | null = null;
   let table: LightTable | null = null;
-  // The booking board, the prize deck and the poster easel: loaded on demand, one shown at a time.
+  // The booking board, the prize deck, the poster easel and the events reel: loaded on demand, one shown at a time.
   let stage: StageModule | null = null;
-  const stages: { board?: Board; deck?: Deck; poster?: PosterStage } = {};
+  const stages: { board?: Board; deck?: Deck; poster?: PosterStage; reel?: Reel } = {};
   let stageToken = 0;
   let stageHandler: ((input: StageInput) => void) | null = null;
   let stageDrag: ((input: StageDrag) => boolean) | null = null;
@@ -960,9 +963,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (studyFile >= 0) buildStudy(studyFile);
     carousel?.setPalette(palette);
     table?.setPalette(palette);
-    stages.board?.setPalette(palette);
-    stages.deck?.setPalette(palette);
-    stages.poster?.setPalette(palette);
+    for (const module of Object.values(stages)) module.setPalette(palette);
   }
 
   // --------------------------------------------------------------- sizing --
@@ -979,9 +980,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     studyCamera.updateProjectionMatrix();
     carousel?.resize(width, height);
     table?.resize(width, height);
-    stages.board?.resize(width, height);
-    stages.deck?.resize(width, height);
-    stages.poster?.resize(width, height);
+    for (const module of Object.values(stages)) module.resize(width, height);
     snapCamera = true;
     invalidate();
   }
@@ -1727,6 +1726,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     showPoster() {
       return showStage("poster", () => import("./poster").then((m) => m.createPosterStage(stageContext())));
     },
+    showReel() {
+      return showStage("reel", () => import("./reel").then((m) => m.createReel(stageContext())));
+    },
     setStageHandler(handler) {
       stageHandler = handler;
     },
@@ -1759,9 +1761,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       studyCassette?.dispose();
       carousel?.dispose();
       table?.dispose();
-      stages.board?.dispose();
-      stages.deck?.dispose();
-      stages.poster?.dispose();
+      for (const module of Object.values(stages)) module.dispose();
       for (const thing of [cardGeo, screwGeo, cardMaterial, screwMaterial, faceGeo, faceMaterial, atlas, fieldLights.environment, studyLights.environment])
         thing.dispose();
       cards.dispose();

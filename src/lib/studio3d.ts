@@ -95,6 +95,8 @@ export async function loadStudioHome(user: User, locale: string, creditFallback:
   };
 }
 
+const day = (date: Date | null) => (date ? date.toISOString().slice(0, 10) : "");
+
 const summarySelect = {
   id: true,
   titleEn: true,
@@ -132,7 +134,9 @@ function summary(
     location: event.location,
     published: event.published,
     photoCount: event._count.photos,
-    cover: cover ? photoUrls(event.id, cover).thumb : ""
+    cover: cover ? photoUrls(event.id, cover).thumb : "",
+    coverLarge: cover ? photoUrls(event.id, cover).med : "",
+    day: day(event.dateStart)
   };
 }
 
@@ -145,8 +149,6 @@ export async function loadStudioEvents(user: User, locale: string): Promise<Stud
   });
   return events.map((event) => summary(locale, event));
 }
-
-const day = (date: Date | null) => (date ? date.toISOString().slice(0, 10) : "");
 
 export async function loadStudioEvent(user: User, id: string, locale: string): Promise<StudioEventDetail | null> {
   const event = await prisma.event.findFirst({

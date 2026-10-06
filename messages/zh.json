@@ -2528,6 +2528,19 @@
     "studioOtherLists": "其他清单",
     "studioHintEvent": "活动",
     "studioCreditPlatforms": "{name} 的关联平台",
-    "studioCreditPlatform": "打开链接"
+    "studioCreditPlatform": "打开链接",
+    "studioReelFilter": "显示活动",
+    "studioReelAll": "全部",
+    "studioReelUpcoming": "即将到来",
+    "studioReelPast": "已结束",
+    "studioReelDrafts": "草稿",
+    "studioReelNone": "这里没有活动。",
+    "studioReelToday": "今天",
+    "studioReelOpen": "打开活动",
+    "studioReelOpenSub": "详情、日期与发布",
+    "studioReelUploadSub": "上传到这个相册",
+    "studioReelEarlier": "更早",
+    "studioReelLater": "更晚",
+    "studioHintAction": "操作"
   }
 }

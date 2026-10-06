@@ -34,6 +34,10 @@ export interface StudioEventSummary {
   photoCount: number;
   /** The album's cover (or first photo) as a thumbnail, or "". */
   cover: string;
+  /** The same picture larger, for the events reel's prints near the focus. */
+  coverLarge: string;
+  /** The first day, YYYY-MM-DD, or "" without dates. */
+  day: string;
 }
 
 export interface StudioEventDetail extends StudioEventSummary {
