@@ -201,7 +201,6 @@ export default function ArchiveSite({
   const [menuFocus, setMenuFocus] = useState(0);
   const [exploded, setExploded] = useState(false);
   const [studyFocus, setStudyFocus] = useState(0);
-  const [clear, setClear] = useState(true);
   const [indexOpen, setIndexOpen] = useState(false);
   const [indexUsed, setIndexUsed] = useState(false);
   useEffect(() => {
@@ -521,10 +520,6 @@ export default function ArchiveSite({
   useEffect(() => {
     if (ready && mode === "study") engineRef.current?.setStudyFocus(studyFocus);
   }, [studyFocus, mode, ready]);
-
-  useEffect(() => {
-    if (ready) engineRef.current?.setClear(clear);
-  }, [clear, ready]);
 
   // ------------------------------------------------------------------ menus --
   const titleMenu: MenuItem[] = [
@@ -1256,14 +1251,12 @@ export default function ArchiveSite({
           file={file}
           owner={column.name}
           exploded={exploded}
-          clear={clear}
           touch={touch}
           focus={studyFocus}
           shareUrl={(photoId) => `${window.location.origin}/${locale}${screenPath({ kind: "photo", username: column.username, slug: file.slug, photoId })}`}
           onFocus={setStudyFocus}
           onBack={back}
           onExplode={setExploded}
-          onClear={setClear}
           onReset={() => engineRef.current?.resetView()}
         />
       )}

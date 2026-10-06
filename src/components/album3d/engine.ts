@@ -24,8 +24,7 @@ import {
   ShaderMaterial,
   Vector2,
   Vector3,
-  WebGLRenderer,
-  type IUniform
+  WebGLRenderer
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { addLighting, fitText, forgetShadowLights, imageMaterial, loadImage, makeTexture, photoTexture, setShadows } from "./kit";
@@ -57,8 +56,8 @@ import {
  *
  * Two views share one renderer. The archive is a looping field of cards
  * (columns are photographers, rows are their albums) where the selected card
- * lifts a little in preview and rises out for the detail view, its frosted
- * cover clearing to show the album cover. The study is a 360° view of one
+ * lifts a little in preview and rises out for the detail view, showing the
+ * album cover. The study is a 360° view of one
  * album's cassette that can be taken apart along its thickness.
  *
  * It renders on demand: nothing is drawn while everything is at rest.
@@ -176,7 +175,6 @@ export interface ArchiveEngine {
   setExploded(exploded: boolean): void;
   /** Bring one of the study's prints to the front of the stack. */
   setStudyFocus(index: number): void;
-  setClear(clear: boolean): void;
   resetView(): void;
   setPalette(palette: EnginePalette): void;
   setReducedMotion(reduced: boolean): void;
@@ -268,15 +266,14 @@ function cardGeometry() {
 }
 
 /**
- * One album cassette, front to back: fasteners, a frosted optical cover with
- * its label, the print stack, a substrate with the light guide, and the
+ * One album cassette, front to back: fasteners, a clear cover with its
+ * label, the print stack, a substrate with the light guide, and the
  * carrier. Origin at the bottom centre; `layout` moves the parts along the
  * thickness axis.
  */
 interface Cassette {
   group: Group;
   parts: { screws: Group; cover: Group; prints: Mesh[]; substrate: Group; carrier: Mesh };
-  clarity: IUniform<number>;
   setPhoto(index: number, image: HTMLImageElement): void;
   layout(explode: number, printOffsets?: number[]): void;
   dispose(): void;
@@ -345,30 +342,8 @@ function buildCassette(
     return mesh;
   });
 
-  // Frosted cover; clarity sweeps it clear from the top down.
-  const clarity: IUniform<number> = { value: 0 };
-  const coverCanvas = document.createElement("canvas");
-  coverCanvas.width = 1000;
-  coverCanvas.height = 740;
-  const coverMap = own(makeTexture(coverCanvas, renderer));
-  const coverMaterial = own(
-    new MeshStandardMaterial({ map: coverMap, transparent: true, roughness: 0.32, depthWrite: false })
-  );
-  coverMaterial.onBeforeCompile = (shader) => {
-    shader.uniforms.uClarity = clarity;
-    shader.fragmentShader = `uniform float uClarity;\n${shader.fragmentShader}`.replace(
-      "#include <color_fragment>",
-      `#include <color_fragment>
-      float sweep = uClarity * 1.3 - 0.15;
-      float frost = smoothstep(sweep - 0.12, sweep + 0.12, 1.0 - vMapUv.y);
-      diffuseColor.a *= mix(0.0, 0.88, frost);`
-    );
-  };
-  coverMaterial.customProgramCacheKey = () => "album-archive-cover";
+  // The cover is clear glass: only its label shows over the photograph.
   const cover = new Group();
-  const coverPlane = new Mesh(own(new PlaneGeometry(CARD_W - 0.06, CARD_H - 0.06)), coverMaterial);
-  coverPlane.position.y = CARD_H / 2;
-  coverPlane.renderOrder = 2;
   const labelCanvas = document.createElement("canvas");
   labelCanvas.width = 512;
   labelCanvas.height = 220;
@@ -381,7 +356,7 @@ function buildCassette(
   // corner so it covers as little of the photograph as possible.
   label.position.set(-CARD_W / 2 + 0.92, 0.62, 0.004);
   label.renderOrder = 3;
-  cover.add(coverPlane, label);
+  cover.add(label);
   group.add(cover);
 
   // Fasteners at the four corners.
@@ -400,32 +375,6 @@ function buildCassette(
     screws.add(screw);
   }
   group.add(screws);
-
-  // Engraved circuit lines and the hatch block, as on the reference cover.
-  const c = coverCanvas.getContext("2d") as CanvasRenderingContext2D;
-  const w = coverCanvas.width;
-  const h = coverCanvas.height;
-  c.fillStyle = "#f7f4ef";
-  c.fillRect(0, 0, w, h);
-  c.strokeStyle = "rgba(90, 80, 68, 0.35)";
-  c.lineWidth = 2;
-  c.beginPath();
-  c.moveTo(70, 210);
-  c.lineTo(70, h - 140);
-  c.lineTo(120, h - 90);
-  c.lineTo(w - 330, h - 90);
-  c.moveTo(w - 70, 120);
-  c.lineTo(w - 70, h - 200);
-  c.lineTo(w - 110, h - 160);
-  c.stroke();
-  c.fillStyle = "rgba(90, 80, 68, 0.4)";
-  for (let i = 0; i < 12; i++) {
-    c.save();
-    c.translate(w - 300 + i * 13, h - 70);
-    c.rotate(-0.35);
-    c.fillRect(0, -18, 3, 36);
-    c.restore();
-  }
 
   const l = labelCanvas.getContext("2d") as CanvasRenderingContext2D;
   l.fillStyle = "#f9f7f2";
@@ -478,7 +427,6 @@ function buildCassette(
   return {
     group,
     parts: { screws, cover, prints: printMeshes, substrate, carrier },
-    clarity,
     setPhoto(index, image) {
       const material = photoMaterials[index];
       if (!material) return;
@@ -853,7 +801,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   // The print brought to the front, and where each print stands now.
   let studyFocus = 0;
   let printZ: number[] = [];
-  let studyClear = true;
   let cameraGoal: Vector3 | null = null;
   let mode: "field" | "study" | "carousel" | "table" | "stage" = "field";
   let carousel: Carousel | null = null;
@@ -875,7 +822,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const token = ++studyToken;
     const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, cardGeo, file, file.prints);
     cassette.group.position.y = -CARD_H / 2;
-    cassette.clarity.value = studyClear ? 1 : 0;
     study.add(cassette.group);
     studyCassette = cassette;
     printZ = [];
@@ -1124,18 +1070,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (Math.abs(detail - detailGoal) > 1e-3) moving = true;
     else detail = detailGoal;
 
-    // The frosted cover clears from the top down once the card stands out of
-    // the stack, and frosts again as it sinks back.
-    const clarityTarget = !overviewTarget && lift.value > PREVIEW_LIFT - 0.5 ? 1 : 0;
-    if (selected) {
-      const c = selected.clarity;
-      const next = reduced ? clarityTarget : MathUtils.lerp(c.value, clarityTarget, 1 - Math.exp(-dt * (clarityTarget ? 3.2 : 9)));
-      if (Math.abs(next - clarityTarget) > 1e-3) {
-        c.value = next;
-        moving = true;
-      } else c.value = clarityTarget;
-    }
-
     // Menus pull the camera back so the field reads as a backdrop.
     const overviewGoal = overviewTarget ? 1 : 0;
     overview = reduced ? overviewGoal : MathUtils.lerp(overview, overviewGoal, 1 - Math.exp(-dt * 3));
@@ -1293,11 +1227,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       // Keep the exploded stack centred on the orbit target.
       const front = 0.3 + Math.max(0, n - 1) * 0.42 + 1.85;
       studyCassette.group.position.z = MathUtils.lerp(0, -(front - 1.5) / 2, explode.value);
-      const c = studyCassette.clarity;
-      const goalClarity = studyClear ? 1 : 0;
-      c.value = reduced ? goalClarity : MathUtils.lerp(c.value, goalClarity, 1 - Math.exp(-dt * 6));
-      if (Math.abs(c.value - goalClarity) > 1e-3) moving = true;
-      else c.value = goalClarity;
     }
     if (cameraGoal) {
       const k = reduced ? 1 : 1 - Math.exp(-dt * 5.5);
@@ -1742,10 +1671,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         sharpeners = [];
       }
       cameraGoal = (exploded ? STUDY_EXPLODED : STUDY_HOME).clone();
-      invalidate();
-    },
-    setClear(next) {
-      studyClear = next;
       invalidate();
     },
     resetView() {
