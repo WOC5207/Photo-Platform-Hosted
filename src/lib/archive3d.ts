@@ -7,7 +7,8 @@ import { formatDateRange } from "@/lib/datetime";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
 import { formatPhotoExif } from "@/lib/exif";
 import { safeExternalHttpUrl } from "@/lib/externalUrl";
-import type { AlbumPhotos, ArchiveColumn, ArchiveFile } from "@/components/album3d/types";
+import { platformThemeScope, resolveDashboardThemeMode } from "@/lib/themeColor";
+import type { AlbumPhotos, ArchiveColumn, ArchiveFile, OwnerPalette } from "@/components/album3d/types";
 
 /** Albums shown in the field. Past this the scene stops being browsable. */
 const MAX_ALBUMS = 160;
@@ -105,6 +106,58 @@ export async function loadArchive(locale: string): Promise<{ files: ArchiveFile[
   }
 
   return { files, columns };
+}
+
+/**
+ * Every photographer's saved site colours, by username, for the 3D screens
+ * under their address. Only accounts that coloured at least one mode are
+ * listed; everyone else keeps the platform's palette there.
+ */
+export async function loadOwnerPalettes(): Promise<Record<string, OwnerPalette>> {
+  const rows = await prisma.siteSettings.findMany({
+    where: { owner: { status: "active" } },
+    select: {
+      owner: { select: { username: true } },
+      dashboardThemeMode: true,
+      backgroundColor: true,
+      surfaceColor: true,
+      fieldColor: true,
+      textColor: true,
+      themeColor: true,
+      darkBackgroundColor: true,
+      darkSurfaceColor: true,
+      darkFieldColor: true,
+      darkTextColor: true,
+      darkThemeColor: true
+    }
+  });
+
+  const palettes: Record<string, OwnerPalette> = {};
+  for (const row of rows) {
+    const scope = platformThemeScope(
+      {
+        backgroundColor: row.backgroundColor,
+        surfaceColor: row.surfaceColor,
+        fieldColor: row.fieldColor,
+        textColor: row.textColor,
+        themeColor: row.themeColor
+      },
+      {
+        backgroundColor: row.darkBackgroundColor,
+        surfaceColor: row.darkSurfaceColor,
+        fieldColor: row.darkFieldColor,
+        textColor: row.darkTextColor,
+        themeColor: row.darkThemeColor
+      }
+    );
+    if (!scope.style) continue;
+    palettes[row.owner.username] = {
+      className: scope.className,
+      style: scope.style,
+      dashboard: resolveDashboardThemeMode(row.dashboardThemeMode) === "MATCH_SITE"
+    };
+  }
+  return palettes;
 }
 
 /** Prints laid on the light table. Past this the classic page shows the rest. */

@@ -13,7 +13,7 @@ import { GameMenu, Hints, MENU_SCREENS, Rolling, pad, wrap, type MenuItem } from
 import { AlbumPhotosContext } from "./AlbumPhotosFeed";
 import { StageContext } from "./StageContext";
 import styles from "./ArchiveSite.module.css";
-import { tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile } from "./types";
+import { tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile, type OwnerPalette } from "./types";
 import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
 
 export type { ArchiveColumn, ArchiveFile, ArchivePrint } from "./types";
@@ -134,11 +134,14 @@ function isInteractive(target: EventTarget | null): boolean {
 export default function ArchiveSite({
   files,
   columns,
+  palettes,
   viewer,
   children
 }: {
   files: ArchiveFile[];
   columns: ArchiveColumn[];
+  /** Photographers' saved site colours, by username. */
+  palettes: Record<string, OwnerPalette>;
   /** The signed-in photographer, if any. */
   viewer: { username: string; name: string } | null;
   children?: ReactNode;
@@ -189,6 +192,12 @@ export default function ArchiveSite({
   const carouselScreen = !missing && (screen.kind === "photographers" || screen.kind === "photographer");
   // One photographer's albums keep to their lane, so a visitor can't wander into someone else's by accident.
   const lane = !missing && (screen.kind === "albumSelect" || screen.kind === "album") ? columnIndex : -1;
+
+  // Inside a photographer's address the site wears their colours, as their
+  // classic site does; the carousel of everyone keeps the platform's, and
+  // their Dashboard follows its own setting.
+  const ownPalette = "username" in screen && screen.kind !== "photographer" ? palettes[screen.username] : undefined;
+  const palette = ownPalette && (screen.kind !== "studio" || ownPalette.dashboard) ? ownPalette : undefined;
 
   const [status, setStatus] = useState<EngineStatus>("loading");
   // Frames stayed slow at the lowest quality: offer the classic page once.
@@ -456,13 +465,15 @@ export default function ArchiveSite({
         if (!disposed) setStatus("unsupported");
       });
 
-    // Follow the theme toggle and the admin's public palette.
+    // Follow the theme toggle, the admin's public palette and a
+    // photographer's own, which comes and goes on the root (see `palette`).
     const syncPalette = () => {
       // The theme class lands before the new custom properties apply.
       requestAnimationFrame(() => engineRef.current?.setPalette(readPalette(root)));
     };
     const observer = new MutationObserver(syncPalette);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    observer.observe(root, { attributes: true, attributeFilter: ["class", "style"] });
     const scheme = window.matchMedia("(prefers-color-scheme: dark)");
     scheme.addEventListener("change", syncPalette);
 
@@ -797,7 +808,7 @@ export default function ArchiveSite({
   return (
     <AlbumPhotosContext.Provider value={setAlbum}>
     <StageContext.Provider value={stage}>
-    <div ref={rootRef} className={`${styles.root} album3d relative h-dvh w-full overflow-hidden bg-page text-fg`}>
+    <div ref={rootRef} className={`${styles.root} album3d relative h-dvh w-full overflow-hidden bg-page text-fg ${palette?.className ?? ""}`} style={palette?.style}>
       <div
         aria-hidden="true"
         className={`absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${ready ? "opacity-100" : "opacity-0"}`}

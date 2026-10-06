@@ -1,5 +1,7 @@
 /** Data handed from the server page to the 3D album archive. */
 
+import type { CSSProperties } from "react";
+
 /**
  * What the poster easel's pick() adds to a rail card's or a layer's index.
  * Kept here rather than in poster.ts so screens can read them without
@@ -40,6 +42,18 @@ export interface ArchiveColumn {
   bookingEnabled: boolean;
   photoCount: number;
   fileIndexes: number[];
+}
+
+/**
+ * A photographer's saved site colours, scoped the way the platform's own
+ * palette is (see platformThemeScope): each mode they coloured replaces the
+ * platform's, and a mode they left empty keeps it.
+ */
+export interface OwnerPalette {
+  className: string;
+  style: CSSProperties;
+  /** Their Dashboard matches their site rather than keeping the platform's look. */
+  dashboard: boolean;
 }
 
 /** One photo of an album, for the light table and the photo screen. */
