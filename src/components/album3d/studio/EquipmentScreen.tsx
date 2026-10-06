@@ -9,7 +9,7 @@ import { QUICK_EQUIPMENT_STATUSES } from "@/lib/equipment";
 import { equipmentUid } from "@/lib/equipmentQrLabel";
 import { Hints, Rolling, pad } from "../hud";
 import styles from "../ArchiveSite.module.css";
-import { BookingPanel, fieldClass, isInteractive, metaLabel, primaryClass, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
+import { BookingPanel, StepButtons, fieldClass, isInteractive, metaLabel, primaryClass, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { RAIL_PICK } from "../types";
 import { GEAR_CARD_ASPECT, STATUS_KEY, paintGearCard, useImages, useQrImage } from "./gear";
 import { StudioHeading } from "./shared";
@@ -173,13 +173,16 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
 
         {item ? (
           <section aria-labelledby="studio-gear-title" className="mt-6 grid gap-3">
-            <p className={metaLabel}>
-              {t("studioGearCount")}{" "}
-              <span className="text-fg">
-                <Rolling value={pad(index + 1)} />
-              </span>{" "}
-              / {pad(items.length)}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className={metaLabel}>
+                {t("studioGearCount")}{" "}
+                <span className="text-fg">
+                  <Rolling value={pad(index + 1)} />
+                </span>{" "}
+                / {pad(items.length)}
+              </p>
+              {items.length > 1 && <StepButtons onStep={turn} atStart={index === 0} atEnd={index >= items.length - 1} />}
+            </div>
             <div>
               <h2 id="studio-gear-title" className="text-xl font-bold uppercase tracking-[-0.01em]">
                 {item.name}

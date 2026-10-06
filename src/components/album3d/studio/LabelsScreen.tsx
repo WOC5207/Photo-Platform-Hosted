@@ -27,7 +27,7 @@ import {
 } from "@/lib/equipmentQrLabel";
 import { Hints, Rolling, pad } from "../hud";
 import styles from "../ArchiveSite.module.css";
-import { BookingPanel, fieldClass, isInteractive, metaLabel, primaryClass, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
+import { BookingPanel, StepButtons, fieldClass, isInteractive, metaLabel, primaryClass, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { paintBlankPoster } from "../creators/shared";
 import { RAIL_PICK } from "../types";
 import { useImages } from "./gear";
@@ -337,8 +337,9 @@ export default function LabelsScreen({ account, labels }: { account: StudioAccou
                 </label>
               </div>
               {item ? (
-                <div className="flex items-center justify-between gap-3 border border-border-strong bg-page/70 px-3 py-2">
-                  <div className="min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border border-border-strong bg-page/70 px-3 py-2">
+                  {items.length > 1 && <StepButtons onStep={turn} atStart={index === 0} atEnd={index >= items.length - 1} />}
+                  <div className="min-w-[8rem] flex-1">
                     <p className={metaLabel}>
                       <Rolling value={pad(index + 1)} /> / {pad(items.length)}
                     </p>

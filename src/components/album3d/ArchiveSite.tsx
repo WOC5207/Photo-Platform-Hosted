@@ -839,7 +839,7 @@ export default function ArchiveSite({
       )}
 
       {!studyHeader && (
-        <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-4 px-[var(--edge)] pt-4 wide:pt-9">
+        <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 px-[var(--edge)] pt-4 sm:gap-4 wide:pt-9">
           <div className="pointer-events-auto flex items-start gap-10">
             <Link href={screenPath({ kind: "title" })} className="block leading-none">
               <span className="block text-xl font-extrabold uppercase tracking-[-0.02em] wide:text-4xl">{t("brandTop")}</span>
@@ -881,15 +881,23 @@ export default function ArchiveSite({
                 href={screenPath({ kind: "studio", username: viewer.username, page: "home" })}
                 scroll={false}
                 aria-label={t("signedInAs", { name: viewer.name })}
-                className="inline-flex min-h-11 max-w-40 items-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text"
+                className="inline-flex min-h-11 min-w-11 max-w-40 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:px-0"
               >
-                <i aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
-                <span className="truncate">{viewer.name}</span>
+                {/* On phones the name gives way to an account mark, so the header's controls all fit. */}
+                <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 shrink-0 sm:hidden" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <circle cx="8" cy="5.5" r="3" />
+                  <path d="M2.5 14.5c.8-3 2.9-4.5 5.5-4.5s4.7 1.5 5.5 4.5" />
+                </svg>
+                <i aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-success max-sm:-ml-1.5 max-sm:self-end max-sm:mb-3" />
+                <span className="truncate max-sm:sr-only">{viewer.name}</span>
               </Link>
             )}
             <SiteModeSwitch current="3d" compact />
-            <LanguageSwitcher />
-            <ThemeToggle label={tc("toggleTheme")} />
+            <LanguageSwitcher compact />
+            {/* Phones choose the theme under Settings; the header has no room for it beside the account. */}
+            <span className="max-sm:hidden">
+              <ThemeToggle label={tc("toggleTheme")} />
+            </span>
           </nav>
         </header>
       )}
