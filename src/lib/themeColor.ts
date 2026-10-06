@@ -29,7 +29,7 @@ export type DashboardThemeMode = (typeof DASHBOARD_THEME_MODES)[number];
 export function resolveDashboardThemeMode(
   value?: string | null
 ): DashboardThemeMode {
-  return value === "MATCH_SITE" ? "MATCH_SITE" : "PLATFORM";
+  return value === "PLATFORM" ? "PLATFORM" : "MATCH_SITE";
 }
 
 export type SiteThemeColors = {

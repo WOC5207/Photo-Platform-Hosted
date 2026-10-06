@@ -133,7 +133,7 @@ export async function updateSiteSettings(
       darkFieldColor: formData.get("darkFieldColor") ?? "",
       darkTextColor: formData.get("darkTextColor") ?? "",
       darkThemeColor: formData.get("darkThemeColor") ?? "",
-      dashboardThemeMode: formData.get("dashboardThemeMode") ?? "PLATFORM"
+      dashboardThemeMode: formData.get("dashboardThemeMode") ?? "MATCH_SITE"
     });
     if (!parsed.success) return { error: "validation" };
     const lightContrast = siteThemeMinimumContrast(

@@ -389,12 +389,21 @@ test.describe.serial("management workflows", () => {
       ? "MATCH_SITE"
       : "PLATFORM";
 
-    try {
-      await matchMode.check();
+    const save = async () => {
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(
         page.getByRole("status").filter({ hasText: /^Saved$/ })
       ).toBeVisible();
+    };
+
+    try {
+      // Matching is the default, so start from the platform look to see it switch.
+      if (originalMode === "MATCH_SITE") {
+        await platformMode.check();
+        await save();
+      }
+      await matchMode.check();
+      await save();
       const dashboardShell = page.locator(".site-dual-theme").first();
       await expect(dashboardShell).toBeVisible();
       await expect
@@ -409,16 +418,11 @@ test.describe.serial("management workflows", () => {
       await expect(page.locator(".site-dual-theme")).toHaveCount(0);
     } finally {
       await page.goto("/en/dashboard/settings?section=appearance");
-      if (originalMode === "PLATFORM") {
-        await platformMode.check();
-      } else {
-        await matchMode.check();
-      }
-      if (await page.getByRole("button", { name: "Save", exact: true }).isEnabled()) {
-        await page.getByRole("button", { name: "Save", exact: true }).click();
-        await expect(
-          page.getByRole("status").filter({ hasText: /^Saved$/ })
-        ).toBeVisible();
+      // Save shows only with unsaved changes, so restore only on a change.
+      const original = originalMode === "PLATFORM" ? platformMode : matchMode;
+      if (!(await original.isChecked())) {
+        await original.check();
+        await save();
       }
     }
   });
