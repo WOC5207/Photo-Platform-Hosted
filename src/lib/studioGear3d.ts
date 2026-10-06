@@ -133,7 +133,7 @@ export async function loadStudioPreparation(user: User, locale: string, eventId:
     where: { ownerId: user.id, ...(event ? { bookingDay: { bookingEventId: event } } : {}) },
     orderBy: [{ shootDate: "asc" }, { createdAt: "desc" }],
     include: {
-      bookingDay: { select: { bookingEvent: { select: { titleEn: true, titleZh: true } } } },
+      bookingDay: { select: { bookingEvent: { select: { id: true, titleEn: true, titleZh: true } } } },
       items: { select: { equipmentId: true, eventState: true } }
     }
   });
@@ -150,6 +150,7 @@ export async function loadStudioPreparation(user: User, locale: string, eventId:
         name: c.name,
         date: shootDate(c.shootDate, locale),
         notes: c.notes,
+        eventId: owner?.id ?? null,
         eventTitle: owner ? pickText(locale, owner.titleEn, owner.titleZh) : "",
         items: c.items.length,
         gear: gearItems.length,
