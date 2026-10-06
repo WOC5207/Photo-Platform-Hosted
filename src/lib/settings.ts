@@ -72,7 +72,7 @@ const DEFAULTS: Omit<SiteSettings, "id" | "ownerId"> = {
   darkFieldColor: "",
   darkTextColor: "",
   darkThemeColor: "",
-  dashboardThemeMode: "PLATFORM",
+  dashboardThemeMode: "MATCH_SITE",
   backgroundImage: "",
   logo: "",
   creditTermEn: "",

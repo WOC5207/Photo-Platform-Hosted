@@ -781,9 +781,9 @@ model SiteSettings {
   darkFieldColor                    String    @default("")
   darkTextColor                     String    @default("")
   darkThemeColor                    String    @default("")
-  // "PLATFORM" keeps the management workspace neutral; "MATCH_SITE" applies
-  // the public light/dark semantic palettes to this photographer's dashboard.
-  dashboardThemeMode                String    @default("PLATFORM")
+  // "MATCH_SITE" (the default) applies the public light/dark semantic
+  // palettes to this photographer's dashboard; "PLATFORM" keeps it neutral.
+  dashboardThemeMode                String    @default("MATCH_SITE")
   // Empty = no background image. Otherwise a token; file lives at
   // <PHOTOS_DIR>/_site/<token>.webp, served via /api/site/<token>.webp.
   backgroundImage                   String    @default("")

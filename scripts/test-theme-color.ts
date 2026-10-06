@@ -24,8 +24,8 @@ assert.equal(normalizeThemeColor("red"), null);
 assert.equal(normalizeThemeColor("#abcd"), null);
 assert.equal(resolveDashboardThemeMode("MATCH_SITE"), "MATCH_SITE");
 assert.equal(resolveDashboardThemeMode("PLATFORM"), "PLATFORM");
-assert.equal(resolveDashboardThemeMode("unexpected"), "PLATFORM");
-assert.equal(resolveDashboardThemeMode(null), "PLATFORM");
+assert.equal(resolveDashboardThemeMode("unexpected"), "MATCH_SITE");
+assert.equal(resolveDashboardThemeMode(null), "MATCH_SITE");
 
 assert.equal(themeColorForeground("#ffffff"), "#211d18");
 assert.equal(themeColorForeground("#000000"), "#fffefb");
