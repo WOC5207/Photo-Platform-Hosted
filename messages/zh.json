@@ -2179,8 +2179,6 @@
     "notRecorded": "未记录",
     "contactSheet": "样张",
     "cover": "盖板",
-    "coverClear": "透明",
-    "coverFrosted": "磨砂",
     "menuLabel": "主菜单",
     "menuTitle": "影像档案",
     "menuPhotographers": "摄影师",
@@ -2527,6 +2525,8 @@
     "studioStep_publish": "发布相册，让它出现在档案中",
     "studioStepDone": "已完成",
     "headerControls": "网站控制",
+    "studioOtherLists": "其他清单",
+    "studioHintEvent": "活动",
     "studioCreditPlatforms": "{name} 的关联平台",
     "studioCreditPlatform": "打开链接"
   }

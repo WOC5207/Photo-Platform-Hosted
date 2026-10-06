@@ -250,6 +250,7 @@ export interface StudioChecklistSummary {
   date: string;
   notes: string;
   /** The booking event the checklist's day belongs to, if any. */
+  eventId: string | null;
   eventTitle: string;
   items: number;
   /** Inventory items on the list, and how far along they are. */

@@ -19,20 +19,17 @@ export default function StudyScreen({
   file,
   owner,
   exploded,
-  clear,
   touch,
   focus,
   shareUrl,
   onFocus,
   onBack,
   onExplode,
-  onClear,
   onReset
 }: {
   file: ArchiveFile;
   owner: string;
   exploded: boolean;
-  clear: boolean;
   touch: boolean;
   /** The print brought to the front. */
   focus: number;
@@ -41,7 +38,6 @@ export default function StudyScreen({
   onFocus: (index: number) => void;
   onBack: () => void;
   onExplode: (exploded: boolean) => void;
-  onClear: (clear: boolean) => void;
   onReset: () => void;
 }) {
   const t = useTranslations("album3d");
@@ -90,20 +86,6 @@ export default function StudyScreen({
       <div className="pointer-events-none absolute inset-x-[var(--edge)] top-20 wide:hidden">
         <p className={metaLabel}>{owner}</p>
         <h1 aria-hidden="true" className="mt-1 text-lg font-semibold">{file.title}</h1>
-      </div>
-
-      <div role="group" aria-label={t("cover")} className={`${styles.surface} flex border border-fg/30 bg-page/70`}>
-        {([true, false] as const).map((value) => (
-          <button
-            key={String(value)}
-            type="button"
-            aria-pressed={clear === value}
-            onClick={() => onClear(value)}
-            className={`min-h-11 px-4 text-xs transition wide:px-5 wide:text-sm ${clear === value ? "bg-fg text-page" : "hover:bg-control"}`}
-          >
-            {value ? t("coverClear") : t("coverFrosted")}
-          </button>
-        ))}
       </div>
 
       {print && (

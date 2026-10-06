@@ -2179,8 +2179,6 @@
     "notRecorded": "Not recorded",
     "contactSheet": "Contact sheet",
     "cover": "Cover",
-    "coverClear": "Clear",
-    "coverFrosted": "Frosted",
     "menuLabel": "Main menu",
     "menuTitle": "Photo archive",
     "menuPhotographers": "Photographers",
@@ -2527,6 +2525,8 @@
     "studioStep_publish": "Publish an album so it shows in the archive",
     "studioStepDone": "Done",
     "headerControls": "Site controls",
+    "studioOtherLists": "Other lists",
+    "studioHintEvent": "event",
     "studioCreditPlatforms": "{name}'s linked platforms",
     "studioCreditPlatform": "Open link"
   }
