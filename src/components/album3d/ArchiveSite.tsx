@@ -194,10 +194,15 @@ export default function ArchiveSite({
   const lane = !missing && (screen.kind === "albumSelect" || screen.kind === "album") ? columnIndex : -1;
 
   // Inside a photographer's address the site wears their colours, as their
-  // classic site does; the carousel of everyone keeps the platform's, and
-  // their Dashboard follows its own setting.
-  const ownPalette = "username" in screen && screen.kind !== "photographer" ? palettes[screen.username] : undefined;
-  const palette = ownPalette && (screen.kind !== "studio" || ownPalette.dashboard) ? ownPalette : undefined;
+  // classic site does, and their Dashboard follows its own setting. Every
+  // other screen (menus, sign-in, the carousel, the creators) wears the
+  // signed-in photographer's colours, or the platform's for visitors.
+  const visiting = "username" in screen && screen.kind !== "photographer" ? screen.username : undefined;
+  const addressPalette = visiting ? palettes[visiting] : undefined;
+  const palette =
+    screen.kind === "studio"
+      ? addressPalette?.dashboard ? addressPalette : undefined
+      : visiting ? addressPalette : viewer ? palettes[viewer.username] : undefined;
 
   const [status, setStatus] = useState<EngineStatus>("loading");
   // Frames stayed slow at the lowest quality: offer the classic page once.
