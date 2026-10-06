@@ -81,6 +81,20 @@ export async function loadStudioHome(user: User, locale: string, creditFallback:
   return {
     account: studioAccount(user),
     listed: listed > 0,
+    styled: [
+      settings.logo,
+      settings.backgroundImage,
+      settings.themeColor,
+      settings.backgroundColor,
+      settings.surfaceColor,
+      settings.fieldColor,
+      settings.textColor,
+      settings.darkThemeColor,
+      settings.darkBackgroundColor,
+      settings.darkSurfaceColor,
+      settings.darkFieldColor,
+      settings.darkTextColor
+    ].some(Boolean),
     events,
     drafts,
     photos,

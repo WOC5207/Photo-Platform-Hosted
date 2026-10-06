@@ -16,6 +16,8 @@ export interface StudioHome {
   account: StudioAccount;
   /** The archive lists them: they have a published album visitors can see. */
   listed: boolean;
+  /** They've set a logo, background image or any of their site's colours. */
+  styled: boolean;
   events: number;
   drafts: number;
   photos: number;
