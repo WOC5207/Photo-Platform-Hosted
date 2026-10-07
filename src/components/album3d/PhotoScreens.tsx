@@ -132,6 +132,8 @@ export function PhotoScreen({
   const total = album.photos.length;
   const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
   const [loaded, setLoaded] = useState<string | null>(null);
+  // The photo last shown in full stays under the next one until that has loaded and faded in.
+  const [under, setUnder] = useState<AlbumPhotos["photos"][number] | null>(null);
   const [cover, setCover] = useState(album.coverId);
   const [saving, startSaving] = useTransition();
   useEffect(() => setCover(album.coverId), [album.coverId]);
@@ -150,6 +152,12 @@ export function PhotoScreen({
     return () => window.removeEventListener("resize", measure);
   }, []);
 
+  useEffect(() => {
+    if (loaded !== photo.id || !printUp) return;
+    const timer = window.setTimeout(() => setUnder(photo), 320);
+    return () => window.clearTimeout(timer);
+  }, [loaded, photo, printUp]);
+
   const rect = viewport ? photoRect(viewport.width, viewport.height) : null;
   const shootLine = [photo.exif.focalLength, photo.exif.exposure, photo.exif.date].filter(Boolean).join(" · ");
 
@@ -160,6 +168,18 @@ export function PhotoScreen({
           className="pointer-events-none absolute"
           style={{ left: rect.left, top: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top }}
         >
+          {under && under.id !== photo.id && printUp && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={`under-${under.id}`}
+              src={under.med}
+              srcSet={`${under.med} 1280w, ${under.full} 2560w`}
+              sizes="64vw"
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             key={photo.id}
@@ -169,7 +189,7 @@ export function PhotoScreen({
             alt={photo.caption || file.title}
             decoding="async"
             onLoad={() => setLoaded(photo.id)}
-            className={`h-full w-full object-contain transition-opacity duration-300 motion-reduce:transition-none ${
+            className={`relative h-full w-full object-contain transition-opacity duration-300 motion-reduce:transition-none ${
               loaded === photo.id && printUp ? "opacity-100" : "opacity-0"
             }`}
           />

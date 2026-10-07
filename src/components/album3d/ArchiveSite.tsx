@@ -492,7 +492,8 @@ export default function ArchiveSite({
           columns: columns.map((c) => c.fileIndexes),
           palette: readPalette(root),
           reducedMotion: prefersReduced(readMotion()),
-          hud: root,
+          // Not the root, whose style changes are watched for palettes.
+          hud: document.documentElement,
           lowPower: coarse || window.innerWidth < 768,
           archiveLabel: t("archiveLabel"),
           onPick: (index) => handlers.current.choose(index),
@@ -523,7 +524,14 @@ export default function ArchiveSite({
 
     // Follow the theme toggle, the admin's public palette and a
     // photographer's own, which comes and goes on the root (see `palette`).
+    let theming = 0;
     const syncPalette = () => {
+      // The page's colours ease over while the scene's spread (see data-theming in the CSS).
+      if (!prefersReduced(readMotion())) {
+        root.dataset.theming = "";
+        window.clearTimeout(theming);
+        theming = window.setTimeout(() => delete root.dataset.theming, 650);
+      }
       // The theme class lands before the new custom properties apply.
       requestAnimationFrame(() => engineRef.current?.setPalette(readPalette(root)));
     };
@@ -535,6 +543,7 @@ export default function ArchiveSite({
 
     return () => {
       disposed = true;
+      window.clearTimeout(theming);
       scheme.removeEventListener("change", syncPalette);
       observer.disconnect();
       engineRef.current?.dispose();
@@ -547,6 +556,13 @@ export default function ArchiveSite({
   useEffect(() => {
     if (ready) engineRef.current?.select(selected);
   }, [selected, ready]);
+
+  // The Dashboard's scenes load while the browser is idle, so none waits on its first visit.
+  useEffect(() => {
+    if (!ready || !studio) return;
+    const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 1200));
+    idle(() => engineRef.current?.prefetchStages());
+  }, [ready, studio]);
 
   // Which stage the scene shows: the carousel for photographers, the light
   // table for an album's photos, the study, or the archive field.

@@ -589,3 +589,16 @@
     max-height: none;
   }
 }
+
+/* A theme or palette change: the page's colours ease over while the scene's spread. */
+.root[data-theming],
+.root[data-theming] :global(*),
+.root[data-theming] :global(*)::before,
+.root[data-theming] :global(*)::after {
+  transition:
+    color 0.45s,
+    background-color 0.45s,
+    border-color 0.45s,
+    fill 0.45s,
+    stroke 0.45s !important;
+}

@@ -551,7 +551,14 @@ export function createLightTable(context: {
       const next = MathUtils.clamp(index, 0, Math.max(0, sources.length - 1));
       if (next !== focusIndex) {
         dropRaisedTexture();
+        // Stepping photos swaps the raised print in place: the next one takes
+        // its place at once while the last settles back onto the table.
+        const swap = raisedTarget && slots[focusIndex] && slots[next] ? slots[focusIndex].up.value : 0;
         focusIndex = next;
+        if (swap > 0.99) {
+          slots[next].up.value = 1;
+          slots[next].up.velocity = 0;
+        }
         if (raisedTarget) sharpenRaised();
       }
       feedTextures();

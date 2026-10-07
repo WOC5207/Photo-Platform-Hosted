@@ -215,6 +215,8 @@ export interface ArchiveEngine {
   showRack(): Promise<Rack | null>;
   /** A photographer's own albums as cards, loaded the first time it is shown. */
   showShelf(): Promise<Shelf | null>;
+  /** Fetches the Dashboard's scenes ahead of their first use. */
+  prefetchStages(): void;
   /** Where taps, swipes and the wheel on the board or the deck go. */
   setStageHandler(handler: ((input: StageInput) => void) | null): void;
   /** Where raw pointers on the stage go first (see StageDrag). */
@@ -1009,11 +1011,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const token = ++stageToken;
     let ready = loading[name] as Promise<NonNullable<(typeof stages)[K]>> | undefined;
     if (!ready) {
-      ready = create().then((module) => {
+      ready = create().then(async (module) => {
         if (disposed) module.dispose();
         else {
           stages[name] = module;
           module.resize(width, height);
+          // Compile its shaders before it shows, so the wipe into it doesn't stall on them.
+          await renderer.compileAsync(module.scene, module.camera).catch(() => undefined);
         }
         return module;
       });
@@ -1085,6 +1089,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   // A still frame is drawn at the screen's full density (3x on most phones),
   // past the moving tiers' cap, so cards, posters and text aren't upscaled.
   const restPixels = () => Math.min(window.devicePixelRatio || 1, 3);
+  // When things started moving, and whether a frame came slow since.
+  let movingSince = -1;
+  let slowMove = false;
   function setPixels(ratio: number) {
     if (renderer.getPixelRatio() === ratio) return;
     renderer.setPixelRatio(ratio);
@@ -1381,12 +1388,22 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     else moving = stepField(dt);
     // The tier's pixel ratio holds while things move; the frame things come
     // to rest on is drawn at the screen's own, so a still poster, cover or
-    // print is never left upscaled and soft.
-    setPixels(moving || wipe < 1 ? tierPixels() : restPixels());
+    // print is never left upscaled and soft. A short move (a hover, a step)
+    // keeps the screen's own, unless its frames come slow, so the picture
+    // doesn't soften and sharpen again on every touch.
+    const active = moving || wipe < 1 || carry !== null || fieldDrag !== null;
+    if (!active) {
+      movingSince = -1;
+      slowMove = false;
+    } else {
+      if (movingSince < 0) movingSince = now;
+      if (ms > 26) slowMove = true;
+    }
+    setPixels(active && (slowMove || now - movingSince >= 150) ? tierPixels() : restPixels());
     renderer.render(...view());
     rendered = true;
     if (wipe < 1) {
-      wipe = reduced ? 1 : Math.min(1, wipe + dt / WIPE_SECONDS);
+      wipe = reduced ? 1 : Math.min(1, wipe + dt / wipeSeconds);
       // Easing out, so the edge is on screen from the first frames.
       wipeUniforms.progress.value = 1 - (1 - wipe) ** 2;
       renderer.autoClear = false;
@@ -1436,13 +1453,22 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const WIPE_SECONDS = 0.5;
   let wipeTexture: FramebufferTexture | null = null;
   const bufferSize = new Vector2();
-  const wipeUniforms = { map: { value: null as FramebufferTexture | null }, progress: { value: 1 }, edge: { value: new Color() } };
+  const wipeUniforms = {
+    map: { value: null as FramebufferTexture | null },
+    progress: { value: 1 },
+    edge: { value: new Color() },
+    // 1 for a colour change: the new colours spread out from the middle instead of wiping across.
+    spread: { value: 0 },
+    aspect: { value: 1 }
+  };
+  let wipeSeconds = WIPE_SECONDS;
   const wipeScene = new Scene();
   const wipeCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const wipeQuad = new Mesh(
     new PlaneGeometry(2, 2),
     new ShaderMaterial({
       uniforms: wipeUniforms,
+      transparent: true,
       depthTest: false,
       depthWrite: false,
       vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
@@ -1450,11 +1476,18 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         uniform sampler2D map;
         uniform float progress;
         uniform vec3 edge;
+        uniform float spread;
+        uniform float aspect;
         varying vec2 vUv;
         void main() {
+          vec3 old = texture2D(map, vUv).rgb;
+          if (spread > 0.5) {
+            float r = length((vUv - 0.5) * vec2(aspect, 1.0)) / length(vec2(aspect, 1.0) * 0.5);
+            gl_FragColor = vec4(old, smoothstep(0.0, 0.25, r - (progress * 1.25 - 0.25)));
+            return;
+          }
           float k = vUv.x * 0.82 + (1.0 - vUv.y) * 0.18 - (progress * 1.3 - 0.15);
           if (k < 0.0) discard;
-          vec3 old = texture2D(map, vUv).rgb;
           float band = 1.0 - smoothstep(0.0, 0.012, k);
           float shade = 1.0 - smoothstep(0.0, 0.08, k);
           gl_FragColor = vec4(mix(old * (1.0 - shade * 0.18), edge, band), 1.0);
@@ -1464,8 +1497,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   wipeQuad.frustumCulled = false;
   wipeScene.add(wipeQuad);
 
-  /** Keep the frame on screen now, to wipe away once the next stage draws. */
-  function snapshot() {
+  /** Keep the frame on screen now, to wipe away once the next stage draws (or, `spread`, to fade out from the middle). */
+  function snapshot(spread = false) {
     if (reduced || !rendered || lost) return;
     renderer.render(...view());
     // A wipe still running stays in the picture, so leaving again mid-wipe
@@ -1483,6 +1516,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     renderer.copyFramebufferToTexture(wipeTexture);
     wipeUniforms.map.value = wipeTexture;
     wipeUniforms.edge.value.setStyle(palette.accent, SRGBColorSpace).convertLinearToSRGB();
+    wipeUniforms.spread.value = spread ? 1 : 0;
+    wipeUniforms.aspect.value = width / height;
+    wipeSeconds = spread ? 0.6 : WIPE_SECONDS;
     wipe = 0;
     invalidate();
   }
@@ -1991,6 +2027,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       invalidate();
     },
     setPalette(next) {
+      // The root's style also carries the detail progress; only real colour changes count.
+      if ((Object.keys(next) as (keyof EnginePalette)[]).every((k) => next[k] === palette[k])) return;
+      // A theme or colour change spreads out over the scene, unless a wipe already hides it.
+      if (wipe >= 1) snapshot(true);
       palette = next;
       applyPalette();
       invalidate();
@@ -2047,6 +2087,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     },
     showShelf() {
       return showStage("shelf", () => import("./shelf").then((m) => m.createShelf(stageContext())));
+    },
+    prefetchStages() {
+      void Promise.all([import("./board"), import("./deck"), import("./poster"), import("./reel"), import("./rack")]).catch(() => undefined);
     },
     setStageHandler(handler) {
       stageHandler = handler;
