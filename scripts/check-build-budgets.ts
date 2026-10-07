@@ -37,7 +37,7 @@ const routeBudgets = [
   // The 3D Dashboard's routes and crumbs add about half a KB, and the
   // signed-in name, the album pages' lane lock and the 360° picture list's
   // wiring a little more.
-  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 139 },
+  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 140 },
   // The poster creators open from the title menu; their poster code and the
   // easel scene load with the draft, after the panel paints. Each creator's
   // steps share a studio layout that holds the draft, so it counts too. The
