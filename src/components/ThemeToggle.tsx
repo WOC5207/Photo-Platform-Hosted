@@ -23,7 +23,14 @@ function effectiveTheme(): Theme {
  * clicking here saves an explicit override to localStorage that sticks
  * regardless of future OS changes.
  */
-export default function ThemeToggle({ label }: { label: string }) {
+export default function ThemeToggle({
+  label,
+  compact = false
+}: {
+  label: string;
+  /** A smaller box on phones, matching a compact LanguageSwitcher. */
+  compact?: boolean;
+}) {
   const [theme, setTheme] = useState<Theme | null>(null);
 
   useEffect(() => {
@@ -61,7 +68,7 @@ export default function ThemeToggle({ label }: { label: string }) {
       aria-pressed={theme === null ? undefined : theme === "dark"}
       aria-label={label || "Toggle light/dark theme"}
       title={label || "Toggle light/dark theme"}
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border-strong bg-raised text-fg-muted transition-colors hover:border-accent hover:text-accent"
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border-strong bg-raised text-fg-muted transition-colors hover:border-accent hover:text-accent ${compact ? "max-sm:h-10 max-sm:w-10" : ""}`}
     >
       <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         {theme === "dark" ? <>

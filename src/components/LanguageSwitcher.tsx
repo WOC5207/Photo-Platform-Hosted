@@ -11,7 +11,7 @@ const LABELS: Record<AppLocale, string> = {
   en: "EN"
 };
 
-/** `compact`: on phones only the other language shows, as one button. */
+/** `compact`: on phones only the other language shows, as one square button. */
 export default function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -40,7 +40,7 @@ export default function LanguageSwitcher({ compact = false }: { compact?: boolea
   const href = `${pathname}${suffix}`;
 
   return (
-    <span role="group" aria-label={t("label")} className="inline-flex h-11 shrink-0 items-center gap-1 rounded-lg border border-border-strong bg-control p-0.5 text-sm">
+    <span role="group" aria-label={t("label")} className={`inline-flex h-11 shrink-0 items-center gap-1 rounded-lg border border-border-strong bg-control p-0.5 text-sm ${compact ? "max-sm:h-10 max-sm:w-10 max-sm:p-0" : ""}`}>
       {routing.locales.map((locale) => (
           <Link
             key={locale}
@@ -50,7 +50,7 @@ export default function LanguageSwitcher({ compact = false }: { compact?: boolea
             aria-label={locale === "zh" ? "中文" : "English"}
             aria-current={locale === current ? "page" : undefined}
             className={`inline-flex h-full min-w-11 items-center justify-center rounded-md px-2 transition-colors ${
-              compact && locale === current ? "max-sm:hidden " : ""
+              compact ? (locale === current ? "max-sm:hidden " : "max-sm:w-full max-sm:min-w-0 max-sm:px-0 ") : ""
             }${
               locale === current
                 ? "bg-raised font-semibold text-fg"
