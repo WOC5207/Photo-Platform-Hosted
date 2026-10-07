@@ -227,6 +227,31 @@ const APART_TURN = 0.5;
 const PHOTO_W = 4.25;
 const PHOTO_H = 3.0;
 
+/**
+ * An album's card stands landscape or portrait, after its cover, so the
+ * cover always fits its window whole: the field and the raised card show
+ * the same uncropped photograph. Both stand as tall as each other, so the
+ * stack keeps its skyline; a portrait card is narrower.
+ */
+interface CardShape {
+  cardW: number;
+  photoW: number;
+  photoH: number;
+}
+const LANDSCAPE: CardShape = { cardW: CARD_W, photoW: PHOTO_W, photoH: PHOTO_H };
+const PORTRAIT_PHOTO_W = (PHOTO_H * PHOTO_H) / PHOTO_W;
+const PORTRAIT: CardShape = { cardW: PORTRAIT_PHOTO_W + (CARD_W - PHOTO_W), photoW: PORTRAIT_PHOTO_W, photoH: PHOTO_H };
+const shapeFor = (aspect: number) => (aspect > 0 && aspect < 1 ? PORTRAIT : LANDSCAPE);
+const printAspect = (print?: EnginePrint) => (print && print.width > 0 && print.height > 0 ? print.width / print.height : 0);
+
+/** A photograph of this aspect fitted whole inside the shape's window. */
+function fitPhoto(shape: CardShape, aspect: number) {
+  if (!(aspect > 0)) return { w: shape.photoW, h: shape.photoH };
+  return aspect > shape.photoW / shape.photoH
+    ? { w: shape.photoW, h: shape.photoW / aspect }
+    : { w: shape.photoH * aspect, h: shape.photoH };
+}
+
 // Reference camera: a long lens, 59° azimuth and 19° elevation in the
 // archive, turning to an almost frontal view of the raised card.
 const direction = (yawDeg: number, elevationDeg: number) => {
@@ -256,8 +281,8 @@ type Cell = { lane: number; row: number };
 const cellKey = (c: Cell) => `${c.lane}:${c.row}`;
 
 /** The card body: origin at the bottom centre, darkening toward its base. */
-function cardGeometry() {
-  const geometry = new BoxGeometry(CARD_W, CARD_H, CARD_D, 1, 6, 1);
+function cardGeometry(width = CARD_W) {
+  const geometry = new BoxGeometry(width, CARD_H, CARD_D, 1, 6, 1);
   geometry.translate(0, CARD_H / 2, 0);
   const position = geometry.getAttribute("position");
   const colors = new Float32Array(position.count * 3);
@@ -312,6 +337,8 @@ function buildCassette(
   prints: EnginePrint[],
   blur?: MenuBlur
 ): Cassette {
+  const shape = shapeFor(printAspect(file.prints[0]));
+  const cardW = shape.cardW;
   const owned: { dispose(): void }[] = [];
   const own = <T extends { dispose(): void }>(thing: T) => {
     owned.push(thing);
@@ -327,7 +354,7 @@ function buildCassette(
   // Substrate and its amber light guide.
   const substrate = new Group();
   const plate = new Mesh(
-    own(new BoxGeometry(CARD_W - 0.24, CARD_H - 0.24, 0.02)),
+    own(new BoxGeometry(cardW - 0.24, CARD_H - 0.24, 0.02)),
     own(new MeshStandardMaterial({ color: color(palette.raised), roughness: 0.8 }))
   );
   plate.position.y = CARD_H / 2;
@@ -339,7 +366,7 @@ function buildCassette(
   guideMaterial.polygonOffsetFactor = -1;
   guideMaterial.polygonOffsetUnits = -2;
   const guide = new Mesh(own(new BoxGeometry(0.07, CARD_H - 0.42, 0.03)), guideMaterial);
-  guide.position.set(-CARD_W / 2 + 0.2, CARD_H / 2, 0.02);
+  guide.position.set(-cardW / 2 + 0.2, CARD_H / 2, 0.02);
   substrate.add(plate, guide);
   group.add(substrate);
 
@@ -348,13 +375,7 @@ function buildCassette(
   const photoAspects: number[] = [];
   const printEdge = own(new MeshStandardMaterial({ color: 0xfbf8f2, roughness: 0.7 }));
   const printMeshes = prints.map((print) => {
-    const aspect = print.width / Math.max(1, print.height);
-    let w = PHOTO_W;
-    let h = PHOTO_H;
-    if (print.width > 0 && print.height > 0) {
-      if (aspect > PHOTO_W / PHOTO_H) h = PHOTO_W / aspect;
-      else w = PHOTO_H * aspect;
-    }
+    const { w, h } = fitPhoto(shape, printAspect(print));
     // The raised card leans away from the camera into the field's fog;
     // its photographs stay clear of it.
     const face = own(imageMaterial({ color: color(palette.control), fog: false }));
@@ -386,7 +407,7 @@ function buildCassette(
   );
   // The reference prints its label top left; here it sits in the bottom
   // corner so it covers as little of the photograph as possible.
-  label.position.set(-CARD_W / 2 + 0.92, 0.62, 0.004);
+  label.position.set(-cardW / 2 + 0.92, 0.62, 0.004);
   label.renderOrder = 3;
   cover.add(label);
   group.add(cover);
@@ -396,10 +417,10 @@ function buildCassette(
   const screwMaterial = own(new MeshStandardMaterial({ color: color(palette.subtle), roughness: 0.3, metalness: 0.6 }));
   const screwGeometry = own(new CylinderGeometry(0.075, 0.075, 0.03, 16));
   for (const [x, y] of [
-    [-CARD_W / 2 + 0.22, 0.22],
-    [CARD_W / 2 - 0.22, 0.22],
-    [-CARD_W / 2 + 0.22, CARD_H - 0.22],
-    [CARD_W / 2 - 0.22, CARD_H - 0.22]
+    [-cardW / 2 + 0.22, 0.22],
+    [cardW / 2 - 0.22, 0.22],
+    [-cardW / 2 + 0.22, CARD_H - 0.22],
+    [cardW / 2 - 0.22, CARD_H - 0.22]
   ]) {
     const screw = new Mesh(screwGeometry, screwMaterial);
     screw.rotation.x = Math.PI / 2;
@@ -514,6 +535,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const fieldLights = addLighting(renderer, field, !lowPower);
 
   const cardGeo = cardGeometry();
+  const portraitCardGeo = cardGeometry(PORTRAIT.cardW);
+  const carrierFor = (file: EngineFile) => (shapeFor(printAspect(file.prints[0])) === PORTRAIT ? portraitCardGeo : cardGeo);
   const cardMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0 });
   const MAX_INSTANCES = 2600;
   const cards = new InstancedMesh(cardGeo, cardMaterial, MAX_INSTANCES);
@@ -531,20 +554,22 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   // Every other card shows its album's cover, so the
   // field reads as albums and any of them can be found by its picture. The
   // covers share one atlas, filled as their cards come into view; when it is
-  // full, the cover seen longest ago gives up its cell.
+  // full, the cover seen longest ago gives up its cell. Cells are square so
+  // a landscape or a portrait cover fits whole along its long side.
   const ATLAS_COLUMNS = 10;
   const ATLAS_ROWS = 14;
-  const cellW = lowPower ? 102 : 204;
-  const cellH = Math.round((cellW * PHOTO_H) / PHOTO_W);
+  const cell = lowPower ? 102 : 204;
   const atlasCanvas = document.createElement("canvas");
-  atlasCanvas.width = ATLAS_COLUMNS * cellW;
-  atlasCanvas.height = ATLAS_ROWS * cellH;
+  atlasCanvas.width = ATLAS_COLUMNS * cell;
+  atlasCanvas.height = ATLAS_ROWS * cell;
   const atlasContext = atlasCanvas.getContext("2d") as CanvasRenderingContext2D;
   const atlas = makeTexture(atlasCanvas, renderer);
   const slotOf = new Map<number, number>();
   const slotFile: number[] = [];
   const slotSeen: number[] = [];
   const slotReady: boolean[] = [];
+  /** Each ready cell's cover, drawn whole from its top left corner, in pixels. */
+  const slotSize: [number, number][] = [];
   let atlasDirty = false;
   let atlasUploaded = 0;
   function coverSlot(index: number): number {
@@ -575,13 +600,17 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     loadImage(cover.thumb)
       .then((image) => {
         if (disposed || slotFile[slot] !== index) return;
-        // Cover crop into the cell, as photoTexture does on the cassette.
-        const x = (slot % ATLAS_COLUMNS) * cellW;
-        const y = Math.floor(slot / ATLAS_COLUMNS) * cellH;
-        const scale = Math.max(cellW / image.naturalWidth, cellH / image.naturalHeight);
-        const sw = cellW / scale;
-        const sh = cellH / scale;
-        atlasContext.drawImage(image, (image.naturalWidth - sw) / 2, (image.naturalHeight - sh) / 2, sw, sh, x, y, cellW, cellH);
+        // The whole cover, as the cassette holds it: nothing is cropped.
+        const x = (slot % ATLAS_COLUMNS) * cell;
+        const y = Math.floor(slot / ATLAS_COLUMNS) * cell;
+        const scale = cell / Math.max(image.naturalWidth, image.naturalHeight, 1);
+        const w = Math.max(2, Math.round(image.naturalWidth * scale));
+        const h = Math.max(2, Math.round(image.naturalHeight * scale));
+        // The rest of the cell takes the cover's colours, so the softened
+        // mip levels behind the menus don't darken its edges.
+        atlasContext.drawImage(image, x, y, cell, cell);
+        atlasContext.drawImage(image, x, y, w, h);
+        slotSize[slot] = [w, h];
         slotReady[slot] = true;
         atlasDirty = true;
         invalidate();
@@ -675,7 +704,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     selected?.group.removeFromParent();
     selected?.dispose();
     const file = files[index];
-    const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, cardGeo, file, file.prints.slice(0, 1), { amount: blur, color: veilColor });
+    const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, carrierFor(file), file, file.prints.slice(0, 1), { amount: blur, color: veilColor });
     cassette.parts.carrier.castShadow = !lowPower;
     field.add(cassette.group);
     selected = cassette;
@@ -854,7 +883,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     studyCassette?.dispose();
     const file = files[index];
     const token = ++studyToken;
-    const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, cardGeo, file, file.prints);
+    const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, carrierFor(file), file, file.prints);
     cassette.group.position.y = -CARD_H / 2;
     study.add(cassette.group);
     studyCassette = cassette;
@@ -1130,24 +1159,34 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         const away = locked(lane) ? isolate.value : 0;
         const y = BASE_Y + height3(row, lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0) - away * 1.6;
         const z = row * ROW_SPACING + rail.value;
+        const index = fileAt({ lane, row });
+        const slot = coverSlot(index);
+        // The card stands after its cover (see CardShape).
+        const size = slot >= 0 ? slotSize[slot] : undefined;
+        const aspect = printAspect(files[index]?.prints[0]) || (size ? size[0] / size[1] : 0);
+        const shape = shapeFor(aspect);
         dummy.position.set(x, y, z);
+        dummy.scale.set(shape.cardW / CARD_W, 1, 1);
         dummy.updateMatrix();
         cards.setMatrixAt(count, dummy.matrix);
-        dummy.position.set(x + CARD_W / 2 - 0.24, y + CARD_H - 0.2, z + CARD_D / 2);
+        dummy.scale.set(1, 1, 1);
+        dummy.position.set(x + shape.cardW / 2 - 0.24, y + CARD_H - 0.2, z + CARD_D / 2);
         dummy.updateMatrix();
         cardScrews.setMatrixAt(count, dummy.matrix);
         instanceCells.push({ lane, row });
         count += 1;
-        const slot = coverSlot(fileAt({ lane, row }));
-        if (slot >= 0) {
-          // Where the cassette holds its front print.
+        if (size) {
+          // Where the cassette holds its front print, at the size it holds it.
+          const fit = fitPhoto(shape, aspect);
           dummy.position.set(x + 0.12, y + CARD_H / 2 + 0.02, z + CARD_D / 2);
+          dummy.scale.set(fit.w / PHOTO_W, fit.h / PHOTO_H, 1);
           dummy.updateMatrix();
+          dummy.scale.set(1, 1, 1);
           faces.setMatrixAt(faceCount, dummy.matrix);
-          // The cell, inset half a pixel against bleeding from its neighbours.
-          const u = ((slot % ATLAS_COLUMNS) * cellW + 0.5) / atlasCanvas.width;
-          const v = 1 - ((Math.floor(slot / ATLAS_COLUMNS) + 1) * cellH - 0.5) / atlasCanvas.height;
-          faceCells.setXYZW(faceCount, u, v, (cellW - 1) / atlasCanvas.width, (cellH - 1) / atlasCanvas.height);
+          // The cover's part of its cell, inset half a pixel against bleeding from its neighbours.
+          const u = ((slot % ATLAS_COLUMNS) * cell + 0.5) / atlasCanvas.width;
+          const v = 1 - (Math.floor(slot / ATLAS_COLUMNS) * cell + size[1] - 0.5) / atlasCanvas.height;
+          faceCells.setXYZW(faceCount, u, v, (size[0] - 1) / atlasCanvas.width, (size[1] - 1) / atlasCanvas.height);
           faceFog.setX(faceCount, away * 0.92);
           faceCount += 1;
         }
@@ -1799,7 +1838,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       carousel?.dispose();
       table?.dispose();
       for (const module of Object.values(stages)) module.dispose();
-      for (const thing of [cardGeo, screwGeo, cardMaterial, screwMaterial, faceGeo, faceMaterial, atlas, fieldLights.environment, studyLights.environment])
+      for (const thing of [cardGeo, portraitCardGeo, screwGeo, cardMaterial, screwMaterial, faceGeo, faceMaterial, atlas, fieldLights.environment, studyLights.environment])
         thing.dispose();
       cards.dispose();
       cardScrews.dispose();
