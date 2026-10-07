@@ -483,19 +483,22 @@ export function createPosterStage(context: {
     const viewAspect = width / height;
     const halfH = Math.tan(MathUtils.degToRad(FOV / 2));
     const halfW = halfH * viewAspect;
-    // Room for the poster, the easel's feet and the print slot below it.
-    const tall = POSTER_H + 2.1;
-    const wide = Math.max(posterW, 2.4) + 0.8;
     // On phones the easel sits between the header and the bottom panel.
     const portrait = viewAspect < 1.05;
     const band = stageBand(width, height);
-    const distance = Math.max(wide / (area.width * 2 * halfW), tall / (2 * halfH * (portrait ? (band ? band.half * 1.85 : 0.42) : 0.9)));
-    const visibleW = 2 * halfW * distance;
-    const visibleH = 2 * halfH * distance;
     // With a rail out, the camera rises and looks down past the cards, so
     // the poster's lower edge stays in view above them.
     const raised = MathUtils.smootherstep(railShow.value, 0, 1);
-    aim.set(-(area.x - 0.5) * visibleW, -0.45 + ((portrait ? band?.y ?? 0.33 : area.y) - 0.5) * visibleH - raised * distance * 0.02, 0);
+    // Room for the poster, the easel's feet and the print slot below it. The
+    // strip above a phone's sheet is short, so there the poster fills it and
+    // only the rail, when it is out, gets room below.
+    const tall = portrait && band ? POSTER_H + 0.5 + raised * 0.9 : POSTER_H + 2.1;
+    const wide = Math.max(posterW, 2.4) + 0.8;
+    const distance = Math.max(wide / (area.width * 2 * halfW), tall / (2 * halfH * (portrait ? (band ? band.half * 1.9 : 0.42) : 0.9)));
+    const visibleW = 2 * halfW * distance;
+    const visibleH = 2 * halfH * distance;
+    const middle = portrait && band ? -0.1 - raised * 0.15 : -0.45;
+    aim.set(-(area.x - 0.5) * visibleW, middle + ((portrait ? band?.y ?? 0.33 : area.y) - 0.5) * visibleH - raised * distance * 0.02, 0);
     camera.position.set(aim.x, aim.y + distance * (0.08 + raised * RAIL_RISE), distance);
     camera.lookAt(aim);
     camera.updateMatrixWorld();
