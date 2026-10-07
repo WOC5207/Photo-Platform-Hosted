@@ -39,7 +39,7 @@ export default function EventScreen({
   const managePhotos = () => go({ kind: "studio", username, page: "photos", id: event.id });
   // A print on the table opens the photo manager.
   useStageInput((input) => {
-    if (input.kind === "pick") managePhotos();
+    if (input.kind === "pick" && !input.moved) managePhotos();
   });
   useScreenKeys((k, target) => {
     if (k !== "Enter" || isInteractive(target)) return false;

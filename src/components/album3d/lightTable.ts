@@ -17,8 +17,8 @@ import {
   type Texture,
   type WebGLRenderer
 } from "three";
-import { addLighting, gridTexture, imageMaterial, loadImage, photoTexture } from "./kit";
-import { damp, settled, spring, type Spring } from "./motion";
+import { addLighting, gridTexture, imageMaterial, loadImage, photoTexture, screenPitch } from "./kit";
+import { damp, rubber, settled, spring, type Follow, type Spring } from "./motion";
 import { photoRect, sceneArea, tableColumns } from "./types";
 import type { EnginePalette } from "./engine";
 
@@ -50,6 +50,8 @@ export interface LightTable {
   pick(clientX: number, clientY: number, rect: DOMRect): number;
   focus(): number;
   columns(): number;
+  /** The table under a finger dragging it up and down, a row at a time. */
+  follow: Follow;
   step(dt: number): boolean;
   resize(width: number, height: number): void;
   setPalette(palette: EnginePalette): void;
@@ -139,6 +141,9 @@ export function createLightTable(context: {
   let picked = new Set<number>();
   let coverIndex = -1;
   const pan = spring(0);
+  // A finger holds the table; the row at the middle of the view while it does.
+  let held = false;
+  let viewRow = -1;
   let columnCount = 5;
   let width = 1;
   let height = 1;
@@ -239,7 +244,7 @@ export function createLightTable(context: {
   function feedTextures() {
     const focusRow = rowOf(focusIndex);
     slots.forEach((slot, i) => {
-      const near = Math.abs(rowOf(i) - focusRow) <= WINDOW_ROWS;
+      const near = Math.abs(rowOf(i) - focusRow) <= WINDOW_ROWS || Math.abs(rowOf(i) - viewRow) <= WINDOW_ROWS;
       slot.group.visible = near || i === focusIndex;
       if (!near) return;
       slot.used = clock;
@@ -369,8 +374,14 @@ export function createLightTable(context: {
 
     // Keep the focused row a little above the middle of the table area.
     const panTarget = Math.max(0, rowOf(focusIndex) - 0.6) * CELL_D;
-    damp(pan, panTarget, rate(5), dt);
-    if (!settled(pan, panTarget)) moving = true;
+    if (!held) damp(pan, panTarget, rate(5), dt);
+    if (!held && !settled(pan, panTarget)) moving = true;
+    // Rows passing under a drag or a fling get their prints on the way.
+    const row = Math.round(pan.value / CELL_D + 0.6);
+    if (row !== viewRow) {
+      viewRow = row;
+      feedTextures();
+    }
     frame();
     lights.key.position.set(aim.x - 4, 10, aim.z - 3);
     lights.key.target.position.copy(aim);
@@ -487,6 +498,41 @@ export function createLightTable(context: {
 
   applyPalette();
 
+  const pitchFrom = new Vector3();
+  const pitchTo = new Vector3();
+  const lastRow = () => rowOf(Math.max(0, sources.length - 1));
+  // Positions are the table's scroll in rows; row r rests at max(0, r - 0.6).
+  const follow: Follow = {
+    dragAxis: () => (raisedTarget || lastRow() < 1 ? null : "y"),
+    pitch: () => screenPitch(camera, pitchFrom.set(0, 0, pan.value), pitchTo.set(0, 0, pan.value + CELL_D), width, height, "y"),
+    index: () => focusIndex,
+    grab() {
+      held = true;
+      pan.velocity = 0;
+      return pan.value / CELL_D;
+    },
+    hold(position) {
+      pan.value = rubber(position, 0, Math.max(0, lastRow() - 0.6)) * CELL_D;
+      invalidate();
+    },
+    release(landing, velocity, swipe) {
+      held = false;
+      pan.velocity = velocity * CELL_D;
+      const from = rowOf(focusIndex);
+      let row = landing < 0.2 ? 0 : Math.round(landing + 0.6);
+      if (swipe && row === from) row += swipe;
+      row = MathUtils.clamp(row, 0, lastRow());
+      const next = MathUtils.clamp(row * columnCount + (focusIndex % columnCount), 0, Math.max(0, sources.length - 1));
+      if (next !== focusIndex) {
+        dropRaisedTexture();
+        focusIndex = next;
+      }
+      feedTextures();
+      invalidate();
+      return focusIndex;
+    }
+  };
+
   return {
     scene,
     camera,
@@ -512,6 +558,7 @@ export function createLightTable(context: {
       invalidate();
     },
     settle() {
+      held = false;
       pan.value = Math.max(0, rowOf(focusIndex) - 0.6) * CELL_D;
       pan.velocity = 0;
       slots.forEach((slot, i) => {
@@ -547,6 +594,7 @@ export function createLightTable(context: {
     },
     focus: () => focusIndex,
     columns: () => columnCount,
+    follow,
     step,
     resize(w, h) {
       width = w;

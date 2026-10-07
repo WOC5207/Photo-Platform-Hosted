@@ -71,7 +71,7 @@ export default function ArchiveShelf({
     engine.setStageHandler((input) => {
       if (input.kind === "wheel") move(input.direction);
       else if (input.kind === "swipe") move(input.x || input.y * (shelf.current?.columns() ?? 1));
-      else if (input.index === focus) onOpen(indexes[focus]);
+      else if (input.index === focus && !input.moved) onOpen(indexes[focus]);
       else move(input.index - focus);
     });
     return () => engine.setStageHandler(null);

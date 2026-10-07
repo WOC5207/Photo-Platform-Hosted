@@ -16,8 +16,8 @@ import {
   type CanvasTexture,
   type WebGLRenderer
 } from "three";
-import { addLighting, fitText, gridTexture, loadImage, makeTexture } from "./kit";
-import { damp, settled, spring, wrap } from "./motion";
+import { addLighting, fitText, gridTexture, loadImage, makeTexture, screenPitch } from "./kit";
+import { damp, restOn, rubber, settled, spring, wrap, type Follow } from "./motion";
 import { sceneArea } from "./types";
 import type { EnginePalette } from "./engine";
 
@@ -47,6 +47,8 @@ export interface Carousel {
   setHover(index: number): void;
   pick(clientX: number, clientY: number, rect: DOMRect): number;
   focus(): number;
+  /** The rail under a dragging finger. */
+  follow: Follow;
   step(dt: number): boolean;
   resize(width: number, height: number): void;
   setPalette(palette: EnginePalette): void;
@@ -227,6 +229,8 @@ export function createCarousel(context: {
   let width = 1;
   let height = 1;
   let clock = 0;
+  // A finger holds the rail: it stays where the finger puts it.
+  let held = false;
 
   /** A card's place on the rail relative to the focus, wrapping when the roster loops. */
   function offset(index: number, focus: number) {
@@ -259,8 +263,8 @@ export function createCarousel(context: {
     const rate = (r: number) => (reduced ? 60 : r);
     let moving = false;
     const target = count < 4 ? focusIndex : focusSpring.value + offset(focusIndex, focusSpring.value);
-    damp(focusSpring, target, rate(5.2), dt);
-    if (!settled(focusSpring, target)) moving = true;
+    if (!held) damp(focusSpring, target, rate(5.2), dt);
+    if (!held && !settled(focusSpring, target)) moving = true;
     const standTarget = standingTarget ? 1 : 0;
     damp(standing, standTarget, rate(4.5), dt);
     if (!settled(standing, standTarget)) moving = true;
@@ -300,6 +304,30 @@ export function createCarousel(context: {
 
   const raycaster = new Raycaster();
   const pointer = new Vector2();
+  const pitchFrom = new Vector3(0, 0, 0.6);
+  const pitchTo = new Vector3(SPACING, 0, 0.6);
+
+  const follow: Follow = {
+    dragAxis: () => (count > 1 ? "x" : null),
+    pitch: () => screenPitch(camera, pitchFrom, pitchTo, width, height, "x"),
+    index: () => focusIndex,
+    grab() {
+      held = true;
+      focusSpring.velocity = 0;
+      return focusSpring.value;
+    },
+    hold(position) {
+      focusSpring.value = count < 4 ? rubber(position, 0, count - 1) : position;
+      invalidate();
+    },
+    release(landing, velocity, swipe) {
+      held = false;
+      focusSpring.velocity = velocity;
+      focusIndex = restOn(landing, focusIndex, swipe, count, count >= 4);
+      invalidate();
+      return focusIndex;
+    }
+  };
 
   applyPalette();
 
@@ -314,6 +342,7 @@ export function createCarousel(context: {
       invalidate();
     },
     settle() {
+      held = false;
       focusSpring.value = focusIndex;
       standing.value = standingTarget ? 1 : 0;
       focusSpring.velocity = standing.velocity = 0;
@@ -342,6 +371,7 @@ export function createCarousel(context: {
       return typeof index === "number" ? index : -1;
     },
     focus: () => focusIndex,
+    follow,
     step,
     resize(w, h) {
       width = w;

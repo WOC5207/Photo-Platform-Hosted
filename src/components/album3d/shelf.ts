@@ -18,8 +18,8 @@ import {
   type Texture,
   type WebGLRenderer
 } from "three";
-import { addLighting, fitText, gridTexture, imageMaterial, loadImage, makeTexture, photoTexture } from "./kit";
-import { damp, settled, smooth, spring } from "./motion";
+import { addLighting, fitText, gridTexture, imageMaterial, loadImage, makeTexture, photoTexture, screenPitch } from "./kit";
+import { damp, restOn, rubber, settled, smooth, spring, type Follow } from "./motion";
 import { layoutFor, sceneArea, stageBand } from "./types";
 import type { EnginePalette } from "./engine";
 
@@ -51,6 +51,8 @@ export interface Shelf {
   setFocus(index: number): void;
   /** Cards per row (1 on the rolling rail), for moving up and down. */
   columns(): number;
+  /** The rolling rail under a dragging finger (the grid doesn't follow drags). */
+  follow: Follow;
   settle(): void;
   setHover(index: number): void;
   pick(clientX: number, clientY: number, rect: DOMRect): number;
@@ -269,6 +271,8 @@ export function createShelf(context: {
   const at = spring(0);
   let topRow = 0;
   const rowAt = spring(0);
+  // A finger holds the rail.
+  let held = false;
 
   const portrait = () => layoutFor(width, height) === "portrait";
   const columnCount = () => (portrait() ? 1 : Math.max(1, Math.min(cards.length, layoutFor(width, height) === "wide" ? 4 : 3)));
@@ -354,9 +358,9 @@ export function createShelf(context: {
     let moving = false;
     const rail = portrait();
     const cols = columnCount();
-    damp(at, focusIndex, rate(5.2), dt);
+    if (!held) damp(at, focusIndex, rate(5.2), dt);
     damp(rowAt, topRow, rate(5.5), dt);
-    if (!settled(at, focusIndex) || !settled(rowAt, topRow)) moving = true;
+    if ((!held && !settled(at, focusIndex)) || !settled(rowAt, topRow)) moving = true;
     frame();
 
     const rows = Math.ceil(cards.length / cols);
@@ -411,6 +415,36 @@ export function createShelf(context: {
 
   applyPalette();
 
+  const pitchFrom = new Vector3(0, 0, 0.6);
+  const pitchTo = new Vector3(SPACING, 0, 0.6);
+  const follow: Follow = {
+    dragAxis: () => (portrait() && cards.length > 1 ? "x" : null),
+    pitch: () => screenPitch(camera, pitchFrom, pitchTo, width, height, "x"),
+    index: () => focusIndex,
+    grab() {
+      held = true;
+      at.velocity = 0;
+      return at.value;
+    },
+    hold(position) {
+      at.value = rubber(position, 0, cards.length - 1);
+      invalidate();
+    },
+    release(landing, velocity, swipe) {
+      held = false;
+      at.velocity = velocity;
+      const next = restOn(landing, focusIndex, swipe, cards.length);
+      if (next !== focusIndex) {
+        focusIndex = next;
+        placeRing();
+        followRow();
+        loadNear();
+      }
+      invalidate();
+      return focusIndex;
+    }
+  };
+
   return {
     scene,
     camera,
@@ -451,7 +485,9 @@ export function createShelf(context: {
       invalidate();
     },
     columns: columnCount,
+    follow,
     settle() {
+      held = false;
       followRow();
       at.value = focusIndex;
       rowAt.value = topRow;

@@ -27,7 +27,7 @@ import {
   WebGLRenderer
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { addLighting, fitText, forgetShadowLights, imageMaterial, loadImage, makeTexture, photoTexture, setShadows } from "./kit";
+import { addLighting, fitText, forgetShadowLights, imageMaterial, loadImage, makeTexture, photoTexture, screenStep, setShadows } from "./kit";
 import { createCarousel, type Carousel, type CarouselCard } from "./carousel";
 import { createLightTable, type LightTable, type TablePrint } from "./lightTable";
 import type { Board } from "./board";
@@ -40,6 +40,8 @@ import { onSheet } from "./types";
 import {
   columnStrength,
   damp,
+  DragSpeed,
+  FLING_FRICTION,
   idleWave,
   nearestOccurrence,
   selectionWave,
@@ -49,6 +51,7 @@ import {
   spring,
   stairDrop,
   wrap,
+  type Follow,
   type Spring
 } from "./motion";
 
@@ -99,7 +102,8 @@ export type EngineMove = { axis: "file" | "column"; direction: 1 | -1 };
 
 /** Taps, swipes and the wheel on the booking board or the prize deck, for the screen to act on. */
 export type StageInput =
-  | { kind: "pick"; index: number; part?: number }
+  /** `moved`: a drag or the wheel left the table, the reel or the album rail on this item (not a tap). */
+  | { kind: "pick"; index: number; part?: number; moved?: boolean }
   | { kind: "swipe"; x: -1 | 0 | 1; y: -1 | 0 | 1 }
   | { kind: "wheel"; direction: 1 | -1 };
 
@@ -122,6 +126,9 @@ interface StageModule {
   pick(clientX: number, clientY: number, rect: DOMRect): number;
   /** A part of the picked thing, such as a switch position, when the stage has parts. */
   pickPart?(clientX: number, clientY: number, rect: DOMRect): number;
+  /** Stages a drag carries along under the finger (the reel, the album rail). */
+  follow?: Follow;
+  setFocus?(index: number): void;
   step(dt: number): boolean;
   resize(width: number, height: number): void;
   setPalette(palette: EnginePalette): void;
@@ -704,6 +711,26 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const isolate = spring(0);
   const locked = (lane: number) => laneLock >= 0 && wrap(lane, columnCount) !== laneLock;
   let clock = performance.now() / 1000;
+  /**
+   * A drag carrying the carousel, the light table or a stage along under the
+   * finger, as RhineLabUI's archive drag does: it follows the finger exactly,
+   * then coasts at the release speed onto the nearest item.
+   */
+  let carry: { follow: Follow; id: number; axis: "x" | "y"; anchor: number; start: number; position: number; pitch: number; from: number } | null = null;
+  const carrySpeed = new DragSpeed();
+  /** The same for the album field, which moves both ways: lanes across, files up and down. */
+  let fieldDrag: {
+    id: number;
+    x: number;
+    y: number;
+    lane: number;
+    row: number;
+    at: { lane: number; row: number };
+    perLane: { x: number; y: number };
+    perRow: { x: number; y: number };
+  } | null = null;
+  const laneSpeed = new DragSpeed();
+  const rowSpeed = new DragSpeed();
 
   // The selected card is a full cassette; every other card is an instance.
   let selected: Cassette | null = null;
@@ -1096,17 +1123,20 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const railTarget = SLOT_Z - selectedCell.row * ROW_SPACING;
     damp(shoulder, selectedCell.row, rate(5), dt);
     damp(laneFocus, selectedCell.lane, rate(4), dt);
-    damp(trackX, selectedCell.lane * COLUMN_SPACING, rate(3.7), dt);
-    damp(rail, railTarget, rate(3.7), dt);
+    if (!fieldDrag) {
+      damp(trackX, selectedCell.lane * COLUMN_SPACING, rate(3.7), dt);
+      damp(rail, railTarget, rate(3.7), dt);
+    }
     damp(rotation, targetRotation, rate(9), dt);
     damp(apart, apartTarget, rate(4.5), dt);
     moving ||= !settled(apart, apartTarget);
     if (opened && apart.value > 0.8) finishOpen();
     // Turn back to face the slot before descending, as the reference does.
-    const liftTarget = overviewTarget ? 0 : detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
+    // A dragged archive lowers the raised card back into the stack until it settles.
+    const liftTarget = overviewTarget || fieldDrag ? 0 : detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
     damp(lift, liftTarget, rate(4.2), dt);
     moving ||= !settled(shoulder, selectedCell.row) || !settled(laneFocus, selectedCell.lane);
-    moving ||= !settled(trackX, selectedCell.lane * COLUMN_SPACING) || !settled(rail, railTarget);
+    moving ||= !fieldDrag && (!settled(trackX, selectedCell.lane * COLUMN_SPACING) || !settled(rail, railTarget));
     moving ||= !settled(lift, liftTarget) || !settled(rotation, targetRotation);
 
     for (const [key, o] of outgoing) {
@@ -1567,6 +1597,166 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     });
   }
 
+  // ------------------------------------------------------------- dragging --
+  /** What a drag carries now: the carousel, the light table or a stage that follows drags. */
+  function follower(): Follow | null {
+    if (mode === "carousel") return carousel?.follow ?? null;
+    if (mode === "table") return tableRaised ? null : (table?.follow ?? null);
+    if (mode === "stage") return stage?.follow ?? null;
+    return null;
+  }
+
+  /** Tells the screen which item a drag or the wheel left the carousel, the table or a stage on. */
+  function commitFocus(index: number) {
+    if (mode === "carousel") options.onCard(index, false);
+    else if (mode === "table") {
+      if (stageHandler) stageHandler({ kind: "pick", index, moved: true });
+      else options.onPrint(index, false);
+    } else if (mode === "stage") stageHandler?.({ kind: "pick", index, moved: true });
+  }
+
+  /** Past 10 px along the stage's own direction, a press becomes a drag that carries the stage. */
+  function carryMove(e: PointerEvent) {
+    if (carry) {
+      if (carry.id !== e.pointerId) return true;
+      carry.position = carry.start - ((carry.axis === "x" ? e.clientX : e.clientY) - carry.anchor) / carry.pitch;
+      carry.follow.hold(carry.position);
+      carrySpeed.push(performance.now(), carry.position);
+      return true;
+    }
+    if (!down || down.id !== e.pointerId) return false;
+    const follow = follower();
+    const axis = follow?.dragAxis();
+    if (!follow || !axis) return false;
+    const along = axis === "x" ? e.clientX - down.x : e.clientY - down.y;
+    const across = axis === "x" ? e.clientY - down.y : e.clientX - down.x;
+    if (Math.abs(along) < 10 || Math.abs(along) <= Math.abs(across)) return false;
+    const start = follow.grab();
+    carry = { follow, id: e.pointerId, axis, anchor: axis === "x" ? e.clientX : e.clientY, start, position: start, pitch: follow.pitch(), from: follow.index() };
+    carrySpeed.clear();
+    carrySpeed.push(performance.now(), start);
+    canvas.setPointerCapture(e.pointerId);
+    carousel?.setHover(-1);
+    table?.setHover(-1);
+    stage?.setHover(-1);
+    canvas.style.cursor = "grabbing";
+    return true;
+  }
+
+  /** Lets a carried stage go at the finger's speed; it comes to rest on the item it coasts to. */
+  function carryUp(e: PointerEvent) {
+    const drag = carry;
+    if (!drag || drag.id !== e.pointerId) return false;
+    carry = null;
+    canvas.style.cursor = "";
+    const cancelled = e.type === "pointercancel";
+    const now = performance.now();
+    const velocity = cancelled || reduced ? 0 : carrySpeed.speed(now);
+    carrySpeed.clear();
+    // A clear swipe (RhineLabUI's 36 px within 1.4 s) moves at least one item.
+    let swipe = 0;
+    if (!cancelled && down) {
+      const moved = drag.axis === "x" ? e.clientX - down.x : e.clientY - down.y;
+      if (Math.abs(moved) > 36 && now - down.t < 1400) swipe = moved < 0 ? 1 : -1;
+    }
+    down = null;
+    const index = drag.follow.release(drag.position + velocity / FLING_FRICTION, velocity, swipe);
+    // Unless another screen took over meanwhile, it tells the screen where it stopped.
+    if (follower() === drag.follow && index !== drag.from) commitFocus(index);
+    lastInteraction = clock;
+    return true;
+  }
+
+  const dragFrom = new Vector3();
+  const dragTo = new Vector3();
+  /** The album field moves under a finger both ways: lanes across, files up and down. */
+  function fieldMove(e: PointerEvent) {
+    const drag = fieldDrag;
+    if (drag) {
+      if (drag.id !== e.pointerId) return true;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      const { perLane: a, perRow: b } = drag;
+      // The card under the finger stays under it: solve the screen move for lanes and rows.
+      const det = a.x * b.y - a.y * b.x;
+      let lanes = 0;
+      let rows: number;
+      if (laneLock >= 0 || Math.abs(det) < 1) rows = -(dx * b.x + dy * b.y) / Math.max(1, b.x * b.x + b.y * b.y);
+      else {
+        lanes = (-dx * b.y + dy * b.x) / det;
+        rows = (dx * a.y - dy * a.x) / det;
+      }
+      drag.at = { lane: drag.lane + lanes, row: drag.row + rows };
+      trackX.value = drag.at.lane * COLUMN_SPACING;
+      rail.value = SLOT_Z - drag.at.row * ROW_SPACING;
+      trackX.velocity = rail.velocity = 0;
+      const now = performance.now();
+      laneSpeed.push(now, drag.at.lane);
+      rowSpeed.push(now, drag.at.row);
+      lastInteraction = clock;
+      invalidate();
+      return true;
+    }
+    if (!down || down.id !== e.pointerId || detailTarget || overviewTarget) return false;
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10) return false;
+    const y = BASE_Y + CARD_H / 2;
+    dragFrom.set(0, y, SLOT_Z);
+    const perLane = screenStep(camera, dragFrom, dragTo.set(COLUMN_SPACING, y, SLOT_Z), width, height);
+    const perRow = screenStep(camera, dragFrom, dragTo.set(0, y, SLOT_Z + ROW_SPACING), width, height);
+    const lane = trackX.value / COLUMN_SPACING;
+    const row = (SLOT_Z - rail.value) / ROW_SPACING;
+    fieldDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, lane, row, at: { lane, row }, perLane, perRow };
+    trackX.velocity = rail.velocity = 0;
+    laneSpeed.clear();
+    rowSpeed.clear();
+    laneSpeed.push(performance.now(), lane);
+    rowSpeed.push(performance.now(), row);
+    canvas.setPointerCapture(e.pointerId);
+    hoverCell = null;
+    canvas.style.cursor = "grabbing";
+    invalidate();
+    return true;
+  }
+
+  /** The field coasts on at the finger's speed and the album it stops on rises. */
+  function fieldUp(e: PointerEvent) {
+    const drag = fieldDrag;
+    if (!drag || drag.id !== e.pointerId) return false;
+    fieldDrag = null;
+    canvas.style.cursor = "";
+    const cancelled = e.type === "pointercancel";
+    const now = performance.now();
+    const still = cancelled || reduced;
+    const vLane = still || laneLock >= 0 ? 0 : laneSpeed.speed(now);
+    const vRow = still ? 0 : rowSpeed.speed(now);
+    const cell = {
+      lane: laneLock >= 0 ? selectedCell.lane : Math.round(drag.at.lane + vLane / FLING_FRICTION),
+      row: Math.round(drag.at.row + vRow / FLING_FRICTION)
+    };
+    // A clear swipe that would settle back still moves one album, along the way it went furthest.
+    if (!cancelled && down && cell.lane === selectedCell.lane && cell.row === selectedCell.row) {
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      if (moved > 36 && now - down.t < 1400) {
+        const lanes = drag.at.lane - drag.lane;
+        const rows = drag.at.row - drag.row;
+        const lanePixels = laneLock >= 0 ? 0 : Math.abs(lanes) * Math.hypot(drag.perLane.x, drag.perLane.y);
+        const rowPixels = Math.abs(rows) * Math.hypot(drag.perRow.x, drag.perRow.y);
+        if (lanePixels > rowPixels) cell.lane += Math.sign(lanes);
+        else if (rows) cell.row += Math.sign(rows);
+      }
+    }
+    down = null;
+    trackX.velocity = vLane * COLUMN_SPACING;
+    rail.velocity = -vRow * ROW_SPACING;
+    laneSpeed.clear();
+    rowSpeed.clear();
+    const index = fileAt(cell);
+    pendingCell = cell;
+    select(index);
+    options.onPick(index);
+    return true;
+  }
+
   function onPointerDown(e: PointerEvent) {
     if (mode === "stage" && stageDrag?.({ phase: "down", id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() })) {
       dragged.add(e.pointerId);
@@ -1587,7 +1777,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       stageDrag?.({ phase: "move", id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() });
       return;
     }
-    if (mode === "carousel" || mode === "table" || mode === "stage") return stagePointerMove(e);
+    if (mode === "carousel" || mode === "table" || mode === "stage") {
+      if (carryMove(e)) return;
+      return stagePointerMove(e);
+    }
     if (mode !== "field") return;
     if (down && down.id === e.pointerId && detailTarget && !opened && lift.value > 3.3) {
       // Drag to inspect the raised card, within the reference's ±0.8 rad.
@@ -1596,6 +1789,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       invalidate();
       return;
     }
+    if (fieldMove(e)) return;
     if (e.pointerType !== "mouse" || overviewTarget || hoverFrame) return;
     hoverFrame = requestAnimationFrame(() => {
       hoverFrame = 0;
@@ -1620,6 +1814,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       stageDrag?.({ phase, id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() });
       return;
     }
+    if (carryUp(e) || fieldUp(e)) return;
     if (!down || down.id !== e.pointerId) return;
     const dx = e.clientX - down.x;
     const dy = e.clientY - down.y;
@@ -1675,32 +1870,54 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   let wheelAt = 0;
+  let wheelSum = 0;
   let tableRaised = false;
+  /** Whole steps the wheel has added up to: 100 px a step, at most 3 at once, as RhineLabUI's wheel. */
+  function wheelSteps(e: WheelEvent) {
+    const now = performance.now();
+    const delta = e.deltaY * (e.deltaMode === 1 ? 34 : e.deltaMode === 2 ? height : 1);
+    if (now - wheelAt > 180 || Math.sign(delta) !== Math.sign(wheelSum)) wheelSum = 0;
+    wheelAt = now;
+    wheelSum += delta;
+    const steps = Math.trunc(wheelSum / 100);
+    wheelSum -= steps * 100;
+    return MathUtils.clamp(steps, -3, 3);
+  }
+
   function onWheel(e: WheelEvent) {
     if (mode === "study") return;
     e.preventDefault();
     if (mode === "stage" && stageDrag?.({ phase: "wheel", deltaY: e.deltaY, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() })) return;
+    if (carry || fieldDrag) return;
     if (mode === "carousel" || mode === "table" || mode === "stage") {
-      const now = performance.now();
-      if (now - wheelAt < 260 || Math.abs(e.deltaY) < 4) return;
-      wheelAt = now;
-      const direction = e.deltaY > 0 ? 1 : -1;
-      if (mode === "stage") {
-        stageHandler?.({ kind: "wheel", direction });
-        return;
-      }
-      if (mode === "carousel" && carousel) options.onCard(carousel.focus() + direction, false);
-      else if (table && !tableRaised) {
-        if (stageHandler) stageHandler({ kind: "wheel", direction });
-        else options.onPrint(table.focus() + direction * table.columns(), false);
-      }
+      if (mode === "table" && tableRaised) return;
+      const steps = wheelSteps(e);
+      if (!steps) return;
+      // Several steps land at once, so the stage takes its new focus here and the screen follows.
+      const follow = follower();
+      if (mode === "carousel" && carousel) {
+        const from = carousel.focus();
+        carousel.setFocus(from + steps);
+        if (carousel.focus() !== from) commitFocus(carousel.focus());
+      } else if (mode === "table" && table) {
+        const from = table.focus();
+        table.setFocus(from + steps * table.columns());
+        if (table.focus() !== from) commitFocus(table.focus());
+      } else if (mode === "stage" && follow?.dragAxis() && stage?.setFocus) {
+        const from = follow.index();
+        stage.setFocus(from + steps);
+        if (follow.index() !== from) commitFocus(follow.index());
+      } else if (mode === "stage") stageHandler?.({ kind: "wheel", direction: steps > 0 ? 1 : -1 });
       return;
     }
     if (detailTarget || overviewTarget) return;
-    const now = performance.now();
-    if (now - wheelAt < 260 || Math.abs(e.deltaY) < 4) return;
-    wheelAt = now;
-    options.onStep({ axis: "file", direction: e.deltaY > 0 ? 1 : -1 });
+    const steps = wheelSteps(e);
+    if (!steps) return;
+    const cell = { lane: selectedCell.lane, row: selectedCell.row + steps };
+    const index = fileAt(cell);
+    pendingCell = cell;
+    select(index);
+    options.onPick(index);
   }
 
   canvas.addEventListener("pointerdown", onPointerDown);

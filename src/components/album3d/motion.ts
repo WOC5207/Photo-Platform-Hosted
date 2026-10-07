@@ -91,3 +91,70 @@ export function wrap(value: number, count: number) {
 export function nearestOccurrence(value: number, center: number, period: number) {
   return value + Math.floor((center - value + period / 2) / period) * period;
 }
+
+/**
+ * A stage that a drag carries along under the finger, as RhineLabUI's archive
+ * does (src/archive-drag.ts): the stage follows the finger, and on release it
+ * carries on at the finger's speed toward the item it will come to rest on.
+ * Positions are in items (rows for a grid), fractional while held.
+ */
+export interface Follow {
+  /** The way a drag moves the stage: "x" brings the next item from the right, "y" the next row from below. Null when it doesn't follow drags now. */
+  dragAxis(): "x" | "y" | null;
+  /** Screen pixels per item along that axis. */
+  pitch(): number;
+  /** The item the stage rests on. */
+  index(): number;
+  /** Stops the stage where it is and returns that position. */
+  grab(): number;
+  /** Shows the stage at `position` while the finger holds it. */
+  hold(position: number): void;
+  /**
+   * Lets go: the stage moves on at `velocity` items a second and comes to
+   * rest on the item nearest `landing`, at least one item along `swipe` when
+   * that is a clear swipe (-1 or 1). Returns that item, now the stage's focus.
+   */
+  release(landing: number, velocity: number, swipe: number): number;
+}
+
+/** RhineLabUI's coasting friction: a fling travels its speed / FLING_FRICTION further. */
+export const FLING_FRICTION = 2.4;
+
+/** The speed a drag is released at, from its last 100 ms, in units a second. */
+export class DragSpeed {
+  private samples: { t: number; v: number }[] = [];
+  push(t: number, v: number) {
+    const last = this.samples[this.samples.length - 1];
+    // A reversal starts a fresh estimate.
+    if (this.samples.length >= 2) {
+      const prev = this.samples[this.samples.length - 2];
+      if ((last.v - prev.v) * (v - last.v) < 0) this.samples = [last];
+    }
+    this.samples.push({ t, v });
+    this.samples = this.samples.filter((s) => t - s.t <= 100);
+  }
+  speed(now: number) {
+    const first = this.samples[0];
+    const last = this.samples[this.samples.length - 1];
+    if (!first || !last || now - last.t > 80 || last.t - first.t < 8) return 0;
+    return ((last.v - first.v) * 1000) / (last.t - first.t);
+  }
+  clear() {
+    this.samples = [];
+  }
+}
+
+/** Past either end, a held stage gives a third of the finger's travel, as a page does at its edges. */
+export function rubber(position: number, min: number, max: number) {
+  if (position < min) return min + (position - min) * 0.35;
+  if (position > max) return max + (position - max) * 0.35;
+  return position;
+}
+
+/** The item a released stage rests on: nearest its landing, one on at least for a clear swipe. */
+export function restOn(landing: number, from: number, swipe: number, count: number, loop = false) {
+  let index = Math.round(landing);
+  const at = (i: number) => (loop ? wrap(i, count) : Math.max(0, Math.min(count - 1, i)));
+  if (swipe && at(index) === from) index = from + swipe;
+  return at(index);
+}
