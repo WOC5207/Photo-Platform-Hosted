@@ -344,6 +344,32 @@ function blurredMap(levels: number, veil: string) {
   return `#ifdef USE_MAP\n  vec4 sampledDiffuseColor = texture2D( map, vMapUv, uBlur * ${levels.toFixed(1)} );\n  diffuseColor *= sampledDiffuseColor;\n#endif\n  diffuseColor.rgb = mix(diffuseColor.rgb, uVeilColor, ${veil});`;
 }
 
+/**
+ * As blurredMap, for covers that share an atlas, each in the `vCell` part of
+ * it. A biased lookup lets the coarse mip levels (and the anisotropic taps
+ * along a cover seen at a slant) reach into the neighbouring cells, which
+ * drew a bright, stair-stepped rim along the covers' edges behind the menus.
+ * The softened cover is instead read at an explicit level, which takes no
+ * anisotropic taps, and from no nearer its edges than that level's texels
+ * reach, so only its own colours soften into its edges.
+ */
+function blurredAtlas(levels: number, veil: string) {
+  return `#ifdef USE_MAP
+  vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+  vec2 atlasSize = vec2( textureSize( map, 0 ) );
+  vec2 texelX = dFdx( vMapUv * atlasSize );
+  vec2 texelY = dFdy( vMapUv * atlasSize );
+  if ( uBlur > 0.0 ) {
+    float lod = max( 0.0, 0.5 * log2( max( dot( texelX, texelX ), dot( texelY, texelY ) ) ) ) + uBlur * ${levels.toFixed(1)};
+    vec2 margin = min( vec2( 2.0 * exp2( lod ) ) / atlasSize, vCell.zw * 0.5 );
+    vec2 softUv = clamp( vMapUv, vCell.xy + margin, vCell.xy + vCell.zw - margin );
+    sampledDiffuseColor = mix( sampledDiffuseColor, textureLod( map, softUv, lod ), min( 1.0, uBlur * 4.0 ) );
+  }
+  diffuseColor *= sampledDiffuseColor;
+#endif
+  diffuseColor.rgb = mix(diffuseColor.rgb, uVeilColor, ${veil});`;
+}
+
 function buildCassette(
   renderer: WebGLRenderer,
   palette: EnginePalette,
@@ -653,13 +679,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     shader.uniforms.uVeil = veil;
     shader.uniforms.uVeilColor = veilColor;
     shader.uniforms.uBlur = blur;
-    shader.vertexShader = `attribute vec4 aCell;\nattribute float aFog;\nvarying float vFog;\n${shader.vertexShader}`.replace(
+    shader.vertexShader = `attribute vec4 aCell;\nattribute float aFog;\nvarying float vFog;\nvarying vec4 vCell;\n${shader.vertexShader}`.replace(
       "#include <uv_vertex>",
-      "#include <uv_vertex>\n  vMapUv = aCell.xy + uv * aCell.zw;\n  vFog = aFog;"
+      "#include <uv_vertex>\n  vMapUv = aCell.xy + uv * aCell.zw;\n  vCell = aCell;\n  vFog = aFog;"
     );
-    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\nuniform float uBlur;\nvarying float vFog;\n${shader.fragmentShader}`.replace(
+    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\nuniform float uBlur;\nvarying float vFog;\nvarying vec4 vCell;\n${shader.fragmentShader}`.replace(
       "#include <map_fragment>",
-      blurredMap(2.4, "max(uVeil, vFog)")
+      blurredAtlas(2.4, "max(uVeil, vFog)")
     );
   };
   faceMaterial.customProgramCacheKey = () => "album-archive-faces";
