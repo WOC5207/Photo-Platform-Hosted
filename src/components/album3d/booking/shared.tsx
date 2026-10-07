@@ -1,6 +1,7 @@
 "use client";
 
 import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { reportSheet } from "../types";
 import { useTranslations } from "next-intl";
 import { StageContext, type Stage } from "../StageContext";
 import type { Board } from "../board";
@@ -116,10 +117,30 @@ export function isInteractive(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(target.closest("a, button, input, select, textarea, summary"));
 }
 
-/** The left-hand (bottom, on phones) panel the booking screens draw in. */
-export function BookingPanel({ expanded = false, children }: { expanded?: boolean; children: ReactNode }) {
+/**
+ * The left-hand (bottom, on phones) panel the booking screens draw in. On
+ * phones an expanded panel is a taller sheet that still leaves the scene a
+ * strip above it; "cover" takes the whole screen below the header, for a
+ * step that needs it (a review form, typing). The sheet reports where it
+ * starts, so the scene frames itself above it.
+ */
+export function BookingPanel({ expanded = false, children }: { expanded?: boolean | "cover"; children: ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const main = ref.current;
+    if (!main) return;
+    const owner = {};
+    const report = () => reportSheet(owner, main.offsetTop);
+    const observer = new ResizeObserver(report);
+    observer.observe(main);
+    report();
+    return () => {
+      observer.disconnect();
+      reportSheet(owner, null);
+    };
+  }, []);
   return (
-    <main id="main-content" tabIndex={-1} className={`${styles.panel} outline-none`} data-expanded={expanded}>
+    <main ref={ref} id="main-content" tabIndex={-1} className={`${styles.panel} outline-none`} data-expanded={expanded}>
       {children}
     </main>
   );
@@ -127,8 +148,8 @@ export function BookingPanel({ expanded = false, children }: { expanded?: boolea
 
 /**
  * Previous and next for a panel that shows one item of the stage at a time.
- * On phones the expanded panel covers the stage, so taps and swipes can't
- * reach the other items there; these can.
+ * On phones the stage is a narrow strip above the sheet, too small to tap
+ * through the other items reliably; these step through them.
  */
 export function StepButtons({ onStep, atStart, atEnd }: { onStep: (delta: -1 | 1) => void; atStart: boolean; atEnd: boolean }) {
   const t = useTranslations("album3d");

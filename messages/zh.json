@@ -958,7 +958,10 @@
     "noCreditProfiles": "还没有记住任何{term}——首次保存带社交链接的照片署名时会自动添加。",
     "validationError": "请输入名字。",
     "duplicateError": "已存在相同名字的署名。",
-    "confirmDelete": "删除该记住的信息？这不会影响已经署名给他们的照片。"
+    "confirmDelete": "删除该记住的信息？这不会影响已经署名给他们的照片。",
+    "search": "搜索{term}",
+    "searchPlaceholder": "名字或平台",
+    "noMatches": "没有符合搜索的{term}。"
   },
   "adminSite": {
     "title": "网站设置",

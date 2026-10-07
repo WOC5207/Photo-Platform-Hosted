@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { addCreditProfile, deleteCreditProfile, updateCreditProfile, type CreditProfileState } from "@/app/[locale]/dashboard/(protected)/credits/actions";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import { Link } from "@/i18n/navigation";
@@ -76,19 +76,29 @@ function ProfileForm({ profile, term }: { profile: StudioCreditProfile; term: st
 
 /**
  * Remembered credits as cards on the board, a lamp lit per social link. The
- * panel adds new ones and edits the focused one's name and links.
+ * panel adds new ones, narrows the board by a search over names and platforms,
+ * and edits the focused one's name and links.
  */
 export default function CreditsScreen({ credits }: { credits: StudioCredits }) {
   const t = useTranslations("album3d");
   const tcr = useTranslations("adminCredits");
   const { key, path, touch } = useStage();
   const scene = useScene("board");
-  const [focus, setFocus] = useState(0);
+  const locale = useLocale();
+  const [focusId, setFocusId] = useState("");
+  const [query, setQuery] = useState("");
   const [state, add, adding] = useActionState<CreditProfileState, FormData>(addCreditProfile, {});
   const { username } = credits.account;
-  const profiles = credits.enabled ? credits.profiles : [];
-  const at = Math.min(focus, Math.max(0, profiles.length - 1));
+  const all = useMemo(() => (credits.enabled ? credits.profiles : []), [credits]);
+  const profiles = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase(locale);
+    if (!q) return all;
+    return all.filter((p) => [p.name, ...p.links.flatMap((l) => [l.platform, l.url])].some((v) => v.toLocaleLowerCase(locale).includes(q)));
+  }, [all, query, locale]);
+  // The focused credit stays in focus while the search narrows the board, when it still matches.
+  const at = Math.max(0, profiles.findIndex((p) => p.id === focusId));
   const profile = profiles[at];
+  const setFocus = (index: number) => setFocusId(profiles[index]?.id ?? "");
   const term = credits.term;
   // Only web addresses open; anything else typed in a link stays in the form.
   const platforms = (profile?.links ?? []).filter((l) => /^https?:\/\//i.test(l.url.trim()));
@@ -165,6 +175,12 @@ export default function CreditsScreen({ credits }: { credits: StudioCredits }) {
                 <FormNote tone="error">{tcr(state.error === "duplicate" ? "duplicateError" : "validationError")}</FormNote>
               </div>
             )}
+            {all.length > 0 && (
+              <label className="mt-4 grid gap-1 text-sm font-semibold text-fg-muted">
+                {tcr("search", { term })}
+                <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={tcr("searchPlaceholder")} className={fieldClass} />
+              </label>
+            )}
             <section id="studio-credit" aria-label={profile?.name} className="mt-6 grid gap-3">
               {profile ? (
                 <>
@@ -184,7 +200,7 @@ export default function CreditsScreen({ credits }: { credits: StudioCredits }) {
                   <ProfileForm key={`${profile.id}:${profile.name}:${profile.links.length}`} profile={profile} term={term} />
                 </>
               ) : (
-                <p className="text-sm text-fg-subtle">{tcr("noCreditProfiles", { term })}</p>
+                <p className="text-sm text-fg-subtle">{tcr(all.length ? "noMatches" : "noCreditProfiles", { term })}</p>
               )}
             </section>
           </>

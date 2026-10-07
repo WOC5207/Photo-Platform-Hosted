@@ -19,7 +19,7 @@ import {
 } from "three";
 import { addLighting, fitText, makeTexture } from "./kit";
 import { damp, settled, spring } from "./motion";
-import { layoutFor, sceneArea } from "./types";
+import { layoutFor, sceneArea, stageBand } from "./types";
 import type { EnginePalette } from "./engine";
 
 /**
@@ -498,7 +498,9 @@ export function createBoard(context: {
   // On phones the board sits between the site header and the bottom sheet.
   function boardArea() {
     const area = sceneArea(width, height);
-    return layoutFor(width, height) === "portrait" ? { x: 0.5, y: 0.34, width: 0.94, half: 0.2 } : { ...area, half: Math.min(area.y, 1 - area.y) * 0.9 };
+    if (layoutFor(width, height) !== "portrait") return { ...area, half: Math.min(area.y, 1 - area.y) * 0.9 };
+    const band = stageBand(width, height);
+    return { x: 0.5, y: band?.y ?? 0.34, width: 0.94, half: band ? band.half * 0.9 : 0.2 };
   }
 
   function frame() {

@@ -958,7 +958,10 @@
     "noCreditProfiles": "No remembered {term}s yet — they're added automatically the first time you save a photo credit with social links.",
     "validationError": "Please enter a name.",
     "duplicateError": "A credit with that name already exists.",
-    "confirmDelete": "Delete this remembered profile? This won't affect any photos already crediting them."
+    "confirmDelete": "Delete this remembered profile? This won't affect any photos already crediting them.",
+    "search": "Search {term}s",
+    "searchPlaceholder": "Name or platform",
+    "noMatches": "No {term}s match that search."
   },
   "adminSite": {
     "title": "Site settings",

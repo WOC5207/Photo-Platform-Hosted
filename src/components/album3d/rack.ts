@@ -20,7 +20,7 @@ import {
 } from "three";
 import { addLighting, fitText, imageMaterial, makeTexture } from "./kit";
 import { damp, settled, spring, type Spring } from "./motion";
-import { RACK_STATES, layoutFor, sceneArea, type RackState } from "./types";
+import { RACK_STATES, layoutFor, sceneArea, stageBand, type RackState } from "./types";
 import type { EnginePalette } from "./engine";
 
 /**
@@ -600,7 +600,10 @@ export function createRack(context: {
 
   function area() {
     const a = sceneArea(width, height);
-    return layoutFor(width, height) === "portrait" ? { x: 0.5, y: 0.34, width: 0.94, half: 0.2 } : { ...a, half: Math.min(a.y, 1 - a.y) * 0.9 };
+    if (layoutFor(width, height) !== "portrait") return { ...a, half: Math.min(a.y, 1 - a.y) * 0.9 };
+    // On phones, between the site header and the bottom sheet.
+    const band = stageBand(width, height);
+    return { x: 0.5, y: band?.y ?? 0.34, width: 0.94, half: band ? band.half * 0.9 : 0.2 };
   }
 
   function panTargets() {
