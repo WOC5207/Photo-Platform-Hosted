@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Screen } from "@/lib/siteMode";
 import styles from "./ArchiveSite.module.css";
 
@@ -11,15 +11,36 @@ export const wrap = (value: number, count: number) => ((value % count) + count) 
 /** Screens drawn as a menu over the scene. */
 export const MENU_SCREENS: Screen["kind"][] = ["title", "settings", "login", "photographers", "photographer"];
 
-/** Digits that roll in when they change, as the reference's counters do. */
+/**
+ * A value that rolls when it changes: the old one leaves upward as the new
+ * one arrives (460 ms), as RhineLabUI's counters and titles do. The first
+ * value shows as is. `layer` styles both the old and the new text.
+ */
+export function Roll({ value, className = "", layer = "" }: { value: string; className?: string; layer?: string }) {
+  const [state, setState] = useState({ now: value, was: "", turn: 0 });
+  const shown = state.now === value ? state : { now: value, was: state.now, turn: state.turn + 1 };
+  if (shown !== state) setState(shown);
+  return (
+    <span className={`${styles.roll} ${className}`}>
+      {shown.turn > 0 && (
+        <span key={`was-${shown.turn}`} aria-hidden="true" className={`${styles.rollOut} ${layer}`}>
+          {shown.was}
+        </span>
+      )}
+      <span key={`now-${shown.turn}`} className={`${shown.turn > 0 ? styles.rollIn : ""} ${layer}`}>
+        {shown.now}
+      </span>
+    </span>
+  );
+}
+
+/** Digits that roll when they change, as the reference's counters do. */
 export function Rolling({ value }: { value: string }) {
   return (
     <span aria-hidden="true" className="tabular-nums">
-      {value.split("").map((ch, i) => (
-        <span key={`${i}-${ch}`} className={/\d/.test(ch) ? styles.digit : undefined}>
-          {ch}
-        </span>
-      ))}
+      {value.split("").map((ch, i) =>
+        /\d/.test(ch) ? <Roll key={i} value={ch} className={styles.digit} /> : <span key={i}>{ch}</span>
+      )}
     </span>
   );
 }
@@ -52,16 +73,37 @@ export function GameMenu({
   onFocus: (index: number) => void;
   className?: string;
 }) {
+  // One focus marker glides from item to item (180 ms), like RhineLabUI's
+  // tab underline, rather than each item fading its own in and out.
+  const list = useRef<HTMLOListElement>(null);
+  const [marker, setMarker] = useState<{ y: number; glide: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const ol = list.current;
+    if (!ol) return;
+    const place = () => {
+      const item = ol.querySelector<HTMLElement>(`[data-menu-item="${focus}"]`)?.parentElement;
+      setMarker((was) => (item ? { y: item.offsetTop + item.offsetHeight / 2, glide: was !== null } : null));
+    };
+    place();
+    // Labels wrap differently once fonts load or the screen turns.
+    const observer = new ResizeObserver(place);
+    observer.observe(ol);
+    return () => observer.disconnect();
+  }, [focus, items.length]);
+
   return (
-    <ol aria-label={label} className={`grid grid-cols-[minmax(0,1fr)] gap-1 ${className}`}>
+    <ol ref={list} aria-label={label} className={`relative grid grid-cols-[minmax(0,1fr)] gap-1 ${className}`}>
+      {marker && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-0 top-0 z-10 h-9 w-[3px] bg-fg transition-transform duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+          style={{ transform: `translateY(${marker.y - 18}px)`, transitionProperty: marker.glide ? undefined : "none" }}
+        />
+      )}
       {items.map((item, i) => {
         const active = i === focus;
         return (
           <li key={item.key} className="relative min-w-0" onMouseEnter={() => onFocus(i)}>
-            <span
-              aria-hidden="true"
-              className={`absolute left-0 top-1/2 h-9 w-[3px] -translate-y-1/2 bg-fg transition-opacity duration-200 ${active ? "opacity-100" : "opacity-0"}`}
-            />
             <button
               type="button"
               data-menu-item={i}

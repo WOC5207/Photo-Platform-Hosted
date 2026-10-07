@@ -9,7 +9,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import EmptyState from "@/components/ui/EmptyState";
 import SiteModeSwitch, { useLeaveFor } from "@/components/SiteModeSwitch";
 import { classicTwin, parentScreen, parseScreen, screenPath, type Screen } from "@/lib/siteMode";
-import { GameMenu, Hints, MENU_SCREENS, Rolling, pad, wrap, type MenuItem } from "./hud";
+import { GameMenu, Hints, MENU_SCREENS, Roll, Rolling, pad, wrap, type MenuItem } from "./hud";
 import { AlbumPhotosContext } from "./AlbumPhotosFeed";
 import { StageContext } from "./StageContext";
 import styles from "./ArchiveSite.module.css";
@@ -24,6 +24,8 @@ type MotionPreference = "system" | "reduced" | "full";
 type ThemePreference = "system" | "light" | "dark";
 
 const MOTION_KEY = "album3d-motion";
+/** How long a screen's panel takes to fade out before the next page is asked for. */
+const LEAVE_MS = 150;
 
 // The photo screens load with their own chunk, only when visited.
 // The search overlay loads the first time it opens.
@@ -286,20 +288,62 @@ export default function ArchiveSite({
     else if (steps[steps.length - 1] !== pathname) steps.push(pathname);
   }, [pathname]);
 
+  // Leaving a screen fades its panel out first (RhineLabUI's surfaces take
+  // 200 ms, easing in) while the next page is fetched; the next screen's
+  // panel then rises in with the scene's wipe (see .root in the CSS).
+  const [leaving, setLeaving] = useState(false);
+  const leaveTimer = useRef(0);
+  const pending = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    window.clearTimeout(leaveTimer.current);
+    setLeaving(false);
+  }, [pathname]);
+  useEffect(
+    () => () => {
+      window.clearTimeout(leaveTimer.current);
+      pending.current = null;
+    },
+    []
+  );
+  const leave = useCallback(
+    (navigate: () => void, wait = LEAVE_MS) => {
+      window.clearTimeout(leaveTimer.current);
+      // A second Esc or click while the first is still fading goes as well.
+      const earlier = pending.current;
+      pending.current = null;
+      earlier?.();
+      if (prefersReduced(motion)) return navigate();
+      setLeaving(true);
+      pending.current = navigate;
+      leaveTimer.current = window.setTimeout(() => {
+        pending.current = null;
+        navigate();
+        // A navigation that goes nowhere must not leave the panel hidden.
+        leaveTimer.current = window.setTimeout(() => setLeaving(false), 2500);
+      }, wait);
+    },
+    [motion]
+  );
+
   const go = useCallback(
-    (next: Screen) => router.push(screenPath(next), { scroll: false }),
-    [router]
+    (next: Screen) => {
+      const href = screenPath(next);
+      if (href === pathname) return;
+      router.prefetch(href);
+      leave(() => router.push(href, { scroll: false }));
+    },
+    [router, pathname, leave]
   );
 
   const back = useCallback(() => {
     const history = (window as { navigation?: { canGoBack?: boolean } }).navigation;
     if (typeof history?.canGoBack === "boolean" ? history.canGoBack : trail.current.length >= 2) {
-      router.back();
+      leave(() => router.back());
       return;
     }
     const parent = missing ? { kind: "title" as const } : parentScreen(screen);
-    if (parent) router.push(screenPath(parent), { scroll: false });
-  }, [missing, screen, router]);
+    if (parent) go(parent);
+  }, [missing, screen, router, leave, go]);
 
   // ------------------------------------------------------------- selection --
   /** Select a file; the same file again still moves to the picked card. */
@@ -343,12 +387,15 @@ export default function ArchiveSite({
   /** An album's light table; the raised album comes apart on the way. */
   const openTable = useCallback(
     (username: string, slug: string) => {
-      const next = () => go({ kind: "table", username, slug });
       const engine = engineRef.current;
-      if (engine && mode === "detail") engine.openAlbum(next);
-      else next();
+      if (!engine || mode !== "detail") return go({ kind: "table", username, slug });
+      // The details fade while the album comes apart, then the table opens at once.
+      const href = screenPath({ kind: "table", username, slug });
+      router.prefetch(href);
+      leave(() => undefined, 0);
+      engine.openAlbum(() => router.push(href, { scroll: false }));
     },
-    [mode, go]
+    [mode, go, leave, router]
   );
 
   /** Photographer select: the focused name brings its lane into view. */
@@ -445,6 +492,7 @@ export default function ArchiveSite({
           columns: columns.map((c) => c.fileIndexes),
           palette: readPalette(root),
           reducedMotion: prefersReduced(readMotion()),
+          hud: root,
           lowPower: coarse || window.innerWidth < 768,
           archiveLabel: t("archiveLabel"),
           onPick: (index) => handlers.current.choose(index),
@@ -820,7 +868,13 @@ export default function ArchiveSite({
   return (
     <AlbumPhotosContext.Provider value={setAlbum}>
     <StageContext.Provider value={stage}>
-    <div ref={rootRef} className={`${styles.root} album3d relative h-dvh w-full overflow-hidden bg-page text-fg ${palette?.className ?? ""}`} style={palette?.style}>
+    <div
+      ref={rootRef}
+      className={`${styles.root} album3d relative h-dvh w-full overflow-hidden bg-page text-fg ${palette?.className ?? ""}`}
+      style={palette?.style}
+      data-leaving={leaving}
+      data-motion={motion === "reduced" ? "reduced" : undefined}
+    >
       <div
         aria-hidden="true"
         className={`absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${ready ? "opacity-100" : "opacity-0"}`}
@@ -1072,7 +1126,7 @@ export default function ArchiveSite({
                 onClick={() => openDetail(selected)}
                 className="group flex min-h-11 w-full items-center gap-2 text-left"
               >
-                <span className="line-clamp-2 min-w-0 uppercase leading-tight [overflow-wrap:anywhere]">{file.title}</span>
+                <Roll value={file.title} className="min-w-0" layer="line-clamp-2 uppercase leading-tight [overflow-wrap:anywhere]" />
                 <span aria-hidden="true" className="ml-auto text-xl transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 wide:ml-12 wide:opacity-0 wide:group-hover:opacity-100">↗</span>
               </button>
             </h1>
@@ -1166,7 +1220,7 @@ export default function ArchiveSite({
       )}
 
       {mode === "detail" && (
-        <main id="main-content" tabIndex={-1} className="outline-none">
+        <main id="main-content" tabIndex={-1} className="outline-none" data-follow="detail">
           <button
             type="button"
             onClick={back}

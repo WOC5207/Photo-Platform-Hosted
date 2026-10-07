@@ -135,6 +135,11 @@ export interface EngineOptions {
   reducedMotion: boolean;
   /** Phones and other coarse pointers: no shadows, no idle drift. */
   lowPower: boolean;
+  /**
+   * Gets the detail view's camera progress as `--detail` (0 to 1), so the
+   * album's details can follow the camera in, as RhineLabUI's do.
+   */
+  hud?: HTMLElement;
   /** Printed on labels. */
   archiveLabel: string;
   onPick: (fileIndex: number) => void;
@@ -691,6 +696,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let lastInteraction = 0;
   let detailTarget = false;
   let detail = 0;
+  let detailShown = -1;
   let overviewTarget = false;
   let overview = 0;
   // The lane kept to (a photographer's column), or -1, and how far the rest have faded.
@@ -1133,6 +1139,11 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     detail = reduced ? detailGoal : MathUtils.lerp(detail, detailGoal, 1 - Math.exp(-dt * 10));
     if (Math.abs(detail - detailGoal) > 1e-3) moving = true;
     else detail = detailGoal;
+    const shown = Math.round(detail * 100) / 100;
+    if (shown !== detailShown) {
+      detailShown = shown;
+      options.hud?.style.setProperty("--detail", String(shown));
+    }
 
     // Menus pull the camera back so the field reads as a backdrop.
     const overviewGoal = overviewTarget ? 1 : 0;
@@ -1346,7 +1357,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     rendered = true;
     if (wipe < 1) {
       wipe = reduced ? 1 : Math.min(1, wipe + dt / WIPE_SECONDS);
-      wipeUniforms.progress.value = smooth(wipe);
+      // Easing out, so the edge is on screen from the first frames.
+      wipeUniforms.progress.value = 1 - (1 - wipe) ** 2;
       renderer.autoClear = false;
       renderer.render(wipeScene, wipeCamera);
       renderer.autoClear = true;
@@ -1426,6 +1438,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   function snapshot() {
     if (reduced || !rendered || lost) return;
     renderer.render(...view());
+    // A wipe still running stays in the picture, so leaving again mid-wipe
+    // carries on from what is on screen instead of jumping.
+    if (wipe < 1 && wipeUniforms.map.value) {
+      renderer.autoClear = false;
+      renderer.render(wipeScene, wipeCamera);
+      renderer.autoClear = true;
+    }
     renderer.getDrawingBufferSize(bufferSize);
     if (!wipeTexture || wipeTexture.image.width !== bufferSize.x || wipeTexture.image.height !== bufferSize.y) {
       wipeTexture?.dispose();
