@@ -35,6 +35,7 @@ import type { Deck } from "./deck";
 import type { PosterStage } from "./poster";
 import type { Reel } from "./reel";
 import type { Rack } from "./rack";
+import type { Shelf } from "./shelf";
 import { onSheet } from "./types";
 import {
   columnStrength,
@@ -200,6 +201,8 @@ export interface ArchiveEngine {
   /** The Dashboard's events reel, loaded the first time it is shown. */
   showReel(): Promise<Reel | null>;
   showRack(): Promise<Rack | null>;
+  /** A photographer's own albums as cards, loaded the first time it is shown. */
+  showShelf(): Promise<Shelf | null>;
   /** Where taps, swipes and the wheel on the board or the deck go. */
   setStageHandler(handler: ((input: StageInput) => void) | null): void;
   /** Where raw pointers on the stage go first (see StageDrag). */
@@ -870,7 +873,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let table: LightTable | null = null;
   // The booking board, the prize deck, the poster easel and the events reel: loaded on demand, one shown at a time.
   let stage: StageModule | null = null;
-  const stages: { board?: Board; deck?: Deck; poster?: PosterStage; reel?: Reel; rack?: Rack } = {};
+  const stages: { board?: Board; deck?: Deck; poster?: PosterStage; reel?: Reel; rack?: Rack; shelf?: Shelf } = {};
   let stageToken = 0;
   let stageHandler: ((input: StageInput) => void) | null = null;
   let stageDrag: ((input: StageDrag) => boolean) | null = null;
@@ -1803,6 +1806,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     },
     showRack() {
       return showStage("rack", () => import("./rack").then((m) => m.createRack(stageContext())));
+    },
+    showShelf() {
+      return showStage("shelf", () => import("./shelf").then((m) => m.createShelf(stageContext())));
     },
     setStageHandler(handler) {
       stageHandler = handler;

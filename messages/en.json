@@ -2129,6 +2129,7 @@
     "loading": "Loading the archive…",
     "select": "Archive / select",
     "photographerCount": "Photographer {current} / {total}",
+    "albumCount": "Album {current} / {total}",
     "prevFile": "Previous album",
     "nextFile": "Next album",
     "prevColumn": "Previous photographer",

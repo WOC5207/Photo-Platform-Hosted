@@ -31,6 +31,7 @@ const ArchiveIndex = dynamic(() => import("./ArchiveIndex"));
 const TableScreen = dynamic(() => import("./PhotoScreens").then((m) => m.TableScreen));
 const PhotoScreen = dynamic(() => import("./PhotoScreens").then((m) => m.PhotoScreen));
 const StudyScreen = dynamic(() => import("./StudyScreen"));
+const ArchiveShelf = dynamic(() => import("./ArchiveShelf"));
 
 function readMotion(): MotionPreference {
   try {
@@ -189,7 +190,9 @@ export default function ArchiveSite({
         ? screen.kind
         : "archive";
   const overview = missing || studioHome || MENU_SCREENS.includes(screen.kind);
-  const carouselScreen = !missing && (screen.kind === "photographers" || screen.kind === "photographer");
+  // A photographer's own archive lays out their albums instead of the photographer cards.
+  const ownArchive = !missing && screen.kind === "photographer" && viewer?.username === screen.username;
+  const carouselScreen = !missing && !ownArchive && (screen.kind === "photographers" || screen.kind === "photographer");
   // One photographer's albums keep to their lane, so a visitor can't wander into someone else's by accident.
   const lane = !missing && (screen.kind === "albumSelect" || screen.kind === "album") ? columnIndex : -1;
 
@@ -508,6 +511,8 @@ export default function ArchiveSite({
       engine.showCarousel(Math.max(0, carouselFocus), screen.kind === "photographer");
       return;
     }
+    // The album cards are ArchiveShelf's.
+    if (ownArchive) return;
     if ((mode === "table" || mode === "photo") && albumHere) {
       engine.showTable(tableKey, albumHere.photos, mode === "photo" ? Math.max(0, photoIndex) : tableFocus, mode === "photo");
       return;
@@ -522,7 +527,7 @@ export default function ArchiveSite({
     engine.setDetail(mode === "detail");
     // albumHere changes only with tableKey.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, overview, ready, carouselScreen, carouselFocus, screen.kind, tableKey, tableFocus, photoIndex]);
+  }, [mode, overview, ready, carouselScreen, carouselFocus, screen.kind, tableKey, tableFocus, photoIndex, ownArchive]);
 
   useEffect(() => {
     if (ready) engineRef.current?.setLane(lane);
@@ -613,6 +618,16 @@ export default function ArchiveSite({
 
   const photographerMenu: MenuItem[] = here
     ? [
+        ...(ownArchive && file
+          ? [
+              {
+                key: "open",
+                label: file.title,
+                sub: `${file.dateLabel || t("noDate")} · ${t("photos", { count: file.photoCount })}`,
+                run: () => openDetail(selected)
+              }
+            ]
+          : []),
         {
           key: "albums",
           label: t("menuAlbums"),
@@ -673,7 +688,8 @@ export default function ArchiveSite({
           settings[menuFocus]?.adjust(e.key === "ArrowLeft" ? -1 : 1);
           return;
         }
-        if (screen.kind === "photographer" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        // On one's own archive ← → move the album cards (see ArchiveShelf).
+        if (screen.kind === "photographer" && !ownArchive && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
           e.preventDefault();
           switchPhotographer(e.key === "ArrowLeft" ? -1 : 1);
           return;
@@ -732,7 +748,7 @@ export default function ArchiveSite({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go, openTable, lane]);
+  }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, ownArchive, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go, openTable, lane]);
 
   const key = useCallback(
     (name: "move" | "confirm" | "back" | "sides" | "alt") => ({ move: "↑ ↓", confirm: "ENTER", back: "ESC", sides: "← →", alt: "/" })[name],
@@ -987,17 +1003,32 @@ export default function ArchiveSite({
 
       {!missing && screen.kind === "photographer" && here && (
         <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
-          <div className="flex items-center gap-3">
-            <p className={metaLabel}>
-              {t("photographerCount", { current: pad(columnIndex + 1), total: pad(columns.length) })}
-            </p>
-            {columns.length > 1 && (
-              <span className="flex">
-                <button type="button" onClick={() => switchPhotographer(-1)} aria-label={t("prevColumn")} className={square}>←</button>
-                <button type="button" onClick={() => switchPhotographer(1)} aria-label={t("nextColumn")} className={square}>→</button>
-              </span>
-            )}
-          </div>
+          {ownArchive ? (
+            <ArchiveShelf
+              engine={stage.engine}
+              files={files}
+              indexes={here.fileIndexes}
+              selected={selected}
+              onSelect={(index) => {
+                // Moving the cards puts the menu on the focused album, so Enter opens it.
+                setSelected(index);
+                setMenuFocus(0);
+              }}
+              onOpen={openDetail}
+            />
+          ) : (
+            <div className="flex items-center gap-3">
+              <p className={metaLabel}>
+                {t("photographerCount", { current: pad(columnIndex + 1), total: pad(columns.length) })}
+              </p>
+              {columns.length > 1 && (
+                <span className="flex">
+                  <button type="button" onClick={() => switchPhotographer(-1)} aria-label={t("prevColumn")} className={square}>←</button>
+                  <button type="button" onClick={() => switchPhotographer(1)} aria-label={t("nextColumn")} className={square}>→</button>
+                </span>
+              )}
+            </div>
+          )}
           <h1 className="mt-1 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[4.5rem]">
             {here.name}
           </h1>
@@ -1025,7 +1056,7 @@ export default function ArchiveSite({
         <Hints
           className={styles.menuHint}
           parts={[
-            ...(screen.kind === "photographer" && !missing ? [`${key("sides")} ${t("hintPhotographer")}`] : []),
+            ...(screen.kind === "photographer" && !missing ? [`${key("sides")} ${t(ownArchive ? "hintAlbum" : "hintPhotographer")}`] : []),
             ...(screen.kind === "settings" ? [`${key("sides")} ${t("hintChange")}`] : []),
             `${key("move")} ${t("hintSelect")}`,
             `${key("confirm")} ${t("hintConfirm")}`,

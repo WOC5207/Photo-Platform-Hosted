@@ -2129,6 +2129,7 @@
     "loading": "正在载入档案…",
     "select": "档案 / 选择",
     "photographerCount": "摄影师 {current} / {total}",
+    "albumCount": "相册 {current} / {total}",
     "prevFile": "上一个相册",
     "nextFile": "下一个相册",
     "prevColumn": "上一位摄影师",
