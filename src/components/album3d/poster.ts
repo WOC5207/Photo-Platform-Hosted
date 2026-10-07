@@ -57,7 +57,7 @@ export interface PosterStage {
   camera: PerspectiveCamera;
   /**
    * Shape the poster for a width:height ratio and hand back the canvas to
-   * paint it on: `edge` (2048 by default) px on its long edge, at most 1024
+   * paint it on: `edge` (2048 by default) px on its long edge, at most 1600
    * on low-power devices.
    */
   setPoster(key: string, aspect: number, edge?: number): HTMLCanvasElement;
@@ -592,9 +592,10 @@ export function createPosterStage(context: {
     scene,
     camera,
     setPoster(nextKey, nextAspect, longEdge = 2048) {
-      // Phones keep the live texture at 1024 px; elsewhere it stays sharp
-      // whatever the quality tier, since the poster is what is being made.
-      const edge = Math.min(longEdge, lowPower ? 1024 : 2048);
+      // Phones keep the live texture at 1600 px, enough for a poster filling
+      // the strip above the sheet at 3x; elsewhere it stays sharp whatever the
+      // quality tier, since the poster is what is being made.
+      const edge = Math.min(longEdge, lowPower ? 1600 : 2048);
       const w = Math.max(2, Math.round(nextAspect >= 1 ? edge : edge * nextAspect));
       const h = Math.max(2, Math.round(nextAspect >= 1 ? edge / nextAspect : edge));
       if (nextKey !== key) {
