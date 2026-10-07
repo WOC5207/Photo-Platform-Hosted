@@ -10,6 +10,12 @@ permissions:
   contents: read
   packages: write
 
+# One build at a time, so two quick merges can't race on the `stable` tag. A
+# third merge replaces the waiting build, which its newer image includes.
+concurrency:
+  group: nas-image
+  cancel-in-progress: false
+
 jobs:
   publish:
     # The `branches` filter above matches the triggering run's head branch

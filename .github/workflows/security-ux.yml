@@ -1,17 +1,71 @@
 name: Security and UX verification
 
 on:
+  # Changes that only touch docs or notes skip verification (and so the NAS
+  # image too).
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".claude/**"
+      - ".interface-design/**"
+      - "LICENSE"
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".claude/**"
+      - ".interface-design/**"
+      - "LICENSE"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# A new push to a pull request cancels that pull request's older run. Pushes to
+# main never share a group, so no merge's run is cancelled or dropped: the NAS
+# image only builds after a successful main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # A merge to main usually lands exactly the code its pull request's last run
+  # already verified (the PR branch had main merged in). Pull request runs
+  # record the tree they passed on; a main push with the same tree skips the
+  # full suite. When main moved after that run, the tree differs and the full
+  # suite runs again before the NAS image can build.
+  already-verified:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      verified: ${{ steps.check.outputs.verified }}
+    steps:
+      - id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          verified=false
+          if tree=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.tree.sha) &&
+             count=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=verified-tree-$tree&per_page=100" \
+               --jq "[.artifacts[] | select(.expired == false and .workflow_run.head_repository_id == $GITHUB_REPOSITORY_ID)] | length") &&
+             [ "$count" -gt 0 ]; then
+            verified=true
+            echo "Tree $tree already passed the full suite on a pull request run, so it is not run again." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "verified=$verified" >> "$GITHUB_OUTPUT"
+
   verify:
+    needs: already-verified
+    # Pull request runs skip the check above, so run unless it found a match.
+    if: ${{ !cancelled() && needs.already-verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     services:
@@ -107,3 +161,23 @@ jobs:
         env:
           NODE_ENV: production
           PORT: "3001"
+
+      # Only same-repository pull requests count: a fork controls its own
+      # workflow file and could record a tree it never tested.
+      - name: Record the verified tree
+        id: tree
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          mkdir -p /tmp/verified-tree
+          printf 'tree %s\ncommit %s\npr %s\n' "$tree" "$GITHUB_SHA" "${{ github.event.pull_request.number }}" > /tmp/verified-tree/info.txt
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.tree.outputs.tree
+        continue-on-error: true
+        with:
+          name: verified-tree-${{ steps.tree.outputs.tree }}
+          path: /tmp/verified-tree/info.txt
+          retention-days: 14
+          overwrite: true
