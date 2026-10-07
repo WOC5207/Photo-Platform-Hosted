@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { Link, useRouter } from "@/i18n/navigation";
+import { Link } from "@/i18n/navigation";
 import { logout3d } from "@/app/[locale]/3d/login/actions";
 import { dismissPlatformNotification } from "@/app/[locale]/dashboard/(protected)/actions";
 import { GameMenu, Rolling, pad, wrap, type MenuItem } from "../hud";
@@ -12,26 +12,17 @@ import type { StudioHome } from "./types";
 
 /**
  * The 3D Dashboard's menu: the photographer's numbers, the platform's
- * notices, and every section of their backend. Administration still opens
- * on the classic site. Until they put it away, a new photographer also gets
- * first steps to follow, each ticked off once done.
+ * notices, and every section of their backend. Until they put it away, a
+ * new photographer also gets first steps to follow, each ticked off once done.
  */
 export default function HomeScreen({ home }: { home: StudioHome }) {
   const t = useTranslations("album3d");
   const ta = useTranslations("admin");
-  const router = useRouter();
   const { go, path } = useStage();
   const [focus, setFocus] = useState(0);
   const [leaving, startLeaving] = useTransition();
   const { username } = home.account;
 
-  const classic = (key: string, label: string, href: string): MenuItem => ({
-    key,
-    label,
-    sub: t("studioClassicSub"),
-    external: true,
-    run: () => router.push(href)
-  });
   const items: MenuItem[] = [
     {
       key: "events",
@@ -63,7 +54,6 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
       sub: page === "storage" ? t("studioStorage", { used: formatBytes(home.usedBytes), total: formatBytes(home.quotaBytes) }) : t(`studioSub.${page}`),
       run: () => go({ kind: "studio", username, page })
     })),
-    ...(home.account.admin ? [classic("admin", t("loginAdmin"), "/admin")] : []),
     ...(home.listed
       ? [{ key: "archive", label: t("loginArchive"), sub: `@${username}`, run: () => go({ kind: "photographer", username }) }]
       : []),
