@@ -122,7 +122,11 @@ export default function PhotosScreen({
   });
   useStageInput((input) => {
     if (input.kind === "pick") {
-      if (input.index === focus) togglePick(input.index);
+      // The table already went there under a drag or the wheel.
+      if (input.moved) {
+        setConfirming(null);
+        setFocus(input.index);
+      } else if (input.index === focus) togglePick(input.index);
       else moveFocus(input.index - focus);
     } else if (input.kind === "wheel") moveFocus(input.direction * tableColumns(window.innerWidth, window.innerHeight));
   });

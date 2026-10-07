@@ -12,6 +12,16 @@
   scrollbar-width: thin;
   padding-right: 12px;
 }
+/* Rises in with the scene's wipe (the fade and its timing are ArchiveSite.module.css's). */
+.panel:global(#main-content)[data-expanded] {
+  animation-name: panel-rise;
+}
+@keyframes panel-rise {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
 
 @media (max-width: 1099px), (max-aspect-ratio: 105/100) {
   .panel {

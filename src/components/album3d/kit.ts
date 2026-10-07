@@ -9,6 +9,8 @@ import {
   RepeatWrapping,
   SRGBColorSpace,
   Texture,
+  Vector3,
+  type Camera,
   type Scene,
   type WebGLRenderer
 } from "three";
@@ -146,4 +148,24 @@ export function gridTexture(renderer: WebGLRenderer, line: string, tick: string,
   const texture = makeTexture(canvas, renderer);
   texture.wrapS = texture.wrapT = RepeatWrapping;
   return texture;
+}
+
+const pitchFrom = new Vector3();
+const pitchTo = new Vector3();
+/**
+ * Where world point `to` lands on screen relative to `from`, in pixels (y
+ * down) for a canvas `width` x `height` pixels: how a finger has to move to
+ * carry a stage from one item to the next.
+ */
+export function screenStep(camera: Camera, from: Vector3, to: Vector3, width: number, height: number) {
+  camera.updateMatrixWorld();
+  pitchFrom.copy(from).project(camera);
+  pitchTo.copy(to).project(camera);
+  return { x: ((pitchTo.x - pitchFrom.x) * width) / 2, y: ((pitchFrom.y - pitchTo.y) * height) / 2 };
+}
+
+/** Screen pixels between two world points along `axis`, at least 8. */
+export function screenPitch(camera: Camera, from: Vector3, to: Vector3, width: number, height: number, axis: "x" | "y") {
+  const step = screenStep(camera, from, to, width, height);
+  return Math.max(8, Math.abs(axis === "x" ? step.x : step.y));
 }

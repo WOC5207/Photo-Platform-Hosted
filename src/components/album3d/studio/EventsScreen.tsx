@@ -141,7 +141,7 @@ export default function EventsScreen({ account, events }: { account: StudioAccou
 
   useStageInput((input) => {
     if (input.kind === "pick") {
-      if (input.index === at) enter(input.index, "event");
+      if (input.index === at && !input.moved) enter(input.index, "event");
       else setFocus(input.index);
     } else if (input.kind === "wheel") move(input.direction);
     else move(input.x !== 0 ? input.x : input.y);

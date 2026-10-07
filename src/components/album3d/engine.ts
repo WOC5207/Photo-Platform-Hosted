@@ -27,7 +27,7 @@ import {
   WebGLRenderer
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { addLighting, fitText, forgetShadowLights, imageMaterial, loadImage, makeTexture, photoTexture, setShadows } from "./kit";
+import { addLighting, fitText, forgetShadowLights, imageMaterial, loadImage, makeTexture, photoTexture, screenStep, setShadows } from "./kit";
 import { createCarousel, type Carousel, type CarouselCard } from "./carousel";
 import { createLightTable, type LightTable, type TablePrint } from "./lightTable";
 import type { Board } from "./board";
@@ -40,6 +40,8 @@ import { onSheet } from "./types";
 import {
   columnStrength,
   damp,
+  DragSpeed,
+  FLING_FRICTION,
   idleWave,
   nearestOccurrence,
   selectionWave,
@@ -49,6 +51,7 @@ import {
   spring,
   stairDrop,
   wrap,
+  type Follow,
   type Spring
 } from "./motion";
 
@@ -99,7 +102,8 @@ export type EngineMove = { axis: "file" | "column"; direction: 1 | -1 };
 
 /** Taps, swipes and the wheel on the booking board or the prize deck, for the screen to act on. */
 export type StageInput =
-  | { kind: "pick"; index: number; part?: number }
+  /** `moved`: a drag or the wheel left the table, the reel or the album rail on this item (not a tap). */
+  | { kind: "pick"; index: number; part?: number; moved?: boolean }
   | { kind: "swipe"; x: -1 | 0 | 1; y: -1 | 0 | 1 }
   | { kind: "wheel"; direction: 1 | -1 };
 
@@ -122,6 +126,9 @@ interface StageModule {
   pick(clientX: number, clientY: number, rect: DOMRect): number;
   /** A part of the picked thing, such as a switch position, when the stage has parts. */
   pickPart?(clientX: number, clientY: number, rect: DOMRect): number;
+  /** Stages a drag carries along under the finger (the reel, the album rail). */
+  follow?: Follow;
+  setFocus?(index: number): void;
   step(dt: number): boolean;
   resize(width: number, height: number): void;
   setPalette(palette: EnginePalette): void;
@@ -135,6 +142,11 @@ export interface EngineOptions {
   reducedMotion: boolean;
   /** Phones and other coarse pointers: no shadows, no idle drift. */
   lowPower: boolean;
+  /**
+   * Gets the detail view's camera progress as `--detail` (0 to 1), so the
+   * album's details can follow the camera in, as RhineLabUI's do.
+   */
+  hud?: HTMLElement;
   /** Printed on labels. */
   archiveLabel: string;
   onPick: (fileIndex: number) => void;
@@ -203,6 +215,8 @@ export interface ArchiveEngine {
   showRack(): Promise<Rack | null>;
   /** A photographer's own albums as cards, loaded the first time it is shown. */
   showShelf(): Promise<Shelf | null>;
+  /** Fetches the Dashboard's scenes ahead of their first use. */
+  prefetchStages(): void;
   /** Where taps, swipes and the wheel on the board or the deck go. */
   setStageHandler(handler: ((input: StageInput) => void) | null): void;
   /** Where raw pointers on the stage go first (see StageDrag). */
@@ -691,6 +705,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let lastInteraction = 0;
   let detailTarget = false;
   let detail = 0;
+  let detailShown = -1;
   let overviewTarget = false;
   let overview = 0;
   // The lane kept to (a photographer's column), or -1, and how far the rest have faded.
@@ -698,6 +713,26 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const isolate = spring(0);
   const locked = (lane: number) => laneLock >= 0 && wrap(lane, columnCount) !== laneLock;
   let clock = performance.now() / 1000;
+  /**
+   * A drag carrying the carousel, the light table or a stage along under the
+   * finger, as RhineLabUI's archive drag does: it follows the finger exactly,
+   * then coasts at the release speed onto the nearest item.
+   */
+  let carry: { follow: Follow; id: number; axis: "x" | "y"; anchor: number; start: number; position: number; pitch: number; from: number } | null = null;
+  const carrySpeed = new DragSpeed();
+  /** The same for the album field, which moves both ways: lanes across, files up and down. */
+  let fieldDrag: {
+    id: number;
+    x: number;
+    y: number;
+    lane: number;
+    row: number;
+    at: { lane: number; row: number };
+    perLane: { x: number; y: number };
+    perRow: { x: number; y: number };
+  } | null = null;
+  const laneSpeed = new DragSpeed();
+  const rowSpeed = new DragSpeed();
 
   // The selected card is a full cassette; every other card is an instance.
   let selected: Cassette | null = null;
@@ -976,11 +1011,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const token = ++stageToken;
     let ready = loading[name] as Promise<NonNullable<(typeof stages)[K]>> | undefined;
     if (!ready) {
-      ready = create().then((module) => {
+      ready = create().then(async (module) => {
         if (disposed) module.dispose();
         else {
           stages[name] = module;
           module.resize(width, height);
+          // Compile its shaders before it shows, so the wipe into it doesn't stall on them.
+          await renderer.compileAsync(module.scene, module.camera).catch(() => undefined);
         }
         return module;
       });
@@ -1052,6 +1089,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   // A still frame is drawn at the screen's full density (3x on most phones),
   // past the moving tiers' cap, so cards, posters and text aren't upscaled.
   const restPixels = () => Math.min(window.devicePixelRatio || 1, 3);
+  // When things started moving, and whether a frame came slow since.
+  let movingSince = -1;
+  let slowMove = false;
   function setPixels(ratio: number) {
     if (renderer.getPixelRatio() === ratio) return;
     renderer.setPixelRatio(ratio);
@@ -1090,17 +1130,20 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const railTarget = SLOT_Z - selectedCell.row * ROW_SPACING;
     damp(shoulder, selectedCell.row, rate(5), dt);
     damp(laneFocus, selectedCell.lane, rate(4), dt);
-    damp(trackX, selectedCell.lane * COLUMN_SPACING, rate(3.7), dt);
-    damp(rail, railTarget, rate(3.7), dt);
+    if (!fieldDrag) {
+      damp(trackX, selectedCell.lane * COLUMN_SPACING, rate(3.7), dt);
+      damp(rail, railTarget, rate(3.7), dt);
+    }
     damp(rotation, targetRotation, rate(9), dt);
     damp(apart, apartTarget, rate(4.5), dt);
     moving ||= !settled(apart, apartTarget);
     if (opened && apart.value > 0.8) finishOpen();
     // Turn back to face the slot before descending, as the reference does.
-    const liftTarget = overviewTarget ? 0 : detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
+    // A dragged archive lowers the raised card back into the stack until it settles.
+    const liftTarget = overviewTarget || fieldDrag ? 0 : detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
     damp(lift, liftTarget, rate(4.2), dt);
     moving ||= !settled(shoulder, selectedCell.row) || !settled(laneFocus, selectedCell.lane);
-    moving ||= !settled(trackX, selectedCell.lane * COLUMN_SPACING) || !settled(rail, railTarget);
+    moving ||= !fieldDrag && (!settled(trackX, selectedCell.lane * COLUMN_SPACING) || !settled(rail, railTarget));
     moving ||= !settled(lift, liftTarget) || !settled(rotation, targetRotation);
 
     for (const [key, o] of outgoing) {
@@ -1133,6 +1176,11 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     detail = reduced ? detailGoal : MathUtils.lerp(detail, detailGoal, 1 - Math.exp(-dt * 10));
     if (Math.abs(detail - detailGoal) > 1e-3) moving = true;
     else detail = detailGoal;
+    const shown = Math.round(detail * 100) / 100;
+    if (shown !== detailShown) {
+      detailShown = shown;
+      options.hud?.style.setProperty("--detail", String(shown));
+    }
 
     // Menus pull the camera back so the field reads as a backdrop.
     const overviewGoal = overviewTarget ? 1 : 0;
@@ -1340,13 +1388,24 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     else moving = stepField(dt);
     // The tier's pixel ratio holds while things move; the frame things come
     // to rest on is drawn at the screen's own, so a still poster, cover or
-    // print is never left upscaled and soft.
-    setPixels(moving || wipe < 1 ? tierPixels() : restPixels());
+    // print is never left upscaled and soft. A short move (a hover, a step)
+    // keeps the screen's own, unless its frames come slow, so the picture
+    // doesn't soften and sharpen again on every touch.
+    const active = moving || wipe < 1 || carry !== null || fieldDrag !== null;
+    if (!active) {
+      movingSince = -1;
+      slowMove = false;
+    } else {
+      if (movingSince < 0) movingSince = now;
+      if (ms > 26) slowMove = true;
+    }
+    setPixels(active && (slowMove || now - movingSince >= 150) ? tierPixels() : restPixels());
     renderer.render(...view());
     rendered = true;
     if (wipe < 1) {
-      wipe = reduced ? 1 : Math.min(1, wipe + dt / WIPE_SECONDS);
-      wipeUniforms.progress.value = smooth(wipe);
+      wipe = reduced ? 1 : Math.min(1, wipe + dt / wipeSeconds);
+      // Easing out, so the edge is on screen from the first frames.
+      wipeUniforms.progress.value = 1 - (1 - wipe) ** 2;
       renderer.autoClear = false;
       renderer.render(wipeScene, wipeCamera);
       renderer.autoClear = true;
@@ -1394,13 +1453,22 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const WIPE_SECONDS = 0.5;
   let wipeTexture: FramebufferTexture | null = null;
   const bufferSize = new Vector2();
-  const wipeUniforms = { map: { value: null as FramebufferTexture | null }, progress: { value: 1 }, edge: { value: new Color() } };
+  const wipeUniforms = {
+    map: { value: null as FramebufferTexture | null },
+    progress: { value: 1 },
+    edge: { value: new Color() },
+    // 1 for a colour change: the new colours spread out from the middle instead of wiping across.
+    spread: { value: 0 },
+    aspect: { value: 1 }
+  };
+  let wipeSeconds = WIPE_SECONDS;
   const wipeScene = new Scene();
   const wipeCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const wipeQuad = new Mesh(
     new PlaneGeometry(2, 2),
     new ShaderMaterial({
       uniforms: wipeUniforms,
+      transparent: true,
       depthTest: false,
       depthWrite: false,
       vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
@@ -1408,11 +1476,18 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         uniform sampler2D map;
         uniform float progress;
         uniform vec3 edge;
+        uniform float spread;
+        uniform float aspect;
         varying vec2 vUv;
         void main() {
+          vec3 old = texture2D(map, vUv).rgb;
+          if (spread > 0.5) {
+            float r = length((vUv - 0.5) * vec2(aspect, 1.0)) / length(vec2(aspect, 1.0) * 0.5);
+            gl_FragColor = vec4(old, smoothstep(0.0, 0.25, r - (progress * 1.25 - 0.25)));
+            return;
+          }
           float k = vUv.x * 0.82 + (1.0 - vUv.y) * 0.18 - (progress * 1.3 - 0.15);
           if (k < 0.0) discard;
-          vec3 old = texture2D(map, vUv).rgb;
           float band = 1.0 - smoothstep(0.0, 0.012, k);
           float shade = 1.0 - smoothstep(0.0, 0.08, k);
           gl_FragColor = vec4(mix(old * (1.0 - shade * 0.18), edge, band), 1.0);
@@ -1422,10 +1497,17 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   wipeQuad.frustumCulled = false;
   wipeScene.add(wipeQuad);
 
-  /** Keep the frame on screen now, to wipe away once the next stage draws. */
-  function snapshot() {
+  /** Keep the frame on screen now, to wipe away once the next stage draws (or, `spread`, to fade out from the middle). */
+  function snapshot(spread = false) {
     if (reduced || !rendered || lost) return;
     renderer.render(...view());
+    // A wipe still running stays in the picture, so leaving again mid-wipe
+    // carries on from what is on screen instead of jumping.
+    if (wipe < 1 && wipeUniforms.map.value) {
+      renderer.autoClear = false;
+      renderer.render(wipeScene, wipeCamera);
+      renderer.autoClear = true;
+    }
     renderer.getDrawingBufferSize(bufferSize);
     if (!wipeTexture || wipeTexture.image.width !== bufferSize.x || wipeTexture.image.height !== bufferSize.y) {
       wipeTexture?.dispose();
@@ -1434,6 +1516,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     renderer.copyFramebufferToTexture(wipeTexture);
     wipeUniforms.map.value = wipeTexture;
     wipeUniforms.edge.value.setStyle(palette.accent, SRGBColorSpace).convertLinearToSRGB();
+    wipeUniforms.spread.value = spread ? 1 : 0;
+    wipeUniforms.aspect.value = width / height;
+    wipeSeconds = spread ? 0.6 : WIPE_SECONDS;
     wipe = 0;
     invalidate();
   }
@@ -1548,6 +1633,166 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     });
   }
 
+  // ------------------------------------------------------------- dragging --
+  /** What a drag carries now: the carousel, the light table or a stage that follows drags. */
+  function follower(): Follow | null {
+    if (mode === "carousel") return carousel?.follow ?? null;
+    if (mode === "table") return tableRaised ? null : (table?.follow ?? null);
+    if (mode === "stage") return stage?.follow ?? null;
+    return null;
+  }
+
+  /** Tells the screen which item a drag or the wheel left the carousel, the table or a stage on. */
+  function commitFocus(index: number) {
+    if (mode === "carousel") options.onCard(index, false);
+    else if (mode === "table") {
+      if (stageHandler) stageHandler({ kind: "pick", index, moved: true });
+      else options.onPrint(index, false);
+    } else if (mode === "stage") stageHandler?.({ kind: "pick", index, moved: true });
+  }
+
+  /** Past 10 px along the stage's own direction, a press becomes a drag that carries the stage. */
+  function carryMove(e: PointerEvent) {
+    if (carry) {
+      if (carry.id !== e.pointerId) return true;
+      carry.position = carry.start - ((carry.axis === "x" ? e.clientX : e.clientY) - carry.anchor) / carry.pitch;
+      carry.follow.hold(carry.position);
+      carrySpeed.push(performance.now(), carry.position);
+      return true;
+    }
+    if (!down || down.id !== e.pointerId) return false;
+    const follow = follower();
+    const axis = follow?.dragAxis();
+    if (!follow || !axis) return false;
+    const along = axis === "x" ? e.clientX - down.x : e.clientY - down.y;
+    const across = axis === "x" ? e.clientY - down.y : e.clientX - down.x;
+    if (Math.abs(along) < 10 || Math.abs(along) <= Math.abs(across)) return false;
+    const start = follow.grab();
+    carry = { follow, id: e.pointerId, axis, anchor: axis === "x" ? e.clientX : e.clientY, start, position: start, pitch: follow.pitch(), from: follow.index() };
+    carrySpeed.clear();
+    carrySpeed.push(performance.now(), start);
+    canvas.setPointerCapture(e.pointerId);
+    carousel?.setHover(-1);
+    table?.setHover(-1);
+    stage?.setHover(-1);
+    canvas.style.cursor = "grabbing";
+    return true;
+  }
+
+  /** Lets a carried stage go at the finger's speed; it comes to rest on the item it coasts to. */
+  function carryUp(e: PointerEvent) {
+    const drag = carry;
+    if (!drag || drag.id !== e.pointerId) return false;
+    carry = null;
+    canvas.style.cursor = "";
+    const cancelled = e.type === "pointercancel";
+    const now = performance.now();
+    const velocity = cancelled || reduced ? 0 : carrySpeed.speed(now);
+    carrySpeed.clear();
+    // A clear swipe (RhineLabUI's 36 px within 1.4 s) moves at least one item.
+    let swipe = 0;
+    if (!cancelled && down) {
+      const moved = drag.axis === "x" ? e.clientX - down.x : e.clientY - down.y;
+      if (Math.abs(moved) > 36 && now - down.t < 1400) swipe = moved < 0 ? 1 : -1;
+    }
+    down = null;
+    const index = drag.follow.release(drag.position + velocity / FLING_FRICTION, velocity, swipe);
+    // Unless another screen took over meanwhile, it tells the screen where it stopped.
+    if (follower() === drag.follow && index !== drag.from) commitFocus(index);
+    lastInteraction = clock;
+    return true;
+  }
+
+  const dragFrom = new Vector3();
+  const dragTo = new Vector3();
+  /** The album field moves under a finger both ways: lanes across, files up and down. */
+  function fieldMove(e: PointerEvent) {
+    const drag = fieldDrag;
+    if (drag) {
+      if (drag.id !== e.pointerId) return true;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      const { perLane: a, perRow: b } = drag;
+      // The card under the finger stays under it: solve the screen move for lanes and rows.
+      const det = a.x * b.y - a.y * b.x;
+      let lanes = 0;
+      let rows: number;
+      if (laneLock >= 0 || Math.abs(det) < 1) rows = -(dx * b.x + dy * b.y) / Math.max(1, b.x * b.x + b.y * b.y);
+      else {
+        lanes = (-dx * b.y + dy * b.x) / det;
+        rows = (dx * a.y - dy * a.x) / det;
+      }
+      drag.at = { lane: drag.lane + lanes, row: drag.row + rows };
+      trackX.value = drag.at.lane * COLUMN_SPACING;
+      rail.value = SLOT_Z - drag.at.row * ROW_SPACING;
+      trackX.velocity = rail.velocity = 0;
+      const now = performance.now();
+      laneSpeed.push(now, drag.at.lane);
+      rowSpeed.push(now, drag.at.row);
+      lastInteraction = clock;
+      invalidate();
+      return true;
+    }
+    if (!down || down.id !== e.pointerId || detailTarget || overviewTarget) return false;
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10) return false;
+    const y = BASE_Y + CARD_H / 2;
+    dragFrom.set(0, y, SLOT_Z);
+    const perLane = screenStep(camera, dragFrom, dragTo.set(COLUMN_SPACING, y, SLOT_Z), width, height);
+    const perRow = screenStep(camera, dragFrom, dragTo.set(0, y, SLOT_Z + ROW_SPACING), width, height);
+    const lane = trackX.value / COLUMN_SPACING;
+    const row = (SLOT_Z - rail.value) / ROW_SPACING;
+    fieldDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, lane, row, at: { lane, row }, perLane, perRow };
+    trackX.velocity = rail.velocity = 0;
+    laneSpeed.clear();
+    rowSpeed.clear();
+    laneSpeed.push(performance.now(), lane);
+    rowSpeed.push(performance.now(), row);
+    canvas.setPointerCapture(e.pointerId);
+    hoverCell = null;
+    canvas.style.cursor = "grabbing";
+    invalidate();
+    return true;
+  }
+
+  /** The field coasts on at the finger's speed and the album it stops on rises. */
+  function fieldUp(e: PointerEvent) {
+    const drag = fieldDrag;
+    if (!drag || drag.id !== e.pointerId) return false;
+    fieldDrag = null;
+    canvas.style.cursor = "";
+    const cancelled = e.type === "pointercancel";
+    const now = performance.now();
+    const still = cancelled || reduced;
+    const vLane = still || laneLock >= 0 ? 0 : laneSpeed.speed(now);
+    const vRow = still ? 0 : rowSpeed.speed(now);
+    const cell = {
+      lane: laneLock >= 0 ? selectedCell.lane : Math.round(drag.at.lane + vLane / FLING_FRICTION),
+      row: Math.round(drag.at.row + vRow / FLING_FRICTION)
+    };
+    // A clear swipe that would settle back still moves one album, along the way it went furthest.
+    if (!cancelled && down && cell.lane === selectedCell.lane && cell.row === selectedCell.row) {
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      if (moved > 36 && now - down.t < 1400) {
+        const lanes = drag.at.lane - drag.lane;
+        const rows = drag.at.row - drag.row;
+        const lanePixels = laneLock >= 0 ? 0 : Math.abs(lanes) * Math.hypot(drag.perLane.x, drag.perLane.y);
+        const rowPixels = Math.abs(rows) * Math.hypot(drag.perRow.x, drag.perRow.y);
+        if (lanePixels > rowPixels) cell.lane += Math.sign(lanes);
+        else if (rows) cell.row += Math.sign(rows);
+      }
+    }
+    down = null;
+    trackX.velocity = vLane * COLUMN_SPACING;
+    rail.velocity = -vRow * ROW_SPACING;
+    laneSpeed.clear();
+    rowSpeed.clear();
+    const index = fileAt(cell);
+    pendingCell = cell;
+    select(index);
+    options.onPick(index);
+    return true;
+  }
+
   function onPointerDown(e: PointerEvent) {
     if (mode === "stage" && stageDrag?.({ phase: "down", id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() })) {
       dragged.add(e.pointerId);
@@ -1568,7 +1813,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       stageDrag?.({ phase: "move", id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() });
       return;
     }
-    if (mode === "carousel" || mode === "table" || mode === "stage") return stagePointerMove(e);
+    if (mode === "carousel" || mode === "table" || mode === "stage") {
+      if (carryMove(e)) return;
+      return stagePointerMove(e);
+    }
     if (mode !== "field") return;
     if (down && down.id === e.pointerId && detailTarget && !opened && lift.value > 3.3) {
       // Drag to inspect the raised card, within the reference's ±0.8 rad.
@@ -1577,6 +1825,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       invalidate();
       return;
     }
+    if (fieldMove(e)) return;
     if (e.pointerType !== "mouse" || overviewTarget || hoverFrame) return;
     hoverFrame = requestAnimationFrame(() => {
       hoverFrame = 0;
@@ -1601,6 +1850,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       stageDrag?.({ phase, id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() });
       return;
     }
+    if (carryUp(e) || fieldUp(e)) return;
     if (!down || down.id !== e.pointerId) return;
     const dx = e.clientX - down.x;
     const dy = e.clientY - down.y;
@@ -1656,32 +1906,54 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   let wheelAt = 0;
+  let wheelSum = 0;
   let tableRaised = false;
+  /** Whole steps the wheel has added up to: 100 px a step, at most 3 at once, as RhineLabUI's wheel. */
+  function wheelSteps(e: WheelEvent) {
+    const now = performance.now();
+    const delta = e.deltaY * (e.deltaMode === 1 ? 34 : e.deltaMode === 2 ? height : 1);
+    if (now - wheelAt > 180 || Math.sign(delta) !== Math.sign(wheelSum)) wheelSum = 0;
+    wheelAt = now;
+    wheelSum += delta;
+    const steps = Math.trunc(wheelSum / 100);
+    wheelSum -= steps * 100;
+    return MathUtils.clamp(steps, -3, 3);
+  }
+
   function onWheel(e: WheelEvent) {
     if (mode === "study") return;
     e.preventDefault();
     if (mode === "stage" && stageDrag?.({ phase: "wheel", deltaY: e.deltaY, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() })) return;
+    if (carry || fieldDrag) return;
     if (mode === "carousel" || mode === "table" || mode === "stage") {
-      const now = performance.now();
-      if (now - wheelAt < 260 || Math.abs(e.deltaY) < 4) return;
-      wheelAt = now;
-      const direction = e.deltaY > 0 ? 1 : -1;
-      if (mode === "stage") {
-        stageHandler?.({ kind: "wheel", direction });
-        return;
-      }
-      if (mode === "carousel" && carousel) options.onCard(carousel.focus() + direction, false);
-      else if (table && !tableRaised) {
-        if (stageHandler) stageHandler({ kind: "wheel", direction });
-        else options.onPrint(table.focus() + direction * table.columns(), false);
-      }
+      if (mode === "table" && tableRaised) return;
+      const steps = wheelSteps(e);
+      if (!steps) return;
+      // Several steps land at once, so the stage takes its new focus here and the screen follows.
+      const follow = follower();
+      if (mode === "carousel" && carousel) {
+        const from = carousel.focus();
+        carousel.setFocus(from + steps);
+        if (carousel.focus() !== from) commitFocus(carousel.focus());
+      } else if (mode === "table" && table) {
+        const from = table.focus();
+        table.setFocus(from + steps * table.columns());
+        if (table.focus() !== from) commitFocus(table.focus());
+      } else if (mode === "stage" && follow?.dragAxis() && stage?.setFocus) {
+        const from = follow.index();
+        stage.setFocus(from + steps);
+        if (follow.index() !== from) commitFocus(follow.index());
+      } else if (mode === "stage") stageHandler?.({ kind: "wheel", direction: steps > 0 ? 1 : -1 });
       return;
     }
     if (detailTarget || overviewTarget) return;
-    const now = performance.now();
-    if (now - wheelAt < 260 || Math.abs(e.deltaY) < 4) return;
-    wheelAt = now;
-    options.onStep({ axis: "file", direction: e.deltaY > 0 ? 1 : -1 });
+    const steps = wheelSteps(e);
+    if (!steps) return;
+    const cell = { lane: selectedCell.lane, row: selectedCell.row + steps };
+    const index = fileAt(cell);
+    pendingCell = cell;
+    select(index);
+    options.onPick(index);
   }
 
   canvas.addEventListener("pointerdown", onPointerDown);
@@ -1755,6 +2027,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       invalidate();
     },
     setPalette(next) {
+      // The root's style also carries the detail progress; only real colour changes count.
+      if ((Object.keys(next) as (keyof EnginePalette)[]).every((k) => next[k] === palette[k])) return;
+      // A theme or colour change spreads out over the scene, unless a wipe already hides it.
+      if (wipe >= 1) snapshot(true);
       palette = next;
       applyPalette();
       invalidate();
@@ -1811,6 +2087,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     },
     showShelf() {
       return showStage("shelf", () => import("./shelf").then((m) => m.createShelf(stageContext())));
+    },
+    prefetchStages() {
+      void Promise.all([import("./board"), import("./deck"), import("./poster"), import("./reel"), import("./rack")]).catch(() => undefined);
     },
     setStageHandler(handler) {
       stageHandler = handler;

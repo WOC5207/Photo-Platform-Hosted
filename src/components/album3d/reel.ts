@@ -18,8 +18,8 @@ import {
   type Texture,
   type WebGLRenderer
 } from "three";
-import { addLighting, fitText, gridTexture, imageMaterial, loadImage, makeTexture, photoTexture } from "./kit";
-import { damp, settled, smooth, spring, type Spring } from "./motion";
+import { addLighting, fitText, gridTexture, imageMaterial, loadImage, makeTexture, photoTexture, screenPitch } from "./kit";
+import { damp, restOn, rubber, settled, smooth, spring, type Follow, type Spring } from "./motion";
 import { layoutFor, sceneArea, stageBand } from "./types";
 import type { EnginePalette } from "./engine";
 
@@ -59,6 +59,8 @@ export interface Reel {
   setFocus(index: number): void;
   /** Draw the print up toward the viewer, then call `done`; at once with reduced motion. */
   launch(index: number, done: () => void): void;
+  /** The reel under a dragging finger. */
+  follow: Follow;
   settle(): void;
   setHover(index: number): void;
   pick(clientX: number, clientY: number, rect: DOMRect): number;
@@ -168,6 +170,8 @@ export function createReel(context: {
   let focusIndex = 0;
   let hoverIndex = -1;
   const reelAt = spring(0);
+  // A finger holds the reel.
+  let held = false;
   let width = 1;
   let height = 1;
   let clock = 0;
@@ -507,8 +511,8 @@ export function createReel(context: {
     let moving = false;
     frame();
 
-    damp(reelAt, focusIndex, rate(6.5), dt);
-    if (!settled(reelAt, focusIndex)) moving = true;
+    if (!held) damp(reelAt, focusIndex, rate(6.5), dt);
+    if (!held && !settled(reelAt, focusIndex)) moving = true;
     const at = reelAt.value;
     // The mat slides under the prints, so the reel reads as moving along the track.
     matTexture.offset.x = (at * NEAR_GAP) / 1.2;
@@ -597,6 +601,30 @@ export function createReel(context: {
 
   applyPalette();
 
+  const pitchFrom = new Vector3(0, 0, 0.2);
+  const pitchTo = new Vector3(NEAR_GAP, 0, -0.75);
+  const follow: Follow = {
+    dragAxis: () => (list.length > 1 && launching < 0 ? "x" : null),
+    pitch: () => screenPitch(camera, pitchFrom, pitchTo, width, height, "x"),
+    index: () => focusIndex,
+    grab() {
+      held = true;
+      reelAt.velocity = 0;
+      return reelAt.value;
+    },
+    hold(position) {
+      reelAt.value = rubber(position, 0, list.length - 1);
+      invalidate();
+    },
+    release(landing, velocity, swipe) {
+      held = false;
+      reelAt.velocity = velocity;
+      focusIndex = restOn(landing, focusIndex, swipe, list.length);
+      invalidate();
+      return focusIndex;
+    }
+  };
+
   return {
     scene,
     camera,
@@ -646,7 +674,9 @@ export function createReel(context: {
       launchDone = done;
       invalidate();
     },
+    follow,
     settle() {
+      held = false;
       reelAt.value = focusIndex;
       reelAt.velocity = 0;
       // Each arrival plays the prints dropping onto the track.
