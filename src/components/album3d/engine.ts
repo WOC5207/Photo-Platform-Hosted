@@ -1049,7 +1049,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   const tierPixels = () => Math.min(window.devicePixelRatio || 1, TIER_PIXELS[tier]);
-  const restPixels = () => Math.min(window.devicePixelRatio || 1, TIER_PIXELS[0]);
+  // A still frame is drawn at the screen's full density (3x on most phones),
+  // past the moving tiers' cap, so cards, posters and text aren't upscaled.
+  const restPixels = () => Math.min(window.devicePixelRatio || 1, 3);
   function setPixels(ratio: number) {
     if (renderer.getPixelRatio() === ratio) return;
     renderer.setPixelRatio(ratio);
