@@ -35,6 +35,7 @@ import type { Deck } from "./deck";
 import type { PosterStage } from "./poster";
 import type { Reel } from "./reel";
 import type { Rack } from "./rack";
+import { onSheet } from "./types";
 import {
   columnStrength,
   damp,
@@ -1686,6 +1687,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   canvas.addEventListener("wheel", onWheel, { passive: false });
   const observer = new ResizeObserver(resize);
   if (canvas.parentElement) observer.observe(canvas.parentElement);
+  // A phone's bottom sheet growing or shrinking changes the room the scenes frame into.
+  onSheet(resize);
 
   applyPalette();
   resize();
@@ -1821,6 +1824,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       forgetShadowLights();
       cancelAnimationFrame(hoverFrame);
       observer.disconnect();
+      onSheet(null);
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerUp);

@@ -36,7 +36,12 @@
     background: color-mix(in srgb, var(--color-page) 94%, transparent);
     border-top: 1px solid var(--color-border-strong);
   }
+  /* Taller for the Dashboard's forms and one-at-a-time screens, but the
+     scene keeps a strip under the header (see stageBand in types.ts). */
   .panel[data-expanded="true"] {
+    max-height: 58dvh;
+  }
+  .panel[data-expanded="cover"] {
     max-height: calc(100dvh - 96px);
   }
 }

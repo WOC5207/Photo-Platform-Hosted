@@ -18,7 +18,7 @@ import {
 } from "three";
 import { addLighting, fitText, gridTexture, makeTexture } from "./kit";
 import { damp, settled, spring } from "./motion";
-import { sceneArea } from "./types";
+import { sceneArea, stageBand } from "./types";
 import type { EnginePalette } from "./engine";
 
 /**
@@ -275,7 +275,10 @@ export function createDeck(context: {
     const halfH = Math.tan(MathUtils.degToRad(FOV / 2));
     const halfW = halfH * aspect;
     const span = Math.max(4.6, (cards.length - 1) * spacing() + CARD_W + 1.2);
-    const distance = Math.max(span / (area.width * 2 * halfW), (CARD_H * 2.3) / (2 * halfH * (aspect < 1.05 ? 0.55 : 0.85)));
+    // On phones the fan fits between the site header and the bottom sheet.
+    const band = stageBand(width, height);
+    const tallShare = aspect < 1.05 ? Math.min(0.55, band ? band.half * 2.2 : 0.55) : 0.85;
+    const distance = Math.max(span / (area.width * 2 * halfW), (CARD_H * 2.3) / (2 * halfH * tallShare));
     const visibleW = 2 * halfW * distance;
     const visibleH = 2 * halfH * distance;
     aim.set(-(area.x - 0.5) * visibleW, 0.35 + (area.y - 0.5) * visibleH, 0);

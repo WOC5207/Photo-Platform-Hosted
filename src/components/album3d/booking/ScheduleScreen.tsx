@@ -204,7 +204,7 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
   // ------------------------------------------------------------ render --
   return (
     <>
-      <BookingPanel expanded={step === "review" || Boolean(booked)}>
+      <BookingPanel expanded={step === "review" || booked ? "cover" : false}>
         <p className={metaLabel}>
           @{schedule.username} <span aria-hidden="true" className="mx-2">／</span> {t("crumbSchedule")}
         </p>

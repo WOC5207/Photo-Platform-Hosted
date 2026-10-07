@@ -95,10 +95,47 @@ export function layoutFor(width: number, height: number): Layout {
   return width < 1100 ? "compact" : "wide";
 }
 
+// Where the bottom sheet (the Dashboard and booking screens' panel) starts on
+// a phone, in pixels from the top of the stage, as the sheet reports it. Its
+// height follows its content, so the scenes frame themselves above it.
+let sheet: { owner: object; top: number } | null = null;
+let sheetListener: (() => void) | null = null;
+/** The site header's height on phones, which the scene also keeps clear of. */
+const PHONE_HEADER = 80;
+
+/** A sheet reports where it starts, or (top null) that it's gone; a stale owner's report is ignored. */
+export function reportSheet(owner: object, top: number | null) {
+  if (top === null) {
+    if (sheet?.owner !== owner) return;
+    sheet = null;
+  } else {
+    if (sheet?.owner === owner && sheet.top === top) return;
+    sheet = { owner, top };
+  }
+  sheetListener?.();
+}
+
+/** Called when the sheet moves, so the engine can reframe its scenes. */
+export function onSheet(listener: (() => void) | null) {
+  sheetListener = listener;
+}
+
+/**
+ * On a phone with a sheet up, the free strip between the header and the
+ * sheet: its middle and half its height as fractions of the viewport, and its
+ * bottom edge in pixels. Null on wider screens or without a sheet.
+ */
+export function stageBand(width: number, height: number): { y: number; half: number; bottom: number } | null {
+  if (!sheet || layoutFor(width, height) !== "portrait") return null;
+  const top = Math.min(PHONE_HEADER, height * 0.15);
+  const bottom = Math.max(top + height * 0.18, Math.min(sheet.top, height));
+  return { y: (top + bottom) / 2 / height, half: (bottom - top) / 2 / height, bottom };
+}
+
 /**
  * Where a menu screen leaves room for the scene: the centre of the free area
  * and its width. Menus sit on the left of wide screens and at the bottom of
- * portrait ones (see .menuPanel in ArchiveSite.module.css).
+ * portrait ones (see .menuPanel in ArchiveSite.module.css, and the sheet above).
  */
 export function sceneArea(width: number, height: number): { x: number; y: number; width: number } {
   switch (layoutFor(width, height)) {
@@ -107,7 +144,7 @@ export function sceneArea(width: number, height: number): { x: number; y: number
     case "compact":
       return { x: 0.76, y: 0.5, width: 0.44 };
     case "portrait":
-      return { x: 0.5, y: 0.3, width: 0.96 };
+      return { x: 0.5, y: stageBand(width, height)?.y ?? 0.3, width: 0.96 };
   }
 }
 
@@ -125,6 +162,6 @@ export function photoRect(width: number, height: number): { left: number; top: n
     case "compact":
       return { left: 20, top: 84, right: width * 0.58, bottom: height - 60 };
     case "portrait":
-      return { left: 20, top: 104, right: width - 20, bottom: height * 0.56 };
+      return { left: 20, top: 104, right: width - 20, bottom: stageBand(width, height)?.bottom ?? height * 0.56 };
   }
 }

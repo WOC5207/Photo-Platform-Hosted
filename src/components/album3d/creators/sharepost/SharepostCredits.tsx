@@ -82,7 +82,7 @@ export default function SharepostCredits() {
   const style = composition.style;
   return (
     <>
-      <BookingPanel expanded={typing}>
+      <BookingPanel expanded={typing ? "cover" : false}>
         <div
           onFocus={(event) => setTyping(event.target instanceof HTMLInputElement && event.target.type === "text")}
           onBlur={(event) => !(event.relatedTarget instanceof HTMLInputElement && event.relatedTarget.type === "text") && setTyping(false)}

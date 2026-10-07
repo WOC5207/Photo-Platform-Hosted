@@ -20,7 +20,7 @@ import {
 } from "three";
 import { addLighting, fitText, gridTexture, imageMaterial, loadImage, makeTexture, photoTexture } from "./kit";
 import { damp, settled, smooth, spring, type Spring } from "./motion";
-import { layoutFor, sceneArea } from "./types";
+import { layoutFor, sceneArea, stageBand } from "./types";
 import type { EnginePalette } from "./engine";
 
 /**
@@ -478,17 +478,22 @@ export function createReel(context: {
   function frame() {
     const portrait = layoutFor(width, height) === "portrait";
     const area = sceneArea(width, height);
+    // On phones, between the site header and the bottom sheet.
+    const band = stageBand(width, height);
     const aspect = width / height;
     const halfH = Math.tan(MathUtils.degToRad(FOV / 2));
     const halfW = halfH * aspect;
     // The focused print and a neighbour each side; tall enough for a print and the ruler.
     const span = portrait ? 4.2 : 7.4;
     const tall = PHOTO_H + CAPTION_H + BORDER * 2 + 1.1;
-    distance = Math.max(span / (area.width * 2 * halfW), tall / (2 * halfH * (portrait ? 0.4 : 0.74)));
+    distance = Math.max(span / (area.width * 2 * halfW), tall / (2 * halfH * (portrait ? (band ? band.half * 1.8 : 0.4) : 0.74)));
     const visibleW = 2 * halfW * distance;
     const visibleH = 2 * halfH * distance;
     const middle = TRACK_TOP + (PHOTO_H + CAPTION_H) / 2 + 0.05;
-    aim.set(-(area.x - 0.5) * visibleW, middle - ((portrait ? 0.32 : area.y) - 0.5) * visibleH, 0);
+    // On phones, aim below the track's middle so it is drawn up in the strip
+    // above the sheet, as the board is (aiming above it hid the reel under the sheet).
+    const offset = portrait ? (band?.y ?? 0.32) - 0.5 : 0.5 - area.y;
+    aim.set(-(area.x - 0.5) * visibleW, middle + offset * visibleH, 0);
     camera.position.copy(aim).addScaledVector(viewDirection, distance);
     camera.lookAt(aim);
     camera.updateMatrixWorld();
