@@ -64,5 +64,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # The image is pushed before the cache upload, so a failed cache
+          # write (GitHub's cache service sometimes answers "error writing
+          # layer blob: not_found") must not turn a published release red.
+          cache-to: type=gha,mode=max,ignore-error=true
           provenance: true
