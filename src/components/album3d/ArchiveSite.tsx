@@ -1093,9 +1093,6 @@ export default function ArchiveSite({
                   {t("openFile")}
                   <span aria-hidden="true" className="text-2xl transition-transform group-hover:translate-x-2 motion-reduce:transition-none">→</span>
                 </button>
-                <Link href={file.href} className="inline-flex min-h-11 items-center gap-2 text-sm text-fg-muted underline-offset-4 hover:text-fg hover:underline">
-                  {t("viewAlbum")} <span aria-hidden="true">↗</span>
-                </Link>
               </div>
             </div>
           </section>
