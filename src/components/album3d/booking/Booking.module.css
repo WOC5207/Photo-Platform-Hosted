@@ -39,7 +39,7 @@
   /* Taller for the Dashboard's forms and one-at-a-time screens, but the
      scene keeps a strip under the header (see stageBand in types.ts). */
   .panel[data-expanded="true"] {
-    max-height: 58dvh;
+    max-height: 52dvh;
   }
   .panel[data-expanded="cover"] {
     max-height: calc(100dvh - 96px);
