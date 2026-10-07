@@ -7,14 +7,12 @@ import type { ArchiveEngine } from "./engine";
 import type { Shelf } from "./shelf";
 import type { ArchiveFile } from "./types";
 
-const square = "grid h-11 w-11 shrink-0 place-items-center text-2xl transition hover:bg-accent-surface";
-
 /**
  * A photographer's own archive: their albums as cards on the stage (see
  * shelf.ts) in place of the photographer cards, so there is no moving on to
  * someone else's. Taps focus a card or open the focused one; ← →, swipes and
- * the wheel move along them. In the panel it draws the album counter and its
- * ← → buttons.
+ * the wheel move along them. It draws nothing itself: the page's overview
+ * has the panel.
  */
 export default function ArchiveShelf({
   engine,
@@ -90,21 +88,5 @@ export default function ArchiveShelf({
     return () => window.removeEventListener("keydown", onKey);
   }, [move]);
 
-  return (
-    <div className="flex items-center gap-3">
-      <p className="font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle">
-        {t("albumCount", { current: pad(indexes.length ? focus + 1 : 0), total: pad(indexes.length) })}
-      </p>
-      {indexes.length > 1 && (
-        <span className="flex">
-          <button type="button" onClick={() => move(-1)} disabled={focus === 0} aria-label={t("prevFile")} className={`${square} disabled:opacity-30`}>
-            ←
-          </button>
-          <button type="button" onClick={() => move(1)} disabled={focus === indexes.length - 1} aria-label={t("nextFile")} className={`${square} disabled:opacity-30`}>
-            →
-          </button>
-        </span>
-      )}
-    </div>
-  );
+  return null;
 }

@@ -7,7 +7,7 @@ import { pickText } from "@/lib/content";
 import { config } from "@/lib/config";
 import { formatDate, formatDateRange, formatDayTab, formatTime } from "@/lib/datetime";
 import { activeWinnerWhere, ensureLotteryDraw } from "@/lib/lottery";
-import { formatInstantInTimeZone } from "@/lib/timeZone";
+import { formatInstantInTimeZone, todayInTimeZone, wallClockNow } from "@/lib/timeZone";
 import { photoUrls } from "@/lib/images";
 import { ownerName } from "@/lib/owner";
 import { getActiveNotificationsForUser } from "@/lib/platformNotifications";
@@ -21,6 +21,8 @@ import type {
   StudioEventDetail,
   StudioEventSummary,
   StudioHome,
+  OwnerOverview,
+  OverviewEvent,
   StudioLottery,
   StudioPhoto,
   StudioSchedule
@@ -110,6 +112,7 @@ export async function loadStudioHome(user: User, locale: string, creditFallback:
 }
 
 const day = (date: Date | null) => (date ? date.toISOString().slice(0, 10) : "");
+
 
 const summarySelect = {
   id: true,
@@ -408,5 +411,92 @@ export async function loadStudioLottery(user: User, id: string, locale: string):
       .flatMap((slot) => slot.bookings)
       .filter((b) => !b.lotteryEntry)
       .map((b) => ({ id: b.id, name: b.name, subject: b.subject }))
+  };
+}
+
+/**
+ * The photographer's own archive page: their numbers, the next event (a
+ * booking event or a dated album, whichever comes first, counting one that
+ * is under way) and the next booked session. Dates are naive UTC on the
+ * photographer's clock, as booking days and slots are stored.
+ */
+export async function loadOwnerOverview(user: User, locale: string): Promise<OwnerOverview> {
+  const settings = await getSiteSettings(user.id);
+  const today = todayInTimeZone(settings.timeZone);
+  const from = new Date(`${today}T00:00:00Z`);
+  const now = wallClockNow(settings.timeZone);
+  const mine = { status: "confirmed", timeSlot: { bookingEvent: { ownerId: user.id } } };
+  const upcoming = { ...mine, timeSlot: { ...mine.timeSlot, startTime: { gte: now } } };
+  const [albums, drafts, photos, usage, sessions, newBookings, shoot, booking, album] = await Promise.all([
+    prisma.event.count({ where: { ownerId: user.id, published: true, photos: { some: publicPhotoWhere } } }),
+    prisma.event.count({ where: { ownerId: user.id, published: false } }),
+    prisma.photo.count({ where: { event: { ownerId: user.id }, pendingBatchId: null } }),
+    getQuotaUsage(user.id),
+    prisma.booking.count({ where: upcoming }),
+    prisma.booking.count({ where: { ...mine, createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) } } }),
+    prisma.booking.findFirst({
+      where: upcoming,
+      orderBy: { timeSlot: { startTime: "asc" } },
+      include: { timeSlot: { select: { startTime: true, bookingEvent: { select: { id: true, titleEn: true, titleZh: true } } } } }
+    }),
+    prisma.bookingEvent.findFirst({
+      where: { ownerId: user.id, days: { some: { date: { gte: from } } } },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+      include: {
+        days: { orderBy: { date: "asc" }, select: { date: true } },
+        slots: { select: { capacity: true, _count: { select: { bookings: { where: { status: "confirmed" } } } } } },
+        galleryEvent: { select: summarySelect }
+      }
+    }),
+    prisma.event.findFirst({
+      where: { ownerId: user.id, bookingEvent: null, OR: [{ dateStart: { gte: from } }, { dateEnd: { gte: from } }] },
+      orderBy: [{ dateStart: "asc" }, { createdAt: "asc" }],
+      select: summarySelect
+    })
+  ]);
+
+  let next: OverviewEvent | null = null;
+  const bookingDay = booking ? day(booking.days[0]?.date ?? booking.date) : "";
+  const albumDay = album ? day(album.dateStart) : "";
+  if (booking && (!album || bookingDay <= albumDay)) {
+    const gallery = booking.galleryEvent ? summary(locale, booking.galleryEvent) : null;
+    next = {
+      title: pickText(locale, booking.titleEn, booking.titleZh),
+      dates: dayRange(booking.days),
+      location: booking.location || gallery?.location || "",
+      day: bookingDay,
+      cover: gallery?.cover ?? "",
+      eventId: gallery?.id ?? null,
+      bookingId: booking.id,
+      booked: booking.slots.reduce((n, s) => n + s._count.bookings, 0),
+      capacity: booking.slots.reduce((n, s) => n + s.capacity, 0),
+      packing: await prisma.equipmentChecklistItem.count({
+        where: { equipmentId: { not: null }, checklist: { ownerId: user.id, bookingDay: { bookingEventId: booking.id } } }
+      })
+    };
+  } else if (album) {
+    const event = summary(locale, album);
+    next = { title: event.title, dates: event.dateLabel, location: event.location, day: albumDay, cover: event.cover, eventId: event.id, bookingId: null, booked: 0, capacity: 0, packing: 0 };
+  }
+
+  return {
+    account: studioAccount(user),
+    today,
+    albums,
+    drafts,
+    photos,
+    usedBytes: usage.usedBytes,
+    quotaBytes: usage.quotaBytes,
+    sessions,
+    newBookings,
+    next,
+    shoot: shoot && {
+      day: formatDate(shoot.timeSlot.startTime),
+      time: formatTime(shoot.timeSlot.startTime),
+      name: shoot.name,
+      subject: shoot.subject,
+      event: pickText(locale, shoot.timeSlot.bookingEvent.titleEn, shoot.timeSlot.bookingEvent.titleZh),
+      bookingId: shoot.timeSlot.bookingEvent.id
+    }
   };
 }

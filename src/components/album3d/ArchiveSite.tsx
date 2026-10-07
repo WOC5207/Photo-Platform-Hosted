@@ -618,16 +618,6 @@ export default function ArchiveSite({
 
   const photographerMenu: MenuItem[] = here
     ? [
-        ...(ownArchive && file
-          ? [
-              {
-                key: "open",
-                label: file.title,
-                sub: `${file.dateLabel || t("noDate")} · ${t("photos", { count: file.photoCount })}`,
-                run: () => openDetail(selected)
-              }
-            ]
-          : []),
         {
           key: "albums",
           label: t("menuAlbums"),
@@ -655,7 +645,7 @@ export default function ArchiveSite({
         ? settings
         : screen.kind === "photographers"
           ? rosterMenu
-          : screen.kind === "photographer"
+          : screen.kind === "photographer" && !ownArchive
             ? photographerMenu
             : [];
 
@@ -670,6 +660,8 @@ export default function ArchiveSite({
         back();
         return;
       }
+      // One's own archive page has its overview's menu, and the album cards take ← → (see ArchiveShelf).
+      if (ownArchive) return;
       if (activeMenu.length > 0) {
         const move = (delta: number) => {
           e.preventDefault();
@@ -688,8 +680,7 @@ export default function ArchiveSite({
           settings[menuFocus]?.adjust(e.key === "ArrowLeft" ? -1 : 1);
           return;
         }
-        // On one's own archive ← → move the album cards (see ArchiveShelf).
-        if (screen.kind === "photographer" && !ownArchive && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        if (screen.kind === "photographer" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
           e.preventDefault();
           switchPhotographer(e.key === "ArrowLeft" ? -1 : 1);
           return;
@@ -1001,34 +992,23 @@ export default function ArchiveSite({
         </main>
       )}
 
-      {!missing && screen.kind === "photographer" && here && (
+      {/* One's own archive page: the albums as cards, and the overview's panel from the page. */}
+      {ownArchive && here && (
+        <ArchiveShelf engine={stage.engine} files={files} indexes={here.fileIndexes} selected={selected} onSelect={setSelected} onOpen={openDetail} />
+      )}
+      {!missing && !ownArchive && screen.kind === "photographer" && here && (
         <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
-          {ownArchive ? (
-            <ArchiveShelf
-              engine={stage.engine}
-              files={files}
-              indexes={here.fileIndexes}
-              selected={selected}
-              onSelect={(index) => {
-                // Moving the cards puts the menu on the focused album, so Enter opens it.
-                setSelected(index);
-                setMenuFocus(0);
-              }}
-              onOpen={openDetail}
-            />
-          ) : (
-            <div className="flex items-center gap-3">
-              <p className={metaLabel}>
-                {t("photographerCount", { current: pad(columnIndex + 1), total: pad(columns.length) })}
-              </p>
-              {columns.length > 1 && (
-                <span className="flex">
-                  <button type="button" onClick={() => switchPhotographer(-1)} aria-label={t("prevColumn")} className={square}>←</button>
-                  <button type="button" onClick={() => switchPhotographer(1)} aria-label={t("nextColumn")} className={square}>→</button>
-                </span>
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <p className={metaLabel}>
+              {t("photographerCount", { current: pad(columnIndex + 1), total: pad(columns.length) })}
+            </p>
+            {columns.length > 1 && (
+              <span className="flex">
+                <button type="button" onClick={() => switchPhotographer(-1)} aria-label={t("prevColumn")} className={square}>←</button>
+                <button type="button" onClick={() => switchPhotographer(1)} aria-label={t("nextColumn")} className={square}>→</button>
+              </span>
+            )}
+          </div>
           <h1 className="mt-1 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[4.5rem]">
             {here.name}
           </h1>

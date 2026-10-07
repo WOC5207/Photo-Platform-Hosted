@@ -477,3 +477,49 @@ export interface StudioSetup {
   creditProfilesEnabled: boolean;
   creditTerm: string;
 }
+
+/** The photographer's own archive page: their numbers and what comes next, at a glance. */
+export interface OwnerOverview {
+  account: StudioAccount;
+  /** Today on the photographer's clock, YYYY-MM-DD. */
+  today: string;
+  albums: number;
+  drafts: number;
+  photos: number;
+  usedBytes: number;
+  quotaBytes: number;
+  /** Confirmed bookings in slots that haven't started yet. */
+  sessions: number;
+  /** Bookings made in the last seven days. */
+  newBookings: number;
+  next: OverviewEvent | null;
+  /** The soonest booked session. */
+  shoot: OverviewShoot | null;
+}
+
+export interface OverviewEvent {
+  title: string;
+  dates: string;
+  location: string;
+  /** The first day, YYYY-MM-DD. */
+  day: string;
+  cover: string;
+  /** Its album in the Dashboard, when it has one. */
+  eventId: string | null;
+  /** Its booking event, when it takes bookings. */
+  bookingId: string | null;
+  booked: number;
+  capacity: number;
+  /** Gear on its packing lists. */
+  packing: number;
+}
+
+export interface OverviewShoot {
+  /** YYYY-MM-DD and HH:mm on the photographer's clock. */
+  day: string;
+  time: string;
+  name: string;
+  subject: string;
+  event: string;
+  bookingId: string;
+}
