@@ -849,7 +849,7 @@ export default function ArchiveSite({
         <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 px-[var(--edge)] pt-4 sm:gap-4 wide:pt-9">
           <div className="pointer-events-auto flex items-start gap-10">
             <Link href={screenPath({ kind: "title" })} className="block leading-none">
-              <span className="block text-xl font-extrabold uppercase tracking-[-0.02em] wide:text-4xl">{t("brandTop")}</span>
+              <span className="block text-xl font-extrabold uppercase tracking-[-0.02em] max-[379px]:text-lg wide:text-4xl">{t("brandTop")}</span>
               <span className="mt-1 block text-[0.5625rem] font-semibold uppercase tracking-[0.08em] text-fg-muted wide:text-xs">{t("brandMiddle")}</span>
             </Link>
             <nav aria-label={t("crumbLabel")} className="hidden pt-2 wide:block">
@@ -867,12 +867,12 @@ export default function ArchiveSite({
               </ol>
             </nav>
           </div>
-          <nav aria-label={t("headerControls")} className="pointer-events-auto flex items-center justify-end gap-1 sm:gap-3">
+          <nav aria-label={t("headerControls")} className="pointer-events-auto flex items-center justify-end gap-1 max-[379px]:gap-0.5 sm:gap-3">
             {mode === "archive" && !overview && (
               <button
                 type="button"
                 onClick={() => setIndexOpen(true)}
-                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:min-h-10 max-sm:min-w-9 max-sm:px-0"
               >
                 <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <circle cx="9.5" cy="6.5" r="4.5" />
@@ -888,23 +888,20 @@ export default function ArchiveSite({
                 href={screenPath({ kind: "studio", username: viewer.username, page: "home" })}
                 scroll={false}
                 aria-label={t("signedInAs", { name: viewer.name })}
-                className="inline-flex min-h-11 min-w-11 max-w-40 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:px-0"
+                className="relative inline-flex min-h-11 min-w-11 max-w-40 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:min-h-10 max-sm:min-w-9 max-sm:px-0"
               >
-                {/* On phones the name gives way to an account mark, so the header's controls all fit. */}
+                {/* On phones the name gives way to an account mark with the signed-in dot on its shoulder, so the header's controls all fit. */}
                 <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 shrink-0 sm:hidden" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <circle cx="8" cy="5.5" r="3" />
                   <path d="M2.5 14.5c.8-3 2.9-4.5 5.5-4.5s4.7 1.5 5.5 4.5" />
                 </svg>
-                <i aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-success max-sm:-ml-1.5 max-sm:self-end max-sm:mb-3" />
+                <i aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-success max-sm:absolute max-sm:right-1.5 max-sm:top-2.5" />
                 <span className="truncate max-sm:sr-only">{viewer.name}</span>
               </Link>
             )}
             <SiteModeSwitch current="3d" compact caption={styles.switchCaption} />
             <LanguageSwitcher compact />
-            {/* Phones choose the theme under Settings; the header has no room for it beside the account. */}
-            <span className="max-sm:hidden">
-              <ThemeToggle label={tc("toggleTheme")} />
-            </span>
+            <ThemeToggle label={tc("toggleTheme")} compact />
           </nav>
         </header>
       )}
@@ -1096,9 +1093,6 @@ export default function ArchiveSite({
                   {t("openFile")}
                   <span aria-hidden="true" className="text-2xl transition-transform group-hover:translate-x-2 motion-reduce:transition-none">→</span>
                 </button>
-                <Link href={file.href} className="inline-flex min-h-11 items-center gap-2 text-sm text-fg-muted underline-offset-4 hover:text-fg hover:underline">
-                  {t("viewAlbum")} <span aria-hidden="true">↗</span>
-                </Link>
               </div>
             </div>
           </section>

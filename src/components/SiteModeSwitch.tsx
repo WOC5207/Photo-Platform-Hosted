@@ -29,7 +29,7 @@ export default function SiteModeSwitch({
   current: SiteMode;
   /** On phones only the switch shows; its label is still read out. */
   compact?: boolean;
-  /** With `compact`: a class that shows the label on phones as a caption under the switch instead. */
+  /** With `compact`: a class for the label, which phones then show as a caption under the switch instead. */
   caption?: string;
   className?: string;
 }) {
@@ -43,7 +43,7 @@ export default function SiteModeSwitch({
       role="switch"
       aria-checked={on}
       onClick={() => leaveFor(on ? "classic" : "3d")}
-      className={`group relative inline-flex min-h-10 items-center gap-2.5 px-2 text-sm ${compact ? "max-sm:px-0" : ""} font-semibold text-fg-muted transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${className}`}
+      className={`group relative inline-flex min-h-10 items-center gap-2.5 px-2 text-sm ${compact ? `max-sm:px-0 ${caption ? "max-sm:min-h-10 max-sm:flex-col-reverse max-sm:justify-center max-sm:gap-1" : ""}` : ""} font-semibold text-fg-muted transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${className}`}
     >
       <span className={compact ? (caption ?? "max-sm:sr-only") : undefined}>{t("siteSwitch")}</span>
       <span

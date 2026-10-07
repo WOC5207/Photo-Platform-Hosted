@@ -209,17 +209,12 @@
   bottom: 1.75rem;
 }
 
-/* The site switch's label, under the switch on phones where the header has no room beside it. */
+/* The site switch's label, as a caption under the switch on phones where the header has no room beside it. */
 @media (max-width: 639px) {
   .switchCaption {
-    position: absolute;
-    top: calc(100% - 0.25rem);
-    left: 50%;
-    transform: translateX(-50%);
     white-space: nowrap;
     font-size: 0.625rem;
     line-height: 1;
-    pointer-events: none;
   }
   :global(html:lang(zh)) .switchCaption {
     font-size: 0.75rem;
