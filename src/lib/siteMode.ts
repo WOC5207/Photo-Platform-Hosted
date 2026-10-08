@@ -1,9 +1,8 @@
 /**
  * The two public sites: the classic pages and the 3D archive under /3d.
  *
- * A visitor flips between them with the switch on the homepage (or the 3D
- * site's "Classic site" item), which lands on the matching page on the other
- * side. Paths here carry no locale prefix: they are what the i18n
+ * A visitor flips between them with the site switch in each site's header,
+ * which lands on the matching page on the other side. Paths here carry no locale prefix: they are what the i18n
  * usePathname() returns and what its Link and router accept.
  *
  * Pure functions, shared by the middleware, server pages and the client.

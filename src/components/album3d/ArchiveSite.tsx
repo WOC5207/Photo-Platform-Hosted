@@ -853,15 +853,7 @@ export default function ArchiveSite({
       <AlbumPhotosContext.Provider value={setAlbum}>
       <StageContext.Provider value={stage}>
       <main id="main-content" className="mx-auto flex min-h-dvh max-w-3xl flex-col justify-center px-4 py-10">
-        <EmptyState
-          title={t("empty")}
-          description={t("emptyHint")}
-          action={
-            <button type="button" onClick={() => leaveFor("classic", "/")} className="text-sm font-semibold text-accent-text underline">
-              {t("classic")}
-            </button>
-          }
-        />
+        <EmptyState title={t("empty")} description={t("emptyHint")} />
         {children}
       </main>
       </StageContext.Provider>
@@ -1357,13 +1349,6 @@ export default function ArchiveSite({
                   <kbd className="font-meta hidden border border-page/40 px-1 text-[0.625rem] font-normal wide:inline">{key("confirm")}</kbd>
                   <span aria-hidden="true" className="text-lg">→</span>
                 </span>
-              </Link>
-              <Link
-                href={file.href}
-                className="inline-flex min-h-11 items-center justify-between gap-4 border border-border-strong px-5 text-sm uppercase tracking-[0.08em] transition hover:border-fg"
-              >
-                {t("viewAlbum")}
-                <span aria-hidden="true" className="text-lg">↗</span>
               </Link>
             </div>
             <p className="font-meta mt-5 flex justify-between text-[0.625rem] uppercase tracking-[0.1em] text-fg-subtle">

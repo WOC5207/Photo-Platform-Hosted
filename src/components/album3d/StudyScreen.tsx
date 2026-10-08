@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Link } from "@/i18n/navigation";
 import { pad } from "./hud";
 import styles from "./ArchiveSite.module.css";
 import type { ArchiveFile } from "./types";
@@ -163,9 +162,6 @@ export default function StudyScreen({
           <button type="button" onClick={onReset} className="inline-flex min-h-11 items-center gap-3 text-sm hover:text-accent-text">
             {t("resetView")} <span aria-hidden="true">↺</span>
           </button>
-          <Link href={file.href} className="inline-flex min-h-11 items-center gap-2 text-sm text-fg-muted hover:text-fg">
-            {t("viewAlbum")} <span aria-hidden="true">↗</span>
-          </Link>
         </div>
       </div>
       <p role="status" className="font-meta absolute bottom-2 left-1/2 hidden -translate-x-1/2 text-[0.6875rem] uppercase tracking-[0.08em] text-fg-subtle wide:block">
