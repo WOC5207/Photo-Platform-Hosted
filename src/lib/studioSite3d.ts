@@ -61,7 +61,6 @@ export async function loadStudioSite(user: User, locale: string, termFallback: s
   ]);
   return {
     account: studioAccount(user),
-    homeUrl: `/${locale}/u/${encodeURIComponent(user.username)}`,
     displayName: user.displayName,
     email: user.email ?? "",
     values: {
