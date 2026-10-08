@@ -23,7 +23,7 @@ export default function NewEventScreen() {
   const label = "grid gap-1 text-sm font-semibold text-fg-muted";
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel expanded="full">
       <StudioHeading trail={t("studioEvents")} title={tw("newEvent")} />
       <form action={action} aria-busy={pending} className="mt-6 grid gap-4">
         <p className="text-sm text-fg-muted">{t("studioNewHint")}</p>
