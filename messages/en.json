@@ -1467,7 +1467,7 @@
     "contactValue": "Contact info",
     "contactHint": "How the photographer can reach you — e.g. WeChat, Instagram, or a phone number.",
     "email": "Email (optional)",
-    "emailHint": "Add your email to get a confirmation and updates if your booking changes.",
+    "emailHint": "Add your email to get a confirmation and updates if your booking changes. It is also how you get your booking link back on another device.",
     "notes": "Notes (optional)",
     "notesPlaceholder": "Style, references, anything I should know…",
     "submit": "Book this slot",
