@@ -177,7 +177,7 @@ export default function ArchiveSite({
   const albumHere = album && "slug" in screen && album.username === screen.username && album.slug === screen.slug ? album : null;
   const photoIndex = screen.kind === "photo" && albumHere ? albumHere.photos.findIndex((p) => p.id === screen.photoId) : -1;
   // Booking and the poster creators draw their own panels, from their pages (see StageContext).
-  const booking = screen.kind === "booking" || screen.kind === "book" || screen.kind === "draw";
+  const booking = screen.kind === "booking" || screen.kind === "book" || screen.kind === "draw" || screen.kind === "myBooking";
   // A saved poster opens in the Sharepost editor, which needs the easel as the creators do.
   const creator = screen.kind === "cosplan" || screen.kind === "sharepost" || (screen.kind === "studio" && /^poster(?!s)/.test(screen.page));
   // The Dashboard's pages draw their own panels too; its home is a menu.
@@ -920,7 +920,7 @@ export default function ArchiveSite({
   } else if (screen.kind === "photographers") crumbs.push({ label: t("menuPhotographers") });
   if (booking && !missing) {
     crumbs.push({ label: t("menuBooking"), href: screenPath({ kind: "booking", username: screen.username }) });
-    if (screen.kind !== "booking") crumbs.push({ label: t(screen.kind === "draw" ? "crumbDraw" : "crumbSchedule") });
+    if (screen.kind !== "booking") crumbs.push({ label: t(screen.kind === "draw" ? "crumbDraw" : screen.kind === "myBooking" ? "crumbMyBooking" : "crumbSchedule") });
   }
   else if (screen.kind === "settings") crumbs.push({ label: t("menuSettings") });
   else if (screen.kind === "login") crumbs.push({ label: t("menuMySite") });

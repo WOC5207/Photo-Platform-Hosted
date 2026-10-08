@@ -31,6 +31,7 @@ const screens = [
   "/3d/u/george/booking",
   "/3d/u/george/book/k3x9q2",
   "/3d/u/george/draw/p8z4m1",
+  "/3d/u/george/my-booking/c4n5e1",
   "/3d/u/george/studio",
   "/3d/u/george/studio/events",
   "/3d/u/george/studio/events/new",
@@ -77,7 +78,7 @@ assert.deepEqual(parseScreen("/3d/u/george/albums/fan-expo-2026?x=1"), {
   slug: "fan-expo-2026",
   study: false
 });
-for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/cosplan/board/x", "/3d/sharepost/board", "/3d/sharing-poster", "/3d/u/george/studio/booking", "/3d/u/george/studio/bookings/new/x", "/3d/u/george/studio/bookings/cmbook1/constructor", "/3d/u/george/studio/bookings/cmbook1/lottery/x", "/3d/u/george/studio/events/cmevent1/setup", "/3d/u/george/studio/events/cmevent1/photos/x", "/3d/u/george/studio/equipment/cmgear1/edit", "/3d/u/george/studio/preparation/equipment/cmlist1", "/3d/u/george/studio/gear", "/3d/u/george/studio/site/profile", "/3d/u/george/studio/posters/cmposter1/photos", "/3d/u/george/studio/credits/x"]) {
+for (const path of ["/", "/u/george", "/3d/u", "/3d/u/george/bookings", "/3d/u/george/book", "/3d/u/george/book/Not-A-Token", "/3d/u/george/draw/a/b", "/3d/u/george/my-booking", "/3d/u/george/my-booking/Bad-Token", "/3d/u/george/my-booking/a/b", "/3d/u/george/albums/a/b", "/3d/u/george/albums/a/photos/b/c", "/3d/nope", "/3d/cosplan/x", "/3d/cosplan/board/x", "/3d/sharepost/board", "/3d/sharing-poster", "/3d/u/george/studio/booking", "/3d/u/george/studio/bookings/new/x", "/3d/u/george/studio/bookings/cmbook1/constructor", "/3d/u/george/studio/bookings/cmbook1/lottery/x", "/3d/u/george/studio/events/cmevent1/setup", "/3d/u/george/studio/events/cmevent1/photos/x", "/3d/u/george/studio/equipment/cmgear1/edit", "/3d/u/george/studio/preparation/equipment/cmlist1", "/3d/u/george/studio/gear", "/3d/u/george/studio/site/profile", "/3d/u/george/studio/posters/cmposter1/photos", "/3d/u/george/studio/credits/x"]) {
   assert.equal(parseScreen(path), null, `${path} is not a 3D screen`);
 }
 
@@ -114,6 +115,7 @@ assert.deepEqual(climb("/3d/u/george/book/k3x9q2"), [
   "/3d"
 ]);
 assert.deepEqual(climb("/3d/u/george/draw/p8z4m1").slice(0, 2), ["/3d/u/george/draw/p8z4m1", "/3d/u/george/booking"]);
+assert.deepEqual(climb("/3d/u/george/my-booking/c4n5e1").slice(0, 2), ["/3d/u/george/my-booking/c4n5e1", "/3d/u/george/booking"]);
 
 // The Dashboard walks back to its menu, then the title screen.
 assert.deepEqual(climb("/3d/u/george/studio/events/cmevent1/upload"), [
@@ -180,6 +182,11 @@ assert.equal(threeDTwin("/book/k3x9q2/check"), "/3d");
 assert.equal(threeDTwin("/u/george/settings"), "/3d/u/george");
 assert.equal(classicTwin("/3d/u/george/book/k3x9q2"), "/book/k3x9q2");
 assert.equal(classicTwin("/3d/u/george/draw/p8z4m1"), "/draw/p8z4m1");
+// A visitor's own booking page carries only its cancel token too; /3d/my-booking forwards.
+assert.equal(threeDTwin("/my-booking/c4n5e1"), "/3d/my-booking/c4n5e1");
+assert.equal(threeDTwin("/my-booking/Not-A-Token"), "/3d");
+assert.equal(classicTwin("/3d/u/george/my-booking/c4n5e1"), "/my-booking/c4n5e1");
+assert.deepEqual(parseScreen("/3d/u/george/my-booking/c4n5e1"), { kind: "myBooking", username: "george", token: "c4n5e1" });
 assert.equal(classicTwin("/3d"), "/");
 assert.equal(classicTwin("/3d/albums"), "/");
 assert.equal(classicTwin("/3d/settings"), "/");

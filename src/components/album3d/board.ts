@@ -27,10 +27,12 @@ import type { EnginePalette } from "./engine";
  * ("events"), and one event's time slots hang as tabs in day columns
  * ("slots"), each with a row of seat lamps lit for the places left. A tab
  * put in the cart slides down into the amber loadout tray in front of the
- * board; once booked it is stamped with its number and filed away.
+ * board; once booked it is stamped with its number and filed away. A
+ * visitor's own booking hangs alone as a ticket ("ticket"), the size of an
+ * event's card, stamped with its status and kept on the board.
  */
 
-export type BoardVariant = "events" | "slots";
+export type BoardVariant = "events" | "slots" | "ticket";
 
 export interface BoardTile {
   id: string;
@@ -60,8 +62,11 @@ export interface Board {
   setCart(ids: string[]): void;
   /** Grey out every tab that isn't in the cart, once the visitor has moved on to their details. */
   setDim(dim: boolean): void;
-  /** Stamp booked tiles with their labels, then file them away. */
-  stamp(ids: string[], labels: string[]): void;
+  /**
+   * Stamp booked tiles with their labels, then file them away; `keep` leaves
+   * them stamped on the board, and "danger" inks the stamp red.
+   */
+  stamp(ids: string[], labels: string[], options?: { keep?: boolean; tone?: "accent" | "danger" }): void;
   clearStamps(): void;
   /** Columns the events board lays its cards in, or lanes per day on a schedule, for arrow keys. */
   columns(): number;
@@ -78,7 +83,8 @@ const FOV = 30;
 const ELEVATION = MathUtils.degToRad(7);
 const SPEC = {
   events: { w: 3.1, h: 1.78, gx: 0.36, gy: 0.36, header: 0, texW: 768 },
-  slots: { w: 2.05, h: 0.74, gx: 0.3, gy: 0.18, header: 0.7, texW: 512 }
+  slots: { w: 2.05, h: 0.74, gx: 0.3, gy: 0.18, header: 0.7, texW: 512 },
+  ticket: { w: 3.1, h: 1.78, gx: 0.36, gy: 0.36, header: 0, texW: 768 }
 } as const;
 const DEPTH = 0.07;
 const TRAY_SCALE = 0.46;
@@ -96,6 +102,8 @@ interface Tile {
   stampMaterial: MeshBasicMaterial;
   stampLabel: string;
   stampedAt: number;
+  stampKeep: boolean;
+  stampTone: "accent" | "danger";
   position: Vector3;
   tilt: number;
   scale: number;
@@ -276,8 +284,15 @@ export function createBoard(context: {
     c.fillText(fitText(c, tile.data.kicker.toUpperCase(), w - pad * 2), pad + 8, y);
     y += 66;
     c.fillStyle = full ? muted() : ink();
-    c.font = `800 56px ${palette.fontSans}`;
-    c.fillText(fitText(c, tile.data.main.toUpperCase(), w - pad * 2), pad + 8, y);
+    // A ticket's event name shrinks a little before it is cut short.
+    const main = tile.data.main.toUpperCase();
+    let size = 56;
+    c.font = `800 ${size}px ${palette.fontSans}`;
+    while (variant === "ticket" && size > 38 && c.measureText(main).width > w - pad * 2) {
+      size -= 2;
+      c.font = `800 ${size}px ${palette.fontSans}`;
+    }
+    c.fillText(fitText(c, main, w - pad * 2), pad + 8, y);
     c.fillStyle = muted();
     c.font = `400 26px ${palette.fontSans}`;
     for (const line of tile.data.detail.slice(0, 2)) {
@@ -298,7 +313,7 @@ export function createBoard(context: {
     const canvas = (tile.stampMaterial.map as CanvasTexture).image as HTMLCanvasElement;
     const c = canvas.getContext("2d") as CanvasRenderingContext2D;
     c.clearRect(0, 0, canvas.width, canvas.height);
-    const color = palette.dark ? "#f0b860" : "#b5542c";
+    const color = tile.stampTone === "danger" ? (palette.dark ? "#ff8f80" : "#b3261e") : palette.dark ? "#f0b860" : "#b5542c";
     c.strokeStyle = color;
     c.fillStyle = color;
     c.lineWidth = 10;
@@ -380,12 +395,14 @@ export function createBoard(context: {
   /** Columns the camera frames for: a full board's worth, so tiles keep one size however few days there are. */
   function framedColumns() {
     if (variant === "events") return gridColumns;
+    // A lone ticket keeps some board around it.
+    if (variant === "ticket") return layoutFor(width, height) === "portrait" ? 1.2 : 1.7;
     return layoutFor(width, height) === "portrait" ? 2 : 3;
   }
 
   function visibleColumns() {
     const layout = layoutFor(width, height);
-    if (variant === "events") return gridColumns;
+    if (variant !== "slots") return gridColumns;
     return Math.min(columnCount, layout === "portrait" ? 2 : 3);
   }
 
@@ -464,6 +481,8 @@ export function createBoard(context: {
       stampMaterial,
       stampLabel: "",
       stampedAt: -1,
+      stampKeep: false,
+      stampTone: "accent",
       position: new Vector3(),
       tilt: 0,
       scale: 1,
@@ -488,6 +507,8 @@ export function createBoard(context: {
     const visible = visibleColumns();
     const start = MathUtils.clamp(col - Math.floor((visible - 1) / 2), 0, Math.max(0, columnCount - visible));
     const x = (start + (visible - 1) / 2) * (spec.w + spec.gx);
+    // A lone ticket hangs in the middle of the scene, not from its top.
+    if (variant === "ticket") return { x, y: panel.position.y };
     const top = 0.5;
     const center0 = top - halfSpan;
     const rowBottom = -(spec.header + row * (spec.h + spec.gy)) - spec.h;
@@ -547,7 +568,7 @@ export function createBoard(context: {
     const areaCenterX = aim.x + (area.x - 0.5) * visibleW;
     const trayW = Math.min(visibleColumns() * (SPEC.slots.w + SPEC.slots.gx), area.width * visibleW * 0.94);
     // Tiles filed after booking leave the tray, and the tray goes with them.
-    const filed = (tile: Tile) => tile.stampedAt >= 0 && clock - tile.stampedAt > FILE_AFTER;
+    const filed = (tile: Tile) => tile.stampedAt >= 0 && !tile.stampKeep && clock - tile.stampedAt > FILE_AFTER;
     const inTray = list.filter((t) => cart.includes(t.data.id) && !filed(t)).map((t) => t.data.id);
     const trayTarget = variant === "slots" && inTray.length > 0 ? 1 : 0;
     damp(trayShown, trayTarget, rate(6), dt);
@@ -571,7 +592,7 @@ export function createBoard(context: {
       let scaleTarget = 1;
       let tiltTarget = 0;
       let visible = true;
-      if (stampAge > FILE_AFTER) {
+      if (filed(tile)) {
         // Filed: up and out past the top of the board.
         home(tile.data, target);
         target.set(trayAt.x + trayW * 0.7, areaCenterY + halfSpan + 1.2, 0.8);
@@ -613,7 +634,7 @@ export function createBoard(context: {
         const s = MathUtils.lerp(1.7, 1, MathUtils.smoothstep(t, 0, 1));
         tile.stamp.scale.set(Math.min(spec.w * 0.78, 1.9) * s, ((Math.min(spec.w * 0.78, 1.9) * 150) / 420) * s, 1);
         tile.group.position.z -= Math.sin(Math.PI * MathUtils.clamp((stampAge - 0.18) / 0.2, 0, 1)) * 0.06;
-        if (stampAge < FILE_AFTER + 1.5) moving = true;
+        if (stampAge < (tile.stampKeep ? 0.5 : FILE_AFTER + 1.5)) moving = true;
       } else {
         tile.stamp.visible = false;
       }
@@ -734,11 +755,13 @@ export function createBoard(context: {
       for (const tile of list) paint(tile);
       invalidate();
     },
-    stamp(ids, labels) {
+    stamp(ids, labels, options) {
       ids.forEach((id, i) => {
         const tile = list.find((t) => t.data.id === id);
         if (!tile) return;
         tile.stampLabel = labels[i] ?? "";
+        tile.stampKeep = options?.keep ?? false;
+        tile.stampTone = options?.tone ?? "accent";
         tile.stampedAt = clock + i * 0.16;
         paintStamp(tile);
       });
@@ -749,6 +772,7 @@ export function createBoard(context: {
         if (tile.stampedAt < 0) continue;
         tile.stampedAt = -1;
         tile.stampLabel = "";
+        tile.stampKeep = false;
         tile.stampMaterial.opacity = 0;
         // Back onto the board from where it was filed.
         tile.scale = 0.3;

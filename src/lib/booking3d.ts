@@ -2,18 +2,19 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { findOwner, ownerName } from "@/lib/owner";
 import { pickText } from "@/lib/content";
-import { formatDate, formatDateRange, formatDayTab, formatTime } from "@/lib/datetime";
+import { formatDate, formatDateRange, formatDayTab, formatSlotRange, formatTime } from "@/lib/datetime";
 import { getSiteSettings, resolveSubjectTerm } from "@/lib/settings";
 import { isNaiveDateTimePast, wallClockNow } from "@/lib/timeZone";
+import { isVisitorBookingEditWindowOpen, visitorBookingEditDeadline } from "@/lib/booking";
 import { findAvailablePublicDraw } from "@/lib/publicLottery";
 import { getAuthorizedLotteryEntryIds } from "@/lib/visitorSession";
 import { activeWinnerWhere } from "@/lib/lottery";
-import type { BookingBoard, BookingSchedule, PrizeDraw } from "@/components/album3d/booking/types";
+import type { BookingBoard, BookingSchedule, MyBooking, PrizeDraw } from "@/components/album3d/booking/types";
 
 /**
  * Data for the 3D site's booking screens. Each loader runs the same queries
- * and checks as its classic page (the booking list, /book/[token] and
- * /draw/[token]), and also checks that the token belongs to the photographer
+ * and checks as its classic page (the booking list, /book/[token],
+ * /draw/[token] and /my-booking/[token]), and also checks that the token belongs to the photographer
  * named in the address. Anything the classic page would 404 comes back null.
  */
 
@@ -165,5 +166,135 @@ export async function loadPrizeDraw(username: string, token: string, locale: str
       weight: p.weight,
       wonCount: p._count.winners
     }))
+  };
+}
+
+/** A visitor's own booking by its cancel token, as /my-booking/[token] shows it. */
+export async function loadMyBooking(
+  username: string,
+  token: string,
+  locale: string,
+  defaultSubjectTerm: string,
+  /** "Price per person: {price}", for the edit form's time choices. */
+  pricePerPerson: (price: string) => string
+): Promise<MyBooking | null> {
+  if (!TOKEN.test(token)) return null;
+  const owner = await findOwner(username);
+  if (!owner) return null;
+  const booking = await prisma.booking.findUnique({
+    where: { cancelToken: token },
+    include: {
+      lotteryEntry: { include: { wonPrize: true } },
+      timeSlot: {
+        include: {
+          bookingEvent: {
+            include: {
+              lotteryDraw: {
+                include: {
+                  prizes: {
+                    orderBy: { sortOrder: "asc" },
+                    include: { _count: { select: { winners: { where: activeWinnerWhere } } } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+  if (!booking || booking.timeSlot.bookingEvent.ownerId !== owner.id) return null;
+
+  const slot = booking.timeSlot;
+  const event = slot.bookingEvent;
+  // The event owner's settings, as on the classic page: their vocabulary and toggles apply.
+  const settings = await getSiteSettings(owner.id);
+  const cancelled = booking.status === "cancelled";
+  const editOpen =
+    !cancelled &&
+    event.visitorEditsEnabled &&
+    isVisitorBookingEditWindowOpen(slot.startTime, event.visitorEditCutoffHours, settings.timeZone);
+  const priceText = (price: string) => (settings.bookingPriceEnabled && price ? price : "");
+
+  const editableSlots = editOpen
+    ? (
+        await prisma.timeSlot.findMany({
+          where: { bookingEventId: event.id, startTime: { gt: wallClockNow(settings.timeZone) } },
+          include: { _count: { select: { bookings: { where: { status: "confirmed" } } } } },
+          orderBy: { startTime: "asc" }
+        })
+      )
+        .filter(
+          (s) => s.id === booking.timeSlotId || (event.open && settings.bookingEnabled && s._count.bookings < s.capacity)
+        )
+        .map((s) => ({
+          id: s.id,
+          label: [
+            formatSlotRange(s.startTime, s.endTime),
+            pickText(locale, s.descriptionEn, s.descriptionZh),
+            s.pricePerPerson && settings.bookingPriceEnabled ? pricePerPerson(s.pricePerPerson) : ""
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        }))
+    : [];
+
+  // As on the classic page: the draw shows whenever the site and event have
+  // it on and it has been set up, and never for a cancelled booking.
+  const draw = event.lotteryDraw;
+  const showDraw = settings.lotteryEnabled && event.lotteryEnabled && !!draw && !cancelled;
+  const won = booking.lotteryEntry?.wonPrize ?? null;
+
+  return {
+    username: owner.username,
+    owner: ownerName(owner),
+    token,
+    title: pickText(locale, event.titleEn, event.titleZh),
+    location: event.location,
+    day: formatDayTab(slot.startTime, locale),
+    start: formatTime(slot.startTime),
+    end: formatTime(slot.endTime),
+    range: formatSlotRange(slot.startTime, slot.endTime),
+    slotDescription: pickText(locale, slot.descriptionEn, slot.descriptionZh),
+    price: priceText(slot.pricePerPerson),
+    name: booking.name,
+    subject: booking.subject,
+    subjectTerm: resolveSubjectTerm(settings, locale, defaultSubjectTerm),
+    cancelled,
+    edit: cancelled
+      ? null
+      : {
+          enabled: event.visitorEditsEnabled,
+          open: editOpen,
+          deadline: editOpen
+            ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(
+                visitorBookingEditDeadline(slot.startTime, event.visitorEditCutoffHours)
+              )
+            : "",
+          cutoffHours: event.visitorEditCutoffHours,
+          currentSlotId: booking.timeSlotId,
+          slots: editableSlots,
+          initial: editOpen
+            ? {
+                name: booking.name,
+                subject: booking.subject,
+                contactValue: booking.contactValue,
+                email: booking.email,
+                notes: booking.notes
+              }
+            : null
+        },
+    draw: showDraw
+      ? {
+          prizes: draw.prizes.map((p) => ({
+            id: p.id,
+            name: p.name,
+            quantity: p.quantity,
+            weight: p.weight,
+            wonCount: p._count.winners
+          }))
+        }
+      : null,
+    wonPrize: won ? { id: won.id, name: won.name } : null
   };
 }
