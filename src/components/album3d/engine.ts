@@ -329,45 +329,15 @@ interface Cassette {
   dispose(): void;
 }
 
-/** Behind the menus the raised card's photograph softens with the field's covers. */
-interface MenuBlur {
+/** Behind the menus the raised card's photograph is veiled with the field's covers. */
+interface MenuVeil {
   amount: { value: number };
   color: { value: Color };
 }
 
-/**
- * The map sampled softened by `uBlur` (0 to 1, up to `levels` mip levels
- * down) and veiled toward `uVeilColor` by `veil`, for photographs that sit
- * behind the menus.
- */
-function blurredMap(levels: number, veil: string) {
-  return `#ifdef USE_MAP\n  vec4 sampledDiffuseColor = texture2D( map, vMapUv, uBlur * ${levels.toFixed(1)} );\n  diffuseColor *= sampledDiffuseColor;\n#endif\n  diffuseColor.rgb = mix(diffuseColor.rgb, uVeilColor, ${veil});`;
-}
-
-/**
- * As blurredMap, for covers that share an atlas, each in the `vCell` part of
- * it. A biased lookup lets the coarse mip levels (and the anisotropic taps
- * along a cover seen at a slant) reach into the neighbouring cells, which
- * drew a bright, stair-stepped rim along the covers' edges behind the menus.
- * The softened cover is instead read at an explicit level, which takes no
- * anisotropic taps, and from no nearer its edges than that level's texels
- * reach, so only its own colours soften into its edges.
- */
-function blurredAtlas(levels: number, veil: string) {
-  return `#ifdef USE_MAP
-  vec4 sampledDiffuseColor = texture2D( map, vMapUv );
-  vec2 atlasSize = vec2( textureSize( map, 0 ) );
-  vec2 texelX = dFdx( vMapUv * atlasSize );
-  vec2 texelY = dFdy( vMapUv * atlasSize );
-  if ( uBlur > 0.0 ) {
-    float lod = max( 0.0, 0.5 * log2( max( dot( texelX, texelX ), dot( texelY, texelY ) ) ) ) + uBlur * ${levels.toFixed(1)};
-    vec2 margin = min( vec2( 2.0 * exp2( lod ) ) / atlasSize, vCell.zw * 0.5 );
-    vec2 softUv = clamp( vMapUv, vCell.xy + margin, vCell.xy + vCell.zw - margin );
-    sampledDiffuseColor = mix( sampledDiffuseColor, textureLod( map, softUv, lod ), min( 1.0, uBlur * 4.0 ) );
-  }
-  diffuseColor *= sampledDiffuseColor;
-#endif
-  diffuseColor.rgb = mix(diffuseColor.rgb, uVeilColor, ${veil});`;
+/** The map veiled toward `uVeilColor` by `veil`, for photographs that sit behind the menus. */
+function veiledMap(veil: string) {
+  return `#include <map_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, uVeilColor, ${veil});`;
 }
 
 function buildCassette(
@@ -378,7 +348,7 @@ function buildCassette(
   carrierGeometry: BoxGeometry,
   file: EngineFile,
   prints: EnginePrint[],
-  blur?: MenuBlur
+  veil?: MenuVeil
 ): Cassette {
   const shape = shapeFor(printAspect(file.prints[0]));
   const cardW = shape.cardW;
@@ -422,11 +392,11 @@ function buildCassette(
     // The raised card leans away from the camera into the field's fog;
     // its photographs stay clear of it.
     const face = own(imageMaterial({ color: color(palette.control), fog: false }));
-    if (blur) {
+    if (veil) {
       face.onBeforeCompile = (shader) => {
-        shader.uniforms.uBlur = blur.amount;
-        shader.uniforms.uVeilColor = blur.color;
-        shader.fragmentShader = `uniform float uBlur;\nuniform vec3 uVeilColor;\n${shader.fragmentShader}`.replace("#include <map_fragment>", blurredMap(3.5, "uBlur * 0.5"));
+        shader.uniforms.uVeil = veil.amount;
+        shader.uniforms.uVeilColor = veil.color;
+        shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\n${shader.fragmentShader}`.replace("#include <map_fragment>", veiledMap("uVeil"));
       };
       face.customProgramCacheKey = () => "album-archive-raised-print";
     }
@@ -669,7 +639,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   faceGeo.setAttribute("aFog", faceFog);
   const veil = { value: 0 };
   const veilColor = { value: new Color() };
-  const blur = { value: 0 };
   const faceMaterial = imageMaterial({ map: atlas });
   // Just in front of the card face; offset the depth test, not the geometry.
   faceMaterial.polygonOffset = true;
@@ -678,14 +647,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   faceMaterial.onBeforeCompile = (shader) => {
     shader.uniforms.uVeil = veil;
     shader.uniforms.uVeilColor = veilColor;
-    shader.uniforms.uBlur = blur;
-    shader.vertexShader = `attribute vec4 aCell;\nattribute float aFog;\nvarying float vFog;\nvarying vec4 vCell;\n${shader.vertexShader}`.replace(
+    shader.vertexShader = `attribute vec4 aCell;\nattribute float aFog;\nvarying float vFog;\n${shader.vertexShader}`.replace(
       "#include <uv_vertex>",
-      "#include <uv_vertex>\n  vMapUv = aCell.xy + uv * aCell.zw;\n  vCell = aCell;\n  vFog = aFog;"
+      "#include <uv_vertex>\n  vMapUv = aCell.xy + uv * aCell.zw;\n  vFog = aFog;"
     );
-    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\nuniform float uBlur;\nvarying float vFog;\nvarying vec4 vCell;\n${shader.fragmentShader}`.replace(
+    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\nvarying float vFog;\n${shader.fragmentShader}`.replace(
       "#include <map_fragment>",
-      blurredAtlas(2.4, "max(uVeil, vFog)")
+      veiledMap("max(uVeil, vFog)")
     );
   };
   faceMaterial.customProgramCacheKey = () => "album-archive-faces";
@@ -768,7 +736,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     selected?.group.removeFromParent();
     selected?.dispose();
     const file = files[index];
-    const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, carrierFor(file), file, file.prints.slice(0, 1), { amount: blur, color: veilColor });
+    const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, carrierFor(file), file, file.prints.slice(0, 1), { amount: veil, color: veilColor });
     cassette.parts.carrier.castShadow = !lowPower;
     field.add(cassette.group);
     selected = cassette;
@@ -1287,10 +1255,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       }
       moving = true;
     }
-    // Covers show as they are; menus soften and veil them behind their
-    // text, the raised card's photograph with them.
+    // Covers show as they are; menus veil them behind their text, the
+    // raised card's photograph with them.
     veil.value = overview * 0.5;
-    blur.value = overview;
 
     cardPosition.set(
       selectedCell.lane * COLUMN_SPACING - trackX.value,
