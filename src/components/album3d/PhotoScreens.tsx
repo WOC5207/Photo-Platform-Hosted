@@ -231,14 +231,22 @@ export function PhotoScreen({
         {photo.socialLinks.length > 0 && (
           <ul className="mt-5 flex flex-wrap gap-2">
             {photo.socialLinks.map((link, i) => (
-              <li key={i}>
+              <li key={i} className="max-w-full">
                 <a
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-9 items-center border border-border-strong px-3 text-xs uppercase tracking-[0.08em] hover:border-fg"
+                  title={link.name ? `${link.name} · ${link.label}` : undefined}
+                  className="inline-flex min-h-9 max-w-full items-center border border-border-strong px-3 text-xs uppercase tracking-[0.08em] hover:border-fg"
                 >
-                  {link.label} <span aria-hidden="true" className="ml-2">↗</span>
+                  {link.name && (
+                    <>
+                      <span className="min-w-0 truncate font-semibold normal-case tracking-normal">{link.name}</span>
+                      <span aria-hidden="true" className="mx-1.5 text-fg-subtle">·</span>
+                    </>
+                  )}
+                  <span className="shrink-0">{link.label}</span>
+                  <span aria-hidden="true" className="ml-2">↗</span>
                 </a>
               </li>
             ))}

@@ -72,7 +72,7 @@ export interface TablePhoto {
   height: number;
   caption: string;
   comment: string;
-  socialLinks: { label: string; url: string }[];
+  socialLinks: { name: string; label: string; url: string }[];
   exif: { gear: string; focalLength: string; exposure: string; date: string };
 }
 
