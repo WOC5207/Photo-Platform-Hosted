@@ -380,7 +380,9 @@ export default function PhotoWizard({
         )}
       </section>
 
-      <div className="sticky bottom-3 z-20 flex items-center justify-between gap-3 rounded-xl border border-accent/30 bg-raised/95 p-3 shadow-[0_16px_48px_rgb(0_0_0/0.2)] backdrop-blur-xl max-sm:flex-col max-sm:items-stretch">
+      {/* Until a photo is queued the bar has nothing to move on to, so it
+          stays below the picker instead of floating over it on a phone. */}
+      <div className={`${stepIndex === 0 && queue.files.length === 0 ? "" : "sticky bottom-3 z-20 "}flex items-center justify-between gap-3 rounded-xl border border-accent/30 bg-raised/95 p-3 shadow-[0_16px_48px_rgb(0_0_0/0.2)] backdrop-blur-xl max-sm:flex-col max-sm:items-stretch`}>
         <button
           type="button"
           disabled={stepIndex === 0 || publishing}

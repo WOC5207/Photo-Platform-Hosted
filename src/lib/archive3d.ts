@@ -223,6 +223,31 @@ export async function loadOwnerPalettes(): Promise<Record<string, OwnerPalette>>
   return palettes;
 }
 
+/**
+ * Whether the archive has the screen at an address: a photographer with a
+ * published album, one of those albums, or a public photo in it. The same
+ * filter as loadArchive, so the pages can answer 404 where the scene shows
+ * "File not found".
+ */
+export async function archiveHasScreen(params: { username: string; slug?: string; photo?: string }): Promise<boolean> {
+  let username: string;
+  try {
+    username = decodeURIComponent(params.username);
+  } catch {
+    return false;
+  }
+  const event = await prisma.event.findFirst({
+    where: {
+      published: true,
+      owner: { username, status: "active" },
+      ...(params.slug === undefined ? {} : { slug: params.slug }),
+      photos: { some: params.photo === undefined ? publicPhotoWhere : { id: params.photo, ...publicPhotoWhere } }
+    },
+    select: { id: true }
+  });
+  return event !== null;
+}
+
 /** Prints laid on the light table. Past this the classic page shows the rest. */
 const TABLE_LIMIT = 240;
 

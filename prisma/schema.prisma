@@ -821,6 +821,10 @@ model SiteSettings {
   lotteryEnabled                    Boolean   @default(true)
   creditProfilesEnabled             Boolean   @default(true)
   announcementsEnabled              Boolean   @default(true)
+  // Visitors can save each photo's original file (metadata stripped) from the
+  // 360° view. Off serves the large web version instead; the photographer and
+  // platform admins still get the original.
+  originalDownloadsEnabled          Boolean   @default(true)
   // Explicit, fail-closed opt-in for listing this tenant in the WeChat mini
   // program. Existing and newly-created tenants stay unavailable until an
   // administrator has reviewed their public content and enables this flag.

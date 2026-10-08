@@ -30,9 +30,12 @@ import {
   updateVisitorBookingReservation
 } from "../src/lib/booking";
 import {
+  activeWinnerWhere,
   deleteLotteryPrizeForOwner,
+  releasePrizeTakenSinceCancel,
   spinForEntry
 } from "../src/lib/lottery";
+import { cancelPublicBookingByToken } from "../src/lib/publicBookingService";
 import { completeOwnerSetup } from "../src/lib/setup";
 import { wallClockNow } from "../src/lib/timeZone";
 
@@ -634,6 +637,71 @@ async function testLotteryPrizeStock() {
   await prisma.bookingEvent.delete({ where: { id: eventId } });
 }
 
+/**
+ * A won booking can't be cancelled by the visitor (or book → spin → cancel
+ * would re-spin until the prize they wanted came up). Once the photographer
+ * cancels it the prize returns to the pool, and if it is won again meanwhile,
+ * restoring the booking must not bring the old win back over quantity.
+ */
+async function testWonBookingCancelAndRestore() {
+  const { eventId: slotEventId, slotId } = await makeSlot(5);
+  const { eventId, drawId } = await makeDraw();
+  const prize = await prisma.lotteryPrize.create({
+    data: { drawId, name: "the only prize", quantity: 1, weight: 1 }
+  });
+  const book = (i: number) =>
+    prisma.booking.create({
+      data: { timeSlotId: slotId, ...booking(i) }
+    });
+  const first = await book(200);
+  const firstEntry = await prisma.lotteryEntry.create({
+    data: { ...entryData(drawId, 200), bookingId: first.id }
+  });
+  const won = await spinForEntry(firstEntry.id, drawId);
+
+  const cancelled = await cancelPublicBookingByToken(first.cancelToken);
+  const stillConfirmed = (await prisma.booking.findUnique({ where: { id: first.id } }))?.status === "confirmed";
+  report(
+    "lottery: a visitor cannot cancel a booking that has won",
+    won.ok && !cancelled.ok && cancelled.error === "prizeWon" && stillConfirmed,
+    `spin ${won.ok ? "won" : "lost"}, cancel returned ${JSON.stringify(cancelled)}, booking ${stillConfirmed ? "still confirmed" : "cancelled (WRONG)"}`
+  );
+
+  // The photographer cancels it; the prize goes back and someone else wins it.
+  await prisma.booking.update({ where: { id: first.id }, data: { status: "cancelled" } });
+  const second = await book(201);
+  const secondEntry = await prisma.lotteryEntry.create({
+    data: { ...entryData(drawId, 201), bookingId: second.id }
+  });
+  const rewon = await spinForEntry(secondEntry.id, drawId);
+
+  const released = await prisma.$transaction(async (tx) => {
+    const result = await releasePrizeTakenSinceCancel(tx, first.id);
+    await tx.booking.update({ where: { id: first.id }, data: { status: "confirmed" } });
+    return result;
+  });
+  const holders = await prisma.lotteryEntry.count({ where: { wonPrizeId: prize.id, ...activeWinnerWhere } });
+  const firstAfter = await prisma.lotteryEntry.findUnique({ where: { id: firstEntry.id } });
+  report(
+    "lottery: restoring a booking whose prize was re-won releases the old win",
+    rewon.ok && released && holders === 1 && firstAfter?.wonPrizeId === null,
+    `re-spin ${rewon.ok ? "won" : "lost"}, released ${released}, ${holders} active holders (must be 1)`
+  );
+
+  // With stock to spare, a restore keeps the win.
+  await prisma.lotteryPrize.update({ where: { id: prize.id }, data: { quantity: 3 } });
+  await prisma.lotteryEntry.update({ where: { id: firstEntry.id }, data: { wonPrizeId: prize.id, wonAt: new Date() } });
+  await prisma.booking.update({ where: { id: first.id }, data: { status: "cancelled" } });
+  const kept = !(await prisma.$transaction((tx) => releasePrizeTakenSinceCancel(tx, first.id)));
+  report(
+    "lottery: restoring a booking keeps its prize while stock remains",
+    kept,
+    kept ? "kept" : "released although stock remained (WRONG)"
+  );
+
+  await prisma.bookingEvent.deleteMany({ where: { id: { in: [eventId, slotEventId] } } });
+}
+
 async function testSetupCompletionIsIdempotent() {
   const setupOwner = await prisma.user.create({
     data: {
@@ -690,6 +758,7 @@ async function main() {
   await testLotteryLockIsHonoured();
   await testLotteryPrizeDeleteLockIsHonoured();
   await testLotteryPrizeStock();
+  await testWonBookingCancelAndRestore();
   await testSetupCompletionIsIdempotent();
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);
   // Cascades to anything the tests left behind.

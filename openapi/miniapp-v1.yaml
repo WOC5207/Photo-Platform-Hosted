@@ -442,6 +442,7 @@ paths:
       operationId: cancelMyBooking
       tags: [Booking]
       summary: Cancel a booking linked to the current identity
+      description: A booking whose lottery entry has won a prize answers 409; only the photographer can cancel it.
       security:
         - bearerAuth: []
       parameters:

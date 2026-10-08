@@ -318,7 +318,7 @@ async function sendCancellationNotification(
 
 export type CancelPublicBookingResult =
   | { ok: true; data: { changed: boolean } }
-  | { ok: false; error: "notFound" };
+  | { ok: false; error: "notFound" | "prizeWon" };
 
 async function cancelBooking(
   where: Prisma.BookingWhereInput
@@ -329,17 +329,33 @@ async function cancelBooking(
   });
   if (!booking) return { ok: false, error: "notFound" };
 
-  const transition = await prisma.booking.updateMany({
-    where: {
-      id: booking.id,
-      status: "confirmed",
-      // Repeat ownership conditions at the write boundary. This matters for
-      // identity-scoped API calls if a concurrent import/delete is underway.
-      ...where
-    },
-    data: { status: "cancelled" }
+  const transition = await prisma.$transaction(async (tx) => {
+    // Same row lock a spin takes on its booking (see spinForEntry), so a
+    // cancel and a spin of one booking never interleave: either the spin
+    // sees the cancellation, or the cancel sees the win.
+    await tx.$queryRaw`SELECT id FROM "Booking" WHERE id = ${booking.id} FOR UPDATE`;
+    // A booking that has won keeps its prize until the photographer cancels
+    // it. If visitors could cancel it themselves, the prize would go back to
+    // the pool and book → spin → cancel → book again would let anyone re-spin
+    // until they drew the prize they wanted.
+    const won = await tx.lotteryEntry.count({
+      where: { bookingId: booking.id, wonPrizeId: { not: null } }
+    });
+    if (won > 0) return "prizeWon" as const;
+    const updated = await tx.booking.updateMany({
+      where: {
+        id: booking.id,
+        status: "confirmed",
+        // Repeat ownership conditions at the write boundary. This matters for
+        // identity-scoped API calls if a concurrent import/delete is underway.
+        ...where
+      },
+      data: { status: "cancelled" }
+    });
+    return updated.count === 1 ? ("changed" as const) : ("unchanged" as const);
   });
-  if (transition.count !== 1) {
+  if (transition === "prizeWon") return { ok: false, error: "prizeWon" };
+  if (transition === "unchanged") {
     return { ok: true, data: { changed: false } };
   }
 

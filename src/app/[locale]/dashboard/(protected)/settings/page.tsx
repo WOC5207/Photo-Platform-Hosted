@@ -123,6 +123,7 @@ export default async function SiteSettingsPage({
           timeZone: settings.timeZone,
           lotteryEnabled: settings.lotteryEnabled,
           creditProfilesEnabled: settings.creditProfilesEnabled,
+          originalDownloadsEnabled: settings.originalDownloadsEnabled,
           announcementsEnabled: settings.announcementsEnabled,
           contactEnabled: settings.contactEnabled,
           contactTitleEn: settings.contactTitleEn,

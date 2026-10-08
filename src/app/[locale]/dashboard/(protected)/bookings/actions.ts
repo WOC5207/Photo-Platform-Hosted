@@ -21,6 +21,7 @@ import {
   splitEvent
 } from "@/lib/booking";
 import { getSiteSettings } from "@/lib/settings";
+import { releasePrizeTakenSinceCancel } from "@/lib/lottery";
 import { ensureDayChecklists } from "@/lib/eventWorkspace";
 import {
   createEventFromForm,
@@ -247,7 +248,13 @@ export async function deleteSlot(formData: FormData): Promise<void> {
 }
 
 
-export type BookingStatusState = { error?: "slotFull"; ok?: boolean };
+export type BookingStatusState = {
+  error?: "slotFull";
+  ok?: boolean;
+  // Restored, but the prize it had won went to someone else meanwhile, so
+  // the entry is back in the draw without a prize.
+  prizeReleased?: boolean;
+};
 type BookingStatusTransition = BookingStatusState & { changed?: boolean };
 
 /**
@@ -343,11 +350,15 @@ export async function setBookingStatus(
     });
     if (confirmed >= booking.timeSlot.capacity) return { error: "slotFull" };
 
+    // Before the booking counts as confirmed again, so its own old win is
+    // not among the holders counted.
+    const prizeReleased = await releasePrizeTakenSinceCancel(tx, booking.id);
+
     await tx.booking.update({
       where: { id: booking.id },
       data: { status: "confirmed" }
     });
-    return { ok: true, changed: true };
+    return { ok: true, changed: true, prizeReleased };
   });
 
   if (result.ok) revalidatePath("/", "layout");
@@ -357,7 +368,9 @@ export async function setBookingStatus(
   if (result.ok && result.changed) {
     await emailVisitorBookingStatus(owned.id, "confirmed");
   }
-  return result.error ? { error: result.error } : { ok: result.ok };
+  return result.error
+    ? { error: result.error }
+    : { ok: result.ok, prizeReleased: result.prizeReleased };
 }
 
 export type MergeEventsState = {

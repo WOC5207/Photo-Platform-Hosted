@@ -397,6 +397,7 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
                         className={fieldClass}
                       />
                       {name === "contactValue" && <span className="text-xs text-fg-subtle">{tb("contactHint")}</span>}
+                      {name === "email" && <span className="text-xs text-fg-subtle">{tb("emailHint")}</span>}
                     </label>
                   ))}
                   <label className="grid gap-1 text-sm">

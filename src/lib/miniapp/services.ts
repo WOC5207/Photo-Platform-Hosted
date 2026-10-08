@@ -309,7 +309,10 @@ export async function cancelMiniProgramBooking(
     identityId,
     bookingId
   );
-  if (!cancelled.ok) return cancelled;
+  // A booking that has won a prize is cancelled by the photographer only.
+  if (!cancelled.ok) {
+    return { ok: false, error: cancelled.error === "prizeWon" ? "conflict" : cancelled.error };
+  }
   const data = await findMiniProgramBooking(identityId, bookingId);
   return data
     ? { ok: true, data }

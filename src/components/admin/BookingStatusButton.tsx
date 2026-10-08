@@ -52,6 +52,11 @@ export default function BookingStatusButton({
           {t("restoreSlotFull")}
         </span>
       )}
+      {state.prizeReleased && (
+        <span role="status" className="max-w-[16rem] text-right text-xs text-fg-muted">
+          {t("restorePrizeReleased")}
+        </span>
+      )}
       {dialog}
     </form>
   );
