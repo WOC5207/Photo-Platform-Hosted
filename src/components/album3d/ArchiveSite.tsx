@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
@@ -12,6 +12,8 @@ import { classicTwin, parentScreen, parseScreen, screenPath, type Screen } from 
 import { GameMenu, Hints, MENU_SCREENS, Roll, Rolling, pad, wrap, type MenuItem } from "./hud";
 import { AlbumPhotosContext } from "./AlbumPhotosFeed";
 import { StageContext } from "./StageContext";
+import { archiveSlice } from "@/app/[locale]/3d/actions";
+import { joinSlice, type Archive } from "@/lib/archiveField";
 import styles from "./ArchiveSite.module.css";
 import { tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile, type OwnerPalette } from "./types";
 import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
@@ -135,8 +137,8 @@ function isInteractive(target: EventTarget | null): boolean {
  * archive without needing the 3D view at all.
  */
 export default function ArchiveSite({
-  files,
-  columns,
+  files: loadedFiles,
+  columns: loadedColumns,
   palettes,
   viewer,
   children
@@ -157,6 +159,11 @@ export default function ArchiveSite({
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<ArchiveEngine | null>(null);
+  // The field as the layout loaded it, plus any photographer an address
+  // brought in since. Held for the life of the layout, as the scene is: a
+  // refresh that reloads the layout doesn't move files under the scene.
+  const [archive, setArchive] = useState<Archive>(() => ({ files: loadedFiles, columns: loadedColumns }));
+  const { files, columns } = archive;
 
   // ---------------------------------------------------------------- screen --
   const screen: Screen = parseScreen(pathname) ?? { kind: "title" };
@@ -176,10 +183,24 @@ export default function ArchiveSite({
   // The Dashboard's pages draw their own panels too; its home is a menu.
   const studio = screen.kind === "studio";
   const studioHome = studio && screen.page === "home";
-  const missing =
-    ("username" in screen && columnIndex < 0 && !booking && !studio) ||
-    (inAlbum && fileIndex < 0) ||
-    (screen.kind === "photo" && albumHere !== null && photoIndex < 0);
+  // A photographer or album the field doesn't hold is asked for (see
+  // joinSlice); until the answer comes the screen waits rather than calling it missing.
+  const pastField = "username" in screen && !booking && !studio && (columnIndex < 0 || (inAlbum && fileIndex < 0));
+  const sliceKey = pastField ? `${screen.username}/${"slug" in screen ? screen.slug : ""}` : "";
+  const [answered, setAnswered] = useState<string[]>([]);
+  const asking = pastField && !answered.includes(sliceKey);
+  useEffect(() => {
+    if (!asking) return;
+    archiveSlice(screen.username, "slug" in screen ? screen.slug : undefined)
+      .catch(() => null)
+      .then((slice) => {
+        if (slice) setArchive((current) => joinSlice(current, slice) ?? current);
+        setAnswered((done) => [...done, sliceKey]);
+      });
+    // sliceKey names the screen asked for.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sliceKey]);
+  const missing = pastField || (screen.kind === "photo" && albumHere !== null && photoIndex < 0);
   const mode: Mode = missing
     ? "archive"
     : booking || creator || (studio && !studioHome)
@@ -253,8 +274,15 @@ export default function ArchiveSite({
       setExploded(false);
       setStudyFocus(0);
     }
+    // Again when an address's photographer joins the archive (see joinSlice).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  }, [pathname, archive]);
+  // A join points the selection at the address's album before the frame
+  // paints, so the panel never names the field's first album meanwhile.
+  useLayoutEffect(() => {
+    if (fileIndex >= 0) setSelected(fileIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [archive]);
 
   // A photo's address puts the light table's focus on it, so Esc lands there.
   useEffect(() => {
@@ -466,11 +494,16 @@ export default function ArchiveSite({
   }, [step, openDetail, choose, onCard, onPrint, enterAlbum]);
 
   // ----------------------------------------------------------------- engine --
-  // Create the engine once; three.js loads only after the overlay is up.
+  // Create the engine once per archive; three.js loads only after the overlay
+  // is up. An address past the field waits for its answer before the first
+  // scene, rather than building it twice.
+  const waiting = asking && status === "loading";
   useEffect(() => {
     const canvas = canvasRef.current;
     const root = rootRef.current;
-    if (!canvas || !root || files.length === 0) return;
+    if (!canvas || !root || files.length === 0 || waiting) return;
+    // A grown archive builds a new scene; the effects that drive it wait for it to be ready again.
+    setStatus("loading");
     if (!webglAvailable()) {
       setStatus("unsupported");
       return;
@@ -505,7 +538,7 @@ export default function ArchiveSite({
             return {
               name: c.name,
               username: c.username,
-              meta: t("rosterSub", { albums: c.fileIndexes.length, photos: c.photoCount }),
+              meta: t("rosterSub", { albums: c.albumCount, photos: c.photoCount }),
               cover: cover ? { thumb: cover.thumb, med: cover.med } : null
             };
           }),
@@ -549,9 +582,9 @@ export default function ArchiveSite({
       engineRef.current?.dispose();
       engineRef.current = null;
     };
-    // The archive is fixed for the life of the layout.
+    // Rebuilt only when an address brings more of the archive in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [archive, waiting]);
 
   useEffect(() => {
     if (ready) engineRef.current?.select(selected);
@@ -673,7 +706,7 @@ export default function ArchiveSite({
   const rosterMenu: MenuItem[] = columns.map((c, i) => ({
     key: c.username,
     label: c.name,
-    sub: t("rosterSub", { albums: c.fileIndexes.length, photos: c.photoCount }),
+    sub: t("rosterSub", { albums: c.albumCount, photos: c.photoCount }),
     run: () => {
       focusPhotographer(i);
       go({ kind: "photographer", username: c.username });
@@ -880,6 +913,11 @@ export default function ArchiveSite({
   crumbs[crumbs.length - 1].href = undefined;
 
   const studyHeader = mode === "study";
+  // Without WebGL a page of plain links covers the scene. The header stays
+  // above it and usable; everything behind it leaves the keyboard order.
+  const fallback = (status === "unsupported" || status === "lost") && (creator || (mode !== "booking" && !studio));
+  // An album's address lists it first, then the rest of its photographer's; a photographer's lists theirs first.
+  const fallbackRank = (f: ArchiveFile) => (f === files[fileIndex] ? 0 : f.column === columnIndex ? 1 : 2);
 
   return (
     <AlbumPhotosContext.Provider value={setAlbum}>
@@ -909,14 +947,14 @@ export default function ArchiveSite({
         />
       )}
 
-      {status === "loading" && (
+      {(status === "loading" || asking) && (
         <p role="status" className="font-meta absolute inset-0 flex items-center justify-center text-xs uppercase tracking-[0.2em] text-fg-subtle">
           {t("loading")}
         </p>
       )}
 
-      {!studyHeader && (
-        <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 px-[var(--edge)] pt-4 sm:gap-4 wide:pt-9">
+      {(!studyHeader || fallback) && (
+        <header className={`pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 px-[var(--edge)] pt-4 sm:gap-4 wide:pt-9 ${fallback ? "z-30 bg-page pb-3" : "z-10"}`}>
           <div className="pointer-events-auto flex items-start gap-10">
             <Link href={screenPath({ kind: "title" })} className="block leading-none">
               <span className="block text-xl font-extrabold uppercase tracking-[-0.02em] max-[379px]:text-lg wide:text-4xl">{t("brandTop")}</span>
@@ -976,8 +1014,9 @@ export default function ArchiveSite({
         </header>
       )}
 
+      <div inert={fallback} className="contents">
       {/* ----------------------------------------------------- menu screens -- */}
-      {missing && (
+      {missing && !asking && (
         <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
           <p className={metaLabel}>{t("archiveLabel")}</p>
           <h1 className="mt-3 text-4xl font-extrabold uppercase tracking-[-0.03em] wide:text-6xl">{t("notFoundTitle")}</h1>
@@ -1083,7 +1122,7 @@ export default function ArchiveSite({
           <div aria-hidden="true" className={styles.calloutRule} />
           <dl className="mt-6 flex gap-12">
             {[
-              [t("statAlbums"), here.fileIndexes.length],
+              [t("statAlbums"), here.albumCount],
               [t("statPhotos"), here.photoCount]
             ].map(([label, value]) => (
               <div key={String(label)}>
@@ -1372,6 +1411,7 @@ export default function ArchiveSite({
           </button>
         </div>
       )}
+      </div>
 
       {(status === "unsupported" || status === "lost") && creator && (
         // The creators can't work without the easel; the classic editor opens the same draft.
@@ -1403,10 +1443,10 @@ export default function ArchiveSite({
               {t("unsupportedClassic")}
             </button>
             <ul className="mt-6 divide-y divide-border border-y border-border">
-              {files.map((f) => (
+              {[...files].sort((a, b) => fallbackRank(a) - fallbackRank(b)).map((f) => (
                 <li key={f.id}>
                   <Link href={f.href} className="flex min-h-12 items-center gap-4 py-3 hover:bg-fg/5">
-                    <span className="flex-1 font-medium">{f.title}</span>
+                    <span className={`flex-1 ${fallbackRank(f) ? "font-medium" : "font-bold"}`}>{f.title}</span>
                     <span className="text-sm text-fg-subtle">{columns[f.column]?.name}</span>
                   </Link>
                 </li>
@@ -1416,6 +1456,7 @@ export default function ArchiveSite({
         </div>
       )}
 
+      <div inert={fallback} className="contents">
       {(indexOpen || indexUsed) && (
         <ArchiveIndex
           open={indexOpen}
@@ -1434,6 +1475,7 @@ export default function ArchiveSite({
         />
       )}
       {children}
+      </div>
     </div>
     </StageContext.Provider>
     </AlbumPhotosContext.Provider>

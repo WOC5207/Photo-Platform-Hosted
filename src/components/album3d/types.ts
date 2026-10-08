@@ -44,6 +44,8 @@ export interface ArchiveColumn {
   name: string;
   /** Whether the photographer's booking page is switched on. */
   bookingEnabled: boolean;
+  /** All their public albums and photos, including any the field leaves out. */
+  albumCount: number;
   photoCount: number;
   fileIndexes: number[];
 }
