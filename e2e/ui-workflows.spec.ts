@@ -1589,6 +1589,27 @@ test.describe.serial("management workflows", () => {
           subject: "Updated subject",
           contactValue: "updated-contact"
         });
+
+      // The 3D twin shows the same booking from its token alone and cancels
+      // it through the same action. Without WebGL its panel still works.
+      await page.addInitScript(() => {
+        const getContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+          return /webgl/.test(type) ? null : getContext.call(this, type as "2d", ...(rest as []));
+        } as typeof getContext;
+      });
+      await page.goto(`/en/3d/my-booking/${cancelToken}`);
+      await expect(page).toHaveURL(new RegExp(`/en/3d/u/${adminUsername}/my-booking/${cancelToken}$`));
+      await expect(page.getByRole("heading", { name: "Your booking" })).toBeVisible();
+      await expect(page.getByText("Updated visitor")).toBeVisible();
+      await expect(page.getByText("Changes are still available")).toBeVisible();
+      await page.getByRole("button", { name: "Cancel this booking" }).click();
+      await answerConfirm(page, true);
+      await expect(page.getByText("This booking has been cancelled.")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Cancel this booking" })).toHaveCount(0);
+      await expect
+        .poll(() => prisma.booking.findUnique({ where: { cancelToken }, select: { status: true } }))
+        .toEqual({ status: "cancelled" });
     } finally {
       await prisma.bookingEvent.delete({ where: { id: event.id } }).catch(() => {});
     }

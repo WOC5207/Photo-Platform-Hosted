@@ -178,14 +178,14 @@ export function stepLanes(lengths: number[], column: number, row: number, delta:
 }
 
 /** An unknown photographer, event or draw, or one that is no longer open. */
-export function NotFoundPanel() {
+export function NotFoundPanel({ hint }: { hint?: string }) {
   const t = useTranslations("album3d");
   const { go } = useStage();
   return (
     <BookingPanel>
       <p className={metaLabel}>{t("archiveLabel")}</p>
       <h1 className="mt-3 text-4xl font-extrabold uppercase tracking-[-0.03em] wide:text-6xl">{t("notFoundTitle")}</h1>
-      <p className="mt-3 max-w-md text-sm text-fg-muted">{t("bookingNotFoundHint")}</p>
+      <p className="mt-3 max-w-md text-sm text-fg-muted">{hint ?? t("bookingNotFoundHint")}</p>
       <GameMenu
         label={t("notFoundTitle")}
         className="mt-8"

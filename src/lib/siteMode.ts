@@ -32,6 +32,7 @@ export type Screen =
   | { kind: "booking"; username: string }
   | { kind: "book"; username: string; token: string }
   | { kind: "draw"; username: string; token: string }
+  | { kind: "myBooking"; username: string; token: string }
   | { kind: "studio"; username: string; page: StudioPage; id?: string };
 
 /**
@@ -111,7 +112,7 @@ export type CosplanStep = (typeof COSPLAN_STEPS)[number];
 export const SHAREPOST_STEPS = ["layout", "credits", "print"] as const;
 export type SharepostStep = (typeof SHAREPOST_STEPS)[number];
 
-/** Booking and prize-draw links are opaque tokens, as on the classic pages. */
+/** Booking, prize-draw and my-booking links are opaque tokens, as on the classic pages. */
 const TOKEN = /^[a-z0-9]+$/;
 
 const SEGMENT = /^[^/?#]+$/;
@@ -151,6 +152,7 @@ export function parseScreen(path: string): Screen | null {
   if (rest.length === 4 && (rest[2] === "book" || rest[2] === "draw") && TOKEN.test(rest[3])) {
     return { kind: rest[2], username, token: rest[3] };
   }
+  if (rest.length === 4 && rest[2] === "my-booking" && TOKEN.test(rest[3])) return { kind: "myBooking", username, token: rest[3] };
   if (rest[2] === "studio") return parseStudio(username, rest.slice(3));
   if (rest[2] !== "albums") return null;
   if (rest.length === 3) return { kind: "albumSelect", username };
@@ -226,6 +228,8 @@ export function screenPath(screen: Screen): string {
     case "book":
     case "draw":
       return `${THREE_D_ROOT}/u/${enc(screen.username)}/${screen.kind}/${enc(screen.token)}`;
+    case "myBooking":
+      return `${THREE_D_ROOT}/u/${enc(screen.username)}/my-booking/${enc(screen.token)}`;
     case "studio":
       return `${THREE_D_ROOT}/u/${enc(screen.username)}/studio${studioTail(screen)}`;
   }
@@ -266,6 +270,7 @@ export function parentScreen(screen: Screen): Screen | null {
       return { kind: "photographer", username: screen.username };
     case "book":
     case "draw":
+    case "myBooking":
       return { kind: "booking", username: screen.username };
     case "studio": {
       const parent = STUDIO[screen.page][1];
@@ -306,6 +311,8 @@ export function classicTwin(path: string): string {
     case "book":
     case "draw":
       return `/${screen.kind}/${enc(screen.token)}`;
+    case "myBooking":
+      return `/my-booking/${enc(screen.token)}`;
     case "studio":
       return `/dashboard${studioTail(screen, true)}`;
   }
@@ -325,9 +332,9 @@ export function threeDTwin(path: string): string {
   // The dashboard names no one; /3d/studio forwards to the signed-in
   // photographer's own address.
   if (parts[0] === "dashboard") return `${THREE_D_ROOT}/studio${studioFromClassic(parts.slice(1), path)}`;
-  // Booking and draw links name only their token; /3d/book/<token> looks up
-  // the photographer and forwards to their address.
-  if ((parts[0] === "book" || parts[0] === "draw") && parts[1] && TOKEN.test(parts[1]) && parts.length === 2) {
+  // Booking, draw and my-booking links name only their token; /3d/book/<token>
+  // (and the others) look up the photographer and forward to their address.
+  if ((parts[0] === "book" || parts[0] === "draw" || parts[0] === "my-booking") && parts[1] && TOKEN.test(parts[1]) && parts.length === 2) {
     return `${THREE_D_ROOT}/${parts[0]}/${parts[1]}`;
   }
   if (parts[0] !== "u" || !parts[1] || !SEGMENT.test(parts[1])) return THREE_D_ROOT;

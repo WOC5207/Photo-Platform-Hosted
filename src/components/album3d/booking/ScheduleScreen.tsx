@@ -230,8 +230,12 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
                     <span className="font-meta mr-3 text-[0.6875rem] text-accent-text">{t("stampLabel", { number: pad(i + 1) })}</span>
                     <span className="text-sm font-semibold">{when(booking.slotId) || tb("bookingNumber", { number: i + 1 })}</span>
                   </span>
-                  <Link href={`/my-booking/${booking.cancelToken}?new=1`} className="inline-flex min-h-10 items-center gap-2 text-sm underline-offset-4 hover:underline">
-                    {tb("manageBooking")} <span aria-hidden="true">↗</span>
+                  <Link
+                    href={`${path({ kind: "myBooking", username: schedule.username, token: booking.cancelToken })}?new=1`}
+                    scroll={false}
+                    className="inline-flex min-h-10 items-center gap-2 text-sm underline-offset-4 hover:underline"
+                  >
+                    {tb("manageBooking")} <span aria-hidden="true">→</span>
                   </Link>
                 </li>
               ))}
