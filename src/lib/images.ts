@@ -28,6 +28,20 @@ function imagePipeline(input: ImageInput) {
 
 export class ProcessingQueueFullError extends Error {}
 
+export type PendingSourceFailure = "diskFull" | "storageUnavailable" | "tooManyPixels" | "invalidImage";
+
+/**
+ * Why storePendingSource refused a file, for the uploader to show: the photo
+ * folder being full or unwritable is the server's problem, not the image's.
+ */
+export function pendingSourceFailure(error: unknown): PendingSourceFailure {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (code === "ENOSPC" || code === "EDQUOT") return "diskFull";
+  if (code === "EACCES" || code === "EPERM" || code === "EROFS") return "storageUnavailable";
+  if (error instanceof Error && /pixel limit/i.test(error.message)) return "tooManyPixels";
+  return "invalidImage";
+}
+
 function createProcessingSlot(limit: () => number, maxWaiting = Infinity) {
   let active = 0;
   const waiters: Array<() => void> = [];

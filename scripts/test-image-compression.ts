@@ -9,6 +9,7 @@ import {
   deletePhotoFiles,
   eventDir,
   finalizePendingMaster,
+  pendingSourceFailure,
   replacePendingCandidate,
   resolveUploadExtension,
   storePendingSource,
@@ -330,10 +331,23 @@ async function main() {
         "png",
         "balanced"
       ),
-      /pixel|limit|input/i,
+      (error: unknown) => {
+        assert.match(String(error), /pixel|limit|input/i);
+        // The uploader is told the image is too big, not that it is broken.
+        assert.equal(pendingSourceFailure(error), "tooManyPixels");
+        return true;
+      },
       "decoded images above IMAGE_MAX_PIXELS must be rejected"
     );
     delete process.env.IMAGE_MAX_PIXELS;
+
+    // A full or unwritable photo folder is the server's fault, not the file's.
+    const fsError = (code: string) => Object.assign(new Error(code), { code });
+    assert.equal(pendingSourceFailure(fsError("ENOSPC")), "diskFull");
+    assert.equal(pendingSourceFailure(fsError("EDQUOT")), "diskFull");
+    assert.equal(pendingSourceFailure(fsError("EACCES")), "storageUnavailable");
+    assert.equal(pendingSourceFailure(fsError("EROFS")), "storageUnavailable");
+    assert.equal(pendingSourceFailure(new Error("Unreadable image")), "invalidImage");
 
     await deletePhotoFiles(
       ownerId,

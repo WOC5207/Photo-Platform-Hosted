@@ -61,6 +61,20 @@ export type QueueError =
   | "tooLarge"
   | "invalidImage"
   | "queueFull"
+  | "tooManyPixels"
+  | "diskFull"
+  | "storageUnavailable"
+  | "busy"
+  | "signedOut"
+  | "blocked"
+  | "eventGone"
+  | "conflict"
+  | "incomplete"
+  /** A proxy in front of the app refused the request's size with its own page. */
+  | "refusedSize"
+  | "server"
+  | "network"
+  | "timeout"
   | "unknown";
 
 export interface QueuedFile {
@@ -74,6 +88,8 @@ export interface QueuedFile {
   photoId?: string;
   state: QueueState;
   error?: QueueError;
+  /** The HTTP status behind a "server" or "unknown" error. */
+  errorStatus?: number;
   storagePreset: StoragePreset;
   candidatePreset?: "archive" | "balanced" | null;
   width?: number;
@@ -104,17 +120,33 @@ function newUploadId(): string {
   return `${half()}${half()}`;
 }
 
-function normalizeUploadError(value: unknown): QueueError {
+/** Why the server (or a proxy in front of it) turned an upload down. */
+function uploadFailure(
+  status: number,
+  value: unknown
+): Pick<QueuedFile, "error" | "errorStatus"> {
   if (
     value === "quotaExceeded" ||
     value === "unsupportedType" ||
     value === "tooLarge" ||
     value === "invalidImage" ||
-    value === "queueFull"
+    value === "queueFull" ||
+    value === "tooManyPixels" ||
+    value === "diskFull" ||
+    value === "storageUnavailable" ||
+    value === "busy"
   ) {
-    return value;
+    return { error: value };
   }
-  return "unknown";
+  if (value === "unauthorized" || status === 401) return { error: "signedOut" };
+  if (value === "forbidden" || status === 403) return { error: "blocked" };
+  if (value === "eventNotFound") return { error: "eventGone" };
+  if (value === "uploadConflict") return { error: "conflict" };
+  if (value === "badRequest") return { error: "incomplete" };
+  if (status === 413) return { error: "refusedSize" };
+  if (status === 429) return { error: "busy" };
+  if (status >= 500) return { error: "server", errorStatus: status };
+  return { error: "unknown", errorStatus: status };
 }
 
 function serverPhotoPatch(
@@ -531,6 +563,7 @@ export function usePendingUploadQueue({
     updateQueuedFile(item.key, {
       state: "uploading",
       error: undefined,
+      errorStatus: undefined,
       uploadedBytes: 0
     });
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -586,7 +619,7 @@ export function usePendingUploadQueue({
         if (!responseOk) {
           updateQueuedFile(item.key, {
             state: "failed",
-            error: normalizeUploadError(data?.error)
+            ...uploadFailure(status, data?.error)
           });
           return;
         }
@@ -629,7 +662,7 @@ export function usePendingUploadQueue({
         }
         if (status === 202 || data?.state === "deleting") {
           if (!(await waitForServerUpload(item))) {
-            updateQueuedFile(item.key, { state: "failed", error: "unknown" });
+            updateQueuedFile(item.key, { state: "failed", error: "timeout", errorStatus: undefined });
           }
           return;
         }
@@ -663,7 +696,7 @@ export function usePendingUploadQueue({
     // The second idempotent request also had an ambiguous response. Check the
     // durable row before offering Retry; it may have committed successfully.
     if (!(await waitForServerUpload(item))) {
-      updateQueuedFile(item.key, { state: "failed", error: "unknown" });
+      updateQueuedFile(item.key, { state: "failed", error: "network", errorStatus: undefined });
     }
   }
 

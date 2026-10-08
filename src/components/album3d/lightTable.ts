@@ -65,8 +65,10 @@ const PRINT_MAX_H = 0.98;
 const MAT = 0.06;
 const ELEVATION = MathUtils.degToRad(56);
 const FOV = 30;
-/** Rows either side of the focus that keep their meshes and textures. */
-const WINDOW_ROWS = 4;
+/** Rows past each edge of the view that get their prints ahead of a drag. */
+const MARGIN_ROWS = 1;
+/** How far past the camera's aim the fog hides the table completely. */
+const FOG_FAR = 18;
 
 interface Slot {
   group: Group;
@@ -83,6 +85,8 @@ interface Slot {
   texture: Texture | null;
   loading: boolean;
   used: number;
+  /** On screen (or the focused print) at the last feed, so its thumbnail stays. */
+  wanted: boolean;
 }
 
 export function createLightTable(context: {
@@ -228,7 +232,7 @@ export function createLightTable(context: {
       prints.add(group);
       // A steady, slightly hand-placed twist per print.
       const twist = MathUtils.degToRad(((Math.sin(i * 12.9898) * 43758.5453) % 1) * 2.6);
-      return { group, mat, tab, photo, face, w, h, twist, lift: 0, up: spring(0), texture: null, loading: false, used: 0 };
+      return { group, mat, tab, photo, face, w, h, twist, lift: 0, up: spring(0), texture: null, loading: false, used: 0, wanted: false };
     });
     applyMarks();
   }
@@ -240,12 +244,18 @@ export function createLightTable(context: {
     });
   }
 
-  /** Thumbnails for the rows around the focus, at most textureCap at once. */
+  /**
+   * Thumbnails for every print on screen and the focused one. Up to
+   * textureCap stay loaded once they scroll away; a print on screen always
+   * keeps its own, however many the view holds.
+   */
   function feedTextures() {
-    const focusRow = rowOf(focusIndex);
+    const [first, last] = rowsInView();
     slots.forEach((slot, i) => {
-      const near = Math.abs(rowOf(i) - focusRow) <= WINDOW_ROWS || Math.abs(rowOf(i) - viewRow) <= WINDOW_ROWS;
-      slot.group.visible = near || i === focusIndex;
+      const row = rowOf(i);
+      const near = (row >= first && row <= last) || i === focusIndex;
+      slot.group.visible = near;
+      slot.wanted = near;
       if (!near) return;
       slot.used = clock;
       if (slot.texture || slot.loading) return;
@@ -270,13 +280,14 @@ export function createLightTable(context: {
 
   function evict() {
     const loaded = slots.filter((s) => s.texture);
-    if (loaded.length <= textureCap) return;
-    loaded.sort((a, b) => a.used - b.used);
-    for (const slot of loaded.slice(0, loaded.length - textureCap)) {
-      if (slots.indexOf(slot) === focusIndex) continue;
+    const budget = Math.max(textureCap, slots.filter((s) => s.wanted).length);
+    if (loaded.length <= budget) return;
+    // Only prints off screen give theirs up, the longest gone first.
+    const spare = loaded.filter((s) => !s.wanted).sort((a, b) => a.used - b.used);
+    for (const slot of spare.slice(0, loaded.length - budget)) {
       slot.texture?.dispose();
       slot.texture = null;
-      slot.face.map = raisedTexture && slots[focusIndex] === slot ? raisedTexture : null;
+      slot.face.map = null;
       slot.face.color.copy(paper);
       slot.face.needsUpdate = true;
     }
@@ -353,6 +364,35 @@ export function createLightTable(context: {
     camera.position.copy(aim).addScaledVector(viewDirection, distance);
     camera.lookAt(aim);
     camera.updateMatrixWorld();
+  }
+
+  const edge = new Vector3();
+  const toEdge = new Vector3();
+  /** Whether any of a row's band is on screen and nearer than the fog's far end. */
+  function rowShown(row: number) {
+    let low = Infinity;
+    let high = -Infinity;
+    for (const side of [-0.5, 0.5]) {
+      edge.set(0, 0, (row + side) * CELL_D);
+      if (toEdge.subVectors(camera.position, edge).dot(viewDirection) > distance + FOG_FAR) continue;
+      edge.project(camera);
+      if (edge.z > 1) continue;
+      low = Math.min(low, edge.y);
+      high = Math.max(high, edge.y);
+    }
+    return high > -1 && low < 1;
+  }
+
+  /** The rows on screen now, out to the margin, as [first, last]. */
+  function rowsInView(): [number, number] {
+    frame();
+    const end = rowOf(Math.max(0, sources.length - 1));
+    const middle = MathUtils.clamp(Math.round(pan.value / CELL_D + 0.6), 0, end);
+    let first = middle;
+    let last = middle;
+    while (first > 0 && rowShown(first - 1)) first--;
+    while (last < end && rowShown(last + 1)) last++;
+    return [Math.max(0, first - MARGIN_ROWS), Math.min(end, last + MARGIN_ROWS)];
   }
 
   // ------------------------------------------------------------- motion --
@@ -488,7 +528,7 @@ export function createLightTable(context: {
 
     const fog = scene.fog as Fog;
     fog.near = distance + 2;
-    fog.far = distance + 18;
+    fog.far = distance + FOG_FAR;
     return moving;
   }
 
@@ -612,8 +652,9 @@ export function createLightTable(context: {
       if (next !== columnCount) {
         columnCount = next;
         pan.value = Math.max(0, rowOf(focusIndex) - 0.6) * CELL_D;
-        feedTextures();
       }
+      // A taller or narrower view shows more rows.
+      feedTextures();
     },
     setPalette(next) {
       palette = next;
