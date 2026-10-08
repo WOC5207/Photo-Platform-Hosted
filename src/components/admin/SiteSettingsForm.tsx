@@ -144,6 +144,7 @@ export default function SiteSettingsForm({
     timeZone: string;
     lotteryEnabled: boolean;
     creditProfilesEnabled: boolean;
+    originalDownloadsEnabled: boolean;
     announcementsEnabled: boolean;
     contactEnabled: boolean;
     contactTitleEn: string;
@@ -1062,6 +1063,19 @@ export default function SiteSettingsForm({
                 />
               </label>
             </div>
+          </Group>
+
+          <Group title={t("groupDownloadsTitle")} hint={t("groupDownloadsHint")}>
+            <label className="flex min-h-11 items-center gap-2 text-sm">
+              <input
+                form={FORM_ID}
+                type="checkbox"
+                name="originalDownloadsEnabled"
+                defaultChecked={initial.originalDownloadsEnabled}
+                className={checkboxCls}
+              />
+              <span>{t("originalDownloadsEnabledLabel")}</span>
+            </label>
           </Group>
         </div>
       )}

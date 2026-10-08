@@ -108,7 +108,8 @@ const featuresSchema = z.object({
   bookingPriceEnabled: z.boolean(),
   timeZone: z.string().trim().max(100).refine(isValidTimeZone),
   lotteryEnabled: z.boolean(),
-  creditProfilesEnabled: z.boolean()
+  creditProfilesEnabled: z.boolean(),
+  originalDownloadsEnabled: z.boolean()
 });
 
 export async function updateSiteSettings(
@@ -205,7 +206,9 @@ export async function updateSiteSettings(
       bookingPriceEnabled: formData.get("bookingPriceEnabled") === "on",
       timeZone: formData.get("timeZone") ?? "UTC",
       lotteryEnabled: formData.get("lotteryEnabled") === "on",
-      creditProfilesEnabled: formData.get("creditProfilesEnabled") === "on"
+      creditProfilesEnabled: formData.get("creditProfilesEnabled") === "on",
+      originalDownloadsEnabled:
+        formData.get("originalDownloadsEnabled") === "on"
     });
     if (!parsed.success) return { error: "validation" };
     const data = {

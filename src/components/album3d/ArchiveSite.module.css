@@ -213,7 +213,7 @@
 @media (max-width: 639px) {
   .switchCaption {
     white-space: nowrap;
-    font-size: 0.625rem;
+    font-size: 11px;
     line-height: 1;
   }
   :global(html:lang(zh)) .switchCaption {
@@ -228,9 +228,38 @@
   }
 }
 
-/* Chinese can't be read at the 8–11 px the meta labels use for Latin capitals. */
+/* The meta labels scale with the stage, which puts them at 7–9 px on a laptop
+   and 8–10 px on a phone. Spaced capitals in the subtle colour need 11 px. */
+.root [class*="text-[0.5rem]"] {
+  font-size: max(11px, 0.5rem);
+}
+.root [class*="text-[0.5625rem]"] {
+  font-size: max(11px, 0.5625rem);
+}
+.root [class*="text-[0.625rem]"] {
+  font-size: max(11px, 0.625rem);
+}
+.root [class*="text-[0.6875rem]"] {
+  font-size: max(11px, 0.6875rem);
+}
+/* Labels that grow at a breakpoint still grow there. */
+@media (min-width: 640px) {
+  .root [class*="text-[0.5625rem]"][class*="sm:text-xs"] {
+    font-size: max(11px, 0.75rem);
+  }
+}
+@media (min-width: 1100px) and (min-aspect-ratio: 105/100) {
+  .root [class*="text-[0.5rem]"][class*="wide:text-[0.625rem]"] {
+    font-size: max(11px, 0.625rem);
+  }
+  .root :is([class*="text-[0.5625rem]"], [class*="text-[0.625rem]"])[class*="wide:text-xs"] {
+    font-size: max(11px, 0.75rem);
+  }
+}
+
+/* Chinese needs 12 px and a little more room between characters. */
 :global(html:lang(zh)) .root :is([class*="text-[0.5rem]"], [class*="text-[0.5625rem]"], [class*="text-[0.625rem]"], [class*="text-[0.6875rem]"]) {
-  font-size: 0.75rem;
+  font-size: max(12px, 0.75rem);
   letter-spacing: 0.04em;
 }
 
