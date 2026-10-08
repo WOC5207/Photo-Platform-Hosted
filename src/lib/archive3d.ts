@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { findOwner, ownerName, ownerBasePath } from "@/lib/owner";
 import { formatCredits, pickText } from "@/lib/content";
@@ -8,55 +9,117 @@ import { publicPhotoWhere } from "@/lib/photoVisibility";
 import { formatPhotoExif } from "@/lib/exif";
 import { safeExternalHttpUrl } from "@/lib/externalUrl";
 import { platformThemeScope, resolveDashboardThemeMode } from "@/lib/themeColor";
+import { fairField, sliceAlbums, type Archive } from "@/lib/archiveField";
 import type { AlbumPhotos, ArchiveColumn, ArchiveFile, OwnerPalette } from "@/components/album3d/types";
 
 /** Albums shown in the field. Past this the scene stops being browsable. */
 const MAX_ALBUMS = 160;
+/** One photographer's newest albums brought in when an address asks for them. */
+const SLICE_ALBUMS = 48;
 /** Prints stacked in the 360° view of one album. */
 const PRINTS_PER_ALBUM = 12;
+
+const archiveWhere = {
+  published: true,
+  owner: { status: "active" },
+  photos: { some: publicPhotoWhere }
+} satisfies Prisma.EventWhereInput;
+
+const archiveOrder = [
+  { owner: { createdAt: "asc" } },
+  { dateStart: { sort: "desc", nulls: "last" } },
+  { createdAt: "desc" }
+] satisfies Prisma.EventOrderByWithRelationInput[];
+
+const archiveSelect = {
+  id: true,
+  slug: true,
+  titleEn: true,
+  titleZh: true,
+  location: true,
+  dateStart: true,
+  dateEnd: true,
+  owner: { select: { id: true, username: true, displayName: true } },
+  coverPhoto: {
+    where: publicPhotoWhere,
+    select: { id: true, width: true, height: true }
+  },
+  photos: {
+    where: publicPhotoWhere,
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    take: PRINTS_PER_ALBUM,
+    select: { id: true, width: true, height: true }
+  },
+  _count: { select: { photos: { where: publicPhotoWhere } } }
+} satisfies Prisma.EventSelect;
+
+/** Every album the archive could show, lightly: enough to choose and to count. */
+const candidateSelect = {
+  id: true,
+  slug: true,
+  ownerId: true,
+  _count: { select: { photos: { where: publicPhotoWhere } } }
+} satisfies Prisma.EventSelect;
+
+type Candidate = Prisma.EventGetPayload<{ select: typeof candidateSelect }>;
+type Totals = Map<string, { albums: number; photos: number }>;
+
+function totalsOf(candidates: Candidate[]): Totals {
+  const totals: Totals = new Map();
+  for (const c of candidates) {
+    const owner = totals.get(c.ownerId) ?? { albums: 0, photos: 0 };
+    owner.albums += 1;
+    owner.photos += c._count.photos;
+    totals.set(c.ownerId, owner);
+  }
+  return totals;
+}
 
 /**
  * Everything the 3D site shows: the platform's published albums as files,
  * grouped into one column per photographer (in directory order, albums
  * newest first). Loaded once by the /3d layout, so moving between 3D screens
  * never asks the server for more than the image renditions themselves.
+ *
+ * The field's MAX_ALBUMS places are shared out fairly (see fairField), and
+ * an address past the field brings its photographer in (loadArchiveSlice).
  */
-export async function loadArchive(locale: string): Promise<{ files: ArchiveFile[]; columns: ArchiveColumn[] }> {
+export async function loadArchive(locale: string): Promise<Archive> {
+  const candidates = await prisma.event.findMany({ where: archiveWhere, orderBy: archiveOrder, select: candidateSelect });
   const events = await prisma.event.findMany({
-    where: {
-      published: true,
-      owner: { status: "active" },
-      photos: { some: publicPhotoWhere }
-    },
-    orderBy: [
-      { owner: { createdAt: "asc" } },
-      { dateStart: { sort: "desc", nulls: "last" } },
-      { createdAt: "desc" }
-    ],
-    take: MAX_ALBUMS,
-    select: {
-      id: true,
-      slug: true,
-      titleEn: true,
-      titleZh: true,
-      location: true,
-      dateStart: true,
-      dateEnd: true,
-      owner: { select: { id: true, username: true, displayName: true } },
-      coverPhoto: {
-        where: publicPhotoWhere,
-        select: { id: true, width: true, height: true }
-      },
-      photos: {
-        where: publicPhotoWhere,
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        take: PRINTS_PER_ALBUM,
-        select: { id: true, width: true, height: true }
-      },
-      _count: { select: { photos: { where: publicPhotoWhere } } }
-    }
+    where: { ...archiveWhere, id: { in: fairField(candidates, MAX_ALBUMS) } },
+    orderBy: archiveOrder,
+    select: archiveSelect
   });
+  return buildArchive(locale, events, totalsOf(candidates));
+}
 
+/**
+ * One photographer's part of the archive, for an address the field doesn't
+ * hold (see sliceAlbums). Null when they have no public album, or `slug`
+ * isn't one of them.
+ */
+export async function loadArchiveSlice(locale: string, username: string, slug?: string): Promise<Archive | null> {
+  const candidates = await prisma.event.findMany({
+    where: { ...archiveWhere, owner: { username, status: "active" } },
+    orderBy: archiveOrder,
+    select: candidateSelect
+  });
+  const ids = candidates.length > 0 ? sliceAlbums(candidates, SLICE_ALBUMS, slug) : null;
+  if (!ids) return null;
+  const events = await prisma.event.findMany({
+    where: { ...archiveWhere, id: { in: ids } },
+    orderBy: archiveOrder,
+    select: archiveSelect
+  });
+  return buildArchive(locale, events, totalsOf(candidates));
+}
+
+async function buildArchive(
+  locale: string,
+  events: Prisma.EventGetPayload<{ select: typeof archiveSelect }>[],
+  totals: Totals
+): Promise<Archive> {
   const ownerIds = Array.from(new Set(events.map((e) => e.owner.id)));
   const bookingOff = new Set(
     (
@@ -76,12 +139,12 @@ export async function loadArchive(locale: string): Promise<{ files: ArchiveFile[
         username: event.owner.username,
         name: ownerName(event.owner),
         bookingEnabled: !bookingOff.has(event.owner.id),
-        photoCount: 0,
+        albumCount: totals.get(event.owner.id)?.albums ?? 0,
+        photoCount: totals.get(event.owner.id)?.photos ?? 0,
         fileIndexes: []
       };
       columns.push(column);
     }
-    column.photoCount += event._count.photos;
     // The cover leads the stack; the rest keep their gallery order.
     const prints = event.coverPhoto
       ? [event.coverPhoto, ...event.photos.filter((p) => p.id !== event.coverPhoto?.id)]
