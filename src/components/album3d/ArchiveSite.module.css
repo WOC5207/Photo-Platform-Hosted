@@ -17,6 +17,10 @@
 .root {
   --edge: 3.75rem;
   --rule: color-mix(in srgb, var(--color-fg) 72%, transparent);
+  /* Clipped rather than hidden, so focusing a field can't scroll the whole
+     overlay up inside it (hidden still scrolls from script and focus). */
+  overflow: hidden;
+  overflow: clip;
 }
 
 /* ---------------------------------------------------------------- shade -- */

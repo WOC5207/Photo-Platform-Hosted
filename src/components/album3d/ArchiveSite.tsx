@@ -493,6 +493,33 @@ export default function ArchiveSite({
     handlers.current = { step, openDetail, choose, onCard, onPrint, enterAlbum };
   }, [step, openDetail, choose, onCard, onPrint, enterAlbum]);
 
+  // The archive fills the screen and never scrolls, but iOS can leave the page
+  // scrolled by part of the keyboard's height once it closes: the header
+  // goes up out of view and a strip of empty page shows under the panel.
+  // Put the page back whenever nothing is being typed in.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    let frame = 0;
+    const settle = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        // The empty archive is an ordinary page; a zoomed-in reader pans on purpose.
+        if (!rootRef.current || isTyping(document.activeElement)) return;
+        if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
+        if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+      });
+    };
+    viewport?.addEventListener("resize", settle);
+    window.addEventListener("scroll", settle, { passive: true });
+    document.addEventListener("focusout", settle);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport?.removeEventListener("resize", settle);
+      window.removeEventListener("scroll", settle);
+      document.removeEventListener("focusout", settle);
+    };
+  }, []);
+
   // ----------------------------------------------------------------- engine --
   // Create the engine once per archive; three.js loads only after the overlay
   // is up. An address past the field waits for its answer before the first
@@ -916,7 +943,7 @@ export default function ArchiveSite({
     <StageContext.Provider value={stage}>
     <div
       ref={rootRef}
-      className={`${styles.root} album3d relative h-dvh w-full overflow-hidden bg-page text-fg ${palette?.className ?? ""}`}
+      className={`${styles.root} album3d relative h-dvh w-full bg-page text-fg ${palette?.className ?? ""}`}
       style={palette?.style}
       data-leaving={leaving}
       data-motion={motion === "reduced" ? "reduced" : undefined}
