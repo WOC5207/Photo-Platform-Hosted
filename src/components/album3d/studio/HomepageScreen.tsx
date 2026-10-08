@@ -64,7 +64,7 @@ export default function HomepageScreen({ site }: { site: StudioSite }) {
   useSiteBoard(`studio-homepage:${site.account.username}`, tiles);
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel expanded="full">
       <StudioHeading trail={t("studioCrumbs.site")} title={ts("settingsTabHomepage")} />
       <form onSubmit={submit} aria-busy={pending} className="mt-6 grid gap-6">
         <Group title={ts("groupHomepageTitle")} hint={ts("groupHomepageHint")}>

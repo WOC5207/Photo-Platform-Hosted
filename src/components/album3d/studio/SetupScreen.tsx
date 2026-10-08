@@ -68,7 +68,7 @@ export default function SetupScreen({ setup }: { setup: StudioSetup }) {
   const back = done > 0 ? () => setDone((d) => d - 1) : undefined;
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel expanded="full">
       <StudioHeading trail={ta("studioCrumbs.setup")} title={t("welcomeTitle")}>
         <p className="mt-3 text-sm text-fg-muted">{t("welcomeHint")}</p>
       </StudioHeading>

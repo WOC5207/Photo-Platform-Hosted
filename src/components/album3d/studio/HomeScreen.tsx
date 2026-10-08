@@ -78,7 +78,7 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
 
   return (
     <>
-    <BookingPanel>
+    <BookingPanel expanded="full">
       <StudioHeading trail={`@${username}`} title={t("studioTitle")} />
       <dl className="mt-6 flex flex-wrap gap-x-10 gap-y-4">
         {[

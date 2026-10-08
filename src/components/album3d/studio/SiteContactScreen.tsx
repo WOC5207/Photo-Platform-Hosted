@@ -42,7 +42,7 @@ export default function SiteContactScreen({ site }: { site: StudioSite }) {
   useSiteBoard(`studio-contact:${site.account.username}`, tiles);
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel expanded="full">
       <StudioHeading trail={t("studioCrumbs.site")} title={t("studioCrumbs.siteContact")} />
       <p className="mt-4 text-sm text-fg-muted">{ts("contactHint")}</p>
       <form onSubmit={submit} aria-busy={pending} className="mt-6 grid gap-6">

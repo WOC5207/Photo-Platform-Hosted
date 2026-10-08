@@ -40,7 +40,7 @@ export default function AccountScreen({ site }: { site: StudioSite }) {
   useSiteBoard(`studio-account:${username}`, tiles);
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel expanded="full">
       <StudioHeading trail={t("studioCrumbs.site")} title={t("studioCrumbs.account")} />
       <form onSubmit={bySubmit(saveProfile)} aria-busy={savingProfile} className="mt-6 grid gap-4">
         <label className={labelClass}>
