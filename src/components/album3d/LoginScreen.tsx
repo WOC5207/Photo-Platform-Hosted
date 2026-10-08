@@ -2,7 +2,6 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
 import { login3d, logout3d } from "@/app/[locale]/3d/login/actions";
 import type { LoginState } from "@/app/[locale]/login/actions";
 import { GameMenu, wrap, type MenuItem } from "./hud";
@@ -14,8 +13,7 @@ export type LoginAccount = { username: string; name: string; admin: boolean; lis
 
 /**
  * The photographer's way into the 3D site: the sign-in form, or once signed
- * in, the account's menu. The dashboard still opens on the classic site
- * until its 3D screens exist; this is where they will hang from.
+ * in, the account's menu.
  */
 export default function LoginScreen({ account }: { account: LoginAccount | null }) {
   const t = useTranslations("album3d");
@@ -86,7 +84,6 @@ function SignInForm() {
 
 function AccountMenu({ account }: { account: LoginAccount }) {
   const t = useTranslations("album3d");
-  const router = useRouter();
   const { go } = useStage();
   const [focus, setFocus] = useState(0);
   const [leaving, startLeaving] = useTransition();
@@ -95,7 +92,6 @@ function AccountMenu({ account }: { account: LoginAccount }) {
       ? [{ key: "archive", label: t("loginArchive"), sub: `@${account.username}`, run: () => go({ kind: "photographer", username: account.username }) }]
       : []),
     { key: "dashboard", label: t("loginDashboard"), sub: t("loginDashboardSub"), run: () => go({ kind: "studio", username: account.username, page: "home" }) },
-    ...(account.admin ? [{ key: "admin", label: t("loginAdmin"), sub: t("loginClassicSub"), external: true, run: () => router.push("/admin") }] : []),
     { key: "signout", label: leaving ? t("loginSigningOut") : t("loginSignOut"), run: () => !leaving && startLeaving(() => logout3d()) }
   ];
   const at = Math.min(focus, items.length - 1);

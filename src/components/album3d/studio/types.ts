@@ -427,8 +427,6 @@ export interface StudioAnnouncement {
 /** The site settings, their images, links and announcements, for the settings pages. */
 export interface StudioSite {
   account: StudioAccount;
-  /** The address of the photographer's public homepage. */
-  homeUrl: string;
   displayName: string;
   email: string;
   values: StudioSiteValues;

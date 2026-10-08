@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
 import { composeOnTemplate } from "@/lib/cosplanDraft";
 import { renderCosplan } from "@/lib/cosplanCanvas";
 import { GameMenu, Hints, pad, wrap, type MenuItem } from "../../hud";
@@ -23,7 +22,6 @@ export default function CosplanBackgrounds() {
   const t = useTranslations("album3d");
   const tc = useTranslations("cosplan");
   const locale = useLocale();
-  const router = useRouter();
   const { key, touch, go } = useStage();
   const scene = useScene("poster");
   const studio = useCosplanStudio();
@@ -87,10 +85,7 @@ export default function CosplanBackgrounds() {
     setMenuFocus(0);
   };
   const turn = (delta: number) => templates.length && setFocus((f) => Math.max(0, Math.min(templates.length - 1, f + delta)));
-  // The classic editor is offered only when there is nothing to do here.
-  const classic: MenuItem = { key: "classic", label: t("creatorEditClassic"), sub: t("creatorEditClassicSub"), external: true, run: () => router.push("/cosplan") };
-
-  const choices: MenuItem[] = rail
+  const items: MenuItem[] = rail
     ? [
         ...(template ? [{ key: "use", label: t("creatorUseBackground"), sub: `${template.width} × ${template.height} PX`, run: choose }] : []),
         ...(composition ? [{ key: "keep", label: t("creatorKeepBackground"), sub: composition.templateTitle, run: () => setRailOpen(false) }] : [])
@@ -102,7 +97,6 @@ export default function CosplanBackgrounds() {
           { key: "new", label: tc("startNew"), sub: t("creatorStartNewSub"), run: () => openRail(true) }
         ]
       : [];
-  const items = choices.length > 0 ? choices : [classic];
   const menuAt = Math.min(menuFocus, items.length - 1);
 
   useScreenKeys((k, target) => {
@@ -163,7 +157,7 @@ export default function CosplanBackgrounds() {
                 <button type="button" onClick={() => turn(1)} disabled={focus >= templates.length - 1} aria-label={t("creatorNext")} className="min-h-11 min-w-11 border border-border-strong text-lg disabled:opacity-30">›</button>
               </div>
             )}
-            <GameMenu label={t("menuCosplan")} className="mt-6" focus={menuAt} onFocus={setMenuFocus} items={items} />
+            {items.length > 0 && <GameMenu label={t("menuCosplan")} className="mt-6" focus={menuAt} onFocus={setMenuFocus} items={items} />}
           </>
         )}
       </BookingPanel>
