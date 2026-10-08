@@ -9,6 +9,7 @@ import {
   deletePhotoFiles,
   finalizePendingMaster,
   isStoragePreset,
+  pendingSourceFailure,
   storePendingSource,
   resolveUploadExtension,
   withImageProcessingSlot,
@@ -410,7 +411,7 @@ export async function POST(req: NextRequest) {
     stored = await withImageProcessingSlot(() =>
       storePendingSource(user.id, eventId, uploadId, file.path, ext)
     );
-  } catch {
+  } catch (err) {
     const claimed = await markAwaitingForDeletion(user.id, eventId, uploadId);
     const current = claimed ? null : await findOwnedUpload(uploadId, user.id);
     if (claimed || current?.uploadState === "deleting" || !current) {
@@ -421,7 +422,12 @@ export async function POST(req: NextRequest) {
         expectedSourceFilename
       );
     }
-    return NextResponse.json({ error: "invalidImage" }, { status: 400 });
+    const reason = pendingSourceFailure(err);
+    if (reason === "diskFull" || reason === "storageUnavailable") {
+      console.error("Failed to store pending photo source:", err);
+    }
+    const status = { diskFull: 507, storageUnavailable: 500, tooManyPixels: 413, invalidImage: 400 }[reason];
+    return NextResponse.json({ error: reason }, { status });
   }
 
   try {

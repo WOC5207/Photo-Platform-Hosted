@@ -37,7 +37,34 @@ export function queueStateLabel(
   if (item.error === "unsupportedType") return t("pendingErrorUnsupported");
   if (item.error === "tooLarge") return t("pendingErrorTooLarge");
   if (item.error === "invalidImage") return t("pendingErrorInvalid");
+  if (item.error === "tooManyPixels") return t("pendingErrorTooManyPixels");
+  if (item.error === "diskFull") return t("pendingErrorDiskFull");
+  if (item.error === "storageUnavailable") return t("pendingErrorStorage");
+  if (item.error === "busy") return t("pendingErrorBusy");
+  if (item.error === "signedOut") return t("pendingErrorSignedOut");
+  if (item.error === "blocked") return t("pendingErrorBlocked");
+  if (item.error === "eventGone") return t("pendingErrorEventGone");
+  if (item.error === "conflict") return t("pendingErrorConflict");
+  if (item.error === "incomplete") return t("pendingErrorIncomplete");
+  if (item.error === "refusedSize") return t("pendingErrorRefusedSize");
+  if (item.error === "network") return t("pendingErrorNetwork");
+  if (item.error === "timeout") return t("pendingErrorTimeout");
+  if (item.errorStatus) {
+    return t(item.error === "server" ? "pendingErrorServer" : "pendingErrorStatus", { status: item.errorStatus });
+  }
   return t("pendingErrorUnknown");
+}
+
+/** Failures a second try can get past; the rest need a different file or event. */
+function retryable(item: QueuedFile): boolean {
+  return (
+    item.error !== "unsupportedType" &&
+    item.error !== "tooLarge" &&
+    item.error !== "invalidImage" &&
+    item.error !== "tooManyPixels" &&
+    item.error !== "eventGone" &&
+    item.error !== "refusedSize"
+  );
 }
 
 export default function UploadStep({
@@ -179,24 +206,24 @@ export default function UploadStep({
                     >
                       {item.name}
                     </span>
-                    <span
-                      role="status"
-                      className={
-                        item.state === "failed"
-                          ? "shrink-0 text-xs text-danger"
-                          : "shrink-0 text-xs text-fg-subtle"
-                      }
-                    >
-                      {queueStateLabel(t, item)}
-                    </span>
+                    {item.state !== "failed" && (
+                      <span role="status" className="shrink-0 text-xs text-fg-subtle">
+                        {queueStateLabel(t, item)}
+                      </span>
+                    )}
                   </div>
+                  {/* A failure's reason gets the full width: it can run to a sentence. */}
+                  {item.state === "failed" && (
+                    <p role="status" className="break-words text-xs text-danger">
+                      {queueStateLabel(t, item)}
+                    </p>
+                  )}
 
                   <div className="flex items-center justify-end gap-1">
                     {item.state === "failed" &&
                       item.file &&
-                      (item.error === "unknown" ||
-                        item.error === "quotaExceeded" ||
-                        item.error === "queueFull") && (
+                      !item.compressionFailed &&
+                      retryable(item) && (
                         <button
                           type="button"
                           onClick={() => void queue.retryQueuedFile(item)}
