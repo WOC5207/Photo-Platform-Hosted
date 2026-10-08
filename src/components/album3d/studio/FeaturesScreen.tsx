@@ -49,7 +49,7 @@ export default function FeaturesScreen({ site }: { site: StudioSite }) {
   useSiteBoard(`studio-features:${site.account.username}`, tiles);
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel expanded="full">
       <StudioHeading trail={t("studioCrumbs.site")} title={ts("settingsTabFeatures")} />
       <form onSubmit={submit} aria-busy={pending} className="mt-6 grid gap-6">
         <Group title={ts("groupBookingTitle")} hint={ts("groupBookingHint")}>

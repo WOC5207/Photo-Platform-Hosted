@@ -47,7 +47,7 @@ export default function BookingDetailsScreen({ booking }: { booking: StudioBooki
             : null;
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel expanded="full">
       <StudioHeading trail={booking.title} title={t("studioBookingDetails")} />
       {!booking.bookingEnabled && <p role="status" className="mt-5 text-sm text-fg-muted">{ts("groupBookingHint")}</p>}
 
