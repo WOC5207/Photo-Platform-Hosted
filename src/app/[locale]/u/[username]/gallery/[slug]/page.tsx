@@ -2,11 +2,10 @@ import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { ownerBasePath, resolveOwner } from "@/lib/owner";
-import { pickText, formatCredits } from "@/lib/content";
+import { pickText, formatCredits, creditSocialLinks } from "@/lib/content";
 import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
 import { formatPhotoExif } from "@/lib/exif";
-import { safeExternalHttpUrl } from "@/lib/externalUrl";
 import { Link } from "@/i18n/navigation";
 import AlbumViewer, { type AlbumPhoto } from "@/components/gallery/AlbumViewer";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
@@ -101,14 +100,7 @@ export default async function AlbumPage({
       full: urls.full,
       caption: formatCredits(p.credits),
       comment: p.comment,
-      socialLinks: p.credits.flatMap((c) =>
-        c.socialLinks
-          .map((s) => ({
-            label: s.platform,
-            url: safeExternalHttpUrl(s.url)
-          }))
-          .filter((link) => link.url !== "")
-      ),
+      socialLinks: creditSocialLinks(p.credits),
       width: p.width,
       height: p.height,
       exif: formatPhotoExif(p)

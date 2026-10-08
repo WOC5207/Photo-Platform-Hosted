@@ -12,7 +12,7 @@ export interface AlbumPhoto {
   full: string;
   caption: string;
   comment: string;
-  socialLinks: { label: string; url: string }[];
+  socialLinks: { name: string; label: string; url: string }[];
   width: number;
   height: number;
   exif: PhotoExifDisplay;
@@ -302,9 +302,16 @@ function Lightbox({
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-full bg-white/10 px-3 py-1.5 text-xs text-white transition hover:bg-white/20"
+                  title={link.name ? `${link.name} · ${link.label}` : undefined}
+                  className="inline-flex max-w-full items-center rounded-full bg-white/10 px-3 py-1.5 text-xs text-white transition hover:bg-white/20"
                 >
-                  {link.label} ↗
+                  {link.name && (
+                    <>
+                      <span className="min-w-0 truncate font-medium">{link.name}</span>
+                      <span aria-hidden="true" className="mx-1.5 text-white/50">·</span>
+                    </>
+                  )}
+                  <span className="shrink-0">{link.label} ↗</span>
                 </a>
               ))}
             </div>

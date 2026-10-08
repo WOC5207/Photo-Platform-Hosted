@@ -2,12 +2,11 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { findOwner, ownerName, ownerBasePath } from "@/lib/owner";
-import { formatCredits, pickText } from "@/lib/content";
+import { creditSocialLinks, formatCredits, pickText } from "@/lib/content";
 import { photoUrls } from "@/lib/images";
 import { formatDateRange } from "@/lib/datetime";
 import { publicPhotoWhere } from "@/lib/photoVisibility";
 import { formatPhotoExif } from "@/lib/exif";
-import { safeExternalHttpUrl } from "@/lib/externalUrl";
 import { platformThemeScope, resolveDashboardThemeMode } from "@/lib/themeColor";
 import { fairField, sliceAlbums, type Archive } from "@/lib/archiveField";
 import type { AlbumPhotos, ArchiveColumn, ArchiveFile, OwnerPalette } from "@/components/album3d/types";
@@ -296,11 +295,7 @@ export async function loadAlbumPhotos(username: string, slug: string): Promise<A
         height: p.height,
         caption: formatCredits(p.credits),
         comment: p.comment,
-        socialLinks: p.credits.flatMap((c) =>
-          c.socialLinks
-            .map((link) => ({ label: link.platform, url: safeExternalHttpUrl(link.url) }))
-            .filter((link) => link.url !== "")
-        ),
+        socialLinks: creditSocialLinks(p.credits),
         exif: formatPhotoExif(p)
       };
     })
