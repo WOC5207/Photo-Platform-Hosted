@@ -54,4 +54,10 @@
   .panel[data-expanded="cover"] {
     max-height: calc(100dvh - 96px);
   }
+  /* The whole screen below the header, scrolling inside itself; the scene
+     stays framed as it is and shows through the same translucent sheet. */
+  .panel[data-expanded="full"] {
+    top: 96px;
+    max-height: none;
+  }
 }

@@ -121,14 +121,17 @@ export function isInteractive(target: EventTarget | null): boolean {
  * The left-hand (bottom, on phones) panel the booking screens draw in. On
  * phones an expanded panel is a taller sheet that still leaves the scene a
  * strip above it; "cover" takes the whole screen below the header, for a
- * step that needs it (a review form, typing). The sheet reports where it
- * starts, so the scene frames itself above it.
+ * step that needs it (a review form, typing); "full" fills the screen below
+ * the header whatever its content, for a menu that is read through rather
+ * than looked past, with the scene left framed as it is behind it. The sheet
+ * reports where it starts, so the scene frames itself above it.
  */
-export function BookingPanel({ expanded = false, children }: { expanded?: boolean | "cover"; children: ReactNode }) {
+export function BookingPanel({ expanded = false, children }: { expanded?: boolean | "cover" | "full"; children: ReactNode }) {
   const ref = useRef<HTMLElement>(null);
+  const full = expanded === "full";
   useEffect(() => {
     const main = ref.current;
-    if (!main) return;
+    if (!main || full) return;
     const owner = {};
     const report = () => reportSheet(owner, main.offsetTop);
     const observer = new ResizeObserver(report);
@@ -138,7 +141,7 @@ export function BookingPanel({ expanded = false, children }: { expanded?: boolea
       observer.disconnect();
       reportSheet(owner, null);
     };
-  }, []);
+  }, [full]);
   return (
     <main ref={ref} id="main-content" tabIndex={-1} className={`${styles.panel} outline-none`} data-expanded={expanded}>
       {children}

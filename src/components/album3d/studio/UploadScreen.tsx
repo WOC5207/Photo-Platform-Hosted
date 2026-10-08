@@ -39,7 +39,7 @@ export default function UploadScreen({
   useScreenKeys((k) => (k === "Escape" || k === "Backspace") && !confirmLeavingDrafts());
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel expanded="full">
       <StudioHeading trail={event.title} title={t("studioUpload")} />
       <div className="mt-6">
         <PhotoWizard {...wizard} onPublished={published} />

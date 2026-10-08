@@ -49,7 +49,7 @@ export default function EventScreen({
 
   return (
     <>
-      <BookingPanel expanded>
+      <BookingPanel expanded="full">
         <StudioHeading trail={t("studioEvents")} title={event.title}>
           <p className="font-meta mt-3 text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
             {[event.dateLabel || tw("noDate"), event.location, tw("photoCount", { count: event.photoCount }), event.published ? tw("published") : tw("draft")]
