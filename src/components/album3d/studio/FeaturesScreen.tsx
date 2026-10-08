@@ -9,8 +9,8 @@ import { Check, Group, Pair, SaveBar, labelClass, useSiteBoard, useSiteSave } fr
 import type { StudioSite } from "./types";
 
 /**
- * Bookings, booking prices, the prize draw, the time zone and the credit
- * wording. Turning prices on shows the platform's notice to accept first,
+ * Bookings, booking prices, the prize draw, the time zone, the credit
+ * wording and original-file downloads. Turning prices on shows the platform's notice to accept first,
  * as the classic page does. Each feature is a card, lit while it is on.
  */
 export default function FeaturesScreen({ site }: { site: StudioSite }) {
@@ -38,7 +38,8 @@ export default function FeaturesScreen({ site }: { site: StudioSite }) {
       [ts("bookingEnabledLabel"), v.bookingEnabled, ts("groupBookingTitle")],
       [ts("bookingPriceEnabledLabel"), v.bookingPriceEnabled, ts("groupBookingTitle")],
       [ts("lotteryEnabledLabel"), v.lotteryEnabled, ts("groupLotteryTitle")],
-      [ts("creditProfilesEnabledLabel", { term: site.creditTerm }), v.creditProfilesEnabled, ts("groupCreditsTitle")]
+      [ts("creditProfilesEnabledLabel", { term: site.creditTerm }), v.creditProfilesEnabled, ts("groupCreditsTitle")],
+      [ts("originalDownloadsEnabledLabel"), v.originalDownloadsEnabled, ts("groupDownloadsTitle")]
     ];
     return [
       ...rows.map(([main, on, kicker], i) => ({ id: `f${i}`, column: 0, row: i, kicker, main, detail: [], left: on ? 1 : 0, total: 1, status: t(on ? "studioOn" : "studioOff") })),
@@ -137,6 +138,12 @@ export default function FeaturesScreen({ site }: { site: StudioSite }) {
           <Pair en="subjectTermEn" zh="subjectTermZh" values={v} labels={[ts("subjectTermEn"), ts("subjectTermZh")]} max={60} />
           <p className="text-xs text-fg-subtle">{ts("homeCreditsLabelHint")}</p>
           <Pair en="homeCreditsLabelEn" zh="homeCreditsLabelZh" values={v} labels={[ts("homeCreditsLabelEn"), ts("homeCreditsLabelZh")]} max={60} />
+        </Group>
+
+        <Group title={ts("groupDownloadsTitle")} hint={ts("groupDownloadsHint")}>
+          <Check name="originalDownloadsEnabled" defaultChecked={v.originalDownloadsEnabled}>
+            {ts("originalDownloadsEnabledLabel")}
+          </Check>
         </Group>
         <SaveBar section="features" state={state} pending={pending} />
       </form>

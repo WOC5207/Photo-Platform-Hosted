@@ -400,6 +400,7 @@ export interface StudioSiteValues {
   timeZone: string;
   lotteryEnabled: boolean;
   creditProfilesEnabled: boolean;
+  originalDownloadsEnabled: boolean;
   announcementsEnabled: boolean;
   contactEnabled: boolean;
   contactTitleEn: string;

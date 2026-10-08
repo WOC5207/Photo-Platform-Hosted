@@ -27,7 +27,7 @@ export default function SiteScreen({ site }: { site: StudioSite }) {
   const v = site.values;
   const onOff = (on: boolean) => t(on ? "studioOn" : "studioOff");
   const palette = [v.backgroundColor, v.surfaceColor, v.fieldColor, v.textColor, v.themeColor, v.darkBackgroundColor, v.darkSurfaceColor, v.darkFieldColor, v.darkTextColor, v.darkThemeColor];
-  const features = [v.bookingEnabled, v.bookingPriceEnabled, v.lotteryEnabled, v.creditProfilesEnabled];
+  const features = [v.bookingEnabled, v.bookingPriceEnabled, v.lotteryEnabled, v.creditProfilesEnabled, v.originalDownloadsEnabled];
 
   const tiles = useMemo<BoardTile[]>(() => {
     const card = (i: number, main: string, detail: string[], left: number, total: number, status: string): BoardTile => ({

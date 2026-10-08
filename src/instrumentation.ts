@@ -15,10 +15,15 @@ export async function register() {
     const { sweepPendingModeration } = await import("./lib/moderationWorker");
     const { sweepPhotoSubjects } = await import("./lib/subjectDetectionWorker");
     const { sweepUploadTemp } = await import("./lib/multipartUpload");
+    const { sweepDownloadCopies } = await import("./lib/images");
     // Temp upload directories orphaned by a crash (an OOM kill skips the
     // per-request cleanup) would otherwise sit on the photos volume forever.
     void sweepUploadTemp().catch((err) =>
       console.error("Upload temp sweep failed:", err)
+    );
+    // Download copies the old download route left beside masters, outside quota.
+    void sweepDownloadCopies().catch((err) =>
+      console.error("Download copy sweep failed:", err)
     );
     // Don't block startup on the sweep; let it run in the background.
     void sweepPendingCompression().catch((err) =>

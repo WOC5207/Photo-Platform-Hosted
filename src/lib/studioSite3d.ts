@@ -94,6 +94,7 @@ export async function loadStudioSite(user: User, locale: string, termFallback: s
       timeZone: settings.timeZone,
       lotteryEnabled: settings.bookingEnabled && settings.lotteryEnabled,
       creditProfilesEnabled: settings.creditProfilesEnabled,
+      originalDownloadsEnabled: settings.originalDownloadsEnabled,
       announcementsEnabled: settings.announcementsEnabled,
       contactEnabled: settings.contactEnabled,
       contactTitleEn: settings.contactTitleEn,
