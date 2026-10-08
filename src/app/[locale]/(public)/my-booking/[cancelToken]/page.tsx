@@ -240,18 +240,21 @@ export default async function MyBookingPage({
         />
       )}
 
-      {!cancelled && (
+      {/* A booking that has won keeps its prize, so only the photographer
+          can cancel it (see cancelBooking in publicBookingService). */}
+      {!cancelled && booking.lotteryEntry?.wonPrize && (
+        <p className="text-sm text-fg-muted">
+          {t("cancelWithPrizeContactOwner", {
+            prize: booking.lotteryEntry.wonPrize.name
+          })}
+        </p>
+      )}
+      {!cancelled && !booking.lotteryEntry?.wonPrize && (
         <form action={cancelMyBooking}>
           <input type="hidden" name="cancelToken" value={cancelToken} />
           <ConfirmSubmit
             label={t("cancelButton")}
-            confirmText={
-              booking.lotteryEntry?.wonPrize
-                ? t("confirmCancelWithPrize", {
-                    prize: booking.lotteryEntry.wonPrize.name
-                  })
-                : t("confirmCancel")
-            }
+            confirmText={t("confirmCancel")}
           />
         </form>
       )}

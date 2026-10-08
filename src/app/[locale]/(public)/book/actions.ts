@@ -183,7 +183,9 @@ export async function cancelMyBooking(formData: FormData): Promise<void> {
   if (typeof cancelToken !== "string" || cancelToken.length > 100) return;
 
   const sharedResult = await cancelPublicBookingByToken(cancelToken);
-  if (sharedResult.ok && sharedResult.data.changed) {
+  // A page opened before the booking won still shows the button; refreshing
+  // it shows why the cancel didn't go through.
+  if (sharedResult.ok ? sharedResult.data.changed : sharedResult.error === "prizeWon") {
     revalidatePath("/", "layout");
   }
   return;

@@ -89,13 +89,50 @@ export async function deleteLotteryPrizeForOwner(
 /**
  * Winners that still hold a unit of prize stock: self-entries, and entries
  * whose booking is still confirmed. A cancelled booking hands its prize back,
- * so book → spin → cancel loops cannot drain a draw. Every stock count (the
+ * so book → spin → cancel loops cannot drain a draw; only the photographer
+ * can cancel a booking that has won (see cancelBooking in
+ * publicBookingService), so visitors cannot re-spin either. Every stock count (the
  * spin itself, the owner's quantity check, public and owner prize lists) must
  * use this filter so they agree.
  */
 export const activeWinnerWhere = {
   OR: [{ bookingId: null }, { booking: { status: "confirmed" } }]
 } satisfies Prisma.LotteryEntryWhereInput;
+
+/**
+ * For a photographer restoring a cancelled booking, inside their transaction:
+ * cancelling handed the booking's prize back (see activeWinnerWhere), so if
+ * someone has won that last unit since, the old win must not come back on
+ * top of theirs. Clears the entry's prize in that case and returns true; the
+ * entry is then back in the draw and can spin again. Takes the draw lock
+ * every spin takes, so the count is stable.
+ */
+export async function releasePrizeTakenSinceCancel(
+  tx: Prisma.TransactionClient,
+  bookingId: string
+): Promise<boolean> {
+  const entry = await tx.lotteryEntry.findUnique({
+    where: { bookingId },
+    select: { id: true, drawId: true, wonPrizeId: true }
+  });
+  if (!entry?.wonPrizeId) return false;
+  await tx.$queryRaw`SELECT id FROM "LotteryDraw" WHERE id = ${entry.drawId} FOR UPDATE`;
+  const [prize, holders] = await Promise.all([
+    tx.lotteryPrize.findUnique({
+      where: { id: entry.wonPrizeId },
+      select: { quantity: true }
+    }),
+    tx.lotteryEntry.count({
+      where: { wonPrizeId: entry.wonPrizeId, ...activeWinnerWhere }
+    })
+  ]);
+  if (prize && holders < prize.quantity) return false;
+  await tx.lotteryEntry.update({
+    where: { id: entry.id },
+    data: { wonPrizeId: null, wonAt: null }
+  });
+  return true;
+}
 
 export type SpinResult =
   | {
@@ -166,15 +203,19 @@ export async function spinForEntry(
       return { ok: false, error: "not_found" } as const;
     }
 
-    const entry = await tx.lotteryEntry.findUnique({
-      where: { id: entryId },
-      include: { booking: { select: { status: true } } }
-    });
+    const entry = await tx.lotteryEntry.findUnique({ where: { id: entryId } });
     if (!entry) return { ok: false, error: "not_found" } as const;
     // An entry tied to a booking spins only while that booking stands, on
-    // every path (web, mini-program, owner).
-    if (entry.bookingId && entry.booking?.status !== "confirmed") {
-      return { ok: false, error: "not_found" } as const;
+    // every path (web, mini-program, owner). The row lock pairs with the one
+    // a visitor's cancel takes, so a cancel cannot slip in between this
+    // check and the win below (which would hand the prize straight back).
+    if (entry.bookingId) {
+      const [booking] = await tx.$queryRaw<{ status: string }[]>`
+        SELECT status FROM "Booking" WHERE id = ${entry.bookingId} FOR UPDATE
+      `;
+      if (booking?.status !== "confirmed") {
+        return { ok: false, error: "not_found" } as const;
+      }
     }
     if (entry.wonPrizeId) return { ok: false, error: "already_spun" } as const;
 
