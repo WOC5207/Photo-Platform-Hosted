@@ -2504,6 +2504,7 @@
     "studioChecklist": "清单",
     "studioSlotSheet": "已预约时段",
     "studioGearCount": "器材",
+    "studioGearList": "器材列表",
     "studioBack": "已收回 {done}/{total}",
     "studioReminders": "提醒事项",
     "studioRemove": "从清单移除",

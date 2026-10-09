@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { deleteEquipment, rotateEquipmentQr, setEquipmentStatus } from "@/app/[locale]/dashboard/(protected)/equipment/actions";
@@ -13,7 +13,7 @@ import { BookingPanel, StepButtons, fieldClass, isInteractive, metaLabel, primar
 import { RAIL_PICK } from "../types";
 import { GEAR_CARD_ASPECT, STATUS_KEY, paintGearCard, useImages, useQrImage } from "./gear";
 import { StudioHeading } from "./shared";
-import type { StudioEquipment } from "./types";
+import type { StudioEquipment, StudioGearStatus } from "./types";
 
 /** Quick status buttons, coloured like the ID card's status bar when on. */
 const QUICK_ON = {
@@ -22,12 +22,23 @@ const QUICK_ON = {
   BROKEN: "border-danger bg-danger text-page"
 } as const;
 
+/** The status mark beside each row of the equipment list, in the ID card's status colours. */
+const STATUS_MARK: Record<StudioGearStatus, string> = {
+  IN_INVENTORY: "bg-success",
+  SIGNED_OUT: "bg-accent",
+  MAINTENANCE: "bg-danger",
+  BROKEN: "bg-danger",
+  OTHER: "bg-fg-subtle"
+};
+
 /**
  * The equipment inventory: the photographer's gear as ID cards on the rail
  * in front of an open camera case, sorted by category, and the focused card
  * standing large in the case with its photo, status and QR code. The panel filters
  * by category or search, flips the focused item between the everyday
  * statuses, and opens its editor, its label, or the inventory's other pages.
+ * On landscape screens a list of the matching items under the search picks
+ * one directly, as the arrows and the rail do.
  */
 export default function EquipmentScreen({ equipment }: { equipment: StudioEquipment }) {
   const t = useTranslations("album3d");
@@ -54,6 +65,16 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
   const index = Math.max(0, items.findIndex((item) => item.id === focusId));
   const item = items[index] ?? null;
   const qr = useQrImage(locale, item?.qrToken ?? "");
+  const list = useRef<HTMLOListElement>(null);
+
+  // Keeps the focused row in view inside the list without scrolling the panel.
+  useEffect(() => {
+    const ol = list.current;
+    const row = ol?.querySelector<HTMLElement>('[aria-current="true"]')?.parentElement;
+    if (!ol || !row) return;
+    if (row.offsetTop < ol.scrollTop) ol.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > ol.scrollTop + ol.clientHeight) ol.scrollTop = row.offsetTop + row.offsetHeight - ol.clientHeight;
+  }, [index, items]);
 
   // ------------------------------------------------------------- scene --
   useEffect(() => {
@@ -168,6 +189,37 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
                 className={fieldClass}
               />
             </label>
+            {items.length > 0 && (
+              <ol ref={list} aria-label={t("studioGearList")} className={`${styles.gearList} relative mt-3 grid gap-px border-y border-border`}>
+                {items.map((g, i) => {
+                  const active = i === index;
+                  return (
+                    <li key={g.id} className="relative">
+                      <span aria-hidden="true" className={`absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 bg-fg ${active ? "opacity-100" : "opacity-0"}`} />
+                      <button
+                        type="button"
+                        aria-current={active ? "true" : undefined}
+                        onClick={() => setFocusId(g.id)}
+                        className={`flex min-h-11 w-full items-center gap-3 py-1.5 pr-3 text-left transition-[background-color,color,padding] motion-reduce:transition-none ${
+                          active ? "bg-fg/[0.06] pl-5 text-fg" : "pl-3 text-fg-muted hover:bg-fg/[0.03] hover:text-fg"
+                        }`}
+                      >
+                        <span aria-hidden="true" className="font-meta w-6 shrink-0 text-[0.625rem] tracking-[0.14em] text-fg-subtle">
+                          {pad(i + 1)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold uppercase tracking-[0.02em]">{g.name}</span>
+                          <span className="font-meta mt-0.5 flex items-center gap-1.5 text-[0.625rem] uppercase tracking-[0.12em] text-fg-subtle">
+                            <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 ${STATUS_MARK[g.status]}`} />
+                            <span className="truncate">{[g.category, te(STATUS_KEY[g.status])].filter(Boolean).join(" · ")}</span>
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
           </>
         )}
 

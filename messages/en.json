@@ -2504,6 +2504,7 @@
     "studioChecklist": "Checklist",
     "studioSlotSheet": "Booked slots",
     "studioGearCount": "Item",
+    "studioGearList": "Equipment list",
     "studioBack": "{done}/{total} back",
     "studioReminders": "Reminders",
     "studioRemove": "Remove from list",
