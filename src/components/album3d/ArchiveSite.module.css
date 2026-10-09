@@ -157,6 +157,19 @@
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
+/* The equipment list under the inventory search, on landscape screens only:
+   on phones the sheet is too short for it, and the arrows step through. */
+.gearList {
+  max-height: min(16rem, 30vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+@media (max-aspect-ratio: 105/100) {
+  .gearList {
+    display: none;
+  }
+}
 
 /* --------------------------------------------------------------- archive -- */
 

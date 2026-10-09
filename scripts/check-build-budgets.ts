@@ -67,8 +67,9 @@ const routeBudgets = [
   // Equipment stands its ID cards on the easel; adding and editing share the
   // form, and the label sheet draws its labels with the classic tool's code.
   // A checklist carries the classic QR scanner. The shared 3D code's
-  // photographer palettes tipped the item page over by a few bytes.
-  { label: "3D Dashboard equipment", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/page"], limitKb: 156 },
+  // photographer palettes tipped the item page over by a few bytes. The
+  // inventory's desktop list of items under its search adds most of a KB.
+  { label: "3D Dashboard equipment", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/page"], limitKb: 157 },
   { label: "3D Dashboard add equipment", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/new/page"], limitKb: 158 },
   { label: "3D Dashboard equipment item", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/[id]/page"], limitKb: 158 },
   { label: "3D Dashboard categories", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/equipment/categories/page"], limitKb: 150 },
