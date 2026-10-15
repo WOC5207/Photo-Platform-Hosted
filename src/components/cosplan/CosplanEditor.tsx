@@ -10,7 +10,7 @@ import Button, { buttonClasses } from "@/components/ui/Button";
 import { controlClasses } from "@/components/ui/Field";
 import { cosplanCharacterNames, normalizeCosplanLayerOrder, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTemplateSummary, type CosplanTextLayer } from "@/lib/cosplanTypes";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
-import { COSPLAN_IMAGE_LIMIT as IMAGE_LIMIT, COSPLAN_TEXT_LIMIT as TEXT_LIMIT, clearDraft, composeOnTemplate, normalizeCosplanUpload, placeCharacter, readDraft, restoreDraft, writeDraft, type CosplanCharacter } from "@/lib/cosplanDraft";
+import { COSPLAN_IMAGE_LIMIT as IMAGE_LIMIT, COSPLAN_TEXT_LIMIT as TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, clearDraft, composeOnTemplate, cosplanUploadError, normalizeCosplanUpload, placeCharacter, readDraft, restoreDraft, writeDraft, type CosplanCharacter, type CosplanUploadError } from "@/lib/cosplanDraft";
 
 const FONT_OPTIONS = ["Arial", "Georgia", "Trebuchet MS", "Noto Sans SC", "Microsoft YaHei"];
 
@@ -146,6 +146,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
   const [lastSearch, setLastSearch] = useState("");
   const [searchStatus, setSearchStatus] = useState<"idle" | "loading" | "error">("idle");
   const [importingId, setImportingId] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<CosplanUploadError | null>(null);
   const [pendingCharacter, setPendingCharacter] = useState<PendingCharacter | null>(null);
   const [mobilePanel, setMobilePanel] = useState<"background" | "character" | "text" | "layers" | "export" | null>(null);
   const [textSession, setTextSession] = useState<{ layer: CosplanTextLayer; before: CosplanComposition; value: string; isNew: boolean } | null>(null);
@@ -279,11 +280,12 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
 
   async function uploadCharacter(file: File) {
     if (!composition) return;
+    setUploadError(null);
     try {
       const normalized = await normalizeCosplanUpload(file);
       // A file's name is rarely the character's: the visitor may type one instead.
       await addImage(URL.createObjectURL(normalized), "", undefined, normalized, true);
-    } catch { setSearchStatus("error"); }
+    } catch (error) { setUploadError(cosplanUploadError(error)); }
   }
 
   async function addCharacterResult(result: CharacterResult) {
@@ -482,6 +484,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
         <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadCharacter(file); event.currentTarget.value = ""; }} />
         {t("uploadCharacter")}
       </label>
+      {uploadError && <p role="alert" className="text-sm text-danger">{t(uploadError, { size: COSPLAN_UPLOAD_MAX_MB })}</p>}
       {searchStatus === "error" && <p role="alert" className="text-sm text-danger">{t("searchError")}</p>}
       {searchStatus === "idle" && lastSearch && searchResults.length === 0 && <p role="status" className="text-sm text-fg-subtle">{t("noResults", { query: lastSearch })}</p>}
       <ul className="grid gap-2">

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { createPortal } from "react-dom";
 import { useLocale, useTranslations } from "next-intl";
 import { cosplanCharacterNames, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTextLayer } from "@/lib/cosplanTypes";
-import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter } from "@/lib/cosplanDraft";
+import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, cosplanUploadError, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter } from "@/lib/cosplanDraft";
 import { renderCosplan, renderCosplanPart, type CosplanPart } from "@/lib/cosplanCanvas";
 import { useVisualViewport } from "@/components/cosplan/useVisualViewport";
 import { GameMenu, Hints, pad, wrap, type MenuItem } from "../../hud";
@@ -170,8 +170,8 @@ export default function CosplanBoard() {
       const image = await loadCosplanImage(src);
       // A file's name is rarely the character's, so the visitor is asked for it instead.
       place({ src, blob, name: "", naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight }, "name");
-    } catch {
-      setNotice(tc("searchError"));
+    } catch (error) {
+      setNotice(tc(cosplanUploadError(error), { size: COSPLAN_UPLOAD_MAX_MB }));
     }
   };
 

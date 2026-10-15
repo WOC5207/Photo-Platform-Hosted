@@ -112,9 +112,26 @@ export type CosplanCharacter = {
   naturalHeight: number;
 };
 
+/**
+ * The largest character file read, in MB. A sharing poster saved as PNG runs
+ * well past 15 MB; the picture is shrunk to the poster's size once decoded.
+ */
+export const COSPLAN_UPLOAD_MAX_MB = 50;
+const UPLOAD_EXTENSION = /\.(jpe?g|png|webp)$/i;
+
+/** Why an upload was refused, named as the `cosplan` message that explains it. */
+export type CosplanUploadError = "uploadType" | "uploadTooLarge" | "uploadUnreadable";
+
+export function cosplanUploadError(error: unknown): CosplanUploadError {
+  const reason = error instanceof Error ? error.message : "";
+  return reason === "uploadType" || reason === "uploadTooLarge" ? reason : "uploadUnreadable";
+}
+
 /** A picture the visitor chose for a character, as the poster keeps it: WebP within 4096 px and 12 MP. */
 export async function normalizeCosplanUpload(file: File): Promise<Blob> {
-  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 15 * 1024 * 1024) throw new Error("unsupportedImage");
+  // Some systems give a picture no type; its extension says what it is.
+  if (file.type ? !["image/jpeg", "image/png", "image/webp"].includes(file.type) : !UPLOAD_EXTENSION.test(file.name)) throw new Error("uploadType");
+  if (file.size > COSPLAN_UPLOAD_MAX_MB * 1024 * 1024) throw new Error("uploadTooLarge");
   const source = URL.createObjectURL(file);
   try {
     const image = await loadCosplanImage(source);
