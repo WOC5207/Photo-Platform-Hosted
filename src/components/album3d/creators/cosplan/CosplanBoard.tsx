@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useLocale, useTranslations } from "next-intl";
 import { cosplanCharacterNames, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTextLayer } from "@/lib/cosplanTypes";
@@ -18,7 +18,7 @@ import { useCosplanStudio } from "./CosplanStudio";
 const FONT_OPTIONS = ["Arial", "Georgia", "Trebuchet MS", "Noto Sans SC", "Microsoft YaHei"];
 const LAYER_EDGE = 640;
 
-type Mode = "board" | "search" | "arrange" | "text" | "layers";
+type Mode = "board" | "search" | "arrange" | "text" | "layers" | "name";
 /** What ←/→ moves between: the template's slots, then free characters, then text. */
 type Target = { slot: string; layer?: string } | { slot?: undefined; layer: string };
 type CharacterResult = { id: number; name: string; nameCn: string; thumbnailUrl: string; imageUrl: string; sourceUrl: string };
@@ -32,6 +32,7 @@ const sameTarget = (a: Target | null, b: Target | null) => a?.slot === b?.slot &
  * rail under the easel), upload one, arrange it, edit text, or take the
  * poster apart into its layers. On the poster itself, a drag moves the
  * picked layer, the wheel or a pinch sizes it and two fingers turn it.
+ * An uploaded character asks for its name, which the visitor may skip.
  */
 export default function CosplanBoard() {
   const t = useTranslations("album3d");
@@ -49,6 +50,7 @@ export default function CosplanBoard() {
   const uploadRef = useRef<HTMLInputElement>(null);
   const slots = useMemo(() => composition?.slots ?? [], [composition?.slots]);
   const slotName = (slot: CosplanSlot) => (locale === "zh" ? slot.nameZh : slot.nameEn);
+  const layerName = (layer: CosplanLayer) => layer.name || (layer.type === "text" ? tc("text") : tc("unnamedCharacter"));
 
   // ------------------------------------------------------------- targets --
   const targets = useMemo<Target[]>(() => {
@@ -140,8 +142,8 @@ export default function CosplanBoard() {
   // A placed character flies in from above the easel.
   const flight = useRef<{ id: string; at: number } | null>(null);
 
-  /** Put a chosen character on the poster: in the focused slot, else free. */
-  const place = (character: CosplanCharacter) => {
+  /** Put a chosen character on the poster: in the focused slot, else free; then go on to `next`. */
+  const place = (character: CosplanCharacter, next: Mode = "board") => {
     const current = studio.composition;
     if (!current) return;
     if (imageCount >= COSPLAN_IMAGE_LIMIT && !replacing) {
@@ -156,7 +158,7 @@ export default function CosplanBoard() {
     flight.current = { id: layer.id, at: performance.now() };
     setTarget(slot ? { slot: slot.id, layer: layer.id } : { layer: layer.id });
     setReplacing(false);
-    setMode("board");
+    setMode(next);
     setMenuFocus(0);
     setNotice("");
   };
@@ -166,7 +168,8 @@ export default function CosplanBoard() {
       const blob = await normalizeCosplanUpload(file);
       const src = studio.track(URL.createObjectURL(blob));
       const image = await loadCosplanImage(src);
-      place({ src, blob, name: file.name.replace(/\.[^.]+$/, ""), naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight });
+      // A file's name is rarely the character's, so the visitor is asked for it instead.
+      place({ src, blob, name: "", naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight }, "name");
     } catch {
       setNotice(tc("searchError"));
     }
@@ -273,6 +276,13 @@ export default function CosplanBoard() {
     if (session.isNew && layer?.type === "text" && !layer.text.trim()) studio.cancel();
     else studio.discardIfUnchanged();
   };
+  // ---------------------------------------------------------------- name --
+  // The name is part of placing the upload: one undo takes both back.
+  const finishName = (keep: boolean) => {
+    if (selected?.type === "image") update(selected.id, { name: keep ? selected.name.trim() : "" }, false);
+    setMode("board");
+  };
+
   useEffect(() => {
     if (mode !== "text") return;
     const field = textRef.current;
@@ -292,12 +302,12 @@ export default function CosplanBoard() {
       if (layer.type === "image") lastImage = i;
     });
     composition.layers.forEach((layer, i) => {
-      list.push({ key: layer.id, part: { kind: "layer", id: layer.id }, label: layer.type === "text" ? layer.text.split("\n")[0] || layer.name : layer.name });
+      list.push({ key: layer.id, part: { kind: "layer", id: layer.id }, label: layer.type === "text" ? layer.text.split("\n")[0] || layer.name : layerName(layer) });
       if (i === lastImage && composition.foregroundUrl) list.push({ key: "foreground", part: { kind: "foreground" }, label: t("creatorLayerForeground") });
     });
     if (cosplanCharacterNames(slots, composition.layers).length) list.push({ key: "names", part: { kind: "names" }, label: t("creatorLayerNames") });
     return list;
-  }, [composition, slots, t]);
+  }, [composition, slots, t, tc]);
   const layerIndex = selected ? parts.findIndex((item) => item.key === selected.id) : -1;
 
   // ------------------------------------------------------------ painting --
@@ -361,7 +371,7 @@ export default function CosplanBoard() {
         else frame.current = requestAnimationFrame(() => paint());
       }
       renderCosplan(ctx, shown, studio.images, scale);
-      paintGuides(ctx, shown, scale, { accent: scene.accent(), locale, focusSlot: mode === "board" ? (target?.slot ?? null) : null, selected: mode === "text" || mode === "arrange" || mode === "board" ? selected : null, slots: mode !== "text" });
+      paintGuides(ctx, shown, scale, { accent: scene.accent(), locale, focusSlot: mode === "board" ? (target?.slot ?? null) : null, selected: mode === "text" || mode === "arrange" || mode === "board" || mode === "name" ? selected : null, slots: mode !== "text" });
     }
     scene.refresh();
   }, [scene, composition, studio.images, mode, parts, layerIndex, locale, target, selected]);
@@ -520,7 +530,7 @@ export default function CosplanBoard() {
           ...(nameField
             ? [{ key: "name", label: tc("showCharacterName"), value: selected.showName === false ? t("creatorOff") : t("creatorOn"), run: () => update(selected.id, { showName: selected.showName === false }) }]
             : []),
-          { key: "delete", label: tc("delete"), sub: selected.name, run: () => remove(selected) },
+          { key: "delete", label: tc("delete"), sub: layerName(selected), run: () => remove(selected) },
           ...common
         ]
       : [
@@ -546,6 +556,11 @@ export default function CosplanBoard() {
     if (mode === "text") {
       if (k !== "Escape") return false;
       finishText(false);
+      return true;
+    }
+    if (mode === "name") {
+      if (k !== "Escape") return false;
+      finishName(false);
       return true;
     }
     if (mode === "board") {
@@ -687,6 +702,14 @@ export default function CosplanBoard() {
           }}
           onFinish={finishText}
         />
+      ) : mode === "name" && selected?.type === "image" ? (
+        <NamePanel
+          layer={selected}
+          slot={slots.find((slot) => slot.id === selected.slotId && slot.nameText) ?? null}
+          slotName={slotName}
+          onChange={(name) => update(selected.id, { name }, false)}
+          onFinish={finishName}
+        />
       ) : (
         <BookingPanel>
           <p className={metaLabel}>
@@ -696,7 +719,7 @@ export default function CosplanBoard() {
           </p>
           {mode === "board" && (
             <>
-              <h1 className="mt-3 text-[2rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[2.75rem]">{selected ? selected.name || tc("text") : targetSlot ? slotName(targetSlot) : tc("characters")}</h1>
+              <h1 className="mt-3 text-[2rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[2.75rem]">{selected ? layerName(selected) : targetSlot ? slotName(targetSlot) : tc("characters")}</h1>
               <div aria-hidden="true" className={styles.calloutRule} />
               <p className={`${metaLabel} mt-6`}>
                 {targets.length > 0 && targetIndex >= 0 && `${pad(targetIndex + 1)} / ${pad(targets.length)} · `}
@@ -809,7 +832,7 @@ export default function CosplanBoard() {
           <p aria-live="polite" className="mt-3 min-h-5 text-sm text-danger">{notice}</p>
         </BookingPanel>
       )}
-      {!touch && mode !== "text" && <Hints className={styles.menuHint} parts={hints} />}
+      {!touch && mode !== "text" && mode !== "name" && <Hints className={styles.menuHint} parts={hints} />}
     </>
   );
 }
@@ -944,6 +967,83 @@ function TextPanel({
 }) {
   const t = useTranslations("album3d");
   const tc = useTranslations("cosplan");
+  return (
+    <KeyboardSheet label={tc("editText")}>
+      <div className="grid gap-3">
+        <p className={metaLabel}>{tc("text")}</p>
+        <label className="sr-only" htmlFor="cosplan-3d-text">{tc("content")}</label>
+        <textarea
+          id="cosplan-3d-text"
+          ref={textRef}
+          value={layer.text}
+          placeholder={tc("textPlaceholder")}
+          rows={3}
+          onChange={(event) => onChange({ text: event.target.value })}
+          onCompositionStart={() => {
+            composing.current = true;
+          }}
+          onCompositionEnd={(event) => {
+            composing.current = false;
+            onChange({ text: event.currentTarget.value });
+            onCompositionEnd();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              event.stopPropagation();
+              onFinish(false);
+            }
+          }}
+          className={`${fieldClass} min-h-24 resize-y`}
+        />
+        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem] gap-3">
+          <label className="grid gap-1 text-sm font-semibold text-fg-muted">
+            {tc("font")}
+            <select value={layer.fontFamily} onChange={(event) => onChange({ fontFamily: event.target.value })} className={fieldClass}>
+              {FONT_OPTIONS.map((font) => (
+                <option key={font}>{font}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-semibold text-fg-muted">
+            {tc("color")}
+            <input type="color" value={layer.fill} onChange={(event) => onChange({ fill: event.target.value })} className="h-11 w-full border border-border-strong bg-page/80 p-1" />
+          </label>
+        </div>
+        <label className="grid gap-1 text-sm font-semibold text-fg-muted">
+          <span className="flex justify-between">
+            {tc("fontSize")}
+            <span className="font-meta text-xs text-fg-subtle">{Math.round(layer.fontSize)} PX</span>
+          </span>
+          <input type="range" min="10" max="500" value={layer.fontSize} onChange={(event) => onChange({ fontSize: Number(event.target.value) })} className="h-11 w-full accent-[var(--color-accent)]" />
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          {(["left", "center", "right"] as const).map((align) => (
+            <button key={align} type="button" aria-pressed={layer.align === align} onClick={() => onChange({ align })} className={`${secondaryClass} ${layer.align === align ? "border-fg bg-fg/[0.06]" : ""}`}>
+              {tc(align === "left" ? "alignLeft" : align === "center" ? "alignCenter" : "alignRight")}
+            </button>
+          ))}
+          <label className="flex min-h-11 items-center gap-2 px-2 text-sm font-semibold">
+            <input type="checkbox" checked={layer.bold} onChange={(event) => onChange({ bold: event.target.checked })} />
+            {tc("bold")}
+          </label>
+        </div>
+        <p className="text-xs text-fg-subtle">{tc("liveTextHint")}</p>
+        <div className="flex justify-between gap-2">
+          <button type="button" className={secondaryClass} onPointerDown={(event) => event.preventDefault()} onClick={() => onFinish(false)}>{tc("cancelText")}</button>
+          <button type="button" className={`${secondaryClass} border-fg bg-fg text-page`} onPointerDown={(event) => event.preventDefault()} onClick={() => onFinish(true)}>{tc("doneText")}</button>
+        </div>
+        <span className="sr-only">{t("creatorTextHint")}</span>
+      </div>
+    </KeyboardSheet>
+  );
+}
+
+/**
+ * The panel for a field the visitor types in. On phones it follows the
+ * visual viewport, so the on-screen keyboard never covers it.
+ */
+function KeyboardSheet({ label, children }: { label: string; children: ReactNode }) {
   const viewport = useVisualViewport();
   const [portrait, setPortrait] = useState(false);
   useEffect(() => {
@@ -953,86 +1053,81 @@ function TextPanel({
     query.addEventListener("change", sync);
     return () => query.removeEventListener("change", sync);
   }, []);
-  const form = (
-    <div className="grid gap-3">
-      <p className={metaLabel}>{tc("text")}</p>
-      <label className="sr-only" htmlFor="cosplan-3d-text">{tc("content")}</label>
-      <textarea
-        id="cosplan-3d-text"
-        ref={textRef}
-        value={layer.text}
-        placeholder={tc("textPlaceholder")}
-        rows={3}
-        onChange={(event) => onChange({ text: event.target.value })}
-        onCompositionStart={() => {
-          composing.current = true;
-        }}
-        onCompositionEnd={(event) => {
-          composing.current = false;
-          onChange({ text: event.currentTarget.value });
-          onCompositionEnd();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" && !event.nativeEvent.isComposing) {
-            event.preventDefault();
-            event.stopPropagation();
-            onFinish(false);
-          }
-        }}
-        className={`${fieldClass} min-h-24 resize-y`}
-      />
-      <div className="grid grid-cols-[minmax(0,1fr)_4.5rem] gap-3">
-        <label className="grid gap-1 text-sm font-semibold text-fg-muted">
-          {tc("font")}
-          <select value={layer.fontFamily} onChange={(event) => onChange({ fontFamily: event.target.value })} className={fieldClass}>
-            {FONT_OPTIONS.map((font) => (
-              <option key={font}>{font}</option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm font-semibold text-fg-muted">
-          {tc("color")}
-          <input type="color" value={layer.fill} onChange={(event) => onChange({ fill: event.target.value })} className="h-11 w-full border border-border-strong bg-page/80 p-1" />
-        </label>
-      </div>
-      <label className="grid gap-1 text-sm font-semibold text-fg-muted">
-        <span className="flex justify-between">
-          {tc("fontSize")}
-          <span className="font-meta text-xs text-fg-subtle">{Math.round(layer.fontSize)} PX</span>
-        </span>
-        <input type="range" min="10" max="500" value={layer.fontSize} onChange={(event) => onChange({ fontSize: Number(event.target.value) })} className="h-11 w-full accent-[var(--color-accent)]" />
-      </label>
-      <div className="flex flex-wrap items-center gap-2">
-        {(["left", "center", "right"] as const).map((align) => (
-          <button key={align} type="button" aria-pressed={layer.align === align} onClick={() => onChange({ align })} className={`${secondaryClass} ${layer.align === align ? "border-fg bg-fg/[0.06]" : ""}`}>
-            {tc(align === "left" ? "alignLeft" : align === "center" ? "alignCenter" : "alignRight")}
-          </button>
-        ))}
-        <label className="flex min-h-11 items-center gap-2 px-2 text-sm font-semibold">
-          <input type="checkbox" checked={layer.bold} onChange={(event) => onChange({ bold: event.target.checked })} />
-          {tc("bold")}
-        </label>
-      </div>
-      <p className="text-xs text-fg-subtle">{tc("liveTextHint")}</p>
-      <div className="flex justify-between gap-2">
-        <button type="button" className={secondaryClass} onPointerDown={(event) => event.preventDefault()} onClick={() => onFinish(false)}>{tc("cancelText")}</button>
-        <button type="button" className={`${secondaryClass} border-fg bg-fg text-page`} onPointerDown={(event) => event.preventDefault()} onClick={() => onFinish(true)}>{tc("doneText")}</button>
-      </div>
-      <span className="sr-only">{t("creatorTextHint")}</span>
-    </div>
-  );
-  if (!portrait) return <BookingPanel>{form}</BookingPanel>;
+  if (!portrait) return <BookingPanel>{children}</BookingPanel>;
   // Above the on-screen keyboard: the sheet sits at the bottom of what is visible.
   return createPortal(
     <div className="pointer-events-none fixed z-50 flex flex-col justify-end" style={{ left: viewport.left, top: viewport.top, width: viewport.width, height: viewport.height }}>
       <section
         role="dialog"
-        aria-label={tc("editText")}
+        aria-label={label}
         className="pointer-events-auto max-h-[70%] overflow-y-auto border-t border-border-strong bg-page/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur"
       >
-        {form}
+        {children}
       </section>
     </div>,
     document.querySelector<HTMLElement>("[data-dialog-portal-root]") ?? document.body
+  );
+}
+
+/**
+ * An uploaded character's name, typed while it shows on the poster. It is
+ * optional: skipping leaves the character unnamed, so nothing prints for it.
+ */
+function NamePanel({
+  layer,
+  slot,
+  slotName,
+  onChange,
+  onFinish
+}: {
+  layer: CosplanImageLayer;
+  /** The slot that prints the name, when the character sits in one. */
+  slot: CosplanSlot | null;
+  slotName: (slot: CosplanSlot) => string;
+  onChange: (name: string) => void;
+  onFinish: (keep: boolean) => void;
+}) {
+  const t = useTranslations("album3d");
+  const tc = useTranslations("cosplan");
+  const fieldRef = useRef<HTMLInputElement>(null);
+  useEffect(() => fieldRef.current?.focus({ preventScroll: true }), []);
+  return (
+    <KeyboardSheet label={tc("characterName")}>
+      <form
+        className="grid gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onFinish(true);
+        }}
+      >
+        <p className={metaLabel}>{tc("uploadCharacter")}</p>
+        <label htmlFor="cosplan-3d-name" className="text-[1.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.03em] wide:text-[2rem]">
+          {tc("characterNameOptional")}
+        </label>
+        <input
+          id="cosplan-3d-name"
+          ref={fieldRef}
+          value={layer.name}
+          maxLength={120}
+          autoComplete="off"
+          enterKeyHint="done"
+          placeholder={tc("searchPlaceholder")}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              event.stopPropagation();
+              onFinish(false);
+            }
+          }}
+          className={fieldClass}
+        />
+        <p className="text-sm text-fg-muted">{slot ? t("creatorNameHint", { slot: slotName(slot) }) : t("creatorNameHintFree")}</p>
+        <div className="flex justify-between gap-2">
+          <button type="button" className={secondaryClass} onPointerDown={(event) => event.preventDefault()} onClick={() => onFinish(false)}>{tc("skipName")}</button>
+          <button type="submit" className={`${secondaryClass} border-fg bg-fg text-page`} onPointerDown={(event) => event.preventDefault()}>{tc("doneText")}</button>
+        </div>
+      </form>
+    </KeyboardSheet>
   );
 }

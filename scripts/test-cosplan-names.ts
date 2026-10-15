@@ -21,7 +21,10 @@ async function main() {
     await page.goto(`http://127.0.0.1:${(server.address() as { port: number }).port}/?names`);
     await page.getByRole("button", { name: /Test poster/ }).click();
     const png = await sharp({ create: { width: 100, height: 200, channels: 4, background: "#aa3333" } }).png().toBuffer();
-    await page.locator('input[type="file"]').first().setInputFiles({ name: "Hatsune Miku.png", mimeType: "image/png", buffer: png });
+    // An upload's file name is never its character's name; the visitor types one, or none.
+    await page.locator('input[type="file"]').first().setInputFiles({ name: "Sharing poster (1).png", mimeType: "image/png", buffer: png });
+    await page.getByText("Choose a slot for Unnamed character").first().waitFor();
+    await page.getByLabel("Character name (optional)", { exact: true }).first().fill("Hatsune Miku");
     await page.getByRole("button", { name: /01.*Friday/ }).first().click();
     const names = () => page.evaluate(() => {
       const stage = (window as unknown as { testKonva: { stages: Array<{ find: (selector: string) => Array<{ text: () => string }> }> } }).testKonva.stages[0];
