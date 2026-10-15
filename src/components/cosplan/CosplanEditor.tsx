@@ -26,7 +26,8 @@ function CharacterNameText({ field }: { field: ReturnType<typeof cosplanCharacte
 }
 
 type CharacterResult = { id: number; name: string; nameCn: string; thumbnailUrl: string; imageUrl: string; sourceUrl: string };
-type PendingCharacter = CosplanCharacter;
+/** A character waiting for its slot; an upload's name is typed by the visitor meanwhile. */
+type PendingCharacter = CosplanCharacter & { uploaded?: boolean };
 
 const CanvasLayoutContext = createContext<{
   slots: CosplanSlot[];
@@ -254,18 +255,18 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
 
   function insertCharacter(character: PendingCharacter, slot?: CosplanSlot) {
     if (!composition || imageCount >= IMAGE_LIMIT) return;
-    const layer = placeCharacter(composition, character, slot);
+    const layer = placeCharacter(composition, { ...character, name: character.name.trim() }, slot);
     apply({ ...composition, layers: [...composition.layers, layer] });
     setSelectedId(layer.id);
     setPendingCharacter(null);
     setMobilePanel(null);
   }
 
-  async function addImage(src: string, name: string, sourceUrl?: string, blob?: Blob) {
+  async function addImage(src: string, name: string, sourceUrl?: string, blob?: Blob, uploaded = false) {
     if (!composition || imageCount >= IMAGE_LIMIT) return;
     try {
       const image = await loadBrowserImage(src);
-      const character = { src, name, sourceUrl, blob, naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight };
+      const character = { src, name, sourceUrl, blob, uploaded, naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight };
       if (slots.length) {
         setPendingCharacter(character);
         setSelectedId(null);
@@ -280,7 +281,8 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
     if (!composition) return;
     try {
       const normalized = await normalizeCosplanUpload(file);
-      await addImage(URL.createObjectURL(normalized), file.name.replace(/\.[^.]+$/, ""), undefined, normalized);
+      // A file's name is rarely the character's: the visitor may type one instead.
+      await addImage(URL.createObjectURL(normalized), "", undefined, normalized, true);
     } catch { setSearchStatus("error"); }
   }
 
@@ -454,7 +456,13 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
       {nameVisibilityControl}
       {pendingCharacter && (
         <div className="rounded-xl border border-accent/35 bg-accent-surface p-3">
-          <p className="text-sm font-semibold">{t("chooseSlotFor", { name: pendingCharacter.name })}</p>
+          {pendingCharacter.uploaded && (
+            <label className="mb-3 block text-sm font-semibold text-fg-muted">
+              {t("characterNameOptional")}
+              <input value={pendingCharacter.name} maxLength={120} autoComplete="off" placeholder={t("searchPlaceholder")} onChange={(event) => setPendingCharacter({ ...pendingCharacter, name: event.target.value })} className={`${controlClasses} mt-1`} />
+            </label>
+          )}
+          <p className="text-sm font-semibold">{t("chooseSlotFor", { name: pendingCharacter.name.trim() || t("unnamedCharacter") })}</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {slots.map((slot, index) => (
               <Button key={slot.id} variant="primary" onClick={() => insertCharacter(pendingCharacter, slot)}>
@@ -511,7 +519,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
                 if (layer.type === "text" && typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) setMobilePanel("text");
               }} className={`flex min-h-11 w-full items-center gap-3 rounded-lg border px-3 text-left ${selectedId === layer.id ? "border-accent bg-accent-surface" : "border-border bg-surface"}`}>
                 <span className="font-meta text-[0.625rem] text-fg-faint">{String(index + 1).padStart(2, "0")}</span>
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{layer.name}</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{layer.name || (layer.type === "image" ? t("unnamedCharacter") : "")}</span>
                 <span className="max-w-24 truncate text-xs text-fg-subtle">{slot ? (locale === "zh" ? slot.nameZh : slot.nameEn) : layer.type === "image" ? t("freeLayer") : t("text")}</span>
               </button>
             </li>;
@@ -530,7 +538,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
     </div>
   );
 
-  const inspector = selected && composition ? <div className="flex flex-col gap-4"><div className="flex items-start justify-between gap-3"><div><p className="font-meta text-[0.6875rem] text-accent-text">{selected.type.toUpperCase()}</p><h2 className="font-display mt-1 text-xl font-semibold">{selected.name}</h2></div><Button size="compact" variant="danger" onClick={() => removeLayer(selected.id)}>{t("delete")}</Button></div>{selected.type === "text" && <><label className="text-sm font-semibold text-fg-muted">{t("content")}<textarea value={selected.text} onChange={(event) => updateLayer(selected.id, { text: event.target.value })} className={`${controlClasses} mt-1 min-h-24`} /></label><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold text-fg-muted">{t("fontSize")}<input type="number" min="10" max="500" value={Math.round(selected.fontSize)} onChange={(event) => updateLayer(selected.id, { fontSize: numberValue(event.target.value, selected.fontSize) })} className={`${controlClasses} mt-1`} /></label><label className="text-sm font-semibold text-fg-muted">{t("color")}<input type="color" value={selected.fill} onChange={(event) => updateLayer(selected.id, { fill: event.target.value })} className={`${controlClasses} mt-1 p-1`} /></label></div><label className="text-sm font-semibold text-fg-muted">{t("font")}<select value={selected.fontFamily} onChange={(event) => updateLayer(selected.id, { fontFamily: event.target.value })} className={`${controlClasses} mt-1`}>{FONT_OPTIONS.map((font) => <option key={font}>{font}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold text-fg-muted">{t("alignment")}<select value={selected.align} onChange={(event) => updateLayer(selected.id, { align: event.target.value as CosplanTextLayer["align"] })} className={`${controlClasses} mt-1`}><option value="left">{t("alignLeft")}</option><option value="center">{t("alignCenter")}</option><option value="right">{t("alignRight")}</option></select></label><label className="flex min-h-11 items-center gap-2 self-end rounded-lg border border-border bg-control px-3 text-sm font-semibold"><input type="checkbox" checked={selected.bold} onChange={(event) => updateLayer(selected.id, { bold: event.target.checked })} />{t("bold")}</label></div></>}{nameVisibilityControl}{selected.type === "image" && <label className="text-sm font-semibold text-fg-muted">{t("characterName")}<input value={selected.name} maxLength={120} onChange={(event) => updateLayer(selected.id, { name: event.target.value })} className={`${controlClasses} mt-1`} /></label>}{selected.type === "image" && <div className="grid grid-cols-2 gap-3">{(["cropX", "cropY", "cropWidth", "cropHeight"] as const).map((field) => <label key={field} className="text-sm font-semibold text-fg-muted">{t(field)}<input type="number" min="0" max="100" value={Math.round(selected[field] * 100)} onChange={(event) => updateCrop(selected, field, event.target.value)} className={`${controlClasses} mt-1`} /></label>)}</div>}<div className="grid grid-cols-2 gap-3">{(["x", "y", "width", "rotation"] as const).map((field) => <label key={field} className="text-sm font-semibold capitalize text-fg-muted">{field}<input type="number" value={Math.round(selected[field])} onChange={(event) => updateLayer(selected.id, { [field]: numberValue(event.target.value, selected[field]) })} className={`${controlClasses} mt-1`} /></label>)}{selected.type === "image" && <label className="text-sm font-semibold capitalize text-fg-muted">height<input type="number" value={Math.round(selected.height)} onChange={(event) => updateLayer(selected.id, { height: numberValue(event.target.value, selected.height) })} className={`${controlClasses} mt-1`} /></label>}</div><div className="grid grid-cols-2 gap-2"><Button size="compact" onClick={() => duplicateLayer(selected)}>{t("duplicate")}</Button><Button size="compact" onClick={() => reorderLayer(selected.id, 1)}>{t("bringForward")}</Button><Button size="compact" onClick={() => reorderLayer(selected.id, -1)}>{t("sendBackward")}</Button>{selected.type === "image" && selected.sourceUrl && <a href={selected.sourceUrl} target="_blank" rel="noreferrer" className={buttonClasses({ variant: "ghost", size: "compact" })}>{t("source")} ↗</a>}</div></div> : <p className="text-sm text-fg-subtle">{t("selectLayer")}</p>;
+  const inspector = selected && composition ? <div className="flex flex-col gap-4"><div className="flex items-start justify-between gap-3"><div><p className="font-meta text-[0.6875rem] text-accent-text">{selected.type.toUpperCase()}</p><h2 className="font-display mt-1 text-xl font-semibold">{selected.name || t("unnamedCharacter")}</h2></div><Button size="compact" variant="danger" onClick={() => removeLayer(selected.id)}>{t("delete")}</Button></div>{selected.type === "text" && <><label className="text-sm font-semibold text-fg-muted">{t("content")}<textarea value={selected.text} onChange={(event) => updateLayer(selected.id, { text: event.target.value })} className={`${controlClasses} mt-1 min-h-24`} /></label><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold text-fg-muted">{t("fontSize")}<input type="number" min="10" max="500" value={Math.round(selected.fontSize)} onChange={(event) => updateLayer(selected.id, { fontSize: numberValue(event.target.value, selected.fontSize) })} className={`${controlClasses} mt-1`} /></label><label className="text-sm font-semibold text-fg-muted">{t("color")}<input type="color" value={selected.fill} onChange={(event) => updateLayer(selected.id, { fill: event.target.value })} className={`${controlClasses} mt-1 p-1`} /></label></div><label className="text-sm font-semibold text-fg-muted">{t("font")}<select value={selected.fontFamily} onChange={(event) => updateLayer(selected.id, { fontFamily: event.target.value })} className={`${controlClasses} mt-1`}>{FONT_OPTIONS.map((font) => <option key={font}>{font}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold text-fg-muted">{t("alignment")}<select value={selected.align} onChange={(event) => updateLayer(selected.id, { align: event.target.value as CosplanTextLayer["align"] })} className={`${controlClasses} mt-1`}><option value="left">{t("alignLeft")}</option><option value="center">{t("alignCenter")}</option><option value="right">{t("alignRight")}</option></select></label><label className="flex min-h-11 items-center gap-2 self-end rounded-lg border border-border bg-control px-3 text-sm font-semibold"><input type="checkbox" checked={selected.bold} onChange={(event) => updateLayer(selected.id, { bold: event.target.checked })} />{t("bold")}</label></div></>}{nameVisibilityControl}{selected.type === "image" && <label className="text-sm font-semibold text-fg-muted">{t("characterName")}<input value={selected.name} maxLength={120} onChange={(event) => updateLayer(selected.id, { name: event.target.value })} className={`${controlClasses} mt-1`} /></label>}{selected.type === "image" && <div className="grid grid-cols-2 gap-3">{(["cropX", "cropY", "cropWidth", "cropHeight"] as const).map((field) => <label key={field} className="text-sm font-semibold text-fg-muted">{t(field)}<input type="number" min="0" max="100" value={Math.round(selected[field] * 100)} onChange={(event) => updateCrop(selected, field, event.target.value)} className={`${controlClasses} mt-1`} /></label>)}</div>}<div className="grid grid-cols-2 gap-3">{(["x", "y", "width", "rotation"] as const).map((field) => <label key={field} className="text-sm font-semibold capitalize text-fg-muted">{field}<input type="number" value={Math.round(selected[field])} onChange={(event) => updateLayer(selected.id, { [field]: numberValue(event.target.value, selected[field]) })} className={`${controlClasses} mt-1`} /></label>)}{selected.type === "image" && <label className="text-sm font-semibold capitalize text-fg-muted">height<input type="number" value={Math.round(selected.height)} onChange={(event) => updateLayer(selected.id, { height: numberValue(event.target.value, selected.height) })} className={`${controlClasses} mt-1`} /></label>}</div><div className="grid grid-cols-2 gap-2"><Button size="compact" onClick={() => duplicateLayer(selected)}>{t("duplicate")}</Button><Button size="compact" onClick={() => reorderLayer(selected.id, 1)}>{t("bringForward")}</Button><Button size="compact" onClick={() => reorderLayer(selected.id, -1)}>{t("sendBackward")}</Button>{selected.type === "image" && selected.sourceUrl && <a href={selected.sourceUrl} target="_blank" rel="noreferrer" className={buttonClasses({ variant: "ghost", size: "compact" })}>{t("source")} ↗</a>}</div></div> : <p className="text-sm text-fg-subtle">{t("selectLayer")}</p>;
 
   const mobileTextTools = <div className="flex flex-col gap-4">
     <div className="flex items-start justify-between gap-3">
