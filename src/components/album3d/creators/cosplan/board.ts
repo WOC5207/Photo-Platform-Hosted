@@ -89,6 +89,30 @@ export function transformLayer(layer: CosplanLayer, factor: number, turn: number
   return { x: at.x, y: at.y, width, fontSize: layer.fontSize * scale, rotation } satisfies Partial<CosplanTextLayer>;
 }
 
+/**
+ * The layers with `layer` moved `delta` places up (+) or down among its own
+ * kind (characters stay under text); null when it can't move that way.
+ */
+export function restackLayers(layers: CosplanLayer[], layer: CosplanLayer, delta: number): CosplanLayer[] | null {
+  const peers = layers.map((item, position) => ({ item, position })).filter(({ item }) => item.type === layer.type);
+  const at = peers.findIndex(({ item }) => item.id === layer.id);
+  const to = peers[Math.max(0, Math.min(peers.length - 1, at + delta))]?.position;
+  const from = peers[at]?.position;
+  if (from === undefined || to === undefined || from === to) return null;
+  const next = [...layers];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+/** A character moved into `slot`, unturned size kept within 90% of it and centred, as placing it there does. */
+export function fitInSlot(layer: CosplanImageLayer, slot: CosplanSlot): Partial<CosplanImageLayer> {
+  const scale = Math.min((slot.width * 0.9) / layer.width, (slot.height * 0.9) / layer.height, 1);
+  const width = layer.width * scale;
+  const height = layer.height * scale;
+  return { slotId: slot.id, slot: structuredClone(slot), x: slot.x + (slot.width - width) / 2, y: slot.y + (slot.height - height) / 2, width, height };
+}
+
 /** The top-left corner that puts a box of this size and rotation on `middle`. */
 function corner(middle: { x: number; y: number }, width: number, height: number, rotation: number) {
   const a = radians(rotation);

@@ -12,10 +12,10 @@ import styles from "../../ArchiveSite.module.css";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageDrag, useStageInput } from "../../booking/shared";
 import type { PosterLayerPlane } from "../../poster";
 import { LAYER_PICK, RAIL_PICK } from "../../types";
-import { layerAt, layerBox, paintGuides, slotAt, transformLayer } from "./board";
+import { fitInSlot, layerAt, layerBox, paintGuides, restackLayers, slotAt, transformLayer } from "./board";
 import { useCosplanStudio } from "./CosplanStudio";
 
-const FONT_OPTIONS = ["Arial", "Georgia", "Trebuchet MS", "Noto Sans SC", "Microsoft YaHei"];
+export const FONT_OPTIONS = ["Arial", "Georgia", "Trebuchet MS", "Noto Sans SC", "Microsoft YaHei"];
 const LAYER_EDGE = 640;
 
 type Mode = "board" | "search" | "arrange" | "text" | "layers" | "name";
@@ -115,24 +115,13 @@ export default function CosplanBoard() {
     setMode("board");
   };
   const restack = (layer: CosplanLayer, delta: number) => {
-    if (!composition) return;
-    const peers = composition.layers.map((item, position) => ({ item, position })).filter(({ item }) => item.type === layer.type);
-    const at = peers.findIndex(({ item }) => item.id === layer.id);
-    const to = peers[Math.max(0, Math.min(peers.length - 1, at + delta))]?.position;
-    const from = peers[at]?.position;
-    if (from === undefined || to === undefined || from === to) return;
-    const layers = [...composition.layers];
-    const [moved] = layers.splice(from, 1);
-    layers.splice(to, 0, moved);
-    studio.apply({ ...composition, layers });
+    const layers = composition && restackLayers(composition.layers, layer, delta);
+    if (composition && layers) studio.apply({ ...composition, layers });
   };
   const moveToSlot = (layer: CosplanImageLayer, slotId: string) => {
     const slot = slots.find((item) => item.id === slotId);
     if (!slot) return update(layer.id, { slotId: undefined, slot: undefined });
-    const scale = Math.min((slot.width * 0.9) / layer.width, (slot.height * 0.9) / layer.height, 1);
-    const width = layer.width * scale;
-    const height = layer.height * scale;
-    update(layer.id, { slotId: slot.id, slot: structuredClone(slot), x: slot.x + (slot.width - width) / 2, y: slot.y + (slot.height - height) / 2, width, height });
+    update(layer.id, fitInSlot(layer, slot));
     setTarget({ slot: slot.id, layer: layer.id });
   };
 
@@ -837,9 +826,9 @@ export default function CosplanBoard() {
   );
 }
 
-type LiveProps = { onPointerDown: () => void; onPointerUp: () => void; onKeyDown: () => void; onKeyUp: () => void; onBlur: () => void };
+export type LiveProps = { onPointerDown: () => void; onPointerUp: () => void; onKeyDown: () => void; onKeyUp: () => void; onBlur: () => void };
 
-function Range({ label, value, min, max, step = 1, suffix, live, onChange }: { label: string; value: number; min: number; max: number; step?: number; suffix: string; live: LiveProps; onChange: (value: number) => void }) {
+export function Range({ label, value, min, max, step = 1, suffix, live, onChange }: { label: string; value: number; min: number; max: number; step?: number; suffix: string; live: LiveProps; onChange: (value: number) => void }) {
   return (
     <label className="grid gap-1 text-sm">
       <span className="flex justify-between">
@@ -950,7 +939,7 @@ function ArrangePanel({
  * waits for an input method to commit its composition, as the classic
  * editor's inline editor does.
  */
-function TextPanel({
+export function TextPanel({
   layer,
   textRef,
   composing,
@@ -1073,7 +1062,7 @@ function KeyboardSheet({ label, children }: { label: string; children: ReactNode
  * An uploaded character's name, typed while it shows on the poster. It is
  * optional: skipping leaves the character unnamed, so nothing prints for it.
  */
-function NamePanel({
+export function NamePanel({
   layer,
   slot,
   slotName,
