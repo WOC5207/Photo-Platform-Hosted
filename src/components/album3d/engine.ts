@@ -1655,13 +1655,14 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     }
     if (!down || down.id !== e.pointerId) return false;
     const follow = follower();
-    const axis = follow?.dragAxis();
-    if (!follow || !axis) return false;
+    const axes = follow?.dragAxis();
+    if (!follow || !axes || (follow.fingersOnly && e.pointerType === "mouse")) return false;
+    const axis = axes === "xy" ? (Math.abs(e.clientX - down.x) >= Math.abs(e.clientY - down.y) ? "x" : "y") : axes;
     const along = axis === "x" ? e.clientX - down.x : e.clientY - down.y;
     const across = axis === "x" ? e.clientY - down.y : e.clientX - down.x;
     if (Math.abs(along) < 10 || Math.abs(along) <= Math.abs(across)) return false;
-    const start = follow.grab();
-    carry = { follow, id: e.pointerId, axis, anchor: axis === "x" ? e.clientX : e.clientY, start, position: start, pitch: follow.pitch(), from: follow.index() };
+    const start = follow.grab(axis);
+    carry = { follow, id: e.pointerId, axis, anchor: axis === "x" ? e.clientX : e.clientY, start, position: start, pitch: follow.pitch(axis), from: follow.index() };
     carrySpeed.clear();
     carrySpeed.push(performance.now(), start);
     canvas.setPointerCapture(e.pointerId);
@@ -1932,7 +1933,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         const from = table.focus();
         table.setFocus(from + steps * table.columns());
         if (table.focus() !== from) commitFocus(table.focus());
-      } else if (mode === "stage" && follow?.dragAxis() && stage?.setFocus) {
+      } else if (mode === "stage" && follow?.dragAxis() && !follow.fingersOnly && stage?.setFocus) {
         const from = follow.index();
         stage.setFocus(from + steps);
         if (follow.index() !== from) commitFocus(follow.index());

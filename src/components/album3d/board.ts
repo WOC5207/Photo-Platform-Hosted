@@ -17,8 +17,8 @@ import {
   Vector3,
   type WebGLRenderer
 } from "three";
-import { addLighting, fitText, makeTexture } from "./kit";
-import { damp, settled, spring } from "./motion";
+import { addLighting, fitText, makeTexture, screenPitch } from "./kit";
+import { damp, rubber, settled, spring, type Follow } from "./motion";
 import { layoutFor, sceneArea, stageBand } from "./types";
 import type { EnginePalette } from "./engine";
 
@@ -29,7 +29,8 @@ import type { EnginePalette } from "./engine";
  * put in the cart slides down into the amber loadout tray in front of the
  * board; once booked it is stamped with its number and filed away. A
  * visitor's own booking hangs alone as a ticket ("ticket"), the size of an
- * event's card, stamped with its status and kept on the board.
+ * event's card, stamped with its status and kept on the board. A finger
+ * drags the board along as a page scrolls, and it coasts onto a tile.
  */
 
 export type BoardVariant = "events" | "slots" | "ticket";
@@ -70,6 +71,8 @@ export interface Board {
   clearStamps(): void;
   /** Columns the events board lays its cards in, or lanes per day on a schedule, for arrow keys. */
   columns(): number;
+  /** The board under a dragging finger, where it has more rows or days than it shows. */
+  follow: Follow;
   settle(): void;
   setHover(index: number): void;
   pick(clientX: number, clientY: number, rect: DOMRect): number;
@@ -205,6 +208,8 @@ export function createBoard(context: {
   let lanes = 1;
   const panX = spring(0);
   const panY = spring(0);
+  /** The way a finger holds the board now (see follow). */
+  let held: "x" | "y" | null = null;
 
   const toColor = (css: string) => new Color().setStyle(css, SRGBColorSpace);
   const ink = () => (palette.dark ? "#ece6dc" : "#1c1a16");
@@ -500,20 +505,31 @@ export function createBoard(context: {
   let halfSpan = 2;
   let reserve = 0;
 
-  function panTargets() {
+  const columnPitch = () => SPEC[variant].w + SPEC[variant].gx;
+  const rowPitch = () => SPEC[variant].h + SPEC[variant].gy;
+  /** Columns the board pans across past the ones in view. */
+  const columnRange = () => Math.max(0, columnCount - visibleColumns());
+  /** The first column in view while one in `col` is focused. */
+  const startFor = (col: number) => MathUtils.clamp(col - Math.floor((visibleColumns() - 1) / 2), 0, columnRange());
+  const panXFor = (start: number) => (start + (visibleColumns() - 1) / 2) * columnPitch();
+  // The board hangs from its top and scrolls down, in rows, to keep the focused row in view above the tray.
+  const center0 = () => 0.5 - halfSpan;
+  const panYFor = (scroll: number) => center0() - scroll * rowPitch();
+  /** Rows scrolled while `row` is focused; at or below zero it is in view from the top. */
+  function scrollFor(row: number) {
     const spec = SPEC[variant];
+    const rowBottom = -(spec.header + row * rowPitch()) - spec.h;
+    return (center0() - (rowBottom - 0.25 + halfSpan - reserve)) / rowPitch();
+  }
+  const rowRange = () => Math.max(0, scrollFor(rowCount - 1));
+
+  function panTargets() {
     const focus = list[focusIndex]?.data;
     const { col, row } = focus ? cell(focus) : { col: 0, row: 0 };
-    const visible = visibleColumns();
-    const start = MathUtils.clamp(col - Math.floor((visible - 1) / 2), 0, Math.max(0, columnCount - visible));
-    const x = (start + (visible - 1) / 2) * (spec.w + spec.gx);
+    const x = panXFor(startFor(col));
     // A lone ticket hangs in the middle of the scene, not from its top.
     if (variant === "ticket") return { x, y: panel.position.y };
-    const top = 0.5;
-    const center0 = top - halfSpan;
-    const rowBottom = -(spec.header + row * (spec.h + spec.gy)) - spec.h;
-    const y = Math.min(center0, rowBottom - 0.25 + halfSpan - reserve);
-    return { x, y };
+    return { x, y: panYFor(Math.max(0, scrollFor(row))) };
   }
 
   // On phones the board sits between the site header and the bottom sheet.
@@ -555,9 +571,10 @@ export function createBoard(context: {
 
     frame();
     const pan = panTargets();
-    damp(panX, pan.x, rate(5), dt);
-    damp(panY, pan.y, rate(5), dt);
-    if (!settled(panX, pan.x) || !settled(panY, pan.y)) moving = true;
+    // The way a finger holds the board stays where the finger put it.
+    if (held !== "x") damp(panX, pan.x, rate(5), dt);
+    if (held !== "y") damp(panY, pan.y, rate(5), dt);
+    if ((held !== "x" && !settled(panX, pan.x)) || (held !== "y" && !settled(panY, pan.y))) moving = true;
     frame();
     lights.key.position.set(aim.x - 5, aim.y + 9, 8);
     lights.key.target.position.copy(aim);
@@ -688,6 +705,93 @@ export function createBoard(context: {
 
   applyPalette();
 
+  // ------------------------------------------------------------ dragging --
+  const pitchFrom = new Vector3();
+  const pitchTo = new Vector3();
+
+  /** The tile in `col` nearest `row` (a day may have fewer slots than the next). */
+  function tileNear(col: number, row: number) {
+    let best = -1;
+    let gap = Infinity;
+    list.forEach((tile, i) => {
+      const at = cell(tile.data);
+      if (at.col !== col || Math.abs(at.row - row) >= gap) return;
+      gap = Math.abs(at.row - row);
+      best = i;
+    });
+    return best;
+  }
+
+  // Positions are the board's scroll: columns across, rows down. Phones only;
+  // a mouse keeps its one-tile swipes. An axis with nothing more to show
+  // keeps its swipes too, so a short board still steps on a swipe.
+  const follow: Follow = {
+    fingersOnly: true,
+    dragAxis() {
+      if (variant === "ticket" || dim || list.length < 2 || list.some((t) => t.stampedAt >= 0)) return null;
+      const across = columnRange() > 0;
+      const down = rowRange() > 0.05;
+      return across && down ? "xy" : across ? "x" : down ? "y" : null;
+    },
+    pitch(axis) {
+      pitchFrom.set(aim.x, aim.y, DEPTH / 2);
+      if (axis === "x") pitchTo.set(aim.x + columnPitch(), aim.y, DEPTH / 2);
+      else pitchTo.set(aim.x, aim.y - rowPitch(), DEPTH / 2);
+      return screenPitch(camera, pitchFrom, pitchTo, width, height, axis);
+    },
+    index: () => focusIndex,
+    grab(axis) {
+      held = axis;
+      if (axis === "x") {
+        panX.velocity = 0;
+        return panX.value / columnPitch() - (visibleColumns() - 1) / 2;
+      }
+      panY.velocity = 0;
+      return (center0() - panY.value) / rowPitch();
+    },
+    hold(position) {
+      if (held === "x") panX.value = panXFor(rubber(position, 0, columnRange()));
+      else if (held === "y") panY.value = panYFor(rubber(position, 0, rowRange()));
+      invalidate();
+    },
+    release(landing, velocity, swipe) {
+      const axis = held;
+      held = null;
+      const focus = list[focusIndex]?.data;
+      if (!focus || !axis) return focusIndex;
+      let { col, row } = cell(focus);
+      if (axis === "x") {
+        panX.velocity = velocity * columnPitch();
+        const from = startFor(col);
+        let start = MathUtils.clamp(Math.round(landing), 0, columnRange());
+        if (swipe && start === from) start = MathUtils.clamp(from + swipe, 0, columnRange());
+        // The focus moves over to the nearest day that brings the board to rest there.
+        while (startFor(col) < start) col++;
+        while (startFor(col) > start) col--;
+      } else {
+        panY.velocity = -velocity * rowPitch();
+        // The focused row rests at the bottom of the view, so the row that
+        // rests nearest where the board coasts to takes the focus; at the
+        // top, where several rest, the focused one keeps it, else the first.
+        const land = MathUtils.clamp(landing, 0, rowRange());
+        const from = row;
+        let gap = Infinity;
+        for (let r = 0; r < rowCount; r++) {
+          const off = Math.abs(Math.max(0, scrollFor(r)) - land);
+          if (off < gap - 1e-6 || (off < gap + 1e-6 && r === from)) {
+            gap = off;
+            row = r;
+          }
+        }
+        if (swipe && row === from) row = MathUtils.clamp(from + swipe, 0, rowCount - 1);
+      }
+      const next = tileNear(col, row);
+      if (next >= 0) focusIndex = next;
+      invalidate();
+      return focusIndex;
+    }
+  };
+
   return {
     scene,
     camera,
@@ -780,7 +884,9 @@ export function createBoard(context: {
       invalidate();
     },
     columns: () => (variant === "events" ? gridColumns : lanes),
+    follow,
     settle() {
+      held = null;
       frame();
       const pan = panTargets();
       panX.value = pan.x;

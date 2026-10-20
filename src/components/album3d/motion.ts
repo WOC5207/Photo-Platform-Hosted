@@ -99,14 +99,22 @@ export function nearestOccurrence(value: number, center: number, period: number)
  * Positions are in items (rows for a grid), fractional while held.
  */
 export interface Follow {
-  /** The way a drag moves the stage: "x" brings the next item from the right, "y" the next row from below. Null when it doesn't follow drags now. */
-  dragAxis(): "x" | "y" | null;
-  /** Screen pixels per item along that axis. */
-  pitch(): number;
+  /**
+   * The way a drag moves the stage: "x" brings the next item from the right, "y" the next row from below,
+   * "xy" either, whichever way the finger sets off. Null when it doesn't follow drags now.
+   */
+  dragAxis(): "x" | "y" | "xy" | null;
+  /**
+   * Only fingers and pens carry the stage: a mouse drag stays a swipe and the wheel goes to the
+   * screen as before, so the desktop keeps its one-step moves.
+   */
+  fingersOnly?: boolean;
+  /** Screen pixels per item along that axis (the one the drag took, for "xy"). */
+  pitch(axis: "x" | "y"): number;
   /** The item the stage rests on. */
   index(): number;
-  /** Stops the stage where it is and returns that position. */
-  grab(): number;
+  /** Stops the stage where it is and returns that position along `axis`. */
+  grab(axis: "x" | "y"): number;
   /** Shows the stage at `position` while the finger holds it. */
   hold(position: number): void;
   /**
