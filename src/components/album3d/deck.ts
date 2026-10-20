@@ -16,8 +16,8 @@ import {
   Vector3,
   type WebGLRenderer
 } from "three";
-import { addLighting, fitText, gridTexture, makeTexture } from "./kit";
-import { damp, settled, spring } from "./motion";
+import { addLighting, fitText, gridTexture, makeTexture, screenPitch } from "./kit";
+import { damp, restOn, rubber, settled, spring, type Follow } from "./motion";
 import { sceneArea, stageBand } from "./types";
 import type { EnginePalette } from "./engine";
 
@@ -25,7 +25,7 @@ import type { EnginePalette } from "./engine";
  * The prize draw as a deck of cards: one card per prize, laid out face up.
  * Drawing turns them face down and shuffles them; when the server has picked
  * the prize, the cards deal back out and the winning one rises and turns
- * over.
+ * over. A finger run along the fan raises the card under it as it goes.
  */
 
 export interface DeckCard {
@@ -43,6 +43,8 @@ export interface Deck {
   /** `labels` prints on the cards: the face's kicker and the back's title. */
   setCards(key: string, cards: DeckCard[], labels: { face: string; back: string }): void;
   setFocus(index: number): void;
+  /** The raised card under a finger dragged along the fan. */
+  follow: Follow;
   /** Turn the cards over and keep shuffling until reveal. */
   shuffle(): void;
   /** Deal out and raise the winning card; resolves once it faces up. */
@@ -123,6 +125,8 @@ export function createDeck(context: {
   let cards: Card[] = [];
   let focusIndex = -1;
   let hoverIndex = -1;
+  /** Where along the fan a finger holds the raised card, in cards, or null. */
+  let heldAt: number | null = null;
   let phase: Phase = "idle";
   let phaseAt = 0;
   let winner = "";
@@ -315,7 +319,7 @@ export function createDeck(context: {
       home(i, target);
       let turnTarget = 0;
       let scaleTarget = 1;
-      let liftTarget = i === focusIndex ? 0.28 : i === hoverIndex ? 0.14 : 0;
+      let liftTarget = heldAt !== null ? 0.28 * Math.max(0, 1 - Math.abs(i - heldAt)) : i === focusIndex ? 0.28 : i === hoverIndex ? 0.14 : 0;
       const isWinner = card.data.id === winner;
       if (phase === "shuffle" && !reduced) {
         // Face down, gathered and riffled in the middle.
@@ -366,6 +370,35 @@ export function createDeck(context: {
 
   applyPalette();
 
+  // The fan stays put and the raised card moves, so it runs with the finger:
+  // the engine's positions move against it, as a page's do, and are mirrored
+  // about where the drag began. Phones only; a mouse keeps its one-card swipes.
+  const pitchFrom = new Vector3();
+  const pitchTo = new Vector3();
+  let grabbedAt = 0;
+  const follow: Follow = {
+    fingersOnly: true,
+    dragAxis: () => (phase === "idle" && cards.length > 1 ? "x" : null),
+    pitch: () => screenPitch(camera, pitchFrom.set(0, 0, 0), pitchTo.set(spacing(), 0, 0), width, height, "x"),
+    index: () => focusIndex,
+    grab() {
+      grabbedAt = Math.max(0, focusIndex);
+      heldAt = grabbedAt;
+      invalidate();
+      return grabbedAt;
+    },
+    hold(position) {
+      heldAt = rubber(2 * grabbedAt - position, 0, cards.length - 1);
+      invalidate();
+    },
+    release(landing, _velocity, swipe) {
+      heldAt = null;
+      focusIndex = restOn(2 * grabbedAt - landing, grabbedAt, -swipe, cards.length);
+      invalidate();
+      return focusIndex;
+    }
+  };
+
   return {
     scene,
     camera,
@@ -404,6 +437,7 @@ export function createDeck(context: {
       focusIndex = index;
       invalidate();
     },
+    follow,
     shuffle() {
       phase = "shuffle";
       phaseAt = clock;
@@ -439,6 +473,7 @@ export function createDeck(context: {
       invalidate();
     },
     settle() {
+      heldAt = null;
       intro.value = 1;
       intro.velocity = 0;
       frame();
