@@ -1030,7 +1030,8 @@ export function TextPanel({
 
 /**
  * The panel for a field the visitor types in. On phones it follows the
- * visual viewport, so the on-screen keyboard never covers it.
+ * visual viewport, so the on-screen keyboard never covers it, and rises in
+ * as the phone boards' sheets do.
  */
 function KeyboardSheet({ label, children }: { label: string; children: ReactNode }) {
   const viewport = useVisualViewport();
@@ -1049,7 +1050,7 @@ function KeyboardSheet({ label, children }: { label: string; children: ReactNode
       <section
         role="dialog"
         aria-label={label}
-        className="pointer-events-auto max-h-[70%] overflow-y-auto border-t border-border-strong bg-page/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur"
+        className="phone-rise pointer-events-auto max-h-[70%] overflow-y-auto border-t border-border-strong bg-page/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur"
       >
         {children}
       </section>

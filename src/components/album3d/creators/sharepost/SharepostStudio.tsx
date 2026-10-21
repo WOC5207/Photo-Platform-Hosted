@@ -87,6 +87,8 @@ export interface SharepostStudio {
   saved: Saved;
   /** Paints the poster on the easel and measures it; `selected` rings a photograph. */
   paint(scene: PosterStage, options?: { selected?: string | null; composition?: SharingPosterComposition; key?: string }): Metrics | null;
+  /** Paints the live poster on a canvas of the caller's size (the phone's) and measures it. */
+  draw(canvas: HTMLCanvasElement, options?: { selected?: string | null; selectionColor?: string }): Metrics | null;
 }
 
 type Saved = "idle" | "dirty" | "saved" | "error" | "conflict";
@@ -451,24 +453,19 @@ export default function SharepostStudioProvider({ project = null, children }: { 
     [composition?.credits.lines, tools, update]
   );
 
-  const paint = useCallback(
-    (scene: PosterStage, options: { selected?: string | null; composition?: SharingPosterComposition; key?: string } = {}) => {
-      const shown = options.composition ?? composition;
-      if (!tools || !shown) return null;
-      const size = tools.sharingPosterPixelSize(shown);
-      const canvas = scene.setPoster(options.key ?? "sharepost", size.width / size.height, MAT_EDGE);
+  const render = useCallback(
+    (canvas: HTMLCanvasElement, shown: SharingPosterComposition, selected: string | null, selectionColor: string, live: boolean): Metrics | null => {
       const ctx = canvas.getContext("2d");
-      if (!ctx) return null;
+      if (!tools || !ctx) return null;
       const result = tools.renderSharingPoster(ctx, canvas.width, canvas.height, shown, photos, images, {
         layerImages,
         unavailableLabel: ta("creatorPhotoMissing"),
-        selectedPhotoId: options.selected ?? null,
-        selectionColor: scene.accent()
+        selectedPhotoId: selected,
+        selectionColor
       });
-      scene.refresh();
       const measured: Metrics = { footerTooTall: result.footerTooTall, wrappedLineCount: result.wrappedLineCount, photoRects: result.photoRects, text: result.text, width: canvas.width, height: canvas.height };
       // Only the live poster's measurements drive the adaptive ratio and the checks.
-      if (!options.composition) {
+      if (live) {
         setMetrics((current) =>
           current &&
           current.footerTooTall === measured.footerTooTall &&
@@ -482,7 +479,26 @@ export default function SharepostStudioProvider({ project = null, children }: { 
       }
       return measured;
     },
-    [tools, composition, photos, images, layerImages, ta]
+    [tools, photos, images, layerImages, ta]
+  );
+
+  const paint = useCallback(
+    (scene: PosterStage, options: { selected?: string | null; composition?: SharingPosterComposition; key?: string } = {}) => {
+      const shown = options.composition ?? composition;
+      if (!tools || !shown) return null;
+      const size = tools.sharingPosterPixelSize(shown);
+      const canvas = scene.setPoster(options.key ?? "sharepost", size.width / size.height, MAT_EDGE);
+      const measured = render(canvas, shown, options.selected ?? null, scene.accent(), !options.composition);
+      scene.refresh();
+      return measured;
+    },
+    [tools, composition, render]
+  );
+
+  const draw = useCallback(
+    (canvas: HTMLCanvasElement, options: { selected?: string | null; selectionColor?: string } = {}) =>
+      composition ? render(canvas, composition, options.selected ?? null, options.selectionColor ?? "#a44f25", true) : null,
+    [composition, render]
   );
 
   const value = useMemo<SharepostStudio>(
@@ -512,9 +528,10 @@ export default function SharepostStudioProvider({ project = null, children }: { 
       updateCreditLines,
       metrics,
       saved,
-      paint
+      paint,
+      draw
     }),
-    [status, project, screen, tools, name, composition, update, photos, images, layerImages, load, addFiles, addPhoto, reading, readNotice, removePhoto, movePhoto, resizePhoto, setFit, addCreditLine, setCreditValue, updateCreditLines, metrics, saved, paint]
+    [status, project, screen, tools, name, composition, update, photos, images, layerImages, load, addFiles, addPhoto, reading, readNotice, removePhoto, movePhoto, resizePhoto, setFit, addCreditLine, setCreditValue, updateCreditLines, metrics, saved, paint, draw]
   );
 
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;
