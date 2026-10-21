@@ -6,9 +6,9 @@ import type { SharingPosterComposition } from "@/lib/sharingPoster";
 import type { SharepostStep } from "@/lib/siteMode";
 import RangeField from "@/components/sharing-posters/PosterRangeField";
 import SharingPosterCreditLayers from "@/components/sharing-posters/SharingPosterCreditLayers";
-import { pad } from "../../hud";
+import { Roll, Rolling, pad } from "../../hud";
 import { fieldClass, secondaryClass, useStage } from "../../booking/shared";
-import { PhoneBack, PhoneSheet, PhoneShell, PhoneToolbar, cssColor, fitCanvas, usePosterFit, type PhoneTool } from "../phone";
+import { ENTER, PhoneBack, PhoneSheet, PhoneShell, PhoneToolbar, cssColor, fitCanvas, usePosterFit, usePosterMorph, useStripMotion, type PhoneTool } from "../phone";
 import { canShareFile, download, paintBlankPoster, printPoster, safeFilename, shareFile } from "../shared";
 import { useSharepostStudio } from "./SharepostStudio";
 
@@ -79,6 +79,9 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pixels = composition && tools && !empty ? tools.sharingPosterPixelSize(composition) : null;
   const size = usePosterFit(frameRef, pixels ? pixels.width / pixels.height : 0.8);
+  usePosterMorph(canvasRef, size);
+  const stripRef = useRef<HTMLDivElement>(null);
+  useStripMotion(stripRef, photos.map((photo) => photo.photoId).join(), mode === "board");
   const [accent, setAccent] = useState("#a44f25");
   useEffect(() => {
     if (rootRef.current) setAccent(cssColor(rootRef.current, "--color-accent", "#a44f25"));
@@ -241,6 +244,12 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
     setPicked(photos[at + 1]?.photoId ?? photos[at - 1]?.photoId ?? null);
     if (mode === "arrange") setMode("board");
   };
+  // The picked photo stays picked as it moves, even when it was only picked for being first.
+  const move = (to: number) => {
+    if (!selected) return;
+    setPicked(selected.photoId);
+    studio.movePhoto(selected.photoId, to);
+  };
 
   const toolbar: PhoneTool[] = [
     { key: "add", label: t("creatorPhoneAdd"), icon: project ? "photos" : "upload", active: project ? mode === "add" : undefined, disabled: !project && (full || !!studio.reading), run: addPhotos },
@@ -251,7 +260,11 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
     { key: "delete", label: tc("delete"), icon: "delete", disabled: !selected, run: removeSelected }
   ];
   const sheetTitle = { board: "", add: ts("localAddButton"), arrange: t("creatorArrange"), layout: t("creatorLayout"), style: t("creatorStyle"), credits: t("creatorCredits"), print: t("creatorPrint") }[mode];
-  const photoLabel = selected ? `${t("creatorPhoto")} ${pad(at + 1)} / ${pad(photos.length)}` : undefined;
+  const photoLabel = selected ? (
+    <>
+      {t("creatorPhoto")} <Counter value={`${pad(at + 1)} / ${pad(photos.length)}`} />
+    </>
+  ) : undefined;
   const sizeLabel = selected
     ? composition.sizeRank
       ? ts("photoSizesRankOf", { rank: composition.sizeRank.indexOf(selected.photoId) + 1, count: composition.sizeRank.length })
@@ -294,7 +307,7 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
         <div className="min-w-0 flex-1 px-1 text-center">
           <h1 className="font-meta truncate text-[0.6875rem] uppercase tracking-[0.12em]">{name || t("menuPoster")}</h1>
           <p role="status" className={`font-meta truncate text-[0.625rem] ${studio.saved === "conflict" || !name.trim() ? "text-danger" : "text-fg-subtle"}`}>
-            {savedLabel}
+            <Roll value={savedLabel} />
           </p>
         </div>
         <button
@@ -302,7 +315,7 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
           aria-pressed={mode === "print"}
           disabled={photos.length === 0}
           onClick={() => toggle("print")}
-          className={`ml-1 inline-flex min-h-9 shrink-0 items-center px-3 text-xs font-semibold uppercase tracking-[0.08em] disabled:opacity-30 ${mode === "print" ? "border border-fg text-fg" : "bg-fg text-page"}`}
+          className={`ml-1 inline-flex min-h-9 shrink-0 items-center border px-3 text-xs font-semibold uppercase tracking-[0.08em] transition-colors duration-[180ms] disabled:opacity-30 ${mode === "print" ? "border-fg text-fg" : "border-fg bg-fg text-page"}`}
         >
           {t("creatorPrint")}
         </button>
@@ -333,18 +346,19 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
       </div>
 
       {mode === "board" ? (
-        <div className="shrink-0 border-t border-border-strong">
-          <div role="group" aria-label={t("creatorPhonePhotos")} className="flex gap-1.5 overflow-x-auto px-2 py-2 [scrollbar-width:none]">
+        <div className={`shrink-0 border-t border-border-strong ${ENTER}`}>
+          <div ref={stripRef} role="group" aria-label={t("creatorPhonePhotos")} className="flex gap-1.5 overflow-x-auto px-2 py-2 [scrollbar-width:none]">
             {photos.map((photo, index) => {
               const active = photo.photoId === selected?.photoId;
               return (
                 <button
                   key={photo.photoId}
+                  data-motion-key={photo.photoId}
                   type="button"
                   aria-pressed={active}
                   aria-label={`${t("creatorPhoto")} ${pad(index + 1)} / ${pad(photos.length)}`}
                   onClick={() => setPicked(photo.photoId)}
-                  className={`relative h-14 w-14 shrink-0 overflow-hidden border-2 ${active ? "border-accent" : "border-transparent"}`}
+                  className={`relative h-14 w-14 shrink-0 overflow-hidden border-2 transition-colors duration-[180ms] ${active ? "border-accent" : "border-transparent"}`}
                 >
                   {photo.source ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -359,6 +373,7 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
             {!full && (
               <button
                 type="button"
+                data-motion-key="add"
                 onClick={addPhotos}
                 disabled={!!studio.reading}
                 className={`flex h-14 shrink-0 items-center justify-center gap-1 border border-dashed border-accent px-3 text-sm font-semibold text-accent-text disabled:opacity-40 ${photos.length ? "w-14" : "flex-1"}`}
@@ -375,8 +390,9 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
         </div>
       ) : (
         <PhoneSheet
+          key={mode}
           title={sheetTitle}
-          aside={mode === "arrange" ? photoLabel : mode === "add" ? `${photos.length} / ${max}` : undefined}
+          aside={mode === "arrange" ? photoLabel : mode === "add" ? <Counter value={`${photos.length} / ${max}`} /> : undefined}
           doneLabel={t("creatorPhoneDone")}
           onDone={() => setMode("board")}
           tall={mode === "add" || typing}
@@ -390,17 +406,17 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
           {mode === "arrange" && selected && (
             <div className="grid gap-3 pt-1">
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" disabled={at <= 0} onClick={() => studio.movePhoto(selected.photoId, at - 1)} className={`${secondaryClass} justify-center disabled:opacity-30`}>
+                <button type="button" disabled={at <= 0} onClick={() => move(at - 1)} className={`${secondaryClass} justify-center disabled:opacity-30`}>
                   <span aria-hidden="true">←</span> {t("creatorMoveEarlier")}
                 </button>
-                <button type="button" disabled={at >= photos.length - 1} onClick={() => studio.movePhoto(selected.photoId, at + 1)} className={`${secondaryClass} justify-center disabled:opacity-30`}>
+                <button type="button" disabled={at >= photos.length - 1} onClick={() => move(at + 1)} className={`${secondaryClass} justify-center disabled:opacity-30`}>
                   {t("creatorMoveLater")} <span aria-hidden="true">→</span>
                 </button>
               </div>
               <div className="flex items-center gap-2">
                 <p className="min-w-0 flex-1 text-sm font-semibold text-fg-muted">
                   {t("creatorPhotoSize")}
-                  <span className="block text-xs font-normal text-fg-subtle">{sizeLabel}</span>
+                  <Roll value={sizeLabel} className="block text-xs font-normal text-fg-subtle" />
                 </p>
                 <button type="button" className={`${secondaryClass} min-w-12 justify-center text-lg`} aria-label={ts("rankSmaller")} onClick={() => studio.resizePhoto(selected.photoId, -1)}>−</button>
                 <button type="button" className={`${secondaryClass} min-w-12 justify-center text-lg`} aria-label={ts("rankLarger")} onClick={() => studio.resizePhoto(selected.photoId, 1)}>+</button>
@@ -421,7 +437,7 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
                       type="button"
                       aria-pressed={active}
                       onClick={() => applyFrame(frame)}
-                      className={`flex min-h-[4.5rem] w-[4.75rem] shrink-0 flex-col items-center justify-center gap-1 border px-1 ${active ? "border-fg bg-fg text-page" : "border-border-strong"}`}
+                      className={`flex min-h-[4.5rem] w-[4.75rem] shrink-0 flex-col items-center justify-center gap-1 border px-1 transition-colors duration-[180ms] ${active ? "border-fg bg-fg text-page" : "border-border-strong"}`}
                     >
                       <span
                         aria-hidden="true"
@@ -635,7 +651,7 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
       )}
 
       {messages.length > 0 && (
-        <p role="status" className="shrink-0 border-t border-border-strong px-3 py-2 text-sm text-fg-muted">
+        <p role="status" className={`shrink-0 border-t border-border-strong px-3 py-2 text-sm text-fg-muted ${ENTER}`}>
           {messages.map((message) => (
             <span key={String(message)} className="block">{message}</span>
           ))}
@@ -644,5 +660,15 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
 
       <PhoneToolbar label={t("creatorPhoneTools")} tools={toolbar} hidden={typing} />
     </PhoneShell>
+  );
+}
+
+/** A count whose digits roll as it changes, read out whole. */
+function Counter({ value }: { value: string }) {
+  return (
+    <>
+      <span className="sr-only">{value}</span>
+      <Rolling value={value} />
+    </>
   );
 }

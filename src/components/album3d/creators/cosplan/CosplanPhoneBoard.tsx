@@ -5,9 +5,9 @@ import { useLocale, useTranslations } from "next-intl";
 import type { CosplanImageLayer, CosplanLayer, CosplanSlot, CosplanTextLayer } from "@/lib/cosplanTypes";
 import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, cosplanUploadError, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter } from "@/lib/cosplanDraft";
 import { renderCosplan } from "@/lib/cosplanCanvas";
-import { pad } from "../../hud";
+import { Roll, pad } from "../../hud";
 import { fieldClass, metaLabel, secondaryClass, useStage } from "../../booking/shared";
-import { ICONS, PhoneBack, PhoneIcon, PhoneSheet, PhoneShell, PhoneToolbar, cssColor, fitCanvas, usePosterFit, type PhoneTool } from "../phone";
+import { ENTER, ICONS, PhoneBack, PhoneIcon, PhoneSheet, PhoneShell, PhoneToolbar, cssColor, fitCanvas, usePosterFit, usePosterMorph, useStripMotion, type PhoneTool } from "../phone";
 import { fitInSlot, layerAt, layerBox, paintGuides, restackLayers, slotAt, transformLayer } from "./board";
 import { NamePanel, Range, TextPanel, type LiveProps } from "./CosplanBoard";
 import { useCosplanStudio } from "./CosplanStudio";
@@ -259,6 +259,7 @@ export default function CosplanPhoneBoard() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // As large as the space between the bars allows.
   const size = usePosterFit(frameRef, composition ? composition.width / composition.height : 0);
+  usePosterMorph(canvasRef, size);
 
   const [accent, setAccent] = useState("#b98b4e");
   useEffect(() => {
@@ -389,6 +390,7 @@ export default function CosplanPhoneBoard() {
 
   // ------------------------------------------------------------- targets --
   const stripRef = useRef<HTMLDivElement>(null);
+  useStripMotion(stripRef, targets.map((item) => item.slot ?? item.layer).join(), mode === "board" || typing);
   const targetIndex = targets.findIndex((item) => sameTarget(item, target));
   // Keep the picked chip in view as picks come from the poster.
   useEffect(() => {
@@ -459,7 +461,7 @@ export default function CosplanPhoneBoard() {
         <div className="min-w-0 flex-1 px-1 text-center">
           <h1 className="font-meta truncate text-[0.6875rem] uppercase tracking-[0.12em]">{composition.templateTitle}</h1>
           <p role="status" className="font-meta truncate text-[0.625rem] text-fg-subtle">
-            {studio.saved === "saved" ? t("creatorPhoneSaved") : studio.saved === "error" ? tc("draftError") : `${composition.width} × ${composition.height} PX`}
+            <Roll value={studio.saved === "saved" ? t("creatorPhoneSaved") : studio.saved === "error" ? tc("draftError") : `${composition.width} × ${composition.height} PX`} />
           </p>
         </div>
         <button type="button" aria-label={tc("undo")} title={tc("undo")} disabled={!studio.canUndo} onClick={studio.undo} className="grid h-11 w-10 shrink-0 place-items-center disabled:opacity-30">
@@ -490,7 +492,7 @@ export default function CosplanPhoneBoard() {
       {typing && panelSpace > 0 ? (
         <div aria-hidden="true" className="shrink-0" style={{ height: panelSpace }} />
       ) : mode === "board" || typing ? (
-        <div className="shrink-0 border-t border-border-strong">
+        <div className={`shrink-0 border-t border-border-strong ${ENTER}`}>
           <div ref={stripRef} role="group" aria-label={t("creatorPhoneTargets")} className="flex gap-1.5 overflow-x-auto px-2 py-2 [scrollbar-width:none]">
             {targets.map((item) => {
               const label = chipLabel(item);
@@ -498,10 +500,11 @@ export default function CosplanPhoneBoard() {
               return (
                 <button
                   key={item.slot ?? item.layer}
+                  data-motion-key={item.slot ?? item.layer}
                   type="button"
                   aria-pressed={active}
                   onClick={() => setTarget(item)}
-                  className={`flex min-h-11 w-[6.5rem] shrink-0 flex-col justify-center border px-2 text-left ${active ? "border-fg bg-fg text-page" : label.empty ? "border-dashed border-accent text-fg" : "border-border-strong text-fg"}`}
+                  className={`flex min-h-11 w-[6.5rem] shrink-0 flex-col justify-center border px-2 text-left transition-colors duration-[180ms] ${active ? "border-fg bg-fg text-page" : label.empty ? "border-dashed border-accent text-fg" : "border-border-strong text-fg"}`}
                 >
                   <span className={`font-meta block truncate text-[0.625rem] uppercase tracking-[0.08em] ${active ? "text-page/75" : "text-fg-subtle"}`}>{label.top}</span>
                   <span className={`block truncate text-sm font-semibold ${label.empty && !active ? "text-accent-text" : ""}`}>{label.main}</span>
@@ -512,7 +515,7 @@ export default function CosplanPhoneBoard() {
           <p className="px-3 pb-1.5 text-[0.6875rem] leading-4 text-fg-muted">{t("creatorBoardHintTouch")}</p>
         </div>
       ) : (
-        <PhoneSheet title={sheetTitle} aside={mode === "arrange" && selected ? layerName(selected) : undefined} doneLabel={tc("doneText")} onDone={() => setMode("board")}>
+        <PhoneSheet key={mode} title={sheetTitle} aside={mode === "arrange" && selected ? layerName(selected) : undefined} doneLabel={tc("doneText")} onDone={() => setMode("board")}>
           {mode === "search" && (
             <SearchSheet
               query={query}
@@ -568,7 +571,7 @@ export default function CosplanPhoneBoard() {
       )}
 
       {notice && (
-        <p role="alert" className="shrink-0 border-t border-border-strong px-3 py-2 text-sm text-danger">
+        <p role="alert" className={`shrink-0 border-t border-border-strong px-3 py-2 text-sm text-danger ${ENTER}`}>
           {notice}
           <button type="button" onClick={() => setNotice("")} className="ml-2 text-fg-muted underline">{tc("close")}</button>
         </p>

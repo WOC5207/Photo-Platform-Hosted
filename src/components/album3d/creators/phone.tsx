@@ -1,14 +1,23 @@
 "use client";
 
-import { useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useVisualViewport } from "@/components/cosplan/useVisualViewport";
+import motion from "./phone.module.css";
+import { EASE_OUT, motionOff, rise } from "./phoneMotion";
 
 /**
  * The poster creators on a phone held upright: the poster flat and as wide
  * as the screen instead of on the easel, a bar of tools under it from the
  * start, and each tool's controls in a sheet between the two. The Cosplan
  * board and every Sharepost step use these pieces.
+ *
+ * They move as RhineLabUI's surfaces do (see phone.module.css): sheets and
+ * strips rise in, the poster eases to its new size and place when a sheet
+ * takes or gives back room, and the tool bar's marker glides.
  */
+
+/** The class name for a surface that rises in. */
+export const ENTER = motion.enter;
 
 /** Any CSS colour as rgb(), which the guides' alpha needs. */
 export function cssColor(element: HTMLElement, name: string, fallback: string) {
@@ -66,6 +75,70 @@ export function usePosterFit(frameRef: RefObject<HTMLElement | null>, ratio: num
   return size;
 }
 
+/**
+ * The poster eases from its old size and place to its new ones (300 ms)
+ * when a sheet opens, closes or changes height, the keyboard comes up, or
+ * its shape changes, so it never jumps. Only a transform moves, over the
+ * poster already drawn at its new size; a change during the motion carries
+ * on from where the poster is.
+ */
+export function usePosterMorph(posterRef: RefObject<HTMLElement | null>, size: { width: number; height: number }) {
+  const last = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const settle = useCallback(() => {
+    const poster = posterRef.current;
+    if (!poster || !poster.offsetWidth) return;
+    const now = { x: poster.offsetLeft + poster.offsetWidth / 2, y: poster.offsetTop + poster.offsetHeight / 2, width: poster.offsetWidth, height: poster.offsetHeight };
+    const was = last.current;
+    last.current = now;
+    if (!was || (was.x === now.x && was.y === now.y && was.width === now.width && was.height === now.height) || motionOff()) return;
+    // Where the poster shows right now, part way through an earlier move.
+    let from = was;
+    const running = poster.getAnimations();
+    if (running.length) {
+      const transform = getComputedStyle(poster).transform;
+      const m = new DOMMatrixReadOnly(transform === "none" ? undefined : transform);
+      from = { x: was.x + m.e, y: was.y + m.f, width: was.width * m.a, height: was.height * m.d };
+      running.forEach((animation) => animation.cancel());
+    }
+    poster.animate(
+      [{ transform: `translate(${from.x - now.x}px, ${from.y - now.y}px) scale(${from.width / now.width}, ${from.height / now.height})` }, { transform: "none" }],
+      { duration: 300, easing: EASE_OUT }
+    );
+  }, [posterRef]);
+  // The poster's own size changes, and its frame's (which moves it without resizing it).
+  useLayoutEffect(settle, [settle, size.width, size.height]);
+  const shown = size.width > 0;
+  useLayoutEffect(() => {
+    const frame = posterRef.current?.parentElement;
+    if (!frame || !shown) return;
+    const observer = new ResizeObserver(settle);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [posterRef, settle, shown]);
+}
+
+/**
+ * A strip's items (each marked with `data-motion-key`) glide to their new
+ * places when they are reordered, and new ones rise in.
+ */
+export function useStripMotion(stripRef: RefObject<HTMLElement | null>, keys: string, shown: boolean) {
+  const places = useRef<Map<string, number> | null>(null);
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const items = [...strip.querySelectorAll<HTMLElement>("[data-motion-key]")];
+    const now = new Map(items.map((item) => [item.dataset.motionKey ?? "", item.offsetLeft]));
+    const was = places.current;
+    places.current = now;
+    if (!was || motionOff()) return;
+    for (const item of items) {
+      const from = was.get(item.dataset.motionKey ?? "");
+      if (from === undefined) rise(item);
+      else if (from !== item.offsetLeft) item.animate([{ translate: `${from - item.offsetLeft}px 0` }, { translate: "0 0" }], { duration: 300, easing: EASE_OUT });
+    }
+  }, [stripRef, keys, shown]);
+}
+
 /** A canvas sized for the screen's density, `width` × `height` CSS pixels; true when its pixels changed. */
 export function fitCanvas(canvas: HTMLCanvasElement, width: number, height: number) {
   const density = Math.min(window.devicePixelRatio || 1, 3);
@@ -111,15 +184,31 @@ export interface PhoneTool {
   run: () => void;
 }
 
-/** The bar of tools at the foot of the screen, always there. */
+/**
+ * The bar of tools at the foot of the screen, always there. The open tool
+ * is marked by one block that glides from tool to tool (180 ms).
+ */
 export function PhoneToolbar({ label, tools, hidden, onUse }: { label: string; tools: PhoneTool[]; hidden?: boolean; onUse?: () => void }) {
+  const at = tools.findIndex((tool) => tool.active);
+  // Where the marker last stood, so it fades out there and glides only between two open tools.
+  const last = useRef({ at: -1, place: Math.max(0, at) });
+  const place = at >= 0 ? at : last.current.place;
+  const glide = at >= 0 && last.current.at >= 0;
+  useEffect(() => {
+    last.current = { at, place };
+  });
   return (
     <nav
       aria-label={label}
       hidden={hidden}
-      className="grid shrink-0 border-t border-border-strong bg-page pb-[env(safe-area-inset-bottom)]"
+      className="relative grid shrink-0 border-t border-border-strong bg-page pb-[env(safe-area-inset-bottom)]"
       style={{ gridTemplateColumns: `repeat(${tools.length}, minmax(0, 1fr))` }}
     >
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute left-0 top-0 bottom-[env(safe-area-inset-bottom)] bg-fg ${motion.marker}`}
+        style={{ width: `${100 / tools.length}%`, translate: `${place * 100}% 0`, opacity: at >= 0 ? 1 : 0, transitionProperty: glide ? undefined : "opacity" }}
+      />
       {tools.map((tool) => (
         <button
           key={tool.key}
@@ -130,7 +219,7 @@ export function PhoneToolbar({ label, tools, hidden, onUse }: { label: string; t
             onUse?.();
             tool.run();
           }}
-          className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 px-0.5 text-[0.6875rem] font-semibold leading-tight transition disabled:opacity-30 ${tool.active ? "bg-fg text-page" : "text-fg"}`}
+          className={`relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 px-0.5 text-[0.6875rem] font-semibold leading-tight transition-[color,opacity] duration-[180ms] disabled:opacity-30 ${tool.active ? "text-page" : "text-fg"}`}
         >
           <PhoneIcon d={ICONS[tool.icon]} />
           <span className="w-full truncate text-center">{tool.label}</span>
@@ -142,11 +231,12 @@ export function PhoneToolbar({ label, tools, hidden, onUse }: { label: string; t
 
 /**
  * A tool's controls between the poster and the bar, scrolling inside
- * themselves. `tall` gives them most of the screen, for typing.
+ * themselves. `tall` gives them most of the screen, for typing. It rises in
+ * when it mounts, so give each tool's sheet its own key.
  */
 export function PhoneSheet({ title, aside, doneLabel, onDone, tall = false, children }: { title: string; aside?: ReactNode; doneLabel: string; onDone: () => void; tall?: boolean; children: ReactNode }) {
   return (
-    <section aria-label={title} className={`flex shrink-0 flex-col border-t border-border-strong ${tall ? "max-h-[72%]" : "max-h-[46%]"}`}>
+    <section aria-label={title} className={`flex shrink-0 flex-col border-t border-border-strong ${motion.enter} ${tall ? "max-h-[72%]" : "max-h-[46%]"}`}>
       <div className="flex shrink-0 items-center gap-2 px-3 pt-1">
         <h2 className="min-w-0 flex-1 truncate text-base font-extrabold uppercase tracking-[-0.02em]">
           {title}
@@ -154,7 +244,7 @@ export function PhoneSheet({ title, aside, doneLabel, onDone, tall = false, chil
         </h2>
         <button type="button" onClick={onDone} className="min-h-11 px-2 text-sm font-semibold uppercase tracking-[0.06em]">{doneLabel}</button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">{children}</div>
+      <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 ${motion.enterLate}`}>{children}</div>
     </section>
   );
 }
