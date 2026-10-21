@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useVisualViewport } from "@/components/cosplan/useVisualViewport";
-import motion from "./phone.module.css";
-import { EASE_OUT, motionOff, rise } from "./phoneMotion";
 
 /**
  * The poster creators on a phone held upright: the poster flat and as wide
@@ -11,13 +9,27 @@ import { EASE_OUT, motionOff, rise } from "./phoneMotion";
  * start, and each tool's controls in a sheet between the two. The Cosplan
  * board and every Sharepost step use these pieces.
  *
- * They move as RhineLabUI's surfaces do (see phone.module.css): sheets and
- * strips rise in, the poster eases to its new size and place when a sheet
- * takes or gives back room, and the tool bar's marker glides.
+ * They move as RhineLabUI's surfaces do (https://github.com/LBEILC/RhineLabUI,
+ * MIT; the classes are in globals.css): sheets and strips rise in, the
+ * poster eases to its new size and place when a sheet takes or gives back
+ * room, and the tool bar's marker glides. Nothing waits for a motion to
+ * end, so taps land at once.
  */
 
-/** The class name for a surface that rises in. */
-export const ENTER = motion.enter;
+/** RhineLabUI's easing out, for what arrives or settles. */
+const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
+
+/** The class name for a surface that rises in (300 ms, fading in over 12 px). */
+export const ENTER = "phone-rise";
+
+/**
+ * Whether this device, or the site's own Motion setting, asks for less
+ * motion. The classes' stylesheet checks both itself; motion run from
+ * script asks here.
+ */
+function motionOff() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.querySelector('[data-motion="reduced"]') !== null;
+}
 
 /** Any CSS colour as rgb(), which the guides' alpha needs. */
 export function cssColor(element: HTMLElement, name: string, fallback: string) {
@@ -133,7 +145,7 @@ export function useStripMotion(stripRef: RefObject<HTMLElement | null>, keys: st
     if (!was || motionOff()) return;
     for (const item of items) {
       const from = was.get(item.dataset.motionKey ?? "");
-      if (from === undefined) rise(item);
+      if (from === undefined) item.animate([{ opacity: 0, translate: "0 12px" }, { opacity: 1, translate: "0 0" }], { duration: 300, easing: EASE_OUT });
       else if (from !== item.offsetLeft) item.animate([{ translate: `${from - item.offsetLeft}px 0` }, { translate: "0 0" }], { duration: 300, easing: EASE_OUT });
     }
   }, [stripRef, keys, shown]);
@@ -206,7 +218,7 @@ export function PhoneToolbar({ label, tools, hidden, onUse }: { label: string; t
     >
       <span
         aria-hidden="true"
-        className={`pointer-events-none absolute left-0 top-0 bottom-[env(safe-area-inset-bottom)] bg-fg ${motion.marker}`}
+        className="phone-marker pointer-events-none absolute left-0 top-0 bottom-[env(safe-area-inset-bottom)] bg-fg"
         style={{ width: `${100 / tools.length}%`, translate: `${place * 100}% 0`, opacity: at >= 0 ? 1 : 0, transitionProperty: glide ? undefined : "opacity" }}
       />
       {tools.map((tool) => (
@@ -236,7 +248,7 @@ export function PhoneToolbar({ label, tools, hidden, onUse }: { label: string; t
  */
 export function PhoneSheet({ title, aside, doneLabel, onDone, tall = false, children }: { title: string; aside?: ReactNode; doneLabel: string; onDone: () => void; tall?: boolean; children: ReactNode }) {
   return (
-    <section aria-label={title} className={`flex shrink-0 flex-col border-t border-border-strong ${motion.enter} ${tall ? "max-h-[72%]" : "max-h-[46%]"}`}>
+    <section aria-label={title} className={`phone-rise flex shrink-0 flex-col border-t border-border-strong ${tall ? "max-h-[72%]" : "max-h-[46%]"}`}>
       <div className="flex shrink-0 items-center gap-2 px-3 pt-1">
         <h2 className="min-w-0 flex-1 truncate text-base font-extrabold uppercase tracking-[-0.02em]">
           {title}
@@ -244,7 +256,7 @@ export function PhoneSheet({ title, aside, doneLabel, onDone, tall = false, chil
         </h2>
         <button type="button" onClick={onDone} className="min-h-11 px-2 text-sm font-semibold uppercase tracking-[0.06em]">{doneLabel}</button>
       </div>
-      <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 ${motion.enterLate}`}>{children}</div>
+      <div className="phone-rise-late min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">{children}</div>
     </section>
   );
 }

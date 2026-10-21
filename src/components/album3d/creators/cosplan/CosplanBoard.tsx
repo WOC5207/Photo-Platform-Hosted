@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useLocale, useTranslations } from "next-intl";
 import { cosplanCharacterNames, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTextLayer } from "@/lib/cosplanTypes";
@@ -12,7 +12,6 @@ import styles from "../../ArchiveSite.module.css";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageDrag, useStageInput } from "../../booking/shared";
 import type { PosterLayerPlane } from "../../poster";
 import { LAYER_PICK, RAIL_PICK } from "../../types";
-import { rise } from "../phoneMotion";
 import { fitInSlot, layerAt, layerBox, paintGuides, restackLayers, slotAt, transformLayer } from "./board";
 import { useCosplanStudio } from "./CosplanStudio";
 
@@ -1044,19 +1043,14 @@ function KeyboardSheet({ label, children }: { label: string; children: ReactNode
     query.addEventListener("change", sync);
     return () => query.removeEventListener("change", sync);
   }, []);
-  const sheet = useRef<HTMLElement>(null);
-  useLayoutEffect(() => {
-    if (portrait && sheet.current) rise(sheet.current);
-  }, [portrait]);
   if (!portrait) return <BookingPanel>{children}</BookingPanel>;
   // Above the on-screen keyboard: the sheet sits at the bottom of what is visible.
   return createPortal(
     <div className="pointer-events-none fixed z-50 flex flex-col justify-end" style={{ left: viewport.left, top: viewport.top, width: viewport.width, height: viewport.height }}>
       <section
-        ref={sheet}
         role="dialog"
         aria-label={label}
-        className="pointer-events-auto max-h-[70%] overflow-y-auto border-t border-border-strong bg-page/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur"
+        className="phone-rise pointer-events-auto max-h-[70%] overflow-y-auto border-t border-border-strong bg-page/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur"
       >
         {children}
       </section>
