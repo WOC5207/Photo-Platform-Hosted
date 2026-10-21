@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import type { CosplanImageLayer, CosplanLayer, CosplanSlot, CosplanTextLayer } from "@/lib/cosplanTypes";
 import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, cosplanUploadError, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter } from "@/lib/cosplanDraft";
 import { renderCosplan } from "@/lib/cosplanCanvas";
-import { useVisualViewport } from "@/components/cosplan/useVisualViewport";
 import { pad } from "../../hud";
 import { fieldClass, metaLabel, secondaryClass, useStage } from "../../booking/shared";
+import { ICONS, PhoneBack, PhoneIcon, PhoneSheet, PhoneShell, PhoneToolbar, cssColor, fitCanvas, usePosterFit, type PhoneTool } from "../phone";
 import { fitInSlot, layerAt, layerBox, paintGuides, restackLayers, slotAt, transformLayer } from "./board";
 import { NamePanel, Range, TextPanel, type LiveProps } from "./CosplanBoard";
 import { useCosplanStudio } from "./CosplanStudio";
@@ -18,17 +18,6 @@ type CharacterResult = { id: number; name: string; nameCn: string; thumbnailUrl:
 
 const sameTarget = (a: Target | null, b: Target | null) => a?.slot === b?.slot && (a?.slot ? true : a?.layer === b?.layer);
 const targetOf = (layer: CosplanLayer): Target => (layer.type === "image" && layer.slotId ? { slot: layer.slotId, layer: layer.id } : { layer: layer.id });
-
-/** Any CSS colour as rgb(), which the guides' alpha needs. */
-function cssColor(element: HTMLElement, name: string, fallback: string) {
-  const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
-  if (!ctx) return fallback;
-  ctx.fillStyle = fallback;
-  ctx.fillStyle = getComputedStyle(element).getPropertyValue(name).trim() || fallback;
-  ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-  return `rgb(${r}, ${g}, ${b})`;
-}
 
 /**
  * Create Cosplan on a phone held upright: the poster flat and as wide as the
@@ -48,7 +37,6 @@ export default function CosplanPhoneBoard() {
   const { go } = useStage();
   const studio = useCosplanStudio();
   const { composition, status } = studio;
-  const viewport = useVisualViewport();
   const [mode, setMode] = useState<Mode>("board");
   const [target, setTarget] = useState<Target | null>(null);
   const [notice, setNotice] = useState("");
@@ -269,22 +257,8 @@ export default function CosplanPhoneBoard() {
   // -------------------------------------------------------------- poster --
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const ratio = composition ? composition.width / composition.height : 0;
   // As large as the space between the bars allows.
-  useLayoutEffect(() => {
-    const frame = frameRef.current;
-    if (!frame || !ratio) return;
-    const fit = () => {
-      const width = Math.max(0, frame.clientWidth - 16);
-      const height = Math.max(0, frame.clientHeight - 16);
-      setSize(width / height > ratio ? { width: height * ratio, height } : { width, height: width / ratio });
-    };
-    const observer = new ResizeObserver(fit);
-    observer.observe(frame);
-    fit();
-    return () => observer.disconnect();
-  }, [ratio]);
+  const size = usePosterFit(frameRef, composition ? composition.width / composition.height : 0);
 
   const [accent, setAccent] = useState("#b98b4e");
   useEffect(() => {
@@ -294,16 +268,10 @@ export default function CosplanPhoneBoard() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !composition || !size.width) return;
-    const density = Math.min(window.devicePixelRatio || 1, 3);
-    const width = Math.round(size.width * density);
-    const height = Math.round(size.height * density);
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
-    }
+    fitCanvas(canvas, size.width, size.height);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const scale = width / composition.width;
+    const scale = canvas.width / composition.width;
     renderCosplan(ctx, composition, studio.images, scale);
     paintGuides(ctx, composition, scale, { accent, locale, focusSlot: mode === "text" ? null : (target?.slot ?? null), selected, slots: mode !== "text" });
   }, [composition, studio.images, size, accent, locale, mode, target, selected]);
@@ -432,27 +400,11 @@ export default function CosplanPhoneBoard() {
   }, [targetIndex]);
 
   // -------------------------------------------------------------- render --
-  const shell = (body: ReactNode) => (
-    <main
-      ref={rootRef}
-      id="main-content"
-      tabIndex={-1}
-      className="fixed z-40 flex flex-col overflow-hidden bg-page text-fg outline-none"
-      style={{ left: viewport.left, top: viewport.top, width: viewport.width, height: viewport.height }}
-    >
-      {body}
-    </main>
-  );
-  const back = (
-    <button type="button" onClick={() => go({ kind: "cosplan" })} className="inline-flex min-h-11 shrink-0 items-center gap-1 px-2 text-sm font-semibold">
-      <span aria-hidden="true" className="text-xl leading-none">‹</span>
-      {tc("backgrounds")}
-    </button>
-  );
+  const back = <PhoneBack label={tc("backgrounds")} onClick={() => go({ kind: "cosplan" })} />;
 
   if (status === "reading" || !composition) {
-    return shell(
-      <>
+    return (
+      <PhoneShell rootRef={rootRef}>
         <header className="flex items-center border-b border-border-strong px-1 pt-[env(safe-area-inset-top)]">{back}</header>
         <div className="flex flex-1 flex-col items-start justify-center gap-4 px-6">
           <p className={metaLabel}>{t("menuCosplan")}</p>
@@ -461,7 +413,7 @@ export default function CosplanPhoneBoard() {
             <button type="button" className={`${secondaryClass} border-fg bg-fg text-page`} onClick={() => go({ kind: "cosplan" })}>{tc("chooseBackground")}</button>
           )}
         </div>
-      </>
+      </PhoneShell>
     );
   }
 
@@ -475,20 +427,20 @@ export default function CosplanPhoneBoard() {
     return { top: layer.type === "text" ? tc("text") : tc("freeLayer"), main: layerName(layer), empty: false };
   };
 
-  const tools: { key: string; label: string; icon: ReactNode; active?: boolean; disabled?: boolean; run: () => void }[] = [
-    { key: "find", label: replacing ? t("creatorPhoneReplace") : t("creatorPhoneFind"), icon: <Icon d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13ZM15.5 15.5 20 20" />, active: mode === "search", run: () => setMode(mode === "search" ? "board" : "search") },
-    { key: "upload", label: t("creatorPhoneUpload"), icon: <Icon d="M12 16V4M7 9l5-5 5 5M4 15v4h16v-4" />, run: () => uploadRef.current?.click() },
-    { key: "arrange", label: t("creatorArrange"), icon: <Icon d="M12 3v18M3 12h18M12 3 9.5 5.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5" />, active: mode === "arrange", disabled: !selected, run: () => setMode(mode === "arrange" ? "board" : "arrange") },
-    { key: "text", label: tc("addText"), icon: <Icon d="M5 6V4h14v2M12 4v16M9 20h6" />, run: addText },
-    { key: "layers", label: tc("layers"), icon: <Icon d="m12 4 8 4-8 4-8-4 8-4ZM4 12l8 4 8-4M4 16l8 4 8-4" />, active: mode === "layers", disabled: composition.layers.length === 0, run: () => setMode(mode === "layers" ? "board" : "layers") },
-    { key: "delete", label: tc("delete"), icon: <Icon d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />, disabled: !selected, run: () => selected && remove(selected) }
+  const tools: PhoneTool[] = [
+    { key: "find", label: replacing ? t("creatorPhoneReplace") : t("creatorPhoneFind"), icon: "find", active: mode === "search", run: () => setMode(mode === "search" ? "board" : "search") },
+    { key: "upload", label: t("creatorPhoneUpload"), icon: "upload", run: () => uploadRef.current?.click() },
+    { key: "arrange", label: t("creatorArrange"), icon: "arrange", active: mode === "arrange", disabled: !selected, run: () => setMode(mode === "arrange" ? "board" : "arrange") },
+    { key: "text", label: tc("addText"), icon: "text", run: addText },
+    { key: "layers", label: tc("layers"), icon: "layers", active: mode === "layers", disabled: composition.layers.length === 0, run: () => setMode(mode === "layers" ? "board" : "layers") },
+    { key: "delete", label: tc("delete"), icon: "delete", disabled: !selected, run: () => selected && remove(selected) }
   ];
 
   const sheetTitle = mode === "search" ? (replacing ? t("creatorReplace") : t("creatorFindCharacter")) : mode === "arrange" ? t("creatorArrange") : mode === "layers" ? tc("layers") : "";
   const placeFor = replacing ? layerName(replacing) : targetSlot ? slotName(targetSlot) : t("creatorThePoster");
 
-  return shell(
-    <>
+  return (
+    <PhoneShell rootRef={rootRef}>
       <input
         ref={uploadRef}
         type="file"
@@ -511,10 +463,10 @@ export default function CosplanPhoneBoard() {
           </p>
         </div>
         <button type="button" aria-label={tc("undo")} title={tc("undo")} disabled={!studio.canUndo} onClick={studio.undo} className="grid h-11 w-10 shrink-0 place-items-center disabled:opacity-30">
-          <Icon d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" />
+          <PhoneIcon d={ICONS.undo} />
         </button>
         <button type="button" aria-label={tc("redo")} title={tc("redo")} disabled={!studio.canRedo} onClick={studio.redo} className="grid h-11 w-10 shrink-0 place-items-center disabled:opacity-30">
-          <Icon d="m15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3" />
+          <PhoneIcon d={ICONS.redo} />
         </button>
         <button type="button" onClick={() => go({ kind: "cosplan", step: "print" })} className="ml-1 inline-flex min-h-9 shrink-0 items-center bg-fg px-3 text-xs font-semibold uppercase tracking-[0.08em] text-page">
           {t("creatorPrint")}
@@ -560,68 +512,59 @@ export default function CosplanPhoneBoard() {
           <p className="px-3 pb-1.5 text-[0.6875rem] leading-4 text-fg-muted">{t("creatorBoardHintTouch")}</p>
         </div>
       ) : (
-        <section aria-label={sheetTitle} className="flex max-h-[46%] shrink-0 flex-col border-t border-border-strong">
-          <div className="flex shrink-0 items-center gap-2 px-3 pt-1">
-            <h2 className="min-w-0 flex-1 truncate text-base font-extrabold uppercase tracking-[-0.02em]">
-              {sheetTitle}
-              {mode === "arrange" && selected && <span className="ml-2 text-sm font-semibold normal-case tracking-normal text-fg-muted">{layerName(selected)}</span>}
-            </h2>
-            <button type="button" onClick={() => setMode("board")} className="min-h-11 px-2 text-sm font-semibold uppercase tracking-[0.06em]">{tc("doneText")}</button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
-            {mode === "search" && (
-              <SearchSheet
-                query={query}
-                onQuery={setQuery}
-                onSearch={(page, event) => void search(page, event)}
-                state={searchState}
-                searched={searched}
-                results={results}
-                importing={importing}
-                placeFor={placeFor}
-                onPick={(result) => void importResult(result)}
-              />
-            )}
-            {mode === "arrange" && selected && (
-              <ArrangeSheet
-                layer={selected}
-                maxWidth={composition.width * 2}
-                slots={slots}
-                slotName={slotName}
-                liveProps={liveProps}
-                onChange={(patch) => liveUpdate(selected.id, patch)}
-                onTransform={(factor, turn) => liveUpdate(selected.id, transformLayer(selected, factor, turn))}
-                onSlot={(slotId) => selected.type === "image" && moveToSlot(selected, slotId)}
-                onRestack={(delta) => restack(selected, delta)}
-                onEditText={() => selected.type === "text" && editText(selected)}
-              />
-            )}
-            {mode === "arrange" && !selected && <p className="py-2 text-sm text-fg-muted">{tc("selectLayer")}</p>}
-            {mode === "layers" && (
-              <ol aria-label={tc("layers")} className="flex flex-col-reverse gap-1">
-                <li className="font-meta px-3 py-2 text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">00 · {t("creatorLayerBackground")}</li>
-                {composition.layers.map((layer, i) => {
-                  const active = layer.id === selected?.id;
-                  return (
-                    <li key={layer.id} className={`flex items-center ${active ? "bg-fg/[0.08]" : ""}`}>
-                      <button type="button" aria-current={active ? "true" : undefined} onClick={() => setTarget(targetOf(layer))} className={`flex min-h-11 min-w-0 flex-1 items-center gap-3 px-3 text-left text-sm ${active ? "font-semibold text-fg" : "text-fg-muted"}`}>
-                        <span className="font-meta w-6 text-[0.625rem] text-fg-subtle">{pad(i + 1)}</span>
-                        <span className="min-w-0 flex-1 truncate">{layerName(layer)}</span>
-                        <span className="font-meta shrink-0 text-[0.625rem] uppercase text-fg-subtle">{layer.type === "text" ? tc("text") : layer.slotId ? slotName(slots.find((slot) => slot.id === layer.slotId) ?? slots[0]) : tc("freeLayer")}</span>
-                      </button>
-                      {active && (
-                        <>
-                          <button type="button" aria-label={tc("bringForward")} onClick={() => restack(layer, 1)} className="grid h-11 w-10 shrink-0 place-items-center text-lg">↑</button>
-                          <button type="button" aria-label={tc("sendBackward")} onClick={() => restack(layer, -1)} className="grid h-11 w-10 shrink-0 place-items-center text-lg">↓</button>
-                        </>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-          </div>
-        </section>
+        <PhoneSheet title={sheetTitle} aside={mode === "arrange" && selected ? layerName(selected) : undefined} doneLabel={tc("doneText")} onDone={() => setMode("board")}>
+          {mode === "search" && (
+            <SearchSheet
+              query={query}
+              onQuery={setQuery}
+              onSearch={(page, event) => void search(page, event)}
+              state={searchState}
+              searched={searched}
+              results={results}
+              importing={importing}
+              placeFor={placeFor}
+              onPick={(result) => void importResult(result)}
+            />
+          )}
+          {mode === "arrange" && selected && (
+            <ArrangeSheet
+              layer={selected}
+              maxWidth={composition.width * 2}
+              slots={slots}
+              slotName={slotName}
+              liveProps={liveProps}
+              onChange={(patch) => liveUpdate(selected.id, patch)}
+              onTransform={(factor, turn) => liveUpdate(selected.id, transformLayer(selected, factor, turn))}
+              onSlot={(slotId) => selected.type === "image" && moveToSlot(selected, slotId)}
+              onRestack={(delta) => restack(selected, delta)}
+              onEditText={() => selected.type === "text" && editText(selected)}
+            />
+          )}
+          {mode === "arrange" && !selected && <p className="py-2 text-sm text-fg-muted">{tc("selectLayer")}</p>}
+          {mode === "layers" && (
+            <ol aria-label={tc("layers")} className="flex flex-col-reverse gap-1">
+              <li className="font-meta px-3 py-2 text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">00 · {t("creatorLayerBackground")}</li>
+              {composition.layers.map((layer, i) => {
+                const active = layer.id === selected?.id;
+                return (
+                  <li key={layer.id} className={`flex items-center ${active ? "bg-fg/[0.08]" : ""}`}>
+                    <button type="button" aria-current={active ? "true" : undefined} onClick={() => setTarget(targetOf(layer))} className={`flex min-h-11 min-w-0 flex-1 items-center gap-3 px-3 text-left text-sm ${active ? "font-semibold text-fg" : "text-fg-muted"}`}>
+                      <span className="font-meta w-6 text-[0.625rem] text-fg-subtle">{pad(i + 1)}</span>
+                      <span className="min-w-0 flex-1 truncate">{layerName(layer)}</span>
+                      <span className="font-meta shrink-0 text-[0.625rem] uppercase text-fg-subtle">{layer.type === "text" ? tc("text") : layer.slotId ? slotName(slots.find((slot) => slot.id === layer.slotId) ?? slots[0]) : tc("freeLayer")}</span>
+                    </button>
+                    {active && (
+                      <>
+                        <button type="button" aria-label={tc("bringForward")} onClick={() => restack(layer, 1)} className="grid h-11 w-10 shrink-0 place-items-center text-lg">↑</button>
+                        <button type="button" aria-label={tc("sendBackward")} onClick={() => restack(layer, -1)} className="grid h-11 w-10 shrink-0 place-items-center text-lg">↓</button>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </PhoneSheet>
       )}
 
       {notice && (
@@ -631,24 +574,7 @@ export default function CosplanPhoneBoard() {
         </p>
       )}
 
-      <nav aria-label={tc("tools")} hidden={typing && panelSpace > 0} className="grid shrink-0 grid-cols-6 border-t border-border-strong bg-page pb-[env(safe-area-inset-bottom)]">
-        {tools.map((tool) => (
-          <button
-            key={tool.key}
-            type="button"
-            aria-pressed={tool.active === undefined ? undefined : tool.active}
-            disabled={tool.disabled}
-            onClick={() => {
-              setNotice("");
-              tool.run();
-            }}
-            className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 px-0.5 text-[0.6875rem] font-semibold leading-tight transition disabled:opacity-30 ${tool.active ? "bg-fg text-page" : "text-fg"}`}
-          >
-            {tool.icon}
-            <span className="w-full truncate text-center">{tool.label}</span>
-          </button>
-        ))}
-      </nav>
+      <PhoneToolbar label={tc("tools")} tools={tools} hidden={typing && panelSpace > 0} onUse={() => setNotice("")} />
 
       {mode === "text" && selected?.type === "text" && (
         <TextPanel
@@ -673,15 +599,7 @@ export default function CosplanPhoneBoard() {
           onFinish={finishName}
         />
       )}
-    </>
-  );
-}
-
-function Icon({ d }: { d: string }) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d={d} />
-    </svg>
+    </PhoneShell>
   );
 }
 
