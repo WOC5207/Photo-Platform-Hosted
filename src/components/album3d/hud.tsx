@@ -76,13 +76,13 @@ export function GameMenu({
   // One focus marker glides from item to item (180 ms), like RhineLabUI's
   // tab underline, rather than each item fading its own in and out.
   const list = useRef<HTMLOListElement>(null);
-  const [marker, setMarker] = useState<{ y: number; glide: boolean } | null>(null);
+  const [marker, setMarker] = useState<{ x: number; y: number; glide: boolean } | null>(null);
   useLayoutEffect(() => {
     const ol = list.current;
     if (!ol) return;
     const place = () => {
       const item = ol.querySelector<HTMLElement>(`[data-menu-item="${focus}"]`)?.parentElement;
-      setMarker((was) => (item ? { y: item.offsetTop + item.offsetHeight / 2, glide: was !== null } : null));
+      setMarker((was) => (item ? { x: item.offsetLeft, y: item.offsetTop + item.offsetHeight / 2, glide: was !== null } : null));
     };
     place();
     // Labels wrap differently once fonts load or the screen turns.
@@ -97,7 +97,7 @@ export function GameMenu({
         <span
           aria-hidden="true"
           className="pointer-events-none absolute left-0 top-0 z-10 h-9 w-[3px] bg-fg transition-transform duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
-          style={{ transform: `translateY(${marker.y - 18}px)`, transitionProperty: marker.glide ? undefined : "none" }}
+          style={{ transform: `translate(${marker.x}px, ${marker.y - 18}px)`, transitionProperty: marker.glide ? undefined : "none" }}
         />
       )}
       {items.map((item, i) => {
