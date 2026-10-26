@@ -104,6 +104,30 @@ async function main() {
       );
     }
     assert.ok(sourceOnly.thumbBytes > 0);
+    // Thumbnails are sized by their short side, so a landscape one is as
+    // sharp in a cropped tile as a portrait one.
+    const landscapeThumb = await sharp(path.join(dir, `${"a".repeat(32)}-thumb.webp`)).metadata();
+    assert.equal(landscapeThumb.height, 480);
+    assert.equal(landscapeThumb.width, 727);
+
+    const thumbOf = async (photoId: string, width: number, height: number, orientation: number) => {
+      const source = await sharp({ create: { width, height, channels: 3, background: { r: 90, g: 90, b: 90 } } })
+        .jpeg()
+        .withMetadata({ orientation })
+        .toBuffer();
+      await storePendingSource(ownerId, eventId, photoId, source, "jpg");
+      return sharp(path.join(dir, `${photoId}-thumb.webp`)).metadata();
+    };
+    // A panorama's long side is capped; an EXIF-rotated photo is sized upright.
+    const panorama = await thumbOf("p".repeat(32), 9000, 1500, 1);
+    assert.deepEqual([panorama.width, panorama.height], [1440, 240]);
+    const rotated = await thumbOf("r".repeat(32), 3000, 2000, 6);
+    assert.deepEqual([rotated.width, rotated.height], [480, 720]);
+    const small = await thumbOf("s".repeat(32), 300, 200, 1);
+    assert.deepEqual([small.width, small.height], [300, 200]);
+    for (const photoId of ["p", "r", "s"].map((c) => c.repeat(32))) {
+      await deletePhotoFiles(ownerId, eventId, photoId, `${photoId}-source.jpg`);
+    }
 
     // Compress it (as the worker would) and continue with the full layout.
     const original = await storeAndCompressPending(
