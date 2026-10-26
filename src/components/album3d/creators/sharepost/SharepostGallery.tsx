@@ -9,9 +9,10 @@ import { useSharepostStudio } from "./SharepostStudio";
 /**
  * A saved poster's photographs come from the photographer's galleries: the
  * classic editor's picker, filtered by gallery or cosplayer, with a pressed
- * thumbnail for each photograph on the poster.
+ * thumbnail for each photograph on the poster. Without `onClose` it sits
+ * in the phone board's sheet, which closes it.
  */
-export default function SharepostGallery({ onClose }: { onClose: () => void }) {
+export default function SharepostGallery({ onClose }: { onClose?: () => void }) {
   const ts = useTranslations("sharingPosters");
   const tc = useTranslations("common");
   const locale = useLocale();
@@ -56,14 +57,16 @@ export default function SharepostGallery({ onClose }: { onClose: () => void }) {
   }, [load]);
 
   return (
-    <section aria-label={ts("results")} className="mt-6 grid gap-3 border border-border-strong bg-page/70 p-3">
+    <section aria-label={ts("results")} className={onClose ? "mt-6 grid gap-3 border border-border-strong bg-page/70 p-3" : "grid gap-3"}>
       <div className="flex items-center justify-between gap-3">
         <p className={metaLabel}>
           {ts("selectionCount", { count: chosen.length })} · {ts("results")} {total}
         </p>
-        <button type="button" onClick={onClose} className={secondaryClass}>
-          {tc("close")}
-        </button>
+        {onClose && (
+          <button type="button" onClick={onClose} className={secondaryClass}>
+            {tc("close")}
+          </button>
+        )}
       </div>
       <label className="grid gap-1 text-sm font-semibold text-fg-muted">
         {ts("galleryFilter")}

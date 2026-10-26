@@ -493,3 +493,42 @@ main {
     scale: none !important;
   }
 }
+
+/*
+ * The 3D creators' phone boards move as RhineLabUI's surfaces do
+ * (https://github.com/LBEILC/RhineLabUI, MIT): a sheet rises in over 300 ms,
+ * fading in over a 12 px rise and easing out, with its content a beat
+ * behind, and the tool bar's marker glides between tools in 180 ms. They
+ * live here rather than in a module so the boards, loaded only on phones,
+ * bring no stylesheet of their own. The site's Motion setting stops them
+ * as the device's does, the typing sheet's portal outside the site included.
+ */
+.phone-rise {
+  animation: phone-rise 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.phone-rise-late {
+  animation: phone-rise 300ms cubic-bezier(0.22, 1, 0.36, 1) 60ms backwards;
+}
+@keyframes phone-rise {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+.phone-marker {
+  transition:
+    translate 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .phone-rise,
+  .phone-rise-late {
+    animation: none;
+  }
+  .phone-marker {
+    transition: none;
+  }
+}
+:root:has([data-motion="reduced"]) :is(.phone-rise, .phone-rise-late) {
+  animation: none;
+}
