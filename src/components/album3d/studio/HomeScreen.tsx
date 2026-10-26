@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useContext, useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { logout3d } from "@/app/[locale]/3d/login/actions";
 import { dismissPlatformNotification } from "@/app/[locale]/dashboard/(protected)/actions";
 import { GameMenu, Rolling, pad, wrap, type MenuItem } from "../hud";
 import { BookingPanel, isInteractive, metaLabel, useScreenKeys, useStage } from "../booking/shared";
+import styles from "../booking/Booking.module.css";
+import { FieldContext } from "../StageContext";
 import { StudioHeading, formatBytes } from "./shared";
 import type { StudioHome } from "./types";
 
@@ -14,11 +16,14 @@ import type { StudioHome } from "./types";
  * The 3D Dashboard's menu: the photographer's numbers, the platform's
  * notices, and every section of their backend. Until they put it away, a
  * new photographer also gets first steps to follow, each ticked off once done.
+ * The album field behind it stays live: a click on an album, or a tap on
+ * phones, where the sheet opens on a window onto the field, opens it.
  */
 export default function HomeScreen({ home }: { home: StudioHome }) {
   const t = useTranslations("album3d");
   const ta = useTranslations("admin");
   const { go, path } = useStage();
+  const field = useContext(FieldContext);
   const [focus, setFocus] = useState(0);
   const [leaving, startLeaving] = useTransition();
   const { username } = home.account;
@@ -78,7 +83,7 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
 
   return (
     <>
-    <BookingPanel expanded="full">
+    <BookingPanel expanded="full" view={field?.live ? <FieldWindow /> : undefined}>
       <StudioHeading trail={`@${username}`} title={t("studioTitle")} />
       <dl className="mt-6 flex flex-wrap gap-x-10 gap-y-4">
         {[
@@ -127,6 +132,55 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
 
       <GameMenu label={t("studioTitle")} items={items} focus={at} onFocus={setFocus} className="mt-6 wide:mt-8" />
     </BookingPanel>
+    <FieldCaption />
+    </>
+  );
+}
+
+/** Beside the panel: the album under the mouse, or how to browse the field. */
+function FieldCaption() {
+  const t = useTranslations("album3d");
+  const field = useContext(FieldContext);
+  const { touch } = useStage();
+  if (!field?.live) return null;
+  const album = field.hovered;
+  return (
+    <div aria-hidden="true" className={styles.fieldCaption}>
+      {album ? (
+        <>
+          <p className={metaLabel}>{album.owner}</p>
+          <p className="mt-1 text-2xl font-extrabold uppercase leading-tight tracking-[-0.02em] [overflow-wrap:anywhere]">{album.title}</p>
+          <p className="font-meta mt-2 text-[0.625rem] uppercase tracking-[0.16em] text-accent-text">{t(touch ? "studioFieldTap" : "studioFieldClick")} →</p>
+        </>
+      ) : (
+        <p className={metaLabel}>{t(touch ? "studioFieldHintTouch" : "studioFieldHint")}</p>
+      )}
+    </div>
+  );
+}
+
+/** On phones, the top of the sheet: how to browse, and the album the field rests on, which a tap opens. */
+function FieldWindow() {
+  const t = useTranslations("album3d");
+  const field = useContext(FieldContext);
+  const { touch } = useStage();
+  const album = field ? (field.hovered ?? field.resting) : null;
+  return (
+    <>
+      <p className="font-meta text-[0.5625rem] uppercase tracking-[0.14em] text-fg-subtle">{t(touch ? "studioFieldHintTouch" : "studioFieldHint")}</p>
+      {field && album && (
+        <button
+          type="button"
+          onClick={() => field.open(album.index)}
+          className="flex min-h-11 min-w-0 max-w-full items-center gap-3 border-l-2 border-accent bg-page/85 py-1.5 pl-3 pr-3 text-left"
+        >
+          <span className="min-w-0">
+            <span className={`${metaLabel} block truncate`}>{album.owner}</span>
+            <span className="block truncate text-base font-extrabold uppercase leading-tight tracking-[-0.01em]">{album.title}</span>
+          </span>
+          <span aria-hidden="true" className="text-lg text-accent-text">→</span>
+        </button>
+      )}
     </>
   );
 }

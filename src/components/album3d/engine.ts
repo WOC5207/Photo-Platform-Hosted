@@ -169,6 +169,8 @@ export interface EngineOptions {
   onTrouble: (kind: "slow" | "lost") => void;
   /** A print tapped in the 360° study, by its place in the album's prints. */
   onStudyPick?: (index: number) => void;
+  /** The album under the mouse while the overview can be browsed (see setBrowse), or -1. */
+  onHover?: (fileIndex: number) => void;
 }
 
 export interface ArchiveEngine {
@@ -178,6 +180,12 @@ export interface ArchiveEngine {
   setDetail(detail: boolean): void;
   /** Title and menu screens: pull back and let the field idle behind the HUD. */
   setOverview(overview: boolean): void;
+  /**
+   * Let the overview's field be browsed behind its menu: cards lift under the
+   * mouse, the wheel and a finger move along them, and a tap opens the album
+   * under it (onOpen) rather than selecting it first.
+   */
+  setBrowse(browse: boolean): void;
   /**
    * Keep to one photographer's lane (their column), or -1 for all: the other
    * lanes sink and fog over, and taps and swipes stay in the lane.
@@ -238,6 +246,8 @@ const ROW_ORIGIN = 12;
 const PREVIEW_LIFT = 2.3;
 const DETAIL_LIFT = 4.05;
 const HOVER_LIFT = 0.28;
+/** Further out under the mouse in a browsable overview, which frames the field smaller. */
+const BROWSE_LIFT = 1.5;
 const MAX_ROTATION = 0.8;
 // Opening an album turns it this far so its parts fan out as they separate.
 const APART_TURN = 0.5;
@@ -702,6 +712,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let detailShown = -1;
   let overviewTarget = false;
   let overview = 0;
+  let browse = false;
+  let browseFade = 0;
+  // The selected card sits in the stack in a browsable overview, so it lifts under the mouse too.
+  let hoverSelected = false;
   // The lane kept to (a photographer's column), or -1, and how far the rest have faded.
   let laneLock = -1;
   const isolate = spring(0);
@@ -1134,7 +1148,12 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (opened && apart.value > 0.8) finishOpen();
     // Turn back to face the slot before descending, as the reference does.
     // A dragged archive lowers the raised card back into the stack until it settles.
-    const liftTarget = overviewTarget || fieldDrag ? 0 : detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
+    // Phones have no mouse to lift a card, so a browsable overview stands up the one a tap opens there.
+    const liftTarget = fieldDrag
+      ? 0
+      : overviewTarget
+        ? browse && width < height * 1.05 ? PREVIEW_LIFT : hoverSelected ? BROWSE_LIFT : 0
+        : detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
     damp(lift, liftTarget, rate(4.2), dt);
     moving ||= !settled(shoulder, selectedCell.row) || !settled(laneFocus, selectedCell.lane);
     moving ||= !fieldDrag && (!settled(trackX, selectedCell.lane * COLUMN_SPACING) || !settled(rail, railTarget));
@@ -1148,7 +1167,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const hoverKey = hoverCell ? cellKey(hoverCell) : null;
     if (hoverKey && !hoverLifts.has(hoverKey)) hoverLifts.set(hoverKey, 0);
     for (const [key, value] of hoverLifts) {
-      const target = key === hoverKey ? HOVER_LIFT : 0;
+      const target = key === hoverKey ? (overviewTarget ? BROWSE_LIFT : HOVER_LIFT) : 0;
       const next = reduced ? target : MathUtils.lerp(value, target, 1 - Math.exp(-dt * 14));
       if (Math.abs(next - target) > 1e-3) moving = true;
       if (target === 0 && next < 1e-3) hoverLifts.delete(key);
@@ -1181,13 +1200,18 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     overview = reduced ? overviewGoal : MathUtils.lerp(overview, overviewGoal, 1 - Math.exp(-dt * 3));
     if (Math.abs(overview - overviewGoal) > 1e-3) moving = true;
     else overview = overviewGoal;
+    const browseGoal = browse ? 1 : 0;
+    browseFade = reduced ? browseGoal : MathUtils.lerp(browseFade, browseGoal, 1 - Math.exp(-dt * 3));
+    if (Math.abs(browseFade - browseGoal) > 1e-3) moving = true;
+    else browseFade = browseGoal;
 
     damp(isolate, laneLock >= 0 ? 1 : 0, reduced ? 60 : 4, dt);
     if (!settled(isolate, laneLock >= 0 ? 1 : 0)) moving = true;
 
     // Lay out the visible window of the endless grid.
     const f = framing(detail);
-    const span = f.span * (1 + 0.85 * overview);
+    // Phones browse the field at the archive's own size, not the menus' pulled-back one.
+    const span = f.span * (1 + 0.85 * overview * (f.portrait ? 1 - browseFade : 1));
     const lanesHalf = Math.min(8, Math.ceil((span * 1.15) / COLUMN_SPACING) + 2);
     const rowsHalf = Math.min(46, Math.ceil((span * 2.6) / ROW_SPACING) + 6);
     const centerLane = Math.round(trackX.value / COLUMN_SPACING);
@@ -1256,8 +1280,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       moving = true;
     }
     // Covers show as they are; menus veil them behind their text, the
-    // raised card's photograph with them.
-    veil.value = overview * 0.5;
+    // raised card's photograph with them, and less where they can be browsed.
+    veil.value = overview * (0.5 - 0.3 * browseFade);
 
     cardPosition.set(
       selectedCell.lane * COLUMN_SPACING - trackX.value,
@@ -1727,7 +1751,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       invalidate();
       return true;
     }
-    if (!down || down.id !== e.pointerId || detailTarget || overviewTarget) return false;
+    if (!down || down.id !== e.pointerId || detailTarget || (overviewTarget && !browse)) return false;
     if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10) return false;
     const y = BASE_Y + CARD_H / 2;
     dragFrom.set(0, y, SLOT_Z);
@@ -1742,7 +1766,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     laneSpeed.push(performance.now(), lane);
     rowSpeed.push(performance.now(), row);
     canvas.setPointerCapture(e.pointerId);
-    hoverCell = null;
+    setHover(null, false);
     canvas.style.cursor = "grabbing";
     invalidate();
     return true;
@@ -1820,9 +1844,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       return;
     }
     if (fieldMove(e)) return;
-    if (e.pointerType !== "mouse" || overviewTarget || hoverFrame) return;
+    if (e.pointerType !== "mouse" || (overviewTarget && !browse) || hoverFrame) return;
     hoverFrame = requestAnimationFrame(() => {
       hoverFrame = 0;
+      if (mode !== "field" || (overviewTarget && !browse)) return;
       // The raised album opens on a tap; the cards below it don't.
       if (detailTarget) {
         canvas.style.cursor = onSelected(e.clientX, e.clientY) ? "pointer" : "";
@@ -1830,12 +1855,17 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       }
       const hit = pick(e.clientX, e.clientY);
       canvas.style.cursor = hit ? "pointer" : "";
-      const next = hit && !hit.selected ? hit.cell : null;
-      if (next?.lane !== hoverCell?.lane || next?.row !== hoverCell?.row) {
-        hoverCell = next;
-        invalidate();
-      }
+      setHover(hit && !hit.selected ? hit.cell : null, Boolean(hit?.selected) && overviewTarget);
     });
+  }
+
+  /** The card under the mouse, lifted a little, and told to the browsable overview. */
+  function setHover(cell: Cell | null, onSelectedCard: boolean) {
+    if (cell?.lane === hoverCell?.lane && cell?.row === hoverCell?.row && onSelectedCard === hoverSelected) return;
+    hoverCell = cell;
+    hoverSelected = onSelectedCard;
+    invalidate();
+    if (browse) options.onHover?.(hoverSelected ? selectedIndex : hoverCell ? fileAt(hoverCell) : -1);
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -1863,9 +1893,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (index >= 0) options.onStudyPick?.(index);
       return;
     }
-    if (mode !== "field") return;
-    if (overviewTarget || e.type === "pointercancel") return;
+    if (mode !== "field" || e.type === "pointercancel") return;
     const tap = Math.hypot(dx, dy) < 8 && elapsed < 600;
+    if (overviewTarget) {
+      // A browsable overview opens the album tapped, selected or not.
+      const hit = browse && tap ? pick(e.clientX, e.clientY) : null;
+      if (!hit) return;
+      if (!hit.selected) pendingCell = hit.cell;
+      options.onOpen(hit.selected ? selectedIndex : fileAt(hit.cell));
+      return;
+    }
     if (detailTarget) {
       if (tap && onSelected(e.clientX, e.clientY)) options.onEnter(selectedIndex);
       return;
@@ -1894,9 +1931,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     carousel?.setPointer(0, 0);
     table?.setHover(-1);
     stage?.setHover(-1);
-    if (!hoverCell) return;
-    hoverCell = null;
-    invalidate();
+    setHover(null, false);
   }
 
   let wheelAt = 0;
@@ -1940,7 +1975,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       } else if (mode === "stage") stageHandler?.({ kind: "wheel", direction: steps > 0 ? 1 : -1 });
       return;
     }
-    if (detailTarget || overviewTarget) return;
+    if (detailTarget || (overviewTarget && !browse)) return;
     const steps = wheelSteps(e);
     if (!steps) return;
     const cell = { lane: selectedCell.lane, row: selectedCell.row + steps };
@@ -1999,8 +2034,15 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     },
     setOverview(next) {
       overviewTarget = next;
-      if (next) hoverCell = null;
+      if (next) setHover(null, false);
       lastInteraction = clock;
+      invalidate();
+    },
+    setBrowse(next) {
+      if (next === browse) return;
+      setHover(null, false);
+      browse = next;
+      if (!next) canvas.style.cursor = "";
       invalidate();
     },
     openStudy,

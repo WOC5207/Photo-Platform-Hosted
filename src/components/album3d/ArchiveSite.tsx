@@ -11,7 +11,7 @@ import SiteModeSwitch, { useLeaveFor } from "@/components/SiteModeSwitch";
 import { classicTwin, parentScreen, parseScreen, screenPath, type Screen } from "@/lib/siteMode";
 import { GameMenu, Hints, MENU_SCREENS, Roll, Rolling, pad, wrap, type MenuItem } from "./hud";
 import { AlbumPhotosContext } from "./AlbumPhotosFeed";
-import { StageContext } from "./StageContext";
+import { FieldContext, StageContext, type FieldAlbum, type FieldPick } from "./StageContext";
 import { archiveSlice } from "@/app/[locale]/3d/actions";
 import { joinSlice, type Archive } from "@/lib/archiveField";
 import styles from "./ArchiveSite.module.css";
@@ -250,6 +250,8 @@ export default function ArchiveSite({
   const [tableFocus, setTableFocus] = useState(0);
   // The opened print is in place, so the photo screen can fade its image in.
   const [printUp, setPrintUp] = useState(false);
+  // The album under the mouse on the Dashboard's home, or -1 (see the engine's setBrowse).
+  const [hoverFile, setHoverFile] = useState(-1);
   const [motion, setMotion] = useState<MotionPreference>("system");
   const [theme, setTheme] = useState<ThemePreference>("system");
   const locale = useLocale();
@@ -573,6 +575,7 @@ export default function ArchiveSite({
           onPrint: (index, open) => handlers.current.onPrint(index, open),
           onRaised: setPrintUp,
           onStudyPick: setStudyFocus,
+          onHover: setHoverFile,
           onTrouble: (kind) => (kind === "lost" ? setStatus("lost") : setSlow(true))
         });
         engineRef.current = engine;
@@ -656,6 +659,13 @@ export default function ArchiveSite({
   useEffect(() => {
     if (ready) engineRef.current?.setLane(lane);
   }, [lane, ready]);
+
+  // The Dashboard's home lets its field be browsed, and a click opens the album.
+  const browsable = studioHome && !missing;
+  useEffect(() => {
+    if (ready) engineRef.current?.setBrowse(browsable);
+    if (!browsable) setHoverFile(-1);
+  }, [browsable, ready]);
 
   useEffect(() => {
     if (ready) engineRef.current?.setReducedMotion(prefersReduced(motion));
@@ -873,6 +883,19 @@ export default function ArchiveSite({
     () => ({ engine: ready ? engineRef.current : null, go, path: screenPath, back, key, touch }),
     [ready, go, back, key, touch]
   );
+  const fieldPick = useMemo((): FieldPick | null => {
+    if (!browsable) return null;
+    const named = (index: number): FieldAlbum | null => {
+      const album = files[index];
+      return album ? { index, title: album.title, owner: columns[album.column]?.name ?? "" } : null;
+    };
+    return {
+      live: status !== "unsupported" && status !== "lost",
+      hovered: hoverFile >= 0 ? named(hoverFile) : null,
+      resting: named(selected),
+      open: openDetail
+    };
+  }, [browsable, files, columns, status, hoverFile, selected, openDetail]);
 
   // ----------------------------------------------------------------- render --
   if (files.length === 0 || !file || !column) {
@@ -941,6 +964,7 @@ export default function ArchiveSite({
   return (
     <AlbumPhotosContext.Provider value={setAlbum}>
     <StageContext.Provider value={stage}>
+    <FieldContext.Provider value={fieldPick}>
     <div
       ref={rootRef}
       className={`${styles.root} album3d relative h-dvh w-full bg-page text-fg ${palette?.className ?? ""}`}
@@ -1489,6 +1513,7 @@ export default function ArchiveSite({
       {children}
       </div>
     </div>
+    </FieldContext.Provider>
     </StageContext.Provider>
     </AlbumPhotosContext.Provider>
   );
