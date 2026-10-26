@@ -103,13 +103,30 @@ export function resolveUploadExtension(file: {
 
 // Generated web sizes. sharp strips ALL metadata (EXIF/GPS/etc.) by default
 // on output, which is exactly what we want for displayed images.
+//
+// The thumbnail is sized by its short side, not its width. At 480 px wide a
+// 3:2 landscape thumbnail was only 320 px tall and a 3:1 panorama 160 px, so
+// wherever a thumbnail fills a square, 4:3 or row-height tile (the upload
+// wizard's album preview, the light table, the photo pickers) wide photos
+// were stretched on 3x phone screens while portrait ones stayed sharp. Its
+// long side is capped so a panorama's thumbnail stays a thumbnail.
 const SIZES = [
-  { suffix: "thumb", width: 480, quality: 70 },
+  { suffix: "thumb", width: 480, shortEdge: 480, maxEdge: 1440, quality: 70 },
   { suffix: "med", width: 1280, quality: 80 },
   { suffix: "full", width: 2560, quality: 85 }
 ] as const;
 
 type RenditionSize = (typeof SIZES)[number];
+
+/** The width a rendition is resized to, for a source of this (upright) size. */
+function renditionWidth(size: RenditionSize, width: number, height: number): number {
+  if (!("shortEdge" in size) || width <= 0 || height <= 0) return size.width;
+  const scale = Math.min(
+    size.shortEdge / Math.min(width, height),
+    size.maxEdge / Math.max(width, height)
+  );
+  return Math.max(1, Math.round(width * scale));
+}
 // The thumbnail is generated synchronously at upload so the wizard has an
 // instant preview; the background compression worker (re)generates the full
 // rendition set — thumbnail included, so a thumbnail lost to a crash between
@@ -291,11 +308,16 @@ async function writeRenditionSizes(
   sizes: readonly RenditionSize[]
 ): Promise<number> {
   let bytes = 0;
+  // Upright dimensions, as .rotate() below turns the image before resizing.
+  const meta = await imagePipeline(input).metadata();
+  const swapped = (meta.orientation ?? 1) >= 5;
+  const width = (swapped ? meta.height : meta.width) ?? 0;
+  const height = (swapped ? meta.width : meta.height) ?? 0;
   // Sequential processing keeps peak memory predictable on NAS hardware.
   for (const size of sizes) {
     const out = await imagePipeline(input)
       .rotate()
-      .resize({ width: size.width, withoutEnlargement: true })
+      .resize({ width: renditionWidth(size, width, height), withoutEnlargement: true })
       .webp({ quality: size.quality })
       .toFile(path.join(dir, `${photoId}-${size.suffix}.webp`));
     bytes += out.size;

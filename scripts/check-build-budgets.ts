@@ -46,11 +46,13 @@ const routeBudgets = [
   // Cosplan board carries the arranging, text and upload-name panels; the Sharepost
   // credits step reuses the classic editor's credit layers, and every
   // Sharepost step carries the step bar with its Back button. The Dashboard's
-  // routes in the shared 3D code add a little to each.
+  // routes in the shared 3D code add a little to each. The credits steps
+  // validate the draft's credit lines with zod, whose security update to
+  // 4.6.7 added about 8 KB to each.
   { label: "3D Cosplan", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/page"], limitKb: 157 },
   { label: "3D Cosplan board", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/board/page"], limitKb: 164 },
   { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/page"], limitKb: 156 },
-  { label: "3D Sharepost credits", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/credits/page"], limitKb: 182 },
+  { label: "3D Sharepost credits", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/credits/page"], limitKb: 190 },
   // The 3D Dashboard's screens come with their pages. Adding photos carries
   // the classic photo wizard and its upload queue.
   { label: "3D my archive", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/page"], limitKb: 150 },
@@ -84,7 +86,7 @@ const routeBudgets = [
   // a project adds the gallery picker (loaded when opened) and server saves.
   { label: "3D Dashboard posters", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/posters/page"], limitKb: 152 },
   { label: "3D Dashboard poster", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/page"], limitKb: 156 },
-  { label: "3D Dashboard poster credits", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/credits/page"], limitKb: 182 },
+  { label: "3D Dashboard poster credits", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/layout", "/[locale]/3d/u/[username]/studio/posters/[id]/credits/page"], limitKb: 190 },
   { label: "3D Dashboard credits", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/credits/page"], limitKb: 152 },
   { label: "3D Dashboard storage", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/storage/page"], limitKb: 150 },
   // Site settings: a menu, then a panel per group. Appearance carries the
