@@ -126,7 +126,20 @@ export function isInteractive(target: EventTarget | null): boolean {
  * than looked past, with the scene left framed as it is behind it. The sheet
  * reports where it starts, so the scene frames itself above it.
  */
-export function BookingPanel({ expanded = false, children }: { expanded?: boolean | "cover" | "full"; children: ReactNode }) {
+export function BookingPanel({
+  expanded = false,
+  view,
+  children
+}: {
+  expanded?: boolean | "cover" | "full";
+  /**
+   * On phones a full sheet can open on a window onto the scene, holding this,
+   * which scrolls away as the sheet goes up (see .window). Wider screens have
+   * the scene beside the panel already, so they leave it out.
+   */
+  view?: ReactNode;
+  children: ReactNode;
+}) {
   const ref = useRef<HTMLElement>(null);
   const full = expanded === "full";
   useEffect(() => {
@@ -143,8 +156,15 @@ export function BookingPanel({ expanded = false, children }: { expanded?: boolea
     };
   }, [full]);
   return (
-    <main ref={ref} id="main-content" tabIndex={-1} className={`${styles.panel} outline-none`} data-expanded={expanded}>
-      {children}
+    <main ref={ref} id="main-content" tabIndex={-1} className={`${styles.panel} outline-none`} data-expanded={expanded} data-window={view ? "" : undefined}>
+      {view ? (
+        <>
+          <div className={styles.window}>{view}</div>
+          <div className={styles.sheetBody}>{children}</div>
+        </>
+      ) : (
+        children
+      )}
     </main>
   );
 }

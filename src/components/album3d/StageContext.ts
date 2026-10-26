@@ -22,3 +22,27 @@ export interface Stage {
 }
 
 export const StageContext = createContext<Stage | null>(null);
+
+/** An album in the field, as the Dashboard's home names it. */
+export interface FieldAlbum {
+  index: number;
+  title: string;
+  owner: string;
+}
+
+/**
+ * The album field behind the Dashboard's home, which can be browsed there and
+ * opened from (see the engine's setBrowse). Null on every other screen.
+ */
+export interface FieldPick {
+  /** The scene is up or on its way; false without WebGL, when there is no field to look at. */
+  live: boolean;
+  /** The album under the mouse, if any. */
+  hovered: FieldAlbum | null;
+  /** The album the field rests on, which a finger moves along. */
+  resting: FieldAlbum | null;
+  /** Straight into the album's own screen. */
+  open(index: number): void;
+}
+
+export const FieldContext = createContext<FieldPick | null>(null);
