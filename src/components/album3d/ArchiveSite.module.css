@@ -14,6 +14,19 @@
   }
 }
 
+/* The archive is one screen, so the page under it never scrolls. Phone
+   browsers make 100vh the height with their toolbars hidden, so the body's
+   min-h-screen left a toolbar's height of empty page below the stage; scrolling
+   to it slid the menu up and resized the scene as the toolbars came and went. */
+:global(html):has(.root),
+:global(html):has(.root) body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+:global(html):has(.root) body {
+  min-height: 0;
+}
+
 .root {
   --edge: 3.75rem;
   --rule: color-mix(in srgb, var(--color-fg) 72%, transparent);
@@ -557,7 +570,7 @@
   }
   .menuPanel {
     top: auto;
-    bottom: 64px;
+    bottom: max(28px, env(safe-area-inset-bottom));
     left: var(--edge);
     right: var(--edge);
     width: auto;
@@ -601,6 +614,47 @@
     border-top: 1px solid color-mix(in srgb, var(--color-fg) 30%, transparent);
   }
   .parts {
+    display: none;
+  }
+}
+
+/* Short phone screens: the menus tighten so the whole of one fits between the
+   header and the bottom edge, with no page to scroll. Rows keep a 44px target. */
+@media (max-height: 640px) and (max-width: 1099px), (max-height: 640px) and (max-aspect-ratio: 105/100) {
+  .menuPanel h1 {
+    font-size: 2rem;
+  }
+  .menuPanel > ol,
+  .menuPanel > .roster {
+    margin-top: 1rem;
+  }
+  .menuPanel > dl {
+    margin-top: 0.75rem;
+  }
+  .menuPanel ol > li > button {
+    min-height: 2.75rem;
+    padding-block: 0.25rem;
+  }
+}
+/* A phone on its side: the menu takes two columns beside the field. */
+@media (max-height: 500px) and (max-width: 1099px) and (min-aspect-ratio: 105/100) {
+  .menuPanel {
+    top: 68px;
+    width: calc(72% - var(--edge));
+  }
+  /* Three rows still fit; a longer menu, like the title's, splits in two. */
+  .menuPanel > ol:has(> li:nth-child(4)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* The numbers give way to the labels in the narrower columns. */
+  .menuPanel > ol:has(> li:nth-child(4)) > li > button > span:first-child {
+    display: none;
+  }
+  .roster {
+    max-height: calc(100dvh - 12.5rem);
+  }
+  .menuHint,
+  .footer {
     display: none;
   }
 }
