@@ -1452,32 +1452,22 @@ export default function ArchiveSite({
 
       {offer && (
         <div role="status" className="absolute bottom-24 left-1/2 z-30 flex max-sm:bottom-auto max-sm:top-[5.5rem] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-3 border border-border-strong bg-page/95 px-4 py-3 text-sm">
-          {offer === "classic" ? (
-            <>
-              {t("slowNotice")}
-              <button type="button" onClick={() => leaveFor("classic", classicTwin(pathname))} className="font-semibold underline underline-offset-4">
-                {t("unsupportedClassic")}
-              </button>
-              <button type="button" onClick={() => setOffer(null)} className="text-fg-muted underline underline-offset-4">
-                {t("slowKeep")}
-              </button>
-            </>
-          ) : (
-            <>
-              {t(offer === "device" ? "deviceMotionNotice" : "slowMotionNotice")}
-              <button type="button" onClick={() => setMotionTo("reduced")} className="font-semibold underline underline-offset-4">
-                {t("reduceMotion")}
-              </button>
-              {/* Kept from the device's ask, the choice is saved; kept while slow, only for this visit. */}
-              <button
-                type="button"
-                onClick={() => (offer === "device" ? setMotionTo("full") : setOffer(null))}
-                className="text-fg-muted underline underline-offset-4"
-              >
-                {t("keepFullMotion")}
-              </button>
-            </>
-          )}
+          {t(offer === "classic" ? "slowNotice" : offer === "device" ? "deviceMotionNotice" : "slowMotionNotice")}
+          <button
+            type="button"
+            onClick={() => (offer === "classic" ? leaveFor("classic", classicTwin(pathname)) : setMotionTo("reduced"))}
+            className="font-semibold underline underline-offset-4"
+          >
+            {t(offer === "classic" ? "unsupportedClassic" : "reduceMotion")}
+          </button>
+          {/* Kept from the device's ask, the choice is saved; kept while slow, only for this visit. */}
+          <button
+            type="button"
+            onClick={() => (offer === "device" ? setMotionTo("full") : setOffer(null))}
+            className="text-fg-muted underline underline-offset-4"
+          >
+            {t(offer === "classic" ? "slowKeep" : "keepFullMotion")}
+          </button>
         </div>
       )}
       </div>
