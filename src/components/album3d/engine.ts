@@ -261,6 +261,15 @@ const RISE_STEP = 1.1;
 const RISE_BEHIND = 3;
 const RISE_STAGGER_S = 0.07;
 const RISE_POP_S = 0.42;
+/**
+ * While nothing is pointed at, a few standby cards of the photographer's own
+ * pop up by themselves around the view: this far out, up to this many at
+ * once, each standing this many seconds, a new one this often.
+ */
+const STANDBY_LIFT = 1.5;
+const STANDBY_MAX = 3;
+const STANDBY_HOLD_S = 2.6;
+const STANDBY_EVERY_S = 1.1;
 const MAX_ROTATION = 0.8;
 // Opening an album turns it this far so its parts fan out as they separate.
 const APART_TURN = 0.5;
@@ -724,6 +733,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let riseAt = 0;
   let pointedAt = 0;
   const rises = new Map<string, { pop: number; height: number }>();
+  /** Standby cards up now, by key, and when each goes back down; when the next comes up. */
+  const standby = new Map<string, number>();
+  let standbyNext = 0;
+  let standbyTimer = 0;
   let hoverCell: Cell | null = null;
   let pulses: { row: number; lane: number; time: number }[] = [];
   let pulseGain = 1;
@@ -900,9 +913,49 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     return card ? card.height * backOut(card.pop) : 0;
   }
 
+  const standbyAt = new Vector3();
+  /** Whether a card's top is in view, clear of the menu on the left of wide screens. */
+  function inView(at: Cell) {
+    standbyAt.set(at.lane * COLUMN_SPACING - trackX.value, BASE_Y + CARD_H, at.row * ROW_SPACING + rail.value).project(camera);
+    const left = width < height * 1.05 ? -0.85 : -0.15;
+    return standbyAt.x > left && standbyAt.x < 0.9 && standbyAt.y > -0.85 && standbyAt.y < 0.75;
+  }
+
+  /**
+   * Bring up the next standby card when it's due, drop those whose time is
+   * up, and wake the scene for the next of either: nothing moves between.
+   */
+  function stepStandby() {
+    window.clearTimeout(standbyTimer);
+    standbyTimer = 0;
+    for (const [key, until] of standby) if (clock >= until) standby.delete(key);
+    // Phones always stand an album up, so their standby cards come up beside its staircase.
+    const pointing = rise !== null && width >= height * 1.05;
+    const on = browse && overviewTarget && !pointing && !fieldDrag && !reduced && mode === "field" && laneLock >= 0;
+    if (!on) {
+      standbyNext = clock + STANDBY_EVERY_S;
+      if (!standby.size) return;
+    } else if (clock >= standbyNext) {
+      standbyNext = clock + STANDBY_EVERY_S * (0.7 + Math.random() * 0.6);
+      if (standby.size < STANDBY_MAX) {
+        const taken = new Set([...standby.keys(), ...rises.keys(), cellKey(selectedCell)]);
+        const free = instanceCells.filter((at) => !locked(at.lane) && !taken.has(cellKey(at)) && inView(at));
+        const pick = free[Math.floor(Math.random() * free.length)];
+        if (pick) {
+          const key = cellKey(pick);
+          standby.set(key, clock + STANDBY_HOLD_S);
+          rises.set(key, { pop: 0, height: 0 });
+        }
+      }
+    }
+    const wake = Math.min(on ? standbyNext : Infinity, ...standby.values());
+    if (Number.isFinite(wake)) standbyTimer = window.setTimeout(invalidate, Math.max(16, (wake - clock) * 1000));
+  }
+
   /** Pop the staircase's cards up one after another, and the rest back down; true while any moves. */
   function stepRises(dt: number): boolean {
     let moving = false;
+    stepStandby();
     if (rise) {
       for (let behind = 0; behind <= RISE_BEHIND; behind++) {
         const key = cellKey({ lane: rise.lane, row: rise.row - behind });
@@ -911,7 +964,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     }
     for (const [key, card] of rises) {
       const [lane, row] = key.split(":").map(Number);
-      const target = lane === selectedCell.lane && row === selectedCell.row ? 0 : riseHeight({ lane, row });
+      const target =
+        lane === selectedCell.lane && row === selectedCell.row ? 0 : riseHeight({ lane, row }) || (standby.has(key) ? STANDBY_LIFT : 0);
       const due = rise ? clock - riseAt >= (rise.row - row) * RISE_STAGGER_S : true;
       const goal = target > 0 && due ? 1 : 0;
       if (target > 0) card.height = reduced ? target : MathUtils.lerp(card.height, target, 1 - Math.exp(-dt * 10));
@@ -2218,6 +2272,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       cancelAnimationFrame(raf);
       clearTimeout(lostTimer);
       clearTimeout(openTimer);
+      clearTimeout(standbyTimer);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
       wipeTexture?.dispose();
