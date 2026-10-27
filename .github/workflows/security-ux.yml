@@ -135,7 +135,13 @@ jobs:
       - run: npm run test:security:db
       - run: npm run test:moderation:db
       - run: npm run test:bookingorg
+      # Next salts server action IDs with this key; a random one per build
+      # makes the gzip sizes test:build-budget checks vary by up to 0.2 KB
+      # between runs of the same code. The key only reaches this job's test
+      # server, never the NAS image, which builds with its own random key.
       - run: npm run build
+        env:
+          NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: yHUQqXOh6gjeJaLIUDbvaCeEuY8g3HM5ZhUBnCaFWT8=
       - run: npm run test:build-budget
       - run: npm run test:cosplan:mobile
       - run: npm run test:cosplan:render
