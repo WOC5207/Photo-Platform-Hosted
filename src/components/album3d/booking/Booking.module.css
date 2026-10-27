@@ -61,23 +61,27 @@
     max-height: none;
   }
   /* A full sheet that opens on a window onto the scene (the Dashboard home's
-     album field): the sheet's colour starts below it and scrolls up with the
-     content. Only the content takes touches, so a finger in the window, beside
-     what it holds, reaches the scene behind it. */
+     album field): the sheet's colour starts below it. Only the content takes
+     touches, so a finger in the window, beside what it holds, reaches the
+     scene behind it. The sheet itself stays put: iOS Safari won't scroll a
+     box that takes no touches, so what scrolls is the content below. */
   .panel[data-window] {
     --window: 40dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     padding: 0;
     border-top: 0;
     pointer-events: none;
     background: linear-gradient(
-        transparent var(--window),
-        var(--color-border-strong) var(--window) calc(var(--window) + 1px),
-        color-mix(in srgb, var(--color-page) 94%, transparent) calc(var(--window) + 1px)
-      )
-      local;
+      transparent var(--window),
+      var(--color-border-strong) var(--window) calc(var(--window) + 1px),
+      color-mix(in srgb, var(--color-page) 94%, transparent) calc(var(--window) + 1px)
+    );
   }
   .window {
     display: flex;
+    flex: none;
     flex-direction: column;
     justify-content: space-between;
     align-items: flex-start;
@@ -87,7 +91,14 @@
   .window :is(a, button) {
     pointer-events: auto;
   }
+  /* The rest of the screen below the window: still when it all fits, and
+     scrolling inside itself, under the window, when it doesn't. */
   .sheetBody {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
     pointer-events: auto;
     padding: var(--panel-pad-top) var(--edge) max(20px, env(safe-area-inset-bottom));
   }
