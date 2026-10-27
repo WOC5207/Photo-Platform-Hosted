@@ -43,6 +43,8 @@ export interface FieldPick {
   resting: FieldAlbum | null;
   /** Straight into the album's own screen. */
   open(index: number): void;
+  /** Moves the field on to the photographer's previous or next album. */
+  step(direction: -1 | 1): void;
 }
 
 export const FieldContext = createContext<FieldPick | null>(null);

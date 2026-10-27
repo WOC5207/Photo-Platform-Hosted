@@ -129,6 +129,7 @@ export function isInteractive(target: EventTarget | null): boolean {
 export function BookingPanel({
   expanded = false,
   view,
+  raised = false,
   children
 }: {
   expanded?: boolean | "cover" | "full";
@@ -138,6 +139,8 @@ export function BookingPanel({
    * the scene beside the panel already, so they leave it out.
    */
   view?: ReactNode;
+  /** The window closed: the sheet takes the whole screen, and the scene shows through it (see .panel[data-raised]). */
+  raised?: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
@@ -156,10 +159,12 @@ export function BookingPanel({
     };
   }, [full]);
   return (
-    <main ref={ref} id="main-content" tabIndex={-1} className={`${styles.panel} outline-none`} data-expanded={expanded} data-window={view ? "" : undefined}>
+    <main ref={ref} id="main-content" tabIndex={-1} className={`${styles.panel} outline-none`} data-expanded={expanded} data-window={view ? "" : undefined} data-raised={view && raised ? "" : undefined}>
       {view ? (
         <>
-          <div className={styles.window}>{view}</div>
+          <div className={styles.window} inert={raised}>
+            {view}
+          </div>
           <div className={styles.sheetBody}>{children}</div>
         </>
       ) : (

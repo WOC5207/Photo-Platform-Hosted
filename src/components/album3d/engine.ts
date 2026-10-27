@@ -1280,8 +1280,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       moving = true;
     }
     // Covers show as they are; menus veil them behind their text, the
-    // raised card's photograph with them, and less where they can be browsed.
-    veil.value = overview * (0.5 - 0.3 * browseFade);
+    // raised card's photograph with them, and less where they can be browsed:
+    // not at all in a phone's window, where no text sits over them and a
+    // light page's veil reads as a haze.
+    veil.value = overview * (0.5 - (f.portrait ? 0.5 : 0.3) * browseFade);
 
     cardPosition.set(
       selectedCell.lane * COLUMN_SPACING - trackX.value,
@@ -1328,8 +1330,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (camera.position.distanceTo(cameraPosition) > 1e-3 || Math.abs(camera.fov - fov) > 1e-5) moving = true;
     const fog = field.fog as Fog;
     const rendered = camera.position.distanceTo(cameraAim);
-    fog.near = rendered + MathUtils.lerp(5, -1, detail);
-    fog.far = rendered + MathUtils.lerp(25, 12, detail) + 18 * overview;
+    // A phone's window onto a browsable field keeps its far rows clear too.
+    const clear = f.portrait ? browseFade : 0;
+    fog.near = rendered + MathUtils.lerp(5, -1, detail) + 10 * clear;
+    fog.far = rendered + MathUtils.lerp(25, 12, detail) + 18 * overview + 20 * clear;
     fieldLights.key.position.set(cameraAim.x - 6, cameraAim.y + 14, cameraAim.z - 5);
     fieldLights.key.target.position.copy(cameraAim);
     return moving;

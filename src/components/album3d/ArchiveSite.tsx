@@ -216,8 +216,10 @@ export default function ArchiveSite({
   // A photographer's own archive lays out their albums instead of the photographer cards.
   const ownArchive = !missing && screen.kind === "photographer" && viewer?.username === screen.username;
   const carouselScreen = !missing && !ownArchive && (screen.kind === "photographers" || screen.kind === "photographer");
-  // One photographer's albums keep to their lane, so a visitor can't wander into someone else's by accident.
-  const lane = !missing && (screen.kind === "albumSelect" || screen.kind === "album") ? columnIndex : -1;
+  // One photographer's albums keep to their lane, so a visitor can't wander
+  // into someone else's by accident, and the Dashboard's home keeps to the
+  // signed-in photographer's own: it isn't a way into anyone else's.
+  const lane = !missing && (screen.kind === "albumSelect" || screen.kind === "album" || studioHome) ? columnIndex : -1;
 
   // Inside a photographer's address the site wears their colours, as their
   // classic site does, and their Dashboard follows its own setting. Every
@@ -660,8 +662,9 @@ export default function ArchiveSite({
     if (ready) engineRef.current?.setLane(lane);
   }, [lane, ready]);
 
-  // The Dashboard's home lets its field be browsed, and a click opens the album.
-  const browsable = studioHome && !missing;
+  // The Dashboard's home lets the photographer's own albums be browsed, and a
+  // click opens one. Without any in the field it stays a backdrop.
+  const browsable = studioHome && !missing && columnIndex >= 0;
   useEffect(() => {
     if (ready) engineRef.current?.setBrowse(browsable);
     if (!browsable) setHoverFile(-1);
@@ -859,7 +862,8 @@ export default function ArchiveSite({
           ArrowLeft: () => step("column", -1),
           ArrowRight: () => step("column", 1)
         }),
-        "/": () => setIndexOpen(true)
+        // The index lists every photographer's albums, which the Dashboard's home doesn't offer.
+        ...(!studioHome && { "/": () => setIndexOpen(true) })
       };
       if (e.key === "Enter" && !isInteractive(e.target)) {
         e.preventDefault();
@@ -893,9 +897,10 @@ export default function ArchiveSite({
       live: status !== "unsupported" && status !== "lost",
       hovered: hoverFile >= 0 ? named(hoverFile) : null,
       resting: named(selected),
-      open: openDetail
+      open: openDetail,
+      step: (direction) => step("file", direction)
     };
-  }, [browsable, files, columns, status, hoverFile, selected, openDetail]);
+  }, [browsable, files, columns, status, hoverFile, selected, openDetail, step]);
 
   // ----------------------------------------------------------------- render --
   if (files.length === 0 || !file || !column) {

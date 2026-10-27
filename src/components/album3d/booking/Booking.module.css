@@ -67,6 +67,7 @@
      box that takes no touches, so what scrolls is the content below. */
   .panel[data-window] {
     --window: 40dvh;
+    --sheet: 94%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -76,8 +77,14 @@
     background: linear-gradient(
       transparent var(--window),
       var(--color-border-strong) var(--window) calc(var(--window) + 1px),
-      color-mix(in srgb, var(--color-page) 94%, transparent) calc(var(--window) + 1px)
+      color-mix(in srgb, var(--color-page) var(--sheet), transparent) calc(var(--window) + 1px)
     );
+  }
+  /* Raised: the window closes and the sheet takes the whole screen below the
+     header, lighter, so the album field still shows through it. */
+  .panel[data-window][data-raised] {
+    --window: 0px;
+    --sheet: 72%;
   }
   .window {
     display: flex;
@@ -86,7 +93,24 @@
     justify-content: space-between;
     align-items: flex-start;
     height: var(--window);
+    overflow: hidden;
     padding: 8px var(--edge) 12px;
+  }
+  .panel[data-raised] .window {
+    padding-block: 0;
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .panel[data-window] {
+      transition:
+        --window 0.4s cubic-bezier(0.2, 0.7, 0.2, 1),
+        --sheet 0.4s;
+    }
+    .window {
+      transition:
+        padding 0.4s cubic-bezier(0.2, 0.7, 0.2, 1),
+        opacity 0.25s;
+    }
   }
   .window :is(a, button) {
     pointer-events: auto;
@@ -104,6 +128,18 @@
   }
 }
 
+/* Registered so a phone sheet's window can slide shut (see .panel[data-raised]). */
+@property --window {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+@property --sheet {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 94%;
+}
+
 /* The album under the mouse on the Dashboard's home, across the scene from its panel. */
 .fieldCaption {
   display: none;
@@ -117,7 +153,8 @@
 
 /* Beside the panel the scene shows already; the window only opens on phones. */
 @media (min-aspect-ratio: 105/100) {
-  .window {
+  .window,
+  .raise {
     display: none;
   }
   .fieldCaption {
