@@ -273,7 +273,7 @@ export function createCarousel(context: {
     if (!settled(tiltX, pointerY * 0.12) || !settled(tiltY, pointerX * 0.16)) moving = true;
     frame();
 
-    const bob = reduced || lowPower ? 0 : Math.sin(clock * 1.6) * 0.04;
+    const bob = reduced ? 0 : Math.sin(clock * 1.6) * 0.04;
     if (bob) moving = true;
     faces.forEach((face, i) => {
       const k = offset(i, focusSpring.value);

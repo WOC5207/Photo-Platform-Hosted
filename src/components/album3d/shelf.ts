@@ -365,7 +365,7 @@ export function createShelf(context: {
 
     const rows = Math.ceil(cards.length / cols);
     floor.position.y = rail ? -CARD_H / 2 - 0.35 : -(rows - 1) * (CARD_H + GAP_Y) - CARD_H / 2 - 0.35;
-    const bob = reduced || lowPower ? 0 : Math.sin(clock * 1.6) * 0.04;
+    const bob = reduced ? 0 : Math.sin(clock * 1.6) * 0.04;
     if (bob) moving = true;
     const blend = (value: number, target: number, speed: number) =>
       reduced ? target : MathUtils.lerp(value, target, 1 - Math.exp(-dt * speed));
