@@ -896,8 +896,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const behind = rise.row - at.row;
     // A lane of a few albums doesn't show the same one twice.
     const albums = columns[wrap(rise.lane, columnCount)]?.length ?? 1;
-    if (behind < 0 || behind > Math.min(RISE_BEHIND, albums - 1)) return 0;
+    if (behind < 0 || behind > Math.min(riseReach(), albums - 1)) return 0;
     return (width < height * 1.05 ? PREVIEW_LIFT : RISE_FRONT) + behind * RISE_STEP;
+  }
+
+  /** How many cards behind the one pointed at stand up with it: on a photographer's album select, none. */
+  function riseReach() {
+    return overviewTarget ? RISE_BEHIND : 0;
   }
 
   /** How far a card stands up now (the selected card's is its lift). */
@@ -1249,12 +1254,14 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     // stands on the album a tap opens there.
     const portrait = width < height * 1.05;
     const browsing = browse && overviewTarget && !fieldDrag;
-    const pointed = browsing ? (portrait || hoverSelected ? selectedCell : hoverCell) : null;
+    // On a photographer's album select the album under the mouse slides up alone.
+    const sliding = laneLock >= 0 && !overviewTarget && !detailTarget && !fieldDrag;
+    const pointed = browsing ? (portrait || hoverSelected ? selectedCell : hoverCell) : sliding ? hoverCell : null;
     if (pointed) pointedAt = clock;
     // The mouse crossing a gap between two of its cards doesn't bring the staircase down.
-    if (!pointed && browsing && clock - pointedAt < 0.3) moving = true;
+    if (!pointed && (browsing || sliding) && clock - pointedAt < 0.3) moving = true;
     else if (!pointed || locked(pointed.lane)) rise = null;
-    else if (portrait || !rise || pointed.lane !== rise.lane || rise.row - pointed.row < 0 || rise.row - pointed.row > RISE_BEHIND) {
+    else if (portrait || !rise || pointed.lane !== rise.lane || rise.row - pointed.row < 0 || rise.row - pointed.row > riseReach()) {
       if (pointed.lane !== rise?.lane || pointed.row !== rise.row) riseAt = clock;
       rise = { ...pointed };
     }
@@ -1273,7 +1280,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (settled(o.lift, 0)) outgoing.delete(key);
       else moving = true;
     }
-    const hoverKey = hoverCell && !overviewTarget ? cellKey(hoverCell) : null;
+    const hoverKey = hoverCell && !overviewTarget && laneLock < 0 ? cellKey(hoverCell) : null;
     if (hoverKey && !hoverLifts.has(hoverKey)) hoverLifts.set(hoverKey, 0);
     for (const [key, value] of hoverLifts) {
       const target = key === hoverKey ? HOVER_LIFT : 0;
