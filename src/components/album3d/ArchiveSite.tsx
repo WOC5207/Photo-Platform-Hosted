@@ -186,9 +186,11 @@ export default function ArchiveSite({
   // A photographer or album the field doesn't hold is asked for (see
   // joinSlice); until the answer comes the screen waits rather than calling it missing.
   const pastField = "username" in screen && !booking && !studio && (columnIndex < 0 || (inAlbum && fileIndex < 0));
-  const sliceKey = pastField ? `${screen.username}/${"slug" in screen ? screen.slug : ""}` : "";
+  // The Dashboard's home shows only the photographer's own albums, so theirs are asked for the same way.
+  const ownPastField = studioHome && columnIndex < 0;
+  const sliceKey = pastField || ownPastField ? `${screen.username}/${"slug" in screen ? screen.slug : ""}` : "";
   const [answered, setAnswered] = useState<string[]>([]);
-  const asking = pastField && !answered.includes(sliceKey);
+  const asking = (pastField || ownPastField) && !answered.includes(sliceKey);
   useEffect(() => {
     if (!asking) return;
     archiveSlice(screen.username, "slug" in screen ? screen.slug : undefined)
@@ -217,9 +219,16 @@ export default function ArchiveSite({
   const ownArchive = !missing && screen.kind === "photographer" && viewer?.username === screen.username;
   const carouselScreen = !missing && !ownArchive && (screen.kind === "photographers" || screen.kind === "photographer");
   // One photographer's albums keep to their lane, so a visitor can't wander
-  // into someone else's by accident, and the Dashboard's home keeps to the
-  // signed-in photographer's own: it isn't a way into anyone else's.
-  const lane = !missing && (screen.kind === "albumSelect" || screen.kind === "album" || studioHome) ? columnIndex : -1;
+  // into someone else's by accident. The Dashboard's home keeps to the
+  // photographer's own, or to none (a column past the last) while they have
+  // no published album.
+  const lane = missing
+    ? -1
+    : screen.kind === "albumSelect" || screen.kind === "album"
+      ? columnIndex
+      : studioHome
+        ? columnIndex >= 0 ? columnIndex : columns.length
+        : -1;
 
   // Inside a photographer's address the site wears their colours, as their
   // classic site does, and their Dashboard follows its own setting. Every
@@ -662,8 +671,7 @@ export default function ArchiveSite({
     if (ready) engineRef.current?.setLane(lane);
   }, [lane, ready]);
 
-  // The Dashboard's home lets the photographer's own albums be browsed, and a
-  // click opens one. Without any in the field it stays a backdrop.
+  // The Dashboard's home lets the photographer's own albums be browsed, and a click opens one.
   const browsable = studioHome && !missing && columnIndex >= 0;
   useEffect(() => {
     if (ready) engineRef.current?.setBrowse(browsable);
@@ -888,19 +896,24 @@ export default function ArchiveSite({
     [ready, go, back, key, touch]
   );
   const fieldPick = useMemo((): FieldPick | null => {
-    if (!browsable) return null;
+    if (!studioHome || missing) return null;
+    // Only ever one of the photographer's own.
     const named = (index: number): FieldAlbum | null => {
       const album = files[index];
-      return album ? { index, title: album.title, owner: columns[album.column]?.name ?? "" } : null;
+      return album && album.column === columnIndex
+        ? { index, title: album.title, date: album.dateLabel, photos: album.photoCount }
+        : null;
     };
     return {
       live: status !== "unsupported" && status !== "lost",
+      // Still asking for the photographer's albums, so not yet known to be none.
+      empty: !browsable && !asking,
       hovered: hoverFile >= 0 ? named(hoverFile) : null,
       resting: named(selected),
       open: openDetail,
       step: (direction) => step("file", direction)
     };
-  }, [browsable, files, columns, status, hoverFile, selected, openDetail, step]);
+  }, [studioHome, missing, browsable, asking, files, columnIndex, status, hoverFile, selected, openDetail, step]);
 
   // ----------------------------------------------------------------- render --
   if (files.length === 0 || !file || !column) {

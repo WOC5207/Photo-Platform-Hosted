@@ -188,7 +188,8 @@ export interface ArchiveEngine {
   setBrowse(browse: boolean): void;
   /**
    * Keep to one photographer's lane (their column), or -1 for all: the other
-   * lanes sink and fog over, and taps and swipes stay in the lane.
+   * lanes sink and fog over, and taps and swipes stay in the lane. A column
+   * past the last keeps to none, so every lane sinks.
    */
   setLane(column: number): void;
   /**
@@ -246,8 +247,24 @@ const ROW_ORIGIN = 12;
 const PREVIEW_LIFT = 2.3;
 const DETAIL_LIFT = 4.05;
 const HOVER_LIFT = 0.28;
-/** Further out under the mouse in a browsable overview, which frames the field smaller. */
-const BROWSE_LIFT = 1.5;
+/**
+ * In a browsable overview the album pointed at stands up out of the stack
+ * with the next few behind it in its lane, one after another, as a staircase
+ * that climbs away from the camera, so several covers show at once: the
+ * album pointed at stands this far out (a phone's standing album as
+ * PREVIEW_LIFT), each behind it this much higher, this many of them, and the
+ * seconds between one starting up and the next.
+ */
+const RISE_FRONT = 1.9;
+const RISE_STEP = 1.1;
+const RISE_BEHIND = 3;
+const RISE_STAGGER_S = 0.07;
+/**
+ * When the overview becomes browsable, half the photographer's albums (one
+ * card each, in view) stand up this far, one after another, and stay up.
+ */
+const STANDBY_LIFT = 1.5;
+const STANDBY_STAGGER_S = 0.12;
 const MAX_ROTATION = 0.8;
 // Opening an album turns it this far so its parts fan out as they separate.
 const APART_TURN = 0.5;
@@ -702,6 +719,17 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let openTimer = 0;
   const outgoing = new Map<string, { cell: Cell; lift: Spring }>();
   const hoverLifts = new Map<string, number>();
+  /**
+   * A browsable overview's popped-up staircase (see RISE_FRONT): the card it
+   * stands on, when it started, and how far each card stands. Moving onto a
+   * card already up keeps the staircase where it is.
+   */
+  let rise: Cell | null = null;
+  let riseAt = 0;
+  let pointedAt = 0;
+  const rises = new Map<string, Spring>();
+  /** The standby cards (see STANDBY_LIFT), by key, with when each starts up; null until chosen. */
+  let standby: Map<string, number> | null = null;
   let hoverCell: Cell | null = null;
   let pulses: { row: number; lane: number; time: number }[] = [];
   let pulseGain = 1;
@@ -859,6 +887,80 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     window.clearTimeout(openTimer);
     opened = null;
     apartTarget = 0;
+  }
+
+  // --------------------------------------------------------------- rises --
+  /** How far a card stands in the staircase, or 0 outside it. */
+  function riseHeight(at: Cell) {
+    if (!rise || at.lane !== rise.lane) return 0;
+    const behind = rise.row - at.row;
+    // A lane of a few albums doesn't show the same one twice.
+    const albums = columns[wrap(rise.lane, columnCount)]?.length ?? 1;
+    if (behind < 0 || behind > Math.min(riseReach(), albums - 1)) return 0;
+    return (width < height * 1.05 ? PREVIEW_LIFT : RISE_FRONT) + behind * RISE_STEP;
+  }
+
+  /** How many cards behind the one pointed at stand up with it: on a photographer's album select, none. */
+  function riseReach() {
+    return overviewTarget ? RISE_BEHIND : 0;
+  }
+
+  /** How far a card stands up now (the selected card's is its lift). */
+  function riseLift(key: string) {
+    return rises.get(key)?.value ?? 0;
+  }
+
+  const standbyAt = new Vector3();
+  /** Whether a card's top is in view, clear of the menu on the left of wide screens. */
+  function inView(at: Cell) {
+    standbyAt.set(at.lane * COLUMN_SPACING - trackX.value, BASE_Y + CARD_H, at.row * ROW_SPACING + rail.value).project(camera);
+    const left = width < height * 1.05 ? -0.85 : -0.15;
+    return standbyAt.x > left && standbyAt.x < 0.9 && standbyAt.y > -0.85 && standbyAt.y < 0.75;
+  }
+
+  /**
+   * Once the browsable overview has settled, choose its standby cards: half
+   * the photographer's albums, at random, each at one of its cards in view.
+   */
+  function chooseStandby() {
+    if (standby || !browse || !overviewTarget || overview < 0.98 || mode !== "field") return;
+    const lane = columns[laneLock];
+    if (laneLock < 0 || !lane?.length) return;
+    standby = new Map();
+    const wanted = [...lane].sort(() => Math.random() - 0.5).slice(0, Math.ceil(lane.length / 2));
+    const free = instanceCells.filter((at) => !locked(at.lane) && inView(at));
+    // Nearest the middle of the view first, so the albums stand where they're seen.
+    free.sort((a, b) => Math.abs(a.row - selectedCell.row) - Math.abs(b.row - selectedCell.row));
+    for (const index of wanted) {
+      const at = free.find((cell) => fileAt(cell) === index && !standby?.has(cellKey(cell)) && cellKey(cell) !== cellKey(selectedCell));
+      if (at) standby.set(cellKey(at), clock + standby.size * STANDBY_STAGGER_S);
+    }
+  }
+
+  /** Stand the staircase's and the standby cards up one after another, and the rest back down; true while any moves. */
+  function stepRises(dt: number): boolean {
+    let moving = false;
+    chooseStandby();
+    for (const key of standby?.keys() ?? []) if (!rises.has(key)) rises.set(key, spring(0));
+    if (rise) {
+      for (let behind = 0; behind <= RISE_BEHIND; behind++) {
+        const key = cellKey({ lane: rise.lane, row: rise.row - behind });
+        if (!rises.has(key)) rises.set(key, spring(0));
+      }
+    }
+    for (const [key, card] of rises) {
+      const [lane, row] = key.split(":").map(Number);
+      const selectedHere = lane === selectedCell.lane && row === selectedCell.row;
+      const stair = riseHeight({ lane, row });
+      const standsBy = standby?.get(key);
+      // The staircase's cards go up one after another, and so do the standby cards.
+      const due = stair > 0 ? !rise || clock - riseAt >= (rise.row - row) * RISE_STAGGER_S : standsBy !== undefined && clock >= standsBy;
+      const target = selectedHere || !due ? 0 : stair || (standsBy !== undefined ? STANDBY_LIFT : 0);
+      damp(card, target, reduced ? 35 : 4.2, dt);
+      if (!settled(card, target) || !due) moving = true;
+      if (target === 0 && settled(card, 0) && (due || standsBy === undefined)) rises.delete(key);
+    }
+    return moving;
   }
 
   // -------------------------------------------------------------- framing --
@@ -1148,11 +1250,25 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (opened && apart.value > 0.8) finishOpen();
     // Turn back to face the slot before descending, as the reference does.
     // A dragged archive lowers the raised card back into the stack until it settles.
-    // Phones have no mouse to lift a card, so a browsable overview stands up the one a tap opens there.
+    // Phones have no mouse to point with, so a browsable overview's staircase
+    // stands on the album a tap opens there.
+    const portrait = width < height * 1.05;
+    const browsing = browse && overviewTarget && !fieldDrag;
+    // On a photographer's album select the album under the mouse slides up alone.
+    const sliding = laneLock >= 0 && !overviewTarget && !detailTarget && !fieldDrag;
+    const pointed = browsing ? (portrait || hoverSelected ? selectedCell : hoverCell) : sliding ? hoverCell : null;
+    if (pointed) pointedAt = clock;
+    // The mouse crossing a gap between two of its cards doesn't bring the staircase down.
+    if (!pointed && (browsing || sliding) && clock - pointedAt < 0.3) moving = true;
+    else if (!pointed || locked(pointed.lane)) rise = null;
+    else if (portrait || !rise || pointed.lane !== rise.lane || rise.row - pointed.row < 0 || rise.row - pointed.row > riseReach()) {
+      if (pointed.lane !== rise?.lane || pointed.row !== rise.row) riseAt = clock;
+      rise = { ...pointed };
+    }
     const liftTarget = fieldDrag
       ? 0
       : overviewTarget
-        ? browse && width < height * 1.05 ? PREVIEW_LIFT : hoverSelected ? BROWSE_LIFT : 0
+        ? riseHeight(selectedCell)
         : detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
     damp(lift, liftTarget, rate(4.2), dt);
     moving ||= !settled(shoulder, selectedCell.row) || !settled(laneFocus, selectedCell.lane);
@@ -1164,15 +1280,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (settled(o.lift, 0)) outgoing.delete(key);
       else moving = true;
     }
-    const hoverKey = hoverCell ? cellKey(hoverCell) : null;
+    const hoverKey = hoverCell && !overviewTarget && laneLock < 0 ? cellKey(hoverCell) : null;
     if (hoverKey && !hoverLifts.has(hoverKey)) hoverLifts.set(hoverKey, 0);
     for (const [key, value] of hoverLifts) {
-      const target = key === hoverKey ? (overviewTarget ? BROWSE_LIFT : HOVER_LIFT) : 0;
+      const target = key === hoverKey ? HOVER_LIFT : 0;
       const next = reduced ? target : MathUtils.lerp(value, target, 1 - Math.exp(-dt * 14));
       if (Math.abs(next - target) > 1e-3) moving = true;
       if (target === 0 && next < 1e-3) hoverLifts.delete(key);
       else hoverLifts.set(key, next);
     }
+    if (stepRises(dt)) moving = true;
 
     pulses = pulses.filter((p) => clock - p.time < 3.2);
     if (pulses.length) moving = true;
@@ -1228,7 +1345,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         const x = lane * COLUMN_SPACING - trackX.value;
         // Other photographers' lanes sink out of the way while one is kept to.
         const away = locked(lane) ? isolate.value : 0;
-        const y = BASE_Y + height3(row, lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0) - away * 1.6;
+        const y = BASE_Y + height3(row, lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0) + riseLift(key) - away * 1.6;
         const z = row * ROW_SPACING + rail.value;
         const index = fileAt({ lane, row });
         const slot = coverSlot(index);
@@ -1290,9 +1407,13 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       BASE_Y + height3(selectedCell.row, selectedCell.lane) + lift.value,
       selectedCell.row * ROW_SPACING + rail.value
     );
+    // A lane kept to none takes the selected card down with the rest.
+    const selectedAway = locked(selectedCell.lane) ? isolate.value : 0;
+    cardPosition.y -= selectedAway * 1.6;
     if (selected) {
       selected.group.position.copy(cardPosition);
       selected.group.rotation.y = rotation.value;
+      selected.group.visible = selectedAway < 0.5;
       selected.layout(apart.value);
     }
 
@@ -1575,7 +1696,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(pointer, camera);
     const targets: Object3D[] = [cards];
-    if (selected) targets.push(selected.group);
+    if (selected && !locked(selectedCell.lane)) targets.push(selected.group);
     const hit = raycaster.intersectObjects(targets, true)[0];
     if (!hit) return null;
     if (hit.object === cards && hit.instanceId !== undefined) {
@@ -2017,6 +2138,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     setLane(column) {
       if (column === laneLock) return;
       laneLock = column;
+      standby = null;
       invalidate();
     },
     setStudyFocus(index) {
@@ -2046,6 +2168,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (next === browse) return;
       setHover(null, false);
       browse = next;
+      // Each visit to the overview stands its own standby cards up.
+      standby = null;
       if (!next) canvas.style.cursor = "";
       invalidate();
     },
