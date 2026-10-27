@@ -38,6 +38,7 @@ import type { Rack } from "./rack";
 import type { Shelf } from "./shelf";
 import { onSheet } from "./types";
 import {
+  backOut,
   columnStrength,
   damp,
   DragSpeed,
@@ -188,7 +189,8 @@ export interface ArchiveEngine {
   setBrowse(browse: boolean): void;
   /**
    * Keep to one photographer's lane (their column), or -1 for all: the other
-   * lanes sink and fog over, and taps and swipes stay in the lane.
+   * lanes sink and fog over, and taps and swipes stay in the lane. A column
+   * past the last keeps to none, so every lane sinks.
    */
   setLane(column: number): void;
   /**
@@ -248,6 +250,16 @@ const DETAIL_LIFT = 4.05;
 const HOVER_LIFT = 0.28;
 /** Further out under the mouse in a browsable overview, which frames the field smaller. */
 const BROWSE_LIFT = 1.5;
+/**
+ * In a browsable overview the album being looked at pops more of its
+ * photographs up out of the top of its card, as a fan of prints turned to the
+ * camera: up to this many after its cover, this tall, fanned this far either
+ * side, and the seconds each takes to pop up.
+ */
+const PEEK_PRINTS = 4;
+const PEEK_H = 1.9;
+const PEEK_FAN = 2.9;
+const PEEK_RISE_S = 0.34;
 const MAX_ROTATION = 0.8;
 // Opening an album turns it this far so its parts fan out as they separate.
 const APART_TURN = 0.5;
@@ -861,6 +873,132 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     apartTarget = 0;
   }
 
+  // ----------------------------------------------------------------- peek --
+  // The album a browsable overview presents (the one under the mouse, or the
+  // one standing up on phones) pops more of its photographs up out of its
+  // card, one after another, and drops them back before the next album's rise.
+  const peekGeo = new BoxGeometry(1, 1, 0.012);
+  const peekEdge = new MeshStandardMaterial({ color: 0xfbf8f2, roughness: 0.7 });
+  const peekGroup = new Group();
+  field.add(peekGroup);
+  const peekTiles = Array.from({ length: PEEK_PRINTS }, () => {
+    const face = imageMaterial({ color: new Color().setStyle(palette.control, SRGBColorSpace), fog: false });
+    const mesh = new Mesh(peekGeo, [peekEdge, peekEdge, peekEdge, peekEdge, face, peekEdge]);
+    mesh.visible = false;
+    peekGroup.add(mesh);
+    return { mesh, face, w: 1, ready: false, rise: 0 };
+  });
+  /** The album whose prints are up or rising, and its place on the grid. */
+  let peekFile = -1;
+  let peekCell: Cell | null = null;
+  let peekToken = 0;
+  let peekCount = 0;
+
+  /** Load the album's prints after its cover onto the tiles, which then rise as each arrives. */
+  function loadPeek(want: { cell: Cell; index: number } | null) {
+    const token = ++peekToken;
+    peekFile = want?.index ?? -1;
+    peekCell = want?.cell ?? null;
+    const prints = want ? (files[want.index]?.prints.slice(1, 1 + PEEK_PRINTS) ?? []) : [];
+    peekCount = prints.length;
+    peekTiles.forEach((tile, j) => {
+      tile.face.map?.dispose();
+      tile.face.map = null;
+      tile.face.color.setStyle(palette.control, SRGBColorSpace);
+      tile.face.needsUpdate = true;
+      tile.ready = false;
+      tile.rise = 0;
+      tile.mesh.visible = false;
+      const print = prints[j];
+      if (!print) return;
+      const aspect = printAspect(print) || 1.5;
+      tile.w = Math.min(PEEK_H * 1.5, PEEK_H * aspect);
+      loadImage(print.thumb)
+        .then((image) => {
+          if (token !== peekToken) return;
+          tile.face.map = photoTexture(image, renderer, tile.w / PEEK_H);
+          tile.face.color.set(0xffffff);
+          tile.face.needsUpdate = true;
+          tile.ready = true;
+          invalidate();
+        })
+        .catch(() => undefined);
+    });
+  }
+
+  /** What the overview presents now: the album under the mouse, or the standing one on phones. */
+  function presented(): { cell: Cell; index: number } | null {
+    if (!browse || !overviewTarget || mode !== "field" || fieldDrag) return null;
+    if (hoverCell) return locked(hoverCell.lane) ? null : { cell: hoverCell, index: fileAt(hoverCell) };
+    const standing = hoverSelected || width < height * 1.05;
+    return standing && selectedIndex >= 0 && !locked(selectedCell.lane) ? { cell: selectedCell, index: selectedIndex } : null;
+  }
+
+  /** Where a card stands now, as the field lays it out. */
+  function cardAt(at: Cell, out: Vector3) {
+    if (at.lane === selectedCell.lane && at.row === selectedCell.row) return out.copy(cardPosition);
+    const key = cellKey(at);
+    const away = locked(at.lane) ? isolate.value : 0;
+    return out.set(
+      at.lane * COLUMN_SPACING - trackX.value,
+      BASE_Y + height3(at.row, at.lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0) - away * 1.6,
+      at.row * ROW_SPACING + rail.value
+    );
+  }
+
+  const peekAt = new Vector3();
+  // The prints face the overview's camera, fanned across its view.
+  const PEEK_TURN = Math.atan2(ARCHIVE_DIRECTION.x, ARCHIVE_DIRECTION.z);
+  const PEEK_TOWARD = new Vector3(ARCHIVE_DIRECTION.x, 0, ARCHIVE_DIRECTION.z).normalize();
+  const PEEK_ACROSS = new Vector3(PEEK_TOWARD.z, 0, -PEEK_TOWARD.x);
+  /** Rise, drop and follow the card; true while any print moves. */
+  function stepPeek(dt: number): boolean {
+    const want = presented();
+    const here = want !== null && want.index === peekFile && want.cell.lane === peekCell?.lane && want.cell.row === peekCell?.row;
+    // Another album's prints come up only once these are back down.
+    if (!here && (want || peekCell) && peekTiles.every((tile) => tile.rise === 0)) loadPeek(want);
+    if (!peekCell) return false;
+    const showing = want !== null && want.index === peekFile && want.cell.lane === peekCell.lane && want.cell.row === peekCell.row;
+    const top = cardAt(peekCell, peekAt).y + CARD_H;
+    const half = (peekCount - 1) / 2;
+    // A phone's window onto the field has room for a smaller, narrower fan.
+    const k = width < height * 1.05 ? 0.62 : 1;
+    let moving = false;
+    peekTiles.forEach((tile, j) => {
+      // Each print rises once the one before it is on its way, so they pop up one after another.
+      const goal = showing && tile.ready && (j === 0 || peekTiles[j - 1].rise > 0.35 || !peekTiles[j - 1].ready) ? 1 : 0;
+      const next = reduced ? goal : MathUtils.clamp(tile.rise + (goal ? dt / PEEK_RISE_S : -dt / (PEEK_RISE_S * 0.6)), 0, 1);
+      if (next !== tile.rise || (goal === 0 && next > 0)) moving = true;
+      tile.rise = next;
+      tile.mesh.visible = next > 0;
+      if (!tile.mesh.visible) return;
+      // From the middle of the card's top edge out to a fan across the view,
+      // the middle ones a little higher, as prints held up in a hand.
+      const spread = half > 0 ? (j - half) / half : 0;
+      const pop = goal ? backOut(next) : smooth(next);
+      const out = smooth(next);
+      tile.mesh.position
+        .set(peekAt.x + 0.12, top, peekAt.z)
+        .addScaledVector(PEEK_ACROSS, spread * PEEK_FAN * k * k * out)
+        .addScaledVector(PEEK_TOWARD, j * 0.03)
+        .setY(top + (PEEK_H / 2 + 0.3 + 0.3 * (1 - spread * spread)) * k * pop);
+      tile.mesh.rotation.set(0, PEEK_TURN, -spread * 0.14 * out);
+      const size = Math.max(1e-3, pop * k);
+      tile.mesh.scale.set(tile.w * size, PEEK_H * size, 1);
+    });
+    return moving;
+  }
+
+  function disposePeek() {
+    peekToken += 1;
+    for (const tile of peekTiles) {
+      tile.face.map?.dispose();
+      tile.face.dispose();
+    }
+    peekGeo.dispose();
+    peekEdge.dispose();
+  }
+
   // -------------------------------------------------------------- framing --
   let width = 1;
   let height = 1;
@@ -1288,11 +1426,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       BASE_Y + height3(selectedCell.row, selectedCell.lane) + lift.value,
       selectedCell.row * ROW_SPACING + rail.value
     );
+    // A lane kept to none takes the selected card down with the rest.
+    const selectedAway = locked(selectedCell.lane) ? isolate.value : 0;
+    cardPosition.y -= selectedAway * 1.6;
     if (selected) {
       selected.group.position.copy(cardPosition);
       selected.group.rotation.y = rotation.value;
+      selected.group.visible = selectedAway < 0.5;
       selected.layout(apart.value);
     }
+    if (stepPeek(dt)) moving = true;
 
     // The camera holds still in the archive (the array moves under it), then
     // turns toward the raised card and keeps it at the framing anchor.
@@ -1571,9 +1714,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(pointer, camera);
     const targets: Object3D[] = [cards];
-    if (selected) targets.push(selected.group);
+    if (selected && !locked(selectedCell.lane)) targets.push(selected.group);
+    // The prints an album popped up are part of it, so the mouse can move onto them.
+    const tiles: Object3D[] = peekCell ? peekTiles.filter((tile) => tile.mesh.visible && tile.rise > 0.2).map((tile) => tile.mesh) : [];
+    targets.push(...tiles);
     const hit = raycaster.intersectObjects(targets, true)[0];
     if (!hit) return null;
+    if (peekCell && tiles.includes(hit.object)) {
+      const onSelected = peekCell.lane === selectedCell.lane && peekCell.row === selectedCell.row;
+      return { cell: peekCell, selected: onSelected };
+    }
     if (hit.object === cards && hit.instanceId !== undefined) {
       const cell = instanceCells[hit.instanceId];
       return cell && !locked(cell.lane) ? { cell, selected: false } : null;
@@ -2157,6 +2307,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       controls.stopListenToKeyEvents();
       controls.dispose();
       selected?.dispose();
+      disposePeek();
       studyCassette?.dispose();
       carousel?.dispose();
       table?.dispose();
