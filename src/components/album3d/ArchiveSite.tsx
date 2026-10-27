@@ -1005,6 +1005,7 @@ export default function ArchiveSite({
           data-overview={overview || mode === "table"}
           data-booking={mode === "booking"}
           data-archive={mode === "archive" && !overview}
+          data-field={browsable}
         />
       )}
 
