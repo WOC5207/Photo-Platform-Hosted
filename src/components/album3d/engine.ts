@@ -38,7 +38,6 @@ import type { Rack } from "./rack";
 import type { Shelf } from "./shelf";
 import { onSheet } from "./types";
 import {
-  backOut,
   columnStrength,
   damp,
   DragSpeed,
@@ -249,27 +248,23 @@ const PREVIEW_LIFT = 2.3;
 const DETAIL_LIFT = 4.05;
 const HOVER_LIFT = 0.28;
 /**
- * In a browsable overview the album pointed at pops up out of the stack with
- * the next few behind it in its lane, one after another, as a staircase that
- * climbs away from the camera, so several covers show at once: the album
- * pointed at stands this far out (a phone's standing album as PREVIEW_LIFT),
- * each behind it this much higher, this many of them, the seconds between
- * one's pop and the next, and the seconds each takes to pop up.
+ * In a browsable overview the album pointed at stands up out of the stack
+ * with the next few behind it in its lane, one after another, as a staircase
+ * that climbs away from the camera, so several covers show at once: the
+ * album pointed at stands this far out (a phone's standing album as
+ * PREVIEW_LIFT), each behind it this much higher, this many of them, and the
+ * seconds between one starting up and the next.
  */
 const RISE_FRONT = 1.9;
 const RISE_STEP = 1.1;
 const RISE_BEHIND = 3;
 const RISE_STAGGER_S = 0.07;
-const RISE_POP_S = 0.42;
 /**
- * While nothing is pointed at, a few standby cards of the photographer's own
- * pop up by themselves around the view: this far out, up to this many at
- * once, each standing this many seconds, a new one this often.
+ * When the overview becomes browsable, half the photographer's albums (one
+ * card each, in view) stand up this far, one after another, and stay up.
  */
 const STANDBY_LIFT = 1.5;
-const STANDBY_MAX = 3;
-const STANDBY_HOLD_S = 2.6;
-const STANDBY_EVERY_S = 1.1;
+const STANDBY_STAGGER_S = 0.12;
 const MAX_ROTATION = 0.8;
 // Opening an album turns it this far so its parts fan out as they separate.
 const APART_TURN = 0.5;
@@ -726,17 +721,15 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const hoverLifts = new Map<string, number>();
   /**
    * A browsable overview's popped-up staircase (see RISE_FRONT): the card it
-   * stands on, when it started, and each card's pop, 0 to 1, with the height
-   * it pops to. Moving onto a card already up keeps the staircase where it is.
+   * stands on, when it started, and how far each card stands. Moving onto a
+   * card already up keeps the staircase where it is.
    */
   let rise: Cell | null = null;
   let riseAt = 0;
   let pointedAt = 0;
-  const rises = new Map<string, { pop: number; height: number }>();
-  /** Standby cards up now, by key, and when each goes back down; when the next comes up. */
-  const standby = new Map<string, number>();
-  let standbyNext = 0;
-  let standbyTimer = 0;
+  const rises = new Map<string, Spring>();
+  /** The standby cards (see STANDBY_LIFT), by key, with when each starts up; null until chosen. */
+  let standby: Map<string, number> | null = null;
   let hoverCell: Cell | null = null;
   let pulses: { row: number; lane: number; time: number }[] = [];
   let pulseGain = 1;
@@ -907,10 +900,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     return (width < height * 1.05 ? PREVIEW_LIFT : RISE_FRONT) + behind * RISE_STEP;
   }
 
-  /** A card's popped-up height now (the selected card's is its lift). */
+  /** How far a card stands up now (the selected card's is its lift). */
   function riseLift(key: string) {
-    const card = rises.get(key);
-    return card ? card.height * backOut(card.pop) : 0;
+    return rises.get(key)?.value ?? 0;
   }
 
   const standbyAt = new Vector3();
@@ -922,57 +914,46 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   /**
-   * Bring up the next standby card when it's due, drop those whose time is
-   * up, and wake the scene for the next of either: nothing moves between.
+   * Once the browsable overview has settled, choose its standby cards: half
+   * the photographer's albums, at random, each at one of its cards in view.
    */
-  function stepStandby() {
-    window.clearTimeout(standbyTimer);
-    standbyTimer = 0;
-    for (const [key, until] of standby) if (clock >= until) standby.delete(key);
-    // Phones always stand an album up, so their standby cards come up beside its staircase.
-    const pointing = rise !== null && width >= height * 1.05;
-    const on = browse && overviewTarget && !pointing && !fieldDrag && !reduced && mode === "field" && laneLock >= 0;
-    if (!on) {
-      standbyNext = clock + STANDBY_EVERY_S;
-      if (!standby.size) return;
-    } else if (clock >= standbyNext) {
-      standbyNext = clock + STANDBY_EVERY_S * (0.7 + Math.random() * 0.6);
-      if (standby.size < STANDBY_MAX) {
-        const taken = new Set([...standby.keys(), ...rises.keys(), cellKey(selectedCell)]);
-        const free = instanceCells.filter((at) => !locked(at.lane) && !taken.has(cellKey(at)) && inView(at));
-        const pick = free[Math.floor(Math.random() * free.length)];
-        if (pick) {
-          const key = cellKey(pick);
-          standby.set(key, clock + STANDBY_HOLD_S);
-          rises.set(key, { pop: 0, height: 0 });
-        }
-      }
+  function chooseStandby() {
+    if (standby || !browse || !overviewTarget || overview < 0.98 || mode !== "field") return;
+    const lane = columns[laneLock];
+    if (laneLock < 0 || !lane?.length) return;
+    standby = new Map();
+    const wanted = [...lane].sort(() => Math.random() - 0.5).slice(0, Math.ceil(lane.length / 2));
+    const free = instanceCells.filter((at) => !locked(at.lane) && inView(at));
+    // Nearest the middle of the view first, so the albums stand where they're seen.
+    free.sort((a, b) => Math.abs(a.row - selectedCell.row) - Math.abs(b.row - selectedCell.row));
+    for (const index of wanted) {
+      const at = free.find((cell) => fileAt(cell) === index && !standby?.has(cellKey(cell)) && cellKey(cell) !== cellKey(selectedCell));
+      if (at) standby.set(cellKey(at), clock + standby.size * STANDBY_STAGGER_S);
     }
-    const wake = Math.min(on ? standbyNext : Infinity, ...standby.values());
-    if (Number.isFinite(wake)) standbyTimer = window.setTimeout(invalidate, Math.max(16, (wake - clock) * 1000));
   }
 
-  /** Pop the staircase's cards up one after another, and the rest back down; true while any moves. */
+  /** Stand the staircase's and the standby cards up one after another, and the rest back down; true while any moves. */
   function stepRises(dt: number): boolean {
     let moving = false;
-    stepStandby();
+    chooseStandby();
+    for (const key of standby?.keys() ?? []) if (!rises.has(key)) rises.set(key, spring(0));
     if (rise) {
       for (let behind = 0; behind <= RISE_BEHIND; behind++) {
         const key = cellKey({ lane: rise.lane, row: rise.row - behind });
-        if (!rises.has(key)) rises.set(key, { pop: 0, height: 0 });
+        if (!rises.has(key)) rises.set(key, spring(0));
       }
     }
     for (const [key, card] of rises) {
       const [lane, row] = key.split(":").map(Number);
-      const target =
-        lane === selectedCell.lane && row === selectedCell.row ? 0 : riseHeight({ lane, row }) || (standby.has(key) ? STANDBY_LIFT : 0);
-      const due = rise ? clock - riseAt >= (rise.row - row) * RISE_STAGGER_S : true;
-      const goal = target > 0 && due ? 1 : 0;
-      if (target > 0) card.height = reduced ? target : MathUtils.lerp(card.height, target, 1 - Math.exp(-dt * 10));
-      const pop = reduced ? goal : MathUtils.clamp(card.pop + (goal ? dt : -dt * 1.6) / RISE_POP_S, 0, 1);
-      if (pop !== card.pop || (target > 0 && Math.abs(card.height - target) > 1e-3) || (target > 0 && !due)) moving = true;
-      card.pop = pop;
-      if (goal === 0 && pop === 0) rises.delete(key);
+      const selectedHere = lane === selectedCell.lane && row === selectedCell.row;
+      const stair = riseHeight({ lane, row });
+      const standsBy = standby?.get(key);
+      // The staircase's cards go up one after another, and so do the standby cards.
+      const due = stair > 0 ? !rise || clock - riseAt >= (rise.row - row) * RISE_STAGGER_S : standsBy !== undefined && clock >= standsBy;
+      const target = selectedHere || !due ? 0 : stair || (standsBy !== undefined ? STANDBY_LIFT : 0);
+      damp(card, target, reduced ? 35 : 4.2, dt);
+      if (!settled(card, target) || !due) moving = true;
+      if (target === 0 && settled(card, 0) && (due || standsBy === undefined)) rises.delete(key);
     }
     return moving;
   }
@@ -2146,6 +2127,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     setLane(column) {
       if (column === laneLock) return;
       laneLock = column;
+      standby = null;
       invalidate();
     },
     setStudyFocus(index) {
@@ -2175,6 +2157,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (next === browse) return;
       setHover(null, false);
       browse = next;
+      // Each visit to the overview stands its own standby cards up.
+      standby = null;
       if (!next) canvas.style.cursor = "";
       invalidate();
     },
@@ -2272,7 +2256,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       cancelAnimationFrame(raf);
       clearTimeout(lostTimer);
       clearTimeout(openTimer);
-      clearTimeout(standbyTimer);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
       wipeTexture?.dispose();

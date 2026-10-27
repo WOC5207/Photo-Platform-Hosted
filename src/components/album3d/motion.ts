@@ -12,12 +12,6 @@ export const smooth = (t: number) => {
   return t * t * t * (10 + t * (-15 + 6 * t));
 };
 
-/** Eases out past 1 and settles back, for things that pop up into place. */
-export const backOut = (t: number) => {
-  const u = Math.max(0, Math.min(1, t)) - 1;
-  return 1 + 2.7 * u * u * u + 1.7 * u * u;
-};
-
 const bell = (x: number, width: number) => Math.exp(-0.5 * (x / width) ** 2);
 
 /**
