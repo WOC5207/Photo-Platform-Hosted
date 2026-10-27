@@ -17,8 +17,8 @@ import type { StudioHome } from "./types";
  * notices, and every section of their backend. Until they put it away, a
  * new photographer also gets first steps to follow, each ticked off once done.
  * The album field behind it keeps to the photographer's own albums and stays
- * live: the album under the mouse pops more of its photos up out of its card,
- * and a click, or a tap on phones, where the sheet opens on a window onto the
+ * live: the album under the mouse pops up with the next few behind it, and a
+ * click, or a tap on phones, where the sheet opens on a window onto the
  * field, opens it.
  */
 export default function HomeScreen({ home }: { home: StudioHome }) {

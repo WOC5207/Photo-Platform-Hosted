@@ -2478,7 +2478,7 @@
     "studioStorage": "已用 {used}，共 {total}",
     "studioNotices": "通知",
     "studioDismiss": "关闭",
-    "studioFieldHint": "鼠标移到你的相册上可看到更多照片 · 点击即可打开",
+    "studioFieldHint": "鼠标移到你的相册上浏览 · 点击即可打开",
     "studioFieldHintTouch": "滑动浏览你的相册 · 轻点即可打开",
     "studioFieldClick": "点击打开",
     "studioFieldTap": "轻点打开",

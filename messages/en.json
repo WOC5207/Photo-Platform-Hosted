@@ -2478,7 +2478,7 @@
     "studioStorage": "{used} of {total}",
     "studioNotices": "Notices",
     "studioDismiss": "Dismiss",
-    "studioFieldHint": "Point at one of your albums to see more of it · click to open it",
+    "studioFieldHint": "Point at your albums to browse them · click one to open it",
     "studioFieldHintTouch": "Swipe through your albums · tap one to open it",
     "studioFieldClick": "Click to open",
     "studioFieldTap": "Tap to open",

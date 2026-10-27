@@ -248,18 +248,19 @@ const ROW_ORIGIN = 12;
 const PREVIEW_LIFT = 2.3;
 const DETAIL_LIFT = 4.05;
 const HOVER_LIFT = 0.28;
-/** Further out under the mouse in a browsable overview, which frames the field smaller. */
-const BROWSE_LIFT = 1.5;
 /**
- * In a browsable overview the album being looked at pops more of its
- * photographs up out of the top of its card, as a fan of prints turned to the
- * camera: up to this many after its cover, this tall, fanned this far either
- * side, and the seconds each takes to pop up.
+ * In a browsable overview the album pointed at pops up out of the stack with
+ * the next few behind it in its lane, one after another, as a staircase that
+ * climbs away from the camera, so several covers show at once: the album
+ * pointed at stands this far out (a phone's standing album as PREVIEW_LIFT),
+ * each behind it this much higher, this many of them, the seconds between
+ * one's pop and the next, and the seconds each takes to pop up.
  */
-const PEEK_PRINTS = 4;
-const PEEK_H = 1.9;
-const PEEK_FAN = 2.9;
-const PEEK_RISE_S = 0.34;
+const RISE_FRONT = 1.9;
+const RISE_STEP = 1.1;
+const RISE_BEHIND = 3;
+const RISE_STAGGER_S = 0.07;
+const RISE_POP_S = 0.42;
 const MAX_ROTATION = 0.8;
 // Opening an album turns it this far so its parts fan out as they separate.
 const APART_TURN = 0.5;
@@ -714,6 +715,15 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let openTimer = 0;
   const outgoing = new Map<string, { cell: Cell; lift: Spring }>();
   const hoverLifts = new Map<string, number>();
+  /**
+   * A browsable overview's popped-up staircase (see RISE_FRONT): the card it
+   * stands on, when it started, and each card's pop, 0 to 1, with the height
+   * it pops to. Moving onto a card already up keeps the staircase where it is.
+   */
+  let rise: Cell | null = null;
+  let riseAt = 0;
+  let pointedAt = 0;
+  const rises = new Map<string, { pop: number; height: number }>();
   let hoverCell: Cell | null = null;
   let pulses: { row: number; lane: number; time: number }[] = [];
   let pulseGain = 1;
@@ -873,130 +883,44 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     apartTarget = 0;
   }
 
-  // ----------------------------------------------------------------- peek --
-  // The album a browsable overview presents (the one under the mouse, or the
-  // one standing up on phones) pops more of its photographs up out of its
-  // card, one after another, and drops them back before the next album's rise.
-  const peekGeo = new BoxGeometry(1, 1, 0.012);
-  const peekEdge = new MeshStandardMaterial({ color: 0xfbf8f2, roughness: 0.7 });
-  const peekGroup = new Group();
-  field.add(peekGroup);
-  const peekTiles = Array.from({ length: PEEK_PRINTS }, () => {
-    const face = imageMaterial({ color: new Color().setStyle(palette.control, SRGBColorSpace), fog: false });
-    const mesh = new Mesh(peekGeo, [peekEdge, peekEdge, peekEdge, peekEdge, face, peekEdge]);
-    mesh.visible = false;
-    peekGroup.add(mesh);
-    return { mesh, face, w: 1, ready: false, rise: 0 };
-  });
-  /** The album whose prints are up or rising, and its place on the grid. */
-  let peekFile = -1;
-  let peekCell: Cell | null = null;
-  let peekToken = 0;
-  let peekCount = 0;
-
-  /** Load the album's prints after its cover onto the tiles, which then rise as each arrives. */
-  function loadPeek(want: { cell: Cell; index: number } | null) {
-    const token = ++peekToken;
-    peekFile = want?.index ?? -1;
-    peekCell = want?.cell ?? null;
-    const prints = want ? (files[want.index]?.prints.slice(1, 1 + PEEK_PRINTS) ?? []) : [];
-    peekCount = prints.length;
-    peekTiles.forEach((tile, j) => {
-      tile.face.map?.dispose();
-      tile.face.map = null;
-      tile.face.color.setStyle(palette.control, SRGBColorSpace);
-      tile.face.needsUpdate = true;
-      tile.ready = false;
-      tile.rise = 0;
-      tile.mesh.visible = false;
-      const print = prints[j];
-      if (!print) return;
-      const aspect = printAspect(print) || 1.5;
-      tile.w = Math.min(PEEK_H * 1.5, PEEK_H * aspect);
-      loadImage(print.thumb)
-        .then((image) => {
-          if (token !== peekToken) return;
-          tile.face.map = photoTexture(image, renderer, tile.w / PEEK_H);
-          tile.face.color.set(0xffffff);
-          tile.face.needsUpdate = true;
-          tile.ready = true;
-          invalidate();
-        })
-        .catch(() => undefined);
-    });
+  // --------------------------------------------------------------- rises --
+  /** How far a card stands in the staircase, or 0 outside it. */
+  function riseHeight(at: Cell) {
+    if (!rise || at.lane !== rise.lane) return 0;
+    const behind = rise.row - at.row;
+    // A lane of a few albums doesn't show the same one twice.
+    const albums = columns[wrap(rise.lane, columnCount)]?.length ?? 1;
+    if (behind < 0 || behind > Math.min(RISE_BEHIND, albums - 1)) return 0;
+    return (width < height * 1.05 ? PREVIEW_LIFT : RISE_FRONT) + behind * RISE_STEP;
   }
 
-  /** What the overview presents now: the album under the mouse, or the standing one on phones. */
-  function presented(): { cell: Cell; index: number } | null {
-    if (!browse || !overviewTarget || mode !== "field" || fieldDrag) return null;
-    if (hoverCell) return locked(hoverCell.lane) ? null : { cell: hoverCell, index: fileAt(hoverCell) };
-    const standing = hoverSelected || width < height * 1.05;
-    return standing && selectedIndex >= 0 && !locked(selectedCell.lane) ? { cell: selectedCell, index: selectedIndex } : null;
+  /** A card's popped-up height now (the selected card's is its lift). */
+  function riseLift(key: string) {
+    const card = rises.get(key);
+    return card ? card.height * backOut(card.pop) : 0;
   }
 
-  /** Where a card stands now, as the field lays it out. */
-  function cardAt(at: Cell, out: Vector3) {
-    if (at.lane === selectedCell.lane && at.row === selectedCell.row) return out.copy(cardPosition);
-    const key = cellKey(at);
-    const away = locked(at.lane) ? isolate.value : 0;
-    return out.set(
-      at.lane * COLUMN_SPACING - trackX.value,
-      BASE_Y + height3(at.row, at.lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0) - away * 1.6,
-      at.row * ROW_SPACING + rail.value
-    );
-  }
-
-  const peekAt = new Vector3();
-  // The prints face the overview's camera, fanned across its view.
-  const PEEK_TURN = Math.atan2(ARCHIVE_DIRECTION.x, ARCHIVE_DIRECTION.z);
-  const PEEK_TOWARD = new Vector3(ARCHIVE_DIRECTION.x, 0, ARCHIVE_DIRECTION.z).normalize();
-  const PEEK_ACROSS = new Vector3(PEEK_TOWARD.z, 0, -PEEK_TOWARD.x);
-  /** Rise, drop and follow the card; true while any print moves. */
-  function stepPeek(dt: number): boolean {
-    const want = presented();
-    const here = want !== null && want.index === peekFile && want.cell.lane === peekCell?.lane && want.cell.row === peekCell?.row;
-    // Another album's prints come up only once these are back down.
-    if (!here && (want || peekCell) && peekTiles.every((tile) => tile.rise === 0)) loadPeek(want);
-    if (!peekCell) return false;
-    const showing = want !== null && want.index === peekFile && want.cell.lane === peekCell.lane && want.cell.row === peekCell.row;
-    const top = cardAt(peekCell, peekAt).y + CARD_H;
-    const half = (peekCount - 1) / 2;
-    // A phone's window onto the field has room for a smaller, narrower fan.
-    const k = width < height * 1.05 ? 0.62 : 1;
+  /** Pop the staircase's cards up one after another, and the rest back down; true while any moves. */
+  function stepRises(dt: number): boolean {
     let moving = false;
-    peekTiles.forEach((tile, j) => {
-      // Each print rises once the one before it is on its way, so they pop up one after another.
-      const goal = showing && tile.ready && (j === 0 || peekTiles[j - 1].rise > 0.35 || !peekTiles[j - 1].ready) ? 1 : 0;
-      const next = reduced ? goal : MathUtils.clamp(tile.rise + (goal ? dt / PEEK_RISE_S : -dt / (PEEK_RISE_S * 0.6)), 0, 1);
-      if (next !== tile.rise || (goal === 0 && next > 0)) moving = true;
-      tile.rise = next;
-      tile.mesh.visible = next > 0;
-      if (!tile.mesh.visible) return;
-      // From the middle of the card's top edge out to a fan across the view,
-      // the middle ones a little higher, as prints held up in a hand.
-      const spread = half > 0 ? (j - half) / half : 0;
-      const pop = goal ? backOut(next) : smooth(next);
-      const out = smooth(next);
-      tile.mesh.position
-        .set(peekAt.x + 0.12, top, peekAt.z)
-        .addScaledVector(PEEK_ACROSS, spread * PEEK_FAN * k * k * out)
-        .addScaledVector(PEEK_TOWARD, j * 0.03)
-        .setY(top + (PEEK_H / 2 + 0.3 + 0.3 * (1 - spread * spread)) * k * pop);
-      tile.mesh.rotation.set(0, PEEK_TURN, -spread * 0.14 * out);
-      const size = Math.max(1e-3, pop * k);
-      tile.mesh.scale.set(tile.w * size, PEEK_H * size, 1);
-    });
-    return moving;
-  }
-
-  function disposePeek() {
-    peekToken += 1;
-    for (const tile of peekTiles) {
-      tile.face.map?.dispose();
-      tile.face.dispose();
+    if (rise) {
+      for (let behind = 0; behind <= RISE_BEHIND; behind++) {
+        const key = cellKey({ lane: rise.lane, row: rise.row - behind });
+        if (!rises.has(key)) rises.set(key, { pop: 0, height: 0 });
+      }
     }
-    peekGeo.dispose();
-    peekEdge.dispose();
+    for (const [key, card] of rises) {
+      const [lane, row] = key.split(":").map(Number);
+      const target = lane === selectedCell.lane && row === selectedCell.row ? 0 : riseHeight({ lane, row });
+      const due = rise ? clock - riseAt >= (rise.row - row) * RISE_STAGGER_S : true;
+      const goal = target > 0 && due ? 1 : 0;
+      if (target > 0) card.height = reduced ? target : MathUtils.lerp(card.height, target, 1 - Math.exp(-dt * 10));
+      const pop = reduced ? goal : MathUtils.clamp(card.pop + (goal ? dt : -dt * 1.6) / RISE_POP_S, 0, 1);
+      if (pop !== card.pop || (target > 0 && Math.abs(card.height - target) > 1e-3) || (target > 0 && !due)) moving = true;
+      card.pop = pop;
+      if (goal === 0 && pop === 0) rises.delete(key);
+    }
+    return moving;
   }
 
   // -------------------------------------------------------------- framing --
@@ -1286,11 +1210,23 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (opened && apart.value > 0.8) finishOpen();
     // Turn back to face the slot before descending, as the reference does.
     // A dragged archive lowers the raised card back into the stack until it settles.
-    // Phones have no mouse to lift a card, so a browsable overview stands up the one a tap opens there.
+    // Phones have no mouse to point with, so a browsable overview's staircase
+    // stands on the album a tap opens there.
+    const portrait = width < height * 1.05;
+    const browsing = browse && overviewTarget && !fieldDrag;
+    const pointed = browsing ? (portrait || hoverSelected ? selectedCell : hoverCell) : null;
+    if (pointed) pointedAt = clock;
+    // The mouse crossing a gap between two of its cards doesn't bring the staircase down.
+    if (!pointed && browsing && clock - pointedAt < 0.3) moving = true;
+    else if (!pointed || locked(pointed.lane)) rise = null;
+    else if (portrait || !rise || pointed.lane !== rise.lane || rise.row - pointed.row < 0 || rise.row - pointed.row > RISE_BEHIND) {
+      if (pointed.lane !== rise?.lane || pointed.row !== rise.row) riseAt = clock;
+      rise = { ...pointed };
+    }
     const liftTarget = fieldDrag
       ? 0
       : overviewTarget
-        ? browse && width < height * 1.05 ? PREVIEW_LIFT : hoverSelected ? BROWSE_LIFT : 0
+        ? riseHeight(selectedCell)
         : detailTarget ? DETAIL_LIFT : Math.abs(rotation.value) < 0.02 ? PREVIEW_LIFT : lift.value;
     damp(lift, liftTarget, rate(4.2), dt);
     moving ||= !settled(shoulder, selectedCell.row) || !settled(laneFocus, selectedCell.lane);
@@ -1302,15 +1238,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (settled(o.lift, 0)) outgoing.delete(key);
       else moving = true;
     }
-    const hoverKey = hoverCell ? cellKey(hoverCell) : null;
+    const hoverKey = hoverCell && !overviewTarget ? cellKey(hoverCell) : null;
     if (hoverKey && !hoverLifts.has(hoverKey)) hoverLifts.set(hoverKey, 0);
     for (const [key, value] of hoverLifts) {
-      const target = key === hoverKey ? (overviewTarget ? BROWSE_LIFT : HOVER_LIFT) : 0;
+      const target = key === hoverKey ? HOVER_LIFT : 0;
       const next = reduced ? target : MathUtils.lerp(value, target, 1 - Math.exp(-dt * 14));
       if (Math.abs(next - target) > 1e-3) moving = true;
       if (target === 0 && next < 1e-3) hoverLifts.delete(key);
       else hoverLifts.set(key, next);
     }
+    if (stepRises(dt)) moving = true;
 
     pulses = pulses.filter((p) => clock - p.time < 3.2);
     if (pulses.length) moving = true;
@@ -1366,7 +1303,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         const x = lane * COLUMN_SPACING - trackX.value;
         // Other photographers' lanes sink out of the way while one is kept to.
         const away = locked(lane) ? isolate.value : 0;
-        const y = BASE_Y + height3(row, lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0) - away * 1.6;
+        const y = BASE_Y + height3(row, lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0) + riseLift(key) - away * 1.6;
         const z = row * ROW_SPACING + rail.value;
         const index = fileAt({ lane, row });
         const slot = coverSlot(index);
@@ -1435,7 +1372,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       selected.group.visible = selectedAway < 0.5;
       selected.layout(apart.value);
     }
-    if (stepPeek(dt)) moving = true;
 
     // The camera holds still in the archive (the array moves under it), then
     // turns toward the raised card and keeps it at the framing anchor.
@@ -1715,15 +1651,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     raycaster.setFromCamera(pointer, camera);
     const targets: Object3D[] = [cards];
     if (selected && !locked(selectedCell.lane)) targets.push(selected.group);
-    // The prints an album popped up are part of it, so the mouse can move onto them.
-    const tiles: Object3D[] = peekCell ? peekTiles.filter((tile) => tile.mesh.visible && tile.rise > 0.2).map((tile) => tile.mesh) : [];
-    targets.push(...tiles);
     const hit = raycaster.intersectObjects(targets, true)[0];
     if (!hit) return null;
-    if (peekCell && tiles.includes(hit.object)) {
-      const onSelected = peekCell.lane === selectedCell.lane && peekCell.row === selectedCell.row;
-      return { cell: peekCell, selected: onSelected };
-    }
     if (hit.object === cards && hit.instanceId !== undefined) {
       const cell = instanceCells[hit.instanceId];
       return cell && !locked(cell.lane) ? { cell, selected: false } : null;
@@ -2307,7 +2236,6 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       controls.stopListenToKeyEvents();
       controls.dispose();
       selected?.dispose();
-      disposePeek();
       studyCassette?.dispose();
       carousel?.dispose();
       table?.dispose();
