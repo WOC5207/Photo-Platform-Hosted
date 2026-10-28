@@ -624,6 +624,71 @@
   }
 }
 
+/* The phone layout of a visitor's pages (data-backdrop, see ArchiveSite.tsx):
+   the page fills the screen under the header, scrolling inside itself, and
+   the scene behind it is dimmed to a backdrop that takes no touches. Wider
+   screens keep the scene and its panels side by side. */
+.albumList,
+.phoneGrid,
+.phoneOnly {
+  display: none;
+}
+@media (max-aspect-ratio: 105/100) {
+  .root[data-backdrop] .stage {
+    pointer-events: none;
+  }
+  .root[data-backdrop] .shade::before {
+    opacity: 1;
+    background: color-mix(in srgb, var(--color-page) 82%, transparent);
+  }
+  /* The boards' printed titles and times would read through the list, so
+     their veil also blurs them. */
+  .root[data-backdrop] .shade[data-booking="true"]::before {
+    background: color-mix(in srgb, var(--color-page) 86%, transparent);
+    backdrop-filter: blur(6px);
+  }
+  .root[data-backdrop] .shade::after {
+    opacity: 0;
+  }
+  .root[data-backdrop] :is(.menuPanel, .albumList, .document) {
+    position: absolute;
+    top: 76px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px var(--edge) max(28px, env(safe-area-inset-bottom));
+    border-top: 0;
+  }
+  /* An album's details no longer wait for the camera behind them. */
+  .root[data-backdrop]:not([data-leaving="true"]) :global(#main-content[data-follow="detail"]) {
+    animation: panel-fade 320ms cubic-bezier(0.22, 1, 0.36, 1) 90ms backwards;
+    opacity: 1;
+  }
+  /* Under the back button. */
+  .root[data-backdrop] .document {
+    top: 124px;
+  }
+  .root[data-backdrop] .roster {
+    max-height: none;
+  }
+  .root[data-backdrop] .albumList {
+    display: block;
+  }
+  .root[data-backdrop] .phoneGrid {
+    display: grid;
+  }
+  .root[data-backdrop] .phoneOnly {
+    display: inline-flex;
+  }
+  .root[data-backdrop] :is(.callout, .counter, .fileNav, .columnNav, .hint, .caption, .footer, .phoneHide) {
+    display: none;
+  }
+}
+
 /* Short phone screens: the menus tighten so the whole of one fits between the
    header and the bottom edge, with no page to scroll. Rows keep a 44px target. */
 @media (max-height: 640px) and (max-width: 1099px), (max-height: 640px) and (max-aspect-ratio: 105/100) {

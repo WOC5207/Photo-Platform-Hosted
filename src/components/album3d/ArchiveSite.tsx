@@ -235,6 +235,12 @@ export default function ArchiveSite({
       : studioHome
         ? columnIndex >= 0 ? columnIndex : columns.length
         : -1;
+  // On phones the scene behind a visitor's pages is only a backdrop and the
+  // page takes the screen. The 360° view, a raised photo, the prize draw's
+  // deck and the creators' easel are what those pages show, so they keep it,
+  // and a photographer's page keeps their card standing above its menu.
+  const backdrop =
+    mode !== "study" && mode !== "photo" && !creator && !studio && screen.kind !== "draw" && screen.kind !== "photographer";
 
   // Inside a photographer's address the site wears their colours, as their
   // classic site does, and their Dashboard follows its own setting. Every
@@ -1003,10 +1009,11 @@ export default function ArchiveSite({
       style={palette?.style}
       data-leaving={leaving}
       data-motion={motion === "reduced" ? "reduced" : undefined}
+      data-backdrop={backdrop || undefined}
     >
       <div
         aria-hidden="true"
-        className={`absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${ready ? "opacity-100" : "opacity-0"}`}
+        className={`${styles.stage} absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${ready ? "opacity-100" : "opacity-0"}`}
       >
         <canvas ref={canvasRef} className="block h-full w-full touch-none select-none" />
       </div>
@@ -1247,6 +1254,54 @@ export default function ArchiveSite({
       {/* -------------------------------------------------- archive screens -- */}
       {mode === "archive" && !overview && (
         <main id="main-content" tabIndex={-1} className="outline-none">
+          <section aria-labelledby="album3d-list-title" className={styles.albumList}>
+            <div className="flex items-center gap-3">
+              <p className={metaLabel}>
+                {t("photographerCount", { current: pad(file.column + 1), total: pad(columns.length) })}
+              </p>
+              {columns.length > 1 && lane < 0 && (
+                <span className="flex">
+                  <button type="button" onClick={() => step("column", -1)} aria-label={t("prevColumn")} className={square}>←</button>
+                  <button type="button" onClick={() => step("column", 1)} aria-label={t("nextColumn")} className={square}>→</button>
+                </span>
+              )}
+            </div>
+            <h1 id="album3d-list-title" className="mt-1 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere]">
+              {column.name}
+            </h1>
+            <div aria-hidden="true" className={styles.calloutRule} />
+            <ol className="mt-6 grid gap-2">
+              {column.fileIndexes.map((index) => {
+                const album = files[index];
+                if (!album) return null;
+                return (
+                  <li key={album.id}>
+                    <button
+                      type="button"
+                      onClick={() => openDetail(index)}
+                      aria-current={index === selected ? "true" : undefined}
+                      className="flex min-h-[4.5rem] w-full items-center gap-4 border-l-2 border-transparent py-2 pl-3 text-left transition hover:bg-accent-surface aria-[current]:border-fg aria-[current]:bg-fg/5"
+                    >
+                      <span className="h-14 w-14 shrink-0 overflow-hidden bg-control">
+                        {album.prints[0] && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={album.prints[0].thumb} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                        )}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="line-clamp-2 font-bold uppercase leading-tight [overflow-wrap:anywhere]">{album.title}</span>
+                        <span className="font-meta mt-1 block text-[0.625rem] uppercase tracking-[0.1em] text-fg-subtle">
+                          {[album.dateLabel || t("noDate"), t("photos", { count: album.photoCount })].join(" · ")}
+                        </span>
+                      </span>
+                      <span aria-hidden="true" className="text-xl">→</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+
           <section aria-labelledby="album3d-title" className={styles.callout}>
             <p className="font-meta text-[0.5625rem] uppercase tracking-[0.1em] text-fg-subtle sm:text-xs">
               {t("archiveLabel")} <span aria-hidden="true" className="mx-1 sm:mx-3">／</span> {column.name}
@@ -1433,6 +1488,13 @@ export default function ArchiveSite({
                   <kbd className="font-meta hidden border border-page/40 px-1 text-[0.625rem] font-normal wide:inline">{key("confirm")}</kbd>
                   <span aria-hidden="true" className="text-lg">→</span>
                 </span>
+              </Link>
+              <Link
+                href={screen.kind === "album" ? screenPath({ ...screen, study: true }) : pathname}
+                scroll={false}
+                className={`${styles.phoneOnly} min-h-12 items-center justify-between gap-4 border border-border-strong px-5 text-sm font-semibold uppercase tracking-[0.08em] transition hover:border-fg`}
+              >
+                {t("view360")} <span aria-hidden="true" className="text-lg">↗</span>
               </Link>
             </div>
             <p className="font-meta mt-5 flex justify-between text-[0.625rem] uppercase tracking-[0.1em] text-fg-subtle">

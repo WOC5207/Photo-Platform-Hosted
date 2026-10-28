@@ -54,7 +54,18 @@ export function TableScreen({
         <p className="mt-8 text-sm text-fg-muted">{t("noPhotos")}</p>
       ) : (
         <>
-          <div className="mt-6">
+          {/* Phones show the prints here; the table behind is only a backdrop there. */}
+          <ol aria-label={t("lightTable")} className={`${styles.phoneGrid} mt-6 grid-cols-3 gap-1.5`}>
+            {album.photos.map((photo, i) => (
+              <li key={photo.id}>
+                <button type="button" onClick={() => onOpen(i)} className="block aspect-square w-full overflow-hidden bg-control">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo.thumb} alt={t("printCount", { current: i + 1, total })} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div className={`${styles.phoneHide} mt-6`}>
             <p className={metaLabel}>{t("lightTable")}</p>
             <p className="mt-1 flex items-baseline gap-3">
               <span className="text-[2.125rem] leading-none wide:text-[3rem]">
@@ -69,7 +80,7 @@ export function TableScreen({
             <button
               type="button"
               onClick={() => onOpen(focus)}
-              className="group inline-flex min-h-11 items-center gap-12 text-sm font-medium uppercase tracking-[0.07em]"
+              className={`${styles.phoneHide} group inline-flex min-h-11 items-center gap-12 text-sm font-medium uppercase tracking-[0.07em]`}
             >
               {t("openPhoto")}
               <span aria-hidden="true" className="text-2xl transition-transform group-hover:translate-x-2 motion-reduce:transition-none">→</span>
@@ -85,7 +96,7 @@ export function TableScreen({
               </Link>
             </p>
           )}
-          <ol aria-label={t("lightTable")} className="sr-only">
+          <ol aria-label={t("lightTable")} className={`${styles.phoneHide} sr-only`}>
             {album.photos.map((photo, i) => (
               <li key={photo.id}>
                 <Link href={screenPath({ kind: "photo", username, slug: file.slug, photoId: photo.id })} scroll={false}>
