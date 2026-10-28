@@ -140,7 +140,7 @@ export interface EngineOptions {
   columns: number[][];
   palette: EnginePalette;
   reducedMotion: boolean;
-  /** Phones and other coarse pointers: no shadows, no idle drift. */
+  /** Phones and other coarse pointers: no shadows, smaller textures. */
   lowPower: boolean;
   /**
    * Gets the detail view's camera progress as `--detail` (0 to 1), so the
@@ -164,7 +164,8 @@ export interface EngineOptions {
   onRaised?: (raised: boolean) => void;
   /**
    * The scene can't carry on well: "slow" once frames stay slow at the lowest
-   * quality, "lost" when the browser dropped WebGL and didn't give it back.
+   * quality (again after motion is reduced), "lost" when the browser dropped
+   * WebGL and didn't give it back.
    */
   onTrouble: (kind: "slow" | "lost") => void;
   /** A print tapped in the 360° study, by its place in the album's prints. */
@@ -543,8 +544,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const lowPower = options.lowPower;
 
   // Quality tiers, dropped one at a time while frames run slow: 0 has
-  // shadows and up to 2x pixels, 1 no shadows and 1.5x, 2 1x and no idle
-  // drift. Phones and small screens start at 1.
+  // shadows and up to 2x pixels, 1 no shadows and 1.5x, 2 1x. Phones and
+  // small screens start at 1. Motion is never cut here: past the last tier
+  // the visitor is asked to reduce it (onTrouble).
   let tier = lowPower ? 1 : 0;
   const TIER_PIXELS = [2, 1.5, 1];
   const TIER_SLOW_MS = [20, 26, 45];
@@ -1294,8 +1296,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     pulses = pulses.filter((p) => clock - p.time < 3.2);
     if (pulses.length) moving = true;
     pulseGain = MathUtils.lerp(pulseGain, detailTarget ? 0 : 1, 1 - Math.exp(-dt * 8));
-    // Idle breathing after 2.5 s, on full-power devices only.
-    const idle = !lowPower && tier < 2 && !reduced && !detailTarget && detail < 0.01 && (overviewTarget || clock - lastInteraction > 2.5);
+    // Idle breathing after 2.5 s.
+    const idle = !reduced && !detailTarget && detail < 0.01 && (overviewTarget || clock - lastInteraction > 2.5);
     idleGain = MathUtils.lerp(idleGain, idle ? 1 : 0, 1 - Math.exp(-dt * (idle ? 0.8 : 4)));
     if (idleGain > 1e-3) moving = true;
     else idleGain = 0;
@@ -2200,6 +2202,12 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       invalidate();
     },
     setReducedMotion(next) {
+      // Still slow with less motion: say so again, for the classic site.
+      if (next && !reduced) {
+        slowReported = false;
+        samples = sampleMs = 0;
+        settleUntil = performance.now() + 500;
+      }
       reduced = next;
       controls.enableDamping = !next;
       if (next) pulses = [];

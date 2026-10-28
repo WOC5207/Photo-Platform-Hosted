@@ -71,12 +71,13 @@ const routeBudgets = [
   // field, and the window its phone sheet opens on, add about half a KB to each;
   // with the title menu's two-column marker that tipped the categories,
   // preparation, credits, bookings, posters and account pages over by a few
-  // bytes. Scrolling the phone sheet under its window instead of the whole
-  // sheet tipped the photos, booking settings and checklist pages over by a
-  // few more. Keeping the field to the photographer's own albums, with their
-  // previews popping up, adds about 0.2 KB more to each, which took my
-  // archive and thirteen Dashboard pages over or to within a few bytes of
-  // their budgets. The phone home's step buttons, Expand button and clearer
+  // bytes. The offer to reduce motion when frames run slow, or when the device
+  // asks for less, tipped nine more over by under 0.2 KB. Scrolling the phone
+  // sheet under its window instead of the whole sheet tipped the photos,
+  // booking settings and checklist pages over by a few more. Keeping the
+  // field to the photographer's own albums, with their previews popping up,
+  // adds about 0.2 KB more to each, which took my archive and thirteen
+  // Dashboard pages over or to within a few bytes of their budgets. The phone home's step buttons, Expand button and clearer
   // window add 0.2 to 0.5 KB more, which took thirteen Dashboard pages over
   // or to their budgets.
   { label: "3D my archive", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/page"], limitKb: 151 },
