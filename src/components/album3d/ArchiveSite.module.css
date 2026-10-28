@@ -116,6 +116,19 @@
   left: var(--edge);
   bottom: 3.75rem;
 }
+/* The home screen's list of the albums ejected from the field, shown only
+   while a keyboard is in it: at the bottom right of wide screens, under the
+   header on phones (see the portrait rules below). */
+.recent {
+  position: absolute;
+  right: var(--edge);
+  bottom: 3.75rem;
+  max-width: 22rem;
+  padding: 0.625rem 0.75rem;
+  border-top: 4px solid var(--rule);
+  background: color-mix(in srgb, var(--color-page) 86%, transparent);
+}
+
 /* The schedule's Next button, over the board's tray at its right end. */
 .trayNext {
   position: absolute;
@@ -466,6 +479,9 @@
   .menuHint {
     bottom: 58px;
   }
+  .recent {
+    bottom: 58px;
+  }
   .roster {
     max-height: calc(100dvh - 22rem);
   }
@@ -583,6 +599,13 @@
   }
   .menuHint {
     display: none;
+  }
+  .recent {
+    top: 76px;
+    bottom: auto;
+    left: var(--edge);
+    max-width: none;
+    padding: 0.375rem 0.5rem;
   }
   .roster {
     max-height: 38dvh;
@@ -727,6 +750,10 @@
   .menuHint,
   .footer {
     display: none;
+  }
+  .recent {
+    bottom: 12px;
+    max-width: calc(28% - var(--edge));
   }
 }
 

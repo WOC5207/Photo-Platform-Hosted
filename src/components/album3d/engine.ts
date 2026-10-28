@@ -21,6 +21,7 @@ import {
   Raycaster,
   Scene,
   SRGBColorSpace,
+  ShaderChunk,
   ShaderMaterial,
   Vector2,
   Vector3,
@@ -170,7 +171,7 @@ export interface EngineOptions {
   onTrouble: (kind: "slow" | "lost") => void;
   /** A print tapped in the 360° study, by its place in the album's prints. */
   onStudyPick?: (index: number) => void;
-  /** The album under the mouse while the overview can be browsed (see setBrowse), or -1. */
+  /** The album under the mouse while the overview can be browsed (see setBrowse) or on an ejected album (see setFeatured), or -1. */
   onHover?: (fileIndex: number) => void;
 }
 
@@ -187,6 +188,12 @@ export interface ArchiveEngine {
    * under it (onOpen) rather than selecting it first.
    */
   setBrowse(browse: boolean): void;
+  /**
+   * The home screen's recently updated albums, most recent first: once the
+   * overview settles, a few of them eject from the field (see EJECT_LIFT),
+   * and a tap opens the one tapped (onOpen).
+   */
+  setFeatured(fileIndexes: number[]): void;
   /**
    * Keep to one photographer's lane (their column), or -1 for all: the other
    * lanes sink and fog over, and taps and swipes stay in the lane. A column
@@ -266,6 +273,14 @@ const RISE_STAGGER_S = 0.07;
  */
 const STANDBY_LIFT = 1.5;
 const STANDBY_STAGGER_S = 0.12;
+/**
+ * On the home screen the recently updated albums eject from the field, one
+ * after another, far enough to show their covers, and stay up: this many on
+ * wide screens, on compact screens and phones, and on the narrowest phones.
+ */
+const EJECT_LIFT = 2.3;
+const EJECT_STAGGER_S = 0.18;
+const EJECT_COUNT = { wide: 7, compact: 5, narrow: 3 };
 const MAX_ROTATION = 0.8;
 // Opening an album turns it this far so its parts fan out as they separate.
 const APART_TURN = 0.5;
@@ -361,6 +376,22 @@ interface Cassette {
 interface MenuVeil {
   amount: { value: number };
   color: { value: Color };
+}
+
+/**
+ * Lets an instanced field mesh stand clear of the fog by its instances'
+ * `aClear` (0 to 1), so the home screen's ejected albums show wherever they
+ * stand. Meshes without the attribute read 0 and fog as usual.
+ */
+function clearOfFog(shader: { vertexShader: string; fragmentShader: string }) {
+  shader.vertexShader = `attribute float aClear;\nvarying float vClear;\n${shader.vertexShader}`.replace(
+    "#include <fog_vertex>",
+    "#include <fog_vertex>\n  vClear = aClear;"
+  );
+  shader.fragmentShader = `varying float vClear;\n${shader.fragmentShader}`.replace(
+    "#include <fog_fragment>",
+    ShaderChunk.fog_fragment.replace("fogColor, fogFactor", "fogColor, fogFactor * (1.0 - vClear)")
+  );
 }
 
 /** The map veiled toward `uVeilColor` by `veil`, for photographs that sit behind the menus. */
@@ -580,14 +611,23 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const portraitCardGeo = cardGeometry(PORTRAIT.cardW);
   const carrierFor = (file: EngineFile) => (shapeFor(printAspect(file.prints[0])) === PORTRAIT ? portraitCardGeo : cardGeo);
   const cardMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0 });
+  cardMaterial.onBeforeCompile = clearOfFog;
+  cardMaterial.customProgramCacheKey = () => "album-archive-cards";
   const MAX_INSTANCES = 2600;
-  const cards = new InstancedMesh(cardGeo, cardMaterial, MAX_INSTANCES);
+  // How far each card stands clear of the fog (see clearOfFog); the cassettes share the material, not this.
+  const cardClear = new InstancedBufferAttribute(new Float32Array(MAX_INSTANCES), 1);
+  const fieldCardGeo = cardGeo.clone();
+  fieldCardGeo.setAttribute("aClear", cardClear);
+  const cards = new InstancedMesh(fieldCardGeo, cardMaterial, MAX_INSTANCES);
   cards.castShadow = !lowPower;
   cards.receiveShadow = !lowPower;
   cards.frustumCulled = false;
   const screwGeo = new CylinderGeometry(0.07, 0.07, 0.03, 12);
   screwGeo.rotateX(Math.PI / 2);
+  screwGeo.setAttribute("aClear", cardClear);
   const screwMaterial = new MeshStandardMaterial({ roughness: 0.35, metalness: 0.5 });
+  screwMaterial.onBeforeCompile = clearOfFog;
+  screwMaterial.customProgramCacheKey = () => "album-archive-screws";
   const cardScrews = new InstancedMesh(screwGeo, screwMaterial, MAX_INSTANCES);
   cardScrews.frustumCulled = false;
   field.add(cards, cardScrews);
@@ -680,10 +720,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       "#include <uv_vertex>",
       "#include <uv_vertex>\n  vMapUv = aCell.xy + uv * aCell.zw;\n  vFog = aFog;"
     );
-    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\nvarying float vFog;\n${shader.fragmentShader}`.replace(
-      "#include <map_fragment>",
-      veiledMap("max(uVeil, vFog)")
-    );
+    // A negative aFog is an ejected cover's, clearing of the veil and the fog as it comes up.
+    shader.fragmentShader = `uniform float uVeil;\nuniform vec3 uVeilColor;\nvarying float vFog;\n${shader.fragmentShader}`
+      .replace("#include <map_fragment>", veiledMap("vFog < 0.0 ? uVeil * (1.0 + vFog) : max(uVeil, vFog)"))
+      .replace("#include <fog_fragment>", ShaderChunk.fog_fragment.replace("fogColor, fogFactor", "fogColor, fogFactor * (1.0 + min(vFog, 0.0))"));
   };
   faceMaterial.customProgramCacheKey = () => "album-archive-faces";
   const faces = new InstancedMesh(faceGeo, faceMaterial, MAX_INSTANCES);
@@ -694,9 +734,15 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   // Files lie on an endless grid: lanes wrap over photographers and rows wrap
   // over that photographer's albums.
   const columnCount = Math.max(1, columns.length);
-  const fileAt = ({ lane, row }: Cell) => {
-    const list = columns[wrap(lane, columnCount)] ?? [];
-    return list.length ? list[wrap(row - ROW_ORIGIN, list.length)] : 0;
+  // A card can stand in for an ejected album whose own cards are out of view (see chooseFeatured).
+  const standIns = new Map<string, number>();
+  const fileAt = (at: Cell) => {
+    if (standIns.size) {
+      const standIn = standIns.get(cellKey(at));
+      if (standIn !== undefined) return standIn;
+    }
+    const list = columns[wrap(at.lane, columnCount)] ?? [];
+    return list.length ? list[wrap(at.row - ROW_ORIGIN, list.length)] : 0;
   };
   const homeCell = (index: number): Cell => {
     const file = files[index];
@@ -732,6 +778,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const rises = new Map<string, Spring>();
   /** The standby cards (see STANDBY_LIFT), by key, with when each starts up; null until chosen. */
   let standby: Map<string, number> | null = null;
+  /** The home screen's albums to eject, and whether the standby cards are those (ejected) or a photographer's. */
+  let featured: number[] = [];
+  let lastFeatured: number[] = [];
+  let ejecting = false;
   let hoverCell: Cell | null = null;
   let pulses: { row: number; lane: number; time: number }[] = [];
   let pulseGain = 1;
@@ -828,7 +878,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (lift.value > 1e-3) outgoing.set(cellKey(selectedCell), { cell: selectedCell, lift: { ...lift } });
       const back = outgoing.get(cellKey(cell));
       outgoing.delete(cellKey(cell));
-      lift.value = back?.lift.value ?? 0;
+      // An ejected album opened goes on up from where it stands.
+      lift.value = back?.lift.value ?? riseLift(cellKey(cell));
       lift.velocity = back?.lift.velocity ?? 0;
       rotation.value = rotation.velocity = targetRotation = 0;
       if (!reduced) {
@@ -921,11 +972,73 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   /**
+   * Where an ejected card would stand on the canvas, in pixels from the top
+   * left, when all of it is in view: under the header, and on a phone above
+   * the home screen's title, which covers the lower half of the field.
+   */
+  function ejectSpot(at: Cell): { x: number; y: number } | null {
+    const x = at.lane * COLUMN_SPACING - trackX.value;
+    const z = at.row * ROW_SPACING + rail.value;
+    const portrait = width < height * 1.05;
+    const base = BASE_Y + height3(at.row, at.lane) + CARD_H;
+    standbyAt.set(x, base, z).project(camera);
+    const spot = { x: ((standbyAt.x + 1) / 2) * width, y: ((1 - standbyAt.y) / 2) * height };
+    const bottom = portrait ? 0.41 * height : 0.8 * height;
+    if (standbyAt.x < (portrait ? -0.8 : -0.1) || standbyAt.x > 0.82 || spot.y > bottom) return null;
+    standbyAt.set(x, base + EJECT_LIFT, z).project(camera);
+    return ((1 - standbyAt.y) / 2) * height > (portrait ? 150 : 110) ? spot : null;
+  }
+
+  /**
+   * Once the home screen's overview has settled, choose where its albums
+   * eject: at a card of their own where one is in view, or else at a card
+   * that stands in for them, nearest the middle first and spread out so no
+   * two covers overlap.
+   */
+  function chooseFeatured() {
+    if (!featured.length || laneLock >= 0) return;
+    standby = new Map();
+    ejecting = true;
+    const portrait = width < height * 1.05;
+    const count = portrait && width < 360 ? EJECT_COUNT.narrow : portrait || width < 1100 ? EJECT_COUNT.compact : EJECT_COUNT.wide;
+    // Where the field's covers show clear of its fog: on a phone, just above the title.
+    const middle = { x: width * (portrait ? 0.5 : 0.62), y: height * (portrait ? 0.42 : 0.5) };
+    const free = instanceCells
+      .filter((at) => cellKey(at) !== cellKey(selectedCell))
+      .map((at) => ({ at, spot: ejectSpot(at) }))
+      .filter((c): c is { at: Cell; spot: { x: number; y: number } } => c.spot !== null)
+      .sort((a, b) => Math.hypot(a.spot.x - middle.x, a.spot.y - middle.y) - Math.hypot(b.spot.x - middle.x, b.spot.y - middle.y));
+    // A cover's width on screen, give or take, from two neighbouring lanes.
+    const a = new Vector3(0, BASE_Y, SLOT_Z).project(camera);
+    const b = new Vector3(CARD_W, BASE_Y, SLOT_Z).project(camera);
+    const gap = Math.hypot(((b.x - a.x) / 2) * width, ((b.y - a.y) / 2) * height) * 0.95;
+    const taken: { x: number; y: number }[] = [];
+    const clear = (spot: { x: number; y: number }) => taken.every((t) => Math.hypot(t.x - spot.x, t.y - spot.y) > gap);
+    for (const index of featured.slice(0, count)) {
+      const own = free.find((c) => fileAt(c.at) === index && clear(c.spot));
+      const pick = own ?? free.find((c) => !standby?.has(cellKey(c.at)) && clear(c.spot));
+      if (!pick) continue;
+      const key = cellKey(pick.at);
+      if (!own) standIns.set(key, index);
+      taken.push(pick.spot);
+      standby.set(key, clock + standby.size * EJECT_STAGGER_S);
+    }
+  }
+
+  /** Whether a card has ejected far enough to be tapped. */
+  function ejected(at: Cell) {
+    const key = cellKey(at);
+    return ejecting && Boolean(standby?.has(key)) && riseLift(key) > EJECT_LIFT * 0.5;
+  }
+
+  /**
    * Once the browsable overview has settled, choose its standby cards: half
    * the photographer's albums, at random, each at one of its cards in view.
    */
   function chooseStandby() {
-    if (standby || !browse || !overviewTarget || overview < 0.98 || mode !== "field") return;
+    if (standby || !overviewTarget || overview < 0.98 || mode !== "field") return;
+    if (!browse) return chooseFeatured();
+    ejecting = false;
     const lane = columns[laneLock];
     if (laneLock < 0 || !lane?.length) return;
     standby = new Map();
@@ -957,7 +1070,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       const standsBy = standby?.get(key);
       // The staircase's cards go up one after another, and so do the standby cards.
       const due = stair > 0 ? !rise || clock - riseAt >= (rise.row - row) * RISE_STAGGER_S : standsBy !== undefined && clock >= standsBy;
-      const target = selectedHere || !due ? 0 : stair || (standsBy !== undefined ? STANDBY_LIFT : 0);
+      const target = selectedHere || !due ? 0 : stair || (standsBy !== undefined ? (ejecting ? EJECT_LIFT : STANDBY_LIFT) : 0);
       damp(card, target, reduced ? 35 : 4.2, dt);
       if (!settled(card, target) || !due) moving = true;
       if (target === 0 && settled(card, 0) && (due || standsBy === undefined)) rises.delete(key);
@@ -1093,6 +1206,12 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     studyFile = -1;
   }
 
+  function dropEjected() {
+    standby = null;
+    ejecting = false;
+    rises.clear();
+  }
+
   /** Switch the rendered stage, tidying up the one being left. */
   function enter(next: typeof mode) {
     if (mode === next) return false;
@@ -1103,6 +1222,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (mode === "field") {
       cancelOpen();
       targetRotation = 0;
+      // Each return to the home screen ejects its albums again.
+      if (ejecting) dropEjected();
     }
     if (mode === "carousel") carousel?.setHover(-1);
     if (mode === "table") table?.setHover(-1);
@@ -1282,7 +1403,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (settled(o.lift, 0)) outgoing.delete(key);
       else moving = true;
     }
-    const hoverKey = hoverCell && !overviewTarget && laneLock < 0 ? cellKey(hoverCell) : null;
+    const hoverKey = hoverCell && (!overviewTarget || ejected(hoverCell)) && laneLock < 0 ? cellKey(hoverCell) : null;
     if (hoverKey && !hoverLifts.has(hoverKey)) hoverLifts.set(hoverKey, 0);
     for (const [key, value] of hoverLifts) {
       const target = key === hoverKey ? HOVER_LIFT : 0;
@@ -1363,6 +1484,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         dummy.position.set(x + shape.cardW / 2 - 0.24, y + CARD_H - 0.2, z + CARD_D / 2);
         dummy.updateMatrix();
         cardScrews.setMatrixAt(count, dummy.matrix);
+        const clear = ejecting && standby?.has(key) ? Math.min(1, riseLift(key) / EJECT_LIFT) : 0;
+        cardClear.setX(count, clear);
         instanceCells.push({ lane, row });
         count += 1;
         if (size) {
@@ -1377,7 +1500,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
           const u = ((slot % ATLAS_COLUMNS) * cell + 0.5) / atlasCanvas.width;
           const v = 1 - (Math.floor(slot / ATLAS_COLUMNS) * cell + size[1] - 0.5) / atlasCanvas.height;
           faceCells.setXYZW(faceCount, u, v, (size[0] - 1) / atlasCanvas.width, (size[1] - 1) / atlasCanvas.height);
-          faceFog.setX(faceCount, away * 0.92);
+          // An ejected cover clears of the menus' veil as it comes up (see veiledMap's use).
+          faceFog.setX(faceCount, clear > 0 ? -clear : away * 0.92);
           faceCount += 1;
         }
       }
@@ -1385,6 +1509,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     cards.count = cardScrews.count = count;
     cards.instanceMatrix.needsUpdate = true;
     cardScrews.instanceMatrix.needsUpdate = true;
+    cardClear.needsUpdate = true;
     faces.count = faceCount;
     faces.instanceMatrix.needsUpdate = true;
     faceCells.needsUpdate = true;
@@ -1971,10 +2096,18 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       return;
     }
     if (fieldMove(e)) return;
-    if (e.pointerType !== "mouse" || (overviewTarget && !browse) || hoverFrame) return;
+    if (e.pointerType !== "mouse" || (overviewTarget && !browse && !ejecting) || hoverFrame) return;
     hoverFrame = requestAnimationFrame(() => {
       hoverFrame = 0;
-      if (mode !== "field" || (overviewTarget && !browse)) return;
+      if (mode !== "field" || (overviewTarget && !browse && !ejecting)) return;
+      // The home screen's field answers only on its ejected albums.
+      if (overviewTarget && !browse) {
+        const hit = pick(e.clientX, e.clientY);
+        const on = hit && !hit.selected && ejected(hit.cell) ? hit.cell : null;
+        canvas.style.cursor = on ? "pointer" : "";
+        setHover(on, false);
+        return;
+      }
       // The raised album opens on a tap; the cards below it don't.
       if (detailTarget) {
         canvas.style.cursor = onSelected(e.clientX, e.clientY) ? "pointer" : "";
@@ -1992,7 +2125,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     hoverCell = cell;
     hoverSelected = onSelectedCard;
     invalidate();
-    if (browse) options.onHover?.(hoverSelected ? selectedIndex : hoverCell ? fileAt(hoverCell) : -1);
+    if (browse || ejecting) options.onHover?.(hoverSelected ? selectedIndex : hoverCell ? fileAt(hoverCell) : -1);
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -2023,9 +2156,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (mode !== "field" || e.type === "pointercancel") return;
     const tap = Math.hypot(dx, dy) < 8 && elapsed < 600;
     if (overviewTarget) {
-      // A browsable overview opens the album tapped, selected or not.
-      const hit = browse && tap ? pick(e.clientX, e.clientY) : null;
-      if (!hit) return;
+      // A browsable overview opens the album tapped, selected or not, and the home screen an ejected album.
+      const hit = tap ? pick(e.clientX, e.clientY) : null;
+      if (!hit || (!browse && (hit.selected || !ejected(hit.cell)))) return;
       if (!hit.selected) pendingCell = hit.cell;
       options.onOpen(hit.selected ? selectedIndex : fileAt(hit.cell));
       return;
@@ -2161,9 +2294,28 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       invalidate();
     },
     setOverview(next) {
+      if (!next && ejecting) {
+        standby = null;
+        ejecting = false;
+      }
       overviewTarget = next;
       if (next) setHover(null, false);
       lastInteraction = clock;
+      invalidate();
+    },
+    setFeatured(next) {
+      const same = (list: number[]) => list.length === next.length && list.every((index, i) => index === next[i]);
+      if (same(featured)) return;
+      // Stand-ins stay put while the same albums come and go, so a card keeps its cover.
+      if (next.length && !same(lastFeatured)) standIns.clear();
+      if (next.length) lastFeatured = next;
+      featured = next.filter((index) => files[index]);
+      // The ejected cards sink back into the field, to eject again next time.
+      if (ejecting) {
+        standby = null;
+        ejecting = false;
+      }
+      setHover(null, false);
       invalidate();
     },
     setBrowse(next) {
@@ -2297,7 +2449,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       carousel?.dispose();
       table?.dispose();
       for (const module of Object.values(stages)) module.dispose();
-      for (const thing of [cardGeo, portraitCardGeo, screwGeo, cardMaterial, screwMaterial, faceGeo, faceMaterial, atlas, fieldLights.environment, studyLights.environment])
+      for (const thing of [cardGeo, fieldCardGeo, portraitCardGeo, screwGeo, cardMaterial, screwMaterial, faceGeo, faceMaterial, atlas, fieldLights.environment, studyLights.environment])
         thing.dispose();
       cards.dispose();
       cardScrews.dispose();

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import PlatformThemeScope from "@/components/PlatformThemeScope";
 import ArchiveSite from "@/components/album3d/ArchiveSite";
-import { loadArchive, loadOwnerPalettes } from "@/lib/archive3d";
+import { loadArchive, loadOwnerPalettes, loadRecentAlbums } from "@/lib/archive3d";
 import { getCurrentUser } from "@/lib/auth";
 import { ownerName } from "@/lib/owner";
 
@@ -22,10 +22,22 @@ export async function generateMetadata(): Promise<Metadata> {
  * page under /3d exists to give a screen its URL (see lib/siteMode).
  */
 export default async function ThreeDLayout({ children }: { children: React.ReactNode }) {
-  const [{ files, columns }, palettes, user] = await Promise.all([loadArchive(await getLocale()), loadOwnerPalettes(), getCurrentUser()]);
+  const locale = await getLocale();
+  const [{ files, columns, recent }, palettes, user] = await Promise.all([
+    // The recently updated albums eject from the field, so it always holds them.
+    loadRecentAlbums(locale).then(async (recent) => ({ ...(await loadArchive(locale, recent.map((album) => album.id))), recent })),
+    loadOwnerPalettes(),
+    getCurrentUser()
+  ]);
   return (
     <PlatformThemeScope>
-      <ArchiveSite files={files} columns={columns} palettes={palettes} viewer={user ? { username: user.username, name: ownerName(user) } : null}>
+      <ArchiveSite
+        files={files}
+        columns={columns}
+        recent={recent}
+        palettes={palettes}
+        viewer={user ? { username: user.username, name: ownerName(user) } : null}
+      >
         {children}
       </ArchiveSite>
     </PlatformThemeScope>

@@ -15,7 +15,7 @@ import { FieldContext, StageContext, type FieldAlbum, type FieldPick } from "./S
 import { archiveSlice } from "@/app/[locale]/3d/actions";
 import { joinSlice, type Archive } from "@/lib/archiveField";
 import styles from "./ArchiveSite.module.css";
-import { tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile, type OwnerPalette } from "./types";
+import { tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile, type OwnerPalette, type RecentAlbum } from "./types";
 import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
 
 export type { ArchiveColumn, ArchiveFile, ArchivePrint } from "./types";
@@ -145,12 +145,15 @@ function isInteractive(target: EventTarget | null): boolean {
 export default function ArchiveSite({
   files: loadedFiles,
   columns: loadedColumns,
+  recent,
   palettes,
   viewer,
   children
 }: {
   files: ArchiveFile[];
   columns: ArchiveColumn[];
+  /** The home screen's recently updated albums, from any photographer. */
+  recent: RecentAlbum[];
   /** Photographers' saved site colours, by username. */
   palettes: Record<string, OwnerPalette>;
   /** The signed-in photographer, if any. */
@@ -237,10 +240,17 @@ export default function ArchiveSite({
         : -1;
   // On phones the scene behind a visitor's pages is only a backdrop and the
   // page takes the screen. The 360° view, a raised photo, the prize draw's
-  // deck and the creators' easel are what those pages show, so they keep it,
-  // and a photographer's page keeps their card standing above its menu.
+  // deck and the creators' easel are what those pages show, so they keep it.
+  // The home screen keeps its field above the menu, and a photographer's page
+  // their card.
   const backdrop =
-    mode !== "study" && mode !== "photo" && !creator && !studio && screen.kind !== "draw" && screen.kind !== "photographer";
+    mode !== "study" &&
+    mode !== "photo" &&
+    !creator &&
+    !studio &&
+    screen.kind !== "draw" &&
+    screen.kind !== "title" &&
+    screen.kind !== "photographer";
 
   // Inside a photographer's address the site wears their colours, as their
   // classic site does, and their Dashboard follows its own setting. Every
@@ -690,6 +700,14 @@ export default function ArchiveSite({
   useEffect(() => {
     if (ready) engineRef.current?.setLane(lane);
   }, [lane, ready]);
+
+  // The home screen ejects the recently updated albums from the field, and a tap opens one.
+  const home = !missing && screen.kind === "title";
+  const featured = useMemo(() => recent.map((album) => files.findIndex((f) => f.id === album.id)).filter((index) => index >= 0), [recent, files]);
+  useEffect(() => {
+    if (ready) engineRef.current?.setFeatured(home ? featured : []);
+    if (!home) setHoverFile(-1);
+  }, [home, featured, ready]);
 
   // The Dashboard's home lets the photographer's own albums be browsed, and a click opens one.
   const browsable = studioHome && !missing && columnIndex >= 0;
@@ -1164,6 +1182,36 @@ export default function ArchiveSite({
           <div aria-hidden="true" className={styles.calloutRule} />
           <GameMenu label={t("menuLabel")} items={titleMenu} focus={menuFocus} onFocus={setMenuFocus} className="mt-8 wide:mt-12" />
         </main>
+      )}
+
+      {/* The albums most recently updated, from any photographer, eject from the field (see the
+          engine's setFeatured). For keyboards and screen readers they are listed here too, out of
+          sight until a link in the list has focus. */}
+      {home && featured.length > 0 && status === "ready" && (
+        <section aria-labelledby="album3d-recent" className={`${styles.recent} sr-only focus-within:not-sr-only`}>
+          <p id="album3d-recent" className={metaLabel}>{t("recentlyUpdated")}</p>
+          <ol className="mt-2">
+            {recent.map((album) => {
+              const index = files.findIndex((f) => f.id === album.id);
+              return (
+                <li key={album.id}>
+                  <Link
+                    href={screenPath({ kind: "album", username: album.username, slug: album.slug, study: false })}
+                    scroll={false}
+                    onClick={(e) => {
+                      if (index < 0 || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                      e.preventDefault();
+                      openDetail(index);
+                    }}
+                    className="block py-0.5 text-[0.75rem] font-bold uppercase underline-offset-2 hover:underline focus-visible:underline"
+                  >
+                    {album.title} · {album.owner}
+                  </Link>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
       )}
 
       {!missing && screen.kind === "photographers" && (

@@ -9,7 +9,7 @@ import { publicPhotoWhere } from "@/lib/photoVisibility";
 import { formatPhotoExif } from "@/lib/exif";
 import { platformThemeScope, resolveDashboardThemeMode } from "@/lib/themeColor";
 import { fairField, sliceAlbums, type Archive } from "@/lib/archiveField";
-import type { AlbumPhotos, ArchiveColumn, ArchiveFile, OwnerPalette } from "@/components/album3d/types";
+import type { AlbumPhotos, ArchiveColumn, ArchiveFile, OwnerPalette, RecentAlbum } from "@/components/album3d/types";
 
 /** Albums shown in the field. Past this the scene stops being browsable. */
 const MAX_ALBUMS = 160;
@@ -82,15 +82,48 @@ function totalsOf(candidates: Candidate[]): Totals {
  *
  * The field's MAX_ALBUMS places are shared out fairly (see fairField), and
  * an address past the field brings its photographer in (loadArchiveSlice).
+ * `pinned` albums are in the field whatever their share (the home screen's
+ * recently updated ones, which eject from it).
  */
-export async function loadArchive(locale: string): Promise<Archive> {
+export async function loadArchive(locale: string, pinned: string[] = []): Promise<Archive> {
   const candidates = await prisma.event.findMany({ where: archiveWhere, orderBy: archiveOrder, select: candidateSelect });
   const events = await prisma.event.findMany({
-    where: { ...archiveWhere, id: { in: fairField(candidates, MAX_ALBUMS) } },
+    where: { ...archiveWhere, id: { in: [...new Set([...fairField(candidates, MAX_ALBUMS), ...pinned])] } },
     orderBy: archiveOrder,
     select: archiveSelect
   });
   return buildArchive(locale, events, totalsOf(candidates));
+}
+
+/**
+ * The home screen's recently updated albums, from any photographer: those
+ * most recently edited or given a new public photo, newest first.
+ */
+export async function loadRecentAlbums(locale: string, count = 7): Promise<RecentAlbum[]> {
+  const events = await prisma.event.findMany({
+    where: archiveWhere,
+    select: {
+      id: true,
+      slug: true,
+      titleEn: true,
+      titleZh: true,
+      updatedAt: true,
+      owner: { select: { username: true, displayName: true } },
+      photos: { where: publicPhotoWhere, orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } }
+    }
+  });
+  const updated = (event: (typeof events)[number]) =>
+    Math.max(event.updatedAt.getTime(), event.photos[0]?.createdAt.getTime() ?? 0);
+  return events
+    .sort((a, b) => updated(b) - updated(a))
+    .slice(0, count)
+    .map((event) => ({
+      id: event.id,
+      username: event.owner.username,
+      slug: event.slug,
+      title: pickText(locale, event.titleEn, event.titleZh),
+      owner: ownerName(event.owner)
+    }));
 }
 
 /**
