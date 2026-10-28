@@ -9,7 +9,7 @@ import { publicPhotoWhere } from "@/lib/photoVisibility";
 import { formatPhotoExif } from "@/lib/exif";
 import { platformThemeScope, resolveDashboardThemeMode } from "@/lib/themeColor";
 import { fairField, sliceAlbums, type Archive } from "@/lib/archiveField";
-import type { AlbumPhotos, ArchiveColumn, ArchiveFile, OwnerPalette } from "@/components/album3d/types";
+import type { AlbumPhotos, ArchiveColumn, ArchiveFile, OwnerPalette, RecentAlbum } from "@/components/album3d/types";
 
 /** Albums shown in the field. Past this the scene stops being browsable. */
 const MAX_ALBUMS = 160;
@@ -91,6 +91,39 @@ export async function loadArchive(locale: string): Promise<Archive> {
     select: archiveSelect
   });
   return buildArchive(locale, events, totalsOf(candidates));
+}
+
+/**
+ * The home screen's recently updated albums, from any photographer: those
+ * most recently edited or given a new public photo, newest first.
+ */
+export async function loadRecentAlbums(locale: string, count = 7): Promise<RecentAlbum[]> {
+  const events = await prisma.event.findMany({
+    where: archiveWhere,
+    select: {
+      id: true,
+      slug: true,
+      titleEn: true,
+      titleZh: true,
+      updatedAt: true,
+      owner: { select: { username: true, displayName: true } },
+      coverPhoto: { where: publicPhotoWhere, select: { id: true } },
+      photos: { where: publicPhotoWhere, orderBy: { createdAt: "desc" }, take: 1, select: { id: true, createdAt: true } }
+    }
+  });
+  const updated = (event: (typeof events)[number]) =>
+    Math.max(event.updatedAt.getTime(), event.photos[0]?.createdAt.getTime() ?? 0);
+  return events
+    .sort((a, b) => updated(b) - updated(a))
+    .slice(0, count)
+    .map((event) => ({
+      id: event.id,
+      username: event.owner.username,
+      slug: event.slug,
+      title: pickText(locale, event.titleEn, event.titleZh),
+      owner: ownerName(event.owner),
+      thumb: photoUrls(event.id, (event.coverPhoto ?? event.photos[0]).id).thumb
+    }));
 }
 
 /**

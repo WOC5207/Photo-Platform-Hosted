@@ -15,7 +15,7 @@ import { FieldContext, StageContext, type FieldAlbum, type FieldPick } from "./S
 import { archiveSlice } from "@/app/[locale]/3d/actions";
 import { joinSlice, type Archive } from "@/lib/archiveField";
 import styles from "./ArchiveSite.module.css";
-import { tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile, type OwnerPalette } from "./types";
+import { tableColumns, type AlbumPhotos, type ArchiveColumn, type ArchiveFile, type OwnerPalette, type RecentAlbum } from "./types";
 import type { ArchiveEngine, EngineMove, EnginePalette } from "./engine";
 
 export type { ArchiveColumn, ArchiveFile, ArchivePrint } from "./types";
@@ -145,12 +145,15 @@ function isInteractive(target: EventTarget | null): boolean {
 export default function ArchiveSite({
   files: loadedFiles,
   columns: loadedColumns,
+  recent,
   palettes,
   viewer,
   children
 }: {
   files: ArchiveFile[];
   columns: ArchiveColumn[];
+  /** The home screen's recently updated albums, from any photographer. */
+  recent: RecentAlbum[];
   /** Photographers' saved site colours, by username. */
   palettes: Record<string, OwnerPalette>;
   /** The signed-in photographer, if any. */
@@ -237,10 +240,17 @@ export default function ArchiveSite({
         : -1;
   // On phones the scene behind a visitor's pages is only a backdrop and the
   // page takes the screen. The 360° view, a raised photo, the prize draw's
-  // deck and the creators' easel are what those pages show, so they keep it,
-  // and a photographer's page keeps their card standing above its menu.
+  // deck and the creators' easel are what those pages show, so they keep it.
+  // The home screen keeps its field above the menu, and a photographer's page
+  // their card.
   const backdrop =
-    mode !== "study" && mode !== "photo" && !creator && !studio && screen.kind !== "draw" && screen.kind !== "photographer";
+    mode !== "study" &&
+    mode !== "photo" &&
+    !creator &&
+    !studio &&
+    screen.kind !== "draw" &&
+    screen.kind !== "title" &&
+    screen.kind !== "photographer";
 
   // Inside a photographer's address the site wears their colours, as their
   // classic site does, and their Dashboard follows its own setting. Every
@@ -1164,6 +1174,40 @@ export default function ArchiveSite({
           <div aria-hidden="true" className={styles.calloutRule} />
           <GameMenu label={t("menuLabel")} items={titleMenu} focus={menuFocus} onFocus={setMenuFocus} className="mt-8 wide:mt-12" />
         </main>
+      )}
+
+      {/* The albums most recently updated, from any photographer, each a way straight in. */}
+      {!missing && screen.kind === "title" && recent.length > 0 && (
+        <section aria-labelledby="album3d-recent" className={styles.recent}>
+          <p id="album3d-recent" className={metaLabel}>{t("recentlyUpdated")}</p>
+          <ol className={styles.recentRow}>
+            {recent.map((album) => {
+              const index = files.findIndex((f) => f.id === album.id);
+              return (
+                <li key={album.id}>
+                  <Link
+                    href={screenPath({ kind: "album", username: album.username, slug: album.slug, study: false })}
+                    scroll={false}
+                    onClick={(e) => {
+                      if (index < 0 || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                      e.preventDefault();
+                      openDetail(index);
+                    }}
+                    title={`${album.title} · ${album.owner}`}
+                    className="group block"
+                  >
+                    <span className="block aspect-square overflow-hidden bg-control">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={album.thumb} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none" />
+                    </span>
+                    <span className="mt-1.5 block truncate text-[0.6875rem] font-bold uppercase leading-tight group-hover:text-accent-text">{album.title}</span>
+                    <span className={`font-meta block truncate text-[0.5rem] uppercase tracking-[0.1em] text-fg-subtle ${styles.recentOwner}`}>{album.owner}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
       )}
 
       {!missing && screen.kind === "photographers" && (

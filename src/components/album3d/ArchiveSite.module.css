@@ -116,6 +116,32 @@
   left: var(--edge);
   bottom: 3.75rem;
 }
+/* The home screen's recently updated albums, on a plate like the booking
+   board's: along the bottom right of wide screens, under the header on phones
+   (see the portrait rules below). Up to seven, five where it is narrower, and
+   three on the narrowest phones. */
+.recent {
+  position: absolute;
+  right: var(--edge);
+  bottom: 3.75rem;
+  width: min(46rem, 48%);
+  padding: 0.75rem;
+  border-top: 4px solid var(--rule);
+  background: color-mix(in srgb, var(--color-page) 86%, transparent);
+  animation: panel-fade 320ms cubic-bezier(0.22, 1, 0.36, 1) 140ms backwards;
+}
+.recentRow {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.625rem;
+}
+.root[data-leaving="true"] .recent {
+  animation: none;
+  opacity: 0;
+  transition: opacity 150ms cubic-bezier(0.4, 0, 1, 1);
+}
+
 /* The schedule's Next button, over the board's tray at its right end. */
 .trayNext {
   position: absolute;
@@ -466,6 +492,17 @@
   .menuHint {
     bottom: 58px;
   }
+  .recent {
+    bottom: 58px;
+    width: calc(46% - var(--edge));
+  }
+  .recentRow {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  .recentRow > li:nth-child(n + 6) {
+    display: none;
+  }
   .roster {
     max-height: calc(100dvh - 22rem);
   }
@@ -583,6 +620,16 @@
   }
   .menuHint {
     display: none;
+  }
+  .recent {
+    top: 76px;
+    bottom: auto;
+    left: var(--edge);
+    width: auto;
+    padding: 0.5rem;
+  }
+  .recentOwner {
+    letter-spacing: 0.04em;
   }
   .roster {
     max-height: 38dvh;
@@ -707,6 +754,14 @@
     padding-block: 0.25rem;
   }
 }
+@media (max-aspect-ratio: 105/100) and (max-width: 359px) {
+  .recentRow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .recentRow > li:nth-child(n + 4) {
+    display: none;
+  }
+}
 /* A phone on its side: the menu takes two columns beside the field. */
 @media (max-height: 500px) and (max-width: 1099px) and (min-aspect-ratio: 105/100) {
   .menuPanel {
@@ -726,6 +781,16 @@
   }
   .menuHint,
   .footer {
+    display: none;
+  }
+  .recent {
+    bottom: 12px;
+    width: calc(28% - var(--edge));
+  }
+  .recentRow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .recentRow > li:nth-child(n + 4) {
     display: none;
   }
 }
