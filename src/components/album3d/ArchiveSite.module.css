@@ -568,6 +568,12 @@
       var(--color-page) 70%
     );
   }
+  /* The Dashboard home's field shows in its sheet's window, or through the
+     raised sheet, which brings its own backing; fading it out here too left
+     a haze over the window's lower half on a light page. */
+  .shade[data-field="true"]::before {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--color-page) 45%, transparent), transparent 16%);
+  }
   .menuPanel {
     top: auto;
     bottom: max(28px, env(safe-area-inset-bottom));

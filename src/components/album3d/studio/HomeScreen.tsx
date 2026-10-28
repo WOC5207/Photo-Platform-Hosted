@@ -8,7 +8,7 @@ import { dismissPlatformNotification } from "@/app/[locale]/dashboard/(protected
 import { GameMenu, Rolling, pad, wrap, type MenuItem } from "../hud";
 import { BookingPanel, isInteractive, metaLabel, useScreenKeys, useStage } from "../booking/shared";
 import styles from "../booking/Booking.module.css";
-import { FieldContext } from "../StageContext";
+import { FieldContext, type FieldAlbum } from "../StageContext";
 import { StudioHeading, formatBytes } from "./shared";
 import type { StudioHome } from "./types";
 
@@ -16,8 +16,10 @@ import type { StudioHome } from "./types";
  * The 3D Dashboard's menu: the photographer's numbers, the platform's
  * notices, and every section of their backend. Until they put it away, a
  * new photographer also gets first steps to follow, each ticked off once done.
- * The album field behind it stays live: a click on an album, or a tap on
- * phones, where the sheet opens on a window onto the field, opens it.
+ * The album field behind it keeps to the photographer's own albums and stays
+ * live: the album under the mouse pops up with the next few behind it, and a
+ * click, or a tap on phones, where the sheet opens on a window onto the
+ * field, opens it.
  */
 export default function HomeScreen({ home }: { home: StudioHome }) {
   const t = useTranslations("album3d");
@@ -25,6 +27,8 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
   const { go, path } = useStage();
   const field = useContext(FieldContext);
   const [focus, setFocus] = useState(0);
+  // On phones, the menu raised over the window onto the field.
+  const [raised, setRaised] = useState(false);
   const [leaving, startLeaving] = useTransition();
   const { username } = home.account;
 
@@ -83,7 +87,18 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
 
   return (
     <>
-    <BookingPanel expanded="full" view={field?.live ? <FieldWindow /> : undefined}>
+    <BookingPanel expanded="full" view={field?.live ? <FieldWindow /> : undefined} raised={raised}>
+      {field?.live && (
+        <button
+          type="button"
+          onClick={() => setRaised((up) => !up)}
+          aria-expanded={raised}
+          className={`${styles.raise} font-meta sticky top-0 z-10 -mb-9 ml-auto flex min-h-9 items-center gap-2 border border-border-strong bg-page/85 px-3 text-[0.625rem] uppercase tracking-[0.12em] text-fg-muted transition hover:border-fg hover:text-fg`}
+        >
+          {t(raised ? "studioSheetCollapse" : "studioSheetExpand")}
+          <span aria-hidden="true" className="text-sm leading-none">{raised ? "↓" : "↑"}</span>
+        </button>
+      )}
       <StudioHeading trail={`@${username}`} title={t("studioTitle")} />
       <dl className="mt-6 flex flex-wrap gap-x-10 gap-y-4">
         {[
@@ -137,18 +152,27 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
   );
 }
 
+/** When and how many photos, above an album's name. */
+function useAlbumMeta() {
+  const t = useTranslations("album3d");
+  return (album: FieldAlbum) => [album.date, t("photos", { count: album.photos })].filter(Boolean).join(" · ");
+}
+
 /** Beside the panel: the album under the mouse, or how to browse the field. */
 function FieldCaption() {
   const t = useTranslations("album3d");
   const field = useContext(FieldContext);
+  const meta = useAlbumMeta();
   const { touch } = useStage();
   if (!field?.live) return null;
   const album = field.hovered;
   return (
     <div aria-hidden="true" className={styles.fieldCaption}>
-      {album ? (
+      {field.empty ? (
+        <p className={metaLabel}>{t("studioFieldEmpty")}</p>
+      ) : album ? (
         <>
-          <p className={metaLabel}>{album.owner}</p>
+          <p className={metaLabel}>{meta(album)}</p>
           <p className="mt-1 text-2xl font-extrabold uppercase leading-tight tracking-[-0.02em] [overflow-wrap:anywhere]">{album.title}</p>
           <p className="font-meta mt-2 text-[0.625rem] uppercase tracking-[0.16em] text-accent-text">{t(touch ? "studioFieldTap" : "studioFieldClick")} →</p>
         </>
@@ -159,27 +183,45 @@ function FieldCaption() {
   );
 }
 
-/** On phones, the top of the sheet: how to browse, and the album the field rests on, which a tap opens. */
+/**
+ * On phones, the top of the sheet: how to browse, and the album the field
+ * rests on, which a tap opens, with buttons beside it to step through the
+ * photographer's albums without aiming a swipe in the window.
+ */
 function FieldWindow() {
   const t = useTranslations("album3d");
   const field = useContext(FieldContext);
+  const meta = useAlbumMeta();
   const { touch } = useStage();
   const album = field ? (field.hovered ?? field.resting) : null;
+  const step = "grid h-11 w-11 shrink-0 place-items-center text-lg transition hover:bg-accent-surface";
   return (
     <>
-      <p className="font-meta text-[0.5625rem] uppercase tracking-[0.14em] text-fg-subtle">{t(touch ? "studioFieldHintTouch" : "studioFieldHint")}</p>
+      <p className="font-meta text-[0.5625rem] uppercase tracking-[0.14em] text-fg-subtle">
+        {t(field?.empty ? "studioFieldEmpty" : touch ? "studioFieldHintTouch" : "studioFieldHint")}
+      </p>
       {field && album && (
-        <button
-          type="button"
-          onClick={() => field.open(album.index)}
-          className="flex min-h-11 min-w-0 max-w-full items-center gap-3 border-l-2 border-accent bg-page/85 py-1.5 pl-3 pr-3 text-left"
-        >
-          <span className="min-w-0">
-            <span className={`${metaLabel} block truncate`}>{album.owner}</span>
-            <span className="block truncate text-base font-extrabold uppercase leading-tight tracking-[-0.01em]">{album.title}</span>
+        <div className="flex w-full min-w-0 items-stretch gap-2">
+          <button
+            type="button"
+            onClick={() => field.open(album.index)}
+            className="flex min-h-11 min-w-0 flex-1 items-center justify-between gap-3 border-l-2 border-accent bg-page/85 py-1.5 pl-3 pr-3 text-left"
+          >
+            <span className="min-w-0">
+              <span className={`${metaLabel} block truncate`}>{meta(album)}</span>
+              <span className="block truncate text-base font-extrabold uppercase leading-tight tracking-[-0.01em]">{album.title}</span>
+            </span>
+            <span aria-hidden="true" className="text-lg text-accent-text">→</span>
+          </button>
+          <span className="flex shrink-0 bg-page/85">
+            <button type="button" onClick={() => field.step(-1)} aria-label={t("studioFieldPrevious")} className={step}>
+              ↑
+            </button>
+            <button type="button" onClick={() => field.step(1)} aria-label={t("studioFieldNext")} className={step}>
+              ↓
+            </button>
           </span>
-          <span aria-hidden="true" className="text-lg text-accent-text">→</span>
-        </button>
+        </div>
       )}
     </>
   );

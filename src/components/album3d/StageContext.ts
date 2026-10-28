@@ -23,26 +23,32 @@ export interface Stage {
 
 export const StageContext = createContext<Stage | null>(null);
 
-/** An album in the field, as the Dashboard's home names it. */
+/** One of the photographer's own albums in the field, as the Dashboard's home names it. */
 export interface FieldAlbum {
   index: number;
   title: string;
-  owner: string;
+  date: string;
+  photos: number;
 }
 
 /**
- * The album field behind the Dashboard's home, which can be browsed there and
- * opened from (see the engine's setBrowse). Null on every other screen.
+ * The album field behind the Dashboard's home, kept to the photographer's own
+ * albums, which can be browsed there and opened from (see the engine's
+ * setBrowse and setLane). Null on every other screen.
  */
 export interface FieldPick {
   /** The scene is up or on its way; false without WebGL, when there is no field to look at. */
   live: boolean;
+  /** The photographer has no published album to show, so the field is left empty. */
+  empty: boolean;
   /** The album under the mouse, if any. */
   hovered: FieldAlbum | null;
   /** The album the field rests on, which a finger moves along. */
   resting: FieldAlbum | null;
   /** Straight into the album's own screen. */
   open(index: number): void;
+  /** Moves the field on to the photographer's previous or next album. */
+  step(direction: -1 | 1): void;
 }
 
 export const FieldContext = createContext<FieldPick | null>(null);
