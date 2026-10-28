@@ -7,7 +7,12 @@ import { getSiteSettings, resolveSubjectTerm } from "@/lib/settings";
 import { Link } from "@/i18n/navigation";
 import BookingForm, { type PublicDay } from "@/components/booking/BookingForm";
 import { isNaiveDateTimePast } from "@/lib/timeZone";
-import EventLocalTimeNotice from "@/components/booking/EventLocalTimeNotice";
+import {
+  ArchiveHeading,
+  ArchivePage,
+  LocalTimeRule
+} from "@/components/booking/archive";
+import styles from "@/components/booking/Archive.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +25,7 @@ export default async function BookPage({
   const locale = await getLocale();
   const t = await getTranslations("booking");
   const tc = await getTranslations("common");
+  const t3 = await getTranslations("album3d");
   if (!/^[a-z0-9]+$/.test(token)) notFound();
 
   // The token identifies the event and, through it, the owner — which is why
@@ -29,6 +35,7 @@ export default async function BookPage({
   const event = await prisma.bookingEvent.findUnique({
     where: { token },
     include: {
+      owner: { select: { username: true } },
       days: {
         orderBy: { date: "asc" },
         include: {
@@ -66,6 +73,7 @@ export default async function BookPage({
       start: s.startTime.toISOString(),
       end: s.endTime.toISOString(),
       remaining: Math.max(0, s.capacity - s._count.bookings),
+      capacity: s.capacity,
       pricePerPerson: settings.bookingPriceEnabled ? s.pricePerPerson : "",
       description: pickText(locale, s.descriptionEn, s.descriptionZh)
     }))
@@ -81,41 +89,45 @@ export default async function BookPage({
   const description = pickText(locale, event.descriptionEn, event.descriptionZh);
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-7 rounded-xl border border-border bg-surface/94 p-5 sm:p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <span aria-hidden="true" className="font-meta mb-3 block text-[0.6875rem] font-semibold tracking-[0.18em] text-accent">
-            01 / BOOKING
-          </span>
-          <h1 className="font-display ui-balance text-4xl font-semibold tracking-[-0.04em]">
-            {pickText(locale, event.titleEn, event.titleZh)}
-          </h1>
-          <p className="mt-1 text-sm text-fg-subtle">
-            {[dateLabel, event.location || null].filter(Boolean).join(" · ")}
-          </p>
+    <ArchivePage
+      aside={
+        <div className="flex flex-col gap-5">
+          <ArchiveHeading
+            crumbs={[
+              <Link
+                key="board"
+                href={`/u/${event.owner.username}/booking`}
+                className="hover:text-fg"
+              >
+                @{event.owner.username}
+              </Link>,
+              t3("crumbSchedule")
+            ]}
+            title={pickText(locale, event.titleEn, event.titleZh)}
+            meta={[dateLabel, event.location || null].filter(Boolean).join(" · ")}
+          />
           {description && (
-            <p className="mt-3 whitespace-pre-line text-fg-muted">
+            <p className="whitespace-pre-line text-sm leading-6 text-fg-muted">
               {description}
             </p>
           )}
+          <LocalTimeRule marker={t("eventLocalTimeMarker")}>
+            {t("eventLocalTimeNotice")}
+          </LocalTimeRule>
+          <p className="text-xs text-fg-muted">
+            {t("alreadyBooked")}{" "}
+            <Link
+              href={`/book/${token}/check`}
+              className="inline-flex min-h-8 items-center font-semibold text-fg underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            >
+              {t("checkBookingButton")} <span aria-hidden="true">&nbsp;↗</span>
+            </Link>
+          </p>
         </div>
-        <div className="shrink-0 rounded-lg bg-surface px-3 py-2 text-xs text-fg-subtle">
-          <span>{t("alreadyBooked")} </span>
-          <Link
-            href={`/book/${token}/check`}
-            className="inline-flex min-h-8 items-center font-semibold text-fg-muted underline underline-offset-4 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
-          >
-            {t("checkBookingButton")}
-          </Link>
-        </div>
-      </div>
-
-      <EventLocalTimeNotice marker={t("eventLocalTimeMarker")}>
-        {t("eventLocalTimeNotice")}
-      </EventLocalTimeNotice>
-
+      }
+    >
       {!event.open ? (
-        <p className="rounded-xl border border-border bg-surface p-6 text-center text-fg-subtle">
+        <p className={`${styles.board} p-8 text-center text-sm text-fg-muted`}>
           {t("closedNotice")}
         </p>
       ) : (
@@ -130,6 +142,6 @@ export default async function BookPage({
           eventToken={token}
         />
       )}
-    </div>
+    </ArchivePage>
   );
 }

@@ -23,6 +23,9 @@ import {
   useStageInput
 } from "./shared";
 
+const sheetFoot =
+  "sticky -bottom-px z-10 bg-page [@media(max-aspect-ratio:105/100)]:-bottom-[max(20px,env(safe-area-inset-bottom))] [@media(max-aspect-ratio:105/100)]:pb-[max(20px,env(safe-area-inset-bottom))]";
+
 /** Bookings one request can make, as on the classic page. */
 const CART_LIMIT = 20;
 
@@ -49,7 +52,9 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
   const [state, formAction, pending] = useActionState<BookingFormState, FormData>(createBooking3d, {});
   const days = schedule.days;
   const [day, setDay] = useState(() => Math.max(0, days.findIndex((d) => d.slots.some((s) => s.remaining > 0))));
-  const [row, setRow] = useState(0);
+  // Each day opens on its first time that can still be booked.
+  const firstOpen = (index: number) => Math.max(0, days[index]?.slots.findIndex((slot) => slot.remaining > 0) ?? 0);
+  const [row, setRow] = useState(() => firstOpen(day));
   const [cart, setCart] = useState<string[]>([]);
   const [step, setStep] = useState<Step>("slots");
   const [subjects, setSubjects] = useState<Record<string, string>>({});
@@ -107,6 +112,10 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
   useEffect(() => {
     scene?.clearStamps();
   }, [scene]);
+  // The sheet was scrolled down to the review's Confirm; filed, it starts again at its heading.
+  useEffect(() => {
+    if (booked) document.getElementById("album3d-booked")?.closest("main")?.scrollTo({ top: 0 });
+  }, [booked]);
   useEffect(() => {
     if (!scene || !booked) return;
     scene.stamp(
@@ -204,11 +213,12 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
   // ------------------------------------------------------------ render --
   return (
     <>
-      <BookingPanel expanded={step === "review" || booked ? "cover" : false}>
+      {/* Filed bookings leave the stamped board in view above the sheet on phones. */}
+      <BookingPanel expanded={booked ? true : step === "review" ? "cover" : false}>
         <p className={metaLabel}>
           @{schedule.username} <span aria-hidden="true" className="mx-2">／</span> {t("crumbSchedule")}
         </p>
-        <h1 className="mt-3 text-[2rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[3.25rem]">
+        <h1 className="mt-3 text-[2rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] max-sm:text-[1.625rem] wide:text-[3.25rem]">
           {schedule.title}
         </h1>
         <p className="font-meta mt-3 text-[0.6875rem] uppercase tracking-[0.12em] text-fg-subtle">
@@ -280,7 +290,7 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
                           aria-pressed={i === day}
                           onClick={() => {
                             setDay(i);
-                            setRow(0);
+                            setRow(firstOpen(i));
                           }}
                           className={`font-meta inline-flex min-h-10 items-center gap-2 px-3 text-[0.6875rem] uppercase tracking-[0.1em] transition ${
                             i === day ? "bg-fg text-page" : "border border-border-strong hover:border-fg"
@@ -334,10 +344,17 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
                     );
                   })}
                 </ol>
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border-strong pt-4">
+                {/* Stays in view at the sheet's foot on phones, where the board's
+                    Next button is hidden, once there is something to review;
+                    there it reaches over the sheet's bottom padding to cover it. */}
+                <div
+                  className={`mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border-strong pt-4 ${
+                    cart.length > 0 ? sheetFoot : ""
+                  }`}
+                >
                   <p className="text-sm">
                     <span className="font-semibold">{tb("cartCount", { count: cart.length })}</span>
-                    <span className="block text-xs text-fg-muted">
+                    <span className={`block text-xs text-fg-muted ${touch && cart.length > 0 && cart.length < CART_LIMIT ? "hidden" : ""}`}>
                       {cart.length >= CART_LIMIT ? tb("cartLimitReached", { count: CART_LIMIT }) : touch ? t("scheduleTouchHint") : t("scheduleHint")}
                     </span>
                   </p>

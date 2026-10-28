@@ -7,10 +7,12 @@ import {
   lookupMyBooking,
   type BookingLookupState
 } from "@/app/[locale]/(public)/book/actions";
-import { buttonClasses } from "@/components/ui/Button";
-import Button from "@/components/ui/Button";
-import { Field, Input } from "@/components/ui/Field";
-import StatusMessage from "@/components/ui/StatusMessage";
+import {
+  fieldClass,
+  metaLabel,
+  primaryClass
+} from "./classes";
+import styles from "./Archive.module.css";
 
 function displayName(name: string, subject: string) {
   return subject ? `${name} · ${subject}` : name;
@@ -37,68 +39,87 @@ export default function CheckBookingForm({
           : null;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className={`${styles.rise} flex flex-col gap-6`}>
       <form
         action={formAction}
         aria-busy={pending}
-        className="flex flex-col gap-4"
+        className="grid gap-4"
       >
         <input type="hidden" name="eventToken" value={eventToken} />
-        <Field label={t("nameLabel")} htmlFor="booking-lookup-name" required>
-          <Input
+        <label htmlFor="booking-lookup-name" className="grid gap-1 text-sm">
+          <span className="text-fg-muted">{t("nameLabel")} *</span>
+          <input
             id="booking-lookup-name"
             name="name"
             required
             maxLength={200}
             autoComplete="name"
             disabled={pending}
+            className={fieldClass}
           />
-        </Field>
-        <Field
-          label={t("contactValue")}
-          htmlFor="booking-lookup-contact"
-          required
-        >
-          <Input
+        </label>
+        <label htmlFor="booking-lookup-contact" className="grid gap-1 text-sm">
+          <span className="text-fg-muted">{t("contactValue")} *</span>
+          <input
             id="booking-lookup-contact"
             name="contactValue"
             required
             maxLength={200}
             disabled={pending}
+            className={fieldClass}
           />
-        </Field>
+        </label>
 
-        {errorMessage && <StatusMessage kind="error">{errorMessage}</StatusMessage>}
+        {errorMessage && (
+          <p
+            role="alert"
+            className="border-l-2 border-danger bg-danger-surface px-3 py-2 text-sm text-danger"
+          >
+            {errorMessage}
+          </p>
+        )}
 
-        <Button type="submit" variant="primary" disabled={pending} className="self-start">
-          {t("checkSubmit")}
-        </Button>
+        <button
+          type="submit"
+          disabled={pending}
+          className={`${primaryClass} justify-self-start`}
+        >
+          {t("checkSubmit")} <span aria-hidden="true">→</span>
+        </button>
       </form>
 
       {state.results && state.results.length > 0 && (
-        <ul aria-live="polite" className="flex flex-col gap-3">
+        <ul
+          aria-live="polite"
+          className={`${styles.board} ${styles.rise} grid gap-4 p-4 sm:p-6`}
+        >
           {state.results.map((r) => (
             <li
               key={r.bookingId}
-              className="rounded-xl border border-border bg-surface p-4"
+              data-full={r.cancelled ? "" : undefined}
+              className={`${styles.tile} py-4 pl-6 pr-4`}
             >
-              <p className="font-semibold">{r.eventTitle}</p>
-              <p className="font-meta text-sm text-fg-subtle">{r.slotLabel}</p>
+              <p className="font-meta text-[0.625rem] uppercase tracking-[0.14em] text-accent-text">
+                {r.slotLabel}
+              </p>
+              <p className="mt-1 text-lg font-bold uppercase tracking-[0.01em]">
+                {r.eventTitle}
+              </p>
+              <p className="text-sm text-fg-muted">
+                {displayName(r.name, r.subject)}
+              </p>
               {r.pricePerPerson && (
-                <p className="mt-1 text-sm font-medium text-fg-muted">
+                <p className={`${metaLabel} mt-1`}>
                   {t("pricePerPersonDisplay", { price: r.pricePerPerson })}
                 </p>
               )}
-              <p className="mt-1 text-sm text-fg-muted">
-                {displayName(r.name, r.subject)}
-              </p>
 
               {r.cancelled ? (
-                <p className="mt-2 text-sm text-danger">
+                <p className="font-meta mt-2 text-[0.625rem] uppercase tracking-[0.14em] text-danger">
                   {t("statusCancelled")}
                 </p>
               ) : r.prizeName ? (
-                <p className="mt-2 rounded-lg border border-success-border bg-success-surface p-3 text-center text-sm font-semibold text-success-strong">
+                <p className="mt-3 border-l-2 border-success bg-success-surface px-3 py-2 text-sm font-semibold text-success-strong">
                   {t("checkResultPrize", { prize: r.prizeName })}
                 </p>
               ) : r.lotteryLive ? (
@@ -110,12 +131,9 @@ export default function CheckBookingForm({
               {r.cancelToken ? (
                 <Link
                   href={`/my-booking/${r.cancelToken}`}
-                  className={buttonClasses({
-                    variant: "primary",
-                    className: "mt-3"
-                  })}
+                  className={`${primaryClass} mt-4`}
                 >
-                  {t("openBooking")}
+                  {t("openBooking")} <span aria-hidden="true">→</span>
                 </Link>
               ) : r.linkEmailedTo ? (
                 <p className="mt-3 text-sm text-fg-muted">
