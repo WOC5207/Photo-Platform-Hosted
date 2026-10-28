@@ -9,7 +9,12 @@ import {
   visitorBookingEditDeadline
 } from "@/lib/booking";
 import { wallClockNow } from "@/lib/timeZone";
-import EventLocalTimeNotice from "@/components/booking/EventLocalTimeNotice";
+import {
+  ArchiveHeading,
+  ArchivePage,
+  LocalTimeRule
+} from "@/components/booking/archive";
+import styles from "@/components/booking/Archive.module.css";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import MyBookingDraw from "@/components/booking/MyBookingDraw";
 import EditBookingForm from "@/components/booking/EditBookingForm";
@@ -30,6 +35,7 @@ export default async function MyBookingPage({
   const locale = await getLocale();
   const t = await getTranslations("booking");
   const tc = await getTranslations("common");
+  const t3 = await getTranslations("album3d");
   if (!/^[a-z0-9]+$/.test(cancelToken)) notFound();
 
   const booking = await prisma.booking.findUnique({
@@ -40,6 +46,7 @@ export default async function MyBookingPage({
         include: {
           bookingEvent: {
             include: {
+              owner: { select: { username: true } },
               lotteryDraw: {
                 include: {
                   prizes: {
@@ -141,124 +148,169 @@ export default async function MyBookingPage({
       wonCount: p._count.winners
     })) ?? [];
 
+  const eventTitle = pickText(locale, event.titleEn, event.titleZh);
+  const slotRange = formatSlotRange(
+    booking.timeSlot.startTime,
+    booking.timeSlot.endTime
+  );
+
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-6 rounded-2xl border border-fg/10 bg-page/85 p-6 sm:p-8">
-      <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{t("yourBooking")}</h1>
-
-      {isNew && !cancelled && (
-        <p className="rounded-xl border border-success-border bg-success-surface p-4 text-sm text-success">
-          {t("saveLinkNotice")}
-        </p>
-      )}
-      {cancelled && (
-        <p className="rounded-xl border border-danger-border bg-danger-surface p-4 text-sm text-danger">
-          {t("bookingCancelledNotice")}
-        </p>
-      )}
-
-      <EventLocalTimeNotice marker={t("eventLocalTimeMarker")}>
-        {t("eventLocalTimeNotice")}
-      </EventLocalTimeNotice>
-
-      <dl className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-5 text-sm">
-        <Row label={t("eventLabel")}>
-          {pickText(locale, event.titleEn, event.titleZh)}
-          {event.location ? ` · ${event.location}` : ""}
-        </Row>
-        <Row label={t("timeLabel")}>
-          <span className="font-mono">
-            {formatSlotRange(booking.timeSlot.startTime, booking.timeSlot.endTime)}
-          </span>
-        </Row>
-        {settings.bookingPriceEnabled && booking.timeSlot.pricePerPerson && (
-          <Row label={t("pricePerPersonLabel")}>
-            {booking.timeSlot.pricePerPerson}
-          </Row>
-        )}
-        <Row label={t("nameLabel")}>{booking.name}</Row>
-        {booking.subject && <Row label={subjectTerm}>{booking.subject}</Row>}
-        <Row label={t("statusLabel")}>
-          <span className={cancelled ? "text-danger" : "text-success"}>
-            {cancelled ? t("statusCancelled") : t("statusConfirmed")}
-          </span>
-        </Row>
-      </dl>
-
-      {!cancelled && (
-        <section className="flex flex-col gap-3" aria-labelledby="booking-edit-window">
-          <div
-            className={`rounded-xl border p-4 ${
-              editWindowOpen
-                ? "border-accent/25 bg-accent-surface"
-                : "border-border bg-surface"
-            }`}
-          >
-            <p className="font-meta text-[0.6875rem] uppercase tracking-[0.14em] text-accent">
-              {t("editWindowMarker")}
-            </p>
-            <h2 id="booking-edit-window" className="mt-1 font-semibold text-fg">
-              {editWindowOpen
-                ? t("editWindowOpenTitle")
-                : t("editWindowClosedTitle")}
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-fg-subtle">
-              {event.visitorEditsEnabled
-                ? editWindowOpen
-                  ? t("editWindowOpenHint", {
-                      deadline: editDeadlineLabel
-                    })
-                  : t("editWindowClosedHint", {
-                      hours: event.visitorEditCutoffHours
-                    })
-                : t("editWindowDisabledHint")}
-            </p>
-          </div>
-
-          {editWindowOpen && (
-            <EditBookingForm
-              cancelToken={cancelToken}
-              subjectTerm={subjectTerm}
-              currentSlotId={booking.timeSlotId}
-              slots={editableSlots}
-              initial={{
-                name: booking.name,
-                subject: booking.subject,
-                contactValue: booking.contactValue,
-                email: booking.email,
-                notes: booking.notes
-              }}
-            />
-          )}
-        </section>
-      )}
-
-      {showWheel && (
-        <MyBookingDraw
-          cancelToken={cancelToken}
-          prizes={wheelPrizes}
-          alreadyWonPrizeName={booking.lotteryEntry?.wonPrize?.name ?? null}
-        />
-      )}
-
-      {/* A booking that has won keeps its prize, so only the photographer
-          can cancel it (see cancelBooking in publicBookingService). */}
-      {!cancelled && booking.lotteryEntry?.wonPrize && (
-        <p className="text-sm text-fg-muted">
-          {t("cancelWithPrizeContactOwner", {
-            prize: booking.lotteryEntry.wonPrize.name
-          })}
-        </p>
-      )}
-      {!cancelled && !booking.lotteryEntry?.wonPrize && (
-        <form action={cancelMyBooking}>
-          <input type="hidden" name="cancelToken" value={cancelToken} />
-          <ConfirmSubmit
-            label={t("cancelButton")}
-            confirmText={t("confirmCancel")}
+    <ArchivePage
+      aside={
+        <div className="flex flex-col gap-5">
+          <ArchiveHeading
+            crumbs={[`@${event.owner.username}`, t3("crumbMyBooking")]}
+            title={t("yourBooking")}
+            meta={[eventTitle, event.location || null].filter(Boolean).join(" · ")}
           />
-        </form>
-      )}
-    </div>
+          {isNew && !cancelled && (
+            <p className="border-l-2 border-success bg-success-surface px-3 py-2 text-sm leading-6 text-success">
+              {t("saveLinkNotice")}
+            </p>
+          )}
+          {cancelled && (
+            <p className="border-l-2 border-danger bg-danger-surface px-3 py-2 text-sm leading-6 text-danger">
+              {t("bookingCancelledNotice")}
+            </p>
+          )}
+          <LocalTimeRule marker={t("eventLocalTimeMarker")}>
+            {t("eventLocalTimeNotice")}
+          </LocalTimeRule>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-6">
+        <div className={`${styles.board} ${styles.rise} p-4 sm:p-6`}>
+          <div
+            data-full={cancelled ? "" : undefined}
+            className={`${styles.tile} flex flex-wrap items-center justify-between gap-4 py-5 pl-6 pr-5`}
+          >
+            <div className="min-w-0">
+              <p className="font-meta text-[0.6875rem] uppercase tracking-[0.12em] text-accent-text">
+                {slotRange}
+              </p>
+              <p className="mt-1 text-2xl font-extrabold uppercase leading-tight tracking-[-0.02em]">
+                {eventTitle}
+              </p>
+              <p className="text-sm text-fg-muted">
+                {[booking.name, booking.subject || null, event.location || null]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+            <span
+              aria-hidden="true"
+              data-cancelled={cancelled ? "" : undefined}
+              className={`${styles.stamp} font-meta text-sm font-bold uppercase tracking-[0.16em]`}
+            >
+              {cancelled ? t3("ticketStampCancelled") : t3("ticketStampBooked")}
+            </span>
+          </div>
+        </div>
+
+        <dl className="grid border border-border-strong text-sm">
+          <Row label={t("eventLabel")}>
+            {eventTitle}
+            {event.location ? ` · ${event.location}` : ""}
+          </Row>
+          <Row label={t("timeLabel")}>
+            <span className="font-meta">{slotRange}</span>
+          </Row>
+          {settings.bookingPriceEnabled && booking.timeSlot.pricePerPerson && (
+            <Row label={t("pricePerPersonLabel")}>
+              {booking.timeSlot.pricePerPerson}
+            </Row>
+          )}
+          <Row label={t("nameLabel")}>{booking.name}</Row>
+          {booking.subject && <Row label={subjectTerm}>{booking.subject}</Row>}
+          <Row label={t("statusLabel")}>
+            <span
+              className={`font-meta text-xs font-semibold uppercase tracking-[0.14em] ${
+                cancelled ? "text-danger" : "text-success"
+              }`}
+            >
+              {cancelled ? t("statusCancelled") : t("statusConfirmed")}
+            </span>
+          </Row>
+        </dl>
+
+        {!cancelled && (
+          <section className="flex flex-col gap-4" aria-labelledby="booking-edit-window">
+            <div
+              className={`border-l-2 px-4 py-3 ${
+                editWindowOpen
+                  ? "border-accent bg-accent-surface"
+                  : "border-border-strong bg-surface"
+              }`}
+            >
+              <p className="font-meta text-[0.6875rem] uppercase tracking-[0.14em] text-accent-text">
+                {t("editWindowMarker")}
+              </p>
+              <h2 id="booking-edit-window" className="mt-1 font-bold text-fg">
+                {editWindowOpen
+                  ? t("editWindowOpenTitle")
+                  : t("editWindowClosedTitle")}
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-fg-muted">
+                {event.visitorEditsEnabled
+                  ? editWindowOpen
+                    ? t("editWindowOpenHint", {
+                        deadline: editDeadlineLabel
+                      })
+                    : t("editWindowClosedHint", {
+                        hours: event.visitorEditCutoffHours
+                      })
+                  : t("editWindowDisabledHint")}
+              </p>
+            </div>
+
+            {editWindowOpen && (
+              <EditBookingForm
+                cancelToken={cancelToken}
+                subjectTerm={subjectTerm}
+                currentSlotId={booking.timeSlotId}
+                slots={editableSlots}
+                initial={{
+                  name: booking.name,
+                  subject: booking.subject,
+                  contactValue: booking.contactValue,
+                  email: booking.email,
+                  notes: booking.notes
+                }}
+              />
+            )}
+          </section>
+        )}
+
+        {showWheel && (
+          <MyBookingDraw
+            cancelToken={cancelToken}
+            prizes={wheelPrizes}
+            alreadyWonPrizeName={booking.lotteryEntry?.wonPrize?.name ?? null}
+          />
+        )}
+
+        {/* A booking that has won keeps its prize, so only the photographer
+            can cancel it (see cancelBooking in publicBookingService). */}
+        {!cancelled && booking.lotteryEntry?.wonPrize && (
+          <p className="text-sm text-fg-muted">
+            {t("cancelWithPrizeContactOwner", {
+              prize: booking.lotteryEntry.wonPrize.name
+            })}
+          </p>
+        )}
+        {!cancelled && !booking.lotteryEntry?.wonPrize && (
+          <form action={cancelMyBooking}>
+            <input type="hidden" name="cancelToken" value={cancelToken} />
+            <ConfirmSubmit
+              label={t("cancelButton")}
+              confirmText={t("confirmCancel")}
+              className="inline-flex min-h-11 items-center gap-3 border border-danger-border px-4 text-sm uppercase tracking-[0.06em] text-danger transition hover:border-danger hover:text-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
+            />
+          </form>
+        )}
+      </div>
+    </ArchivePage>
   );
 }
 
@@ -270,8 +322,10 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
-      <dt className="w-24 shrink-0 text-fg-subtle">{label}</dt>
+    <div className="grid gap-1 border-b border-border px-4 py-3 last:border-b-0 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-3">
+      <dt className="font-meta text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
+        {label}
+      </dt>
       <dd>{children}</dd>
     </div>
   );

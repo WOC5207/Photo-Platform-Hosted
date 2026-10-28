@@ -2,8 +2,11 @@
 
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
-import Button from "@/components/ui/Button";
-import StatusMessage from "@/components/ui/StatusMessage";
+import {
+  fieldClass,
+  metaLabel,
+  primaryClass
+} from "@/components/album3d/booking/classes";
 import {
   updateMyBooking,
   type EditBookingState
@@ -13,9 +16,6 @@ export interface EditableBookingSlot {
   id: string;
   label: string;
 }
-
-const inputCls =
-  "min-h-11 rounded-lg border border-border-strong bg-control px-3.5 py-2.5 text-fg outline-none transition-[border-color,background-color,box-shadow] placeholder:text-fg-faint hover:border-fg-faint focus:border-accent/60 focus:bg-raised focus-visible:ring-2 focus-visible:ring-accent/20";
 
 export default function EditBookingForm({
   cancelToken,
@@ -55,22 +55,22 @@ export default function EditBookingForm({
     : null;
 
   return (
-    <details className="group rounded-xl border border-border bg-surface">
-      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-semibold text-fg marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40">
+    <details className="group border border-border-strong">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold uppercase tracking-[0.06em] text-fg marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40">
         <span>{t("editBooking")}</span>
         <span
           aria-hidden="true"
-          className="text-accent transition-transform duration-150 group-open:rotate-45"
+          className="text-lg text-accent transition-transform duration-150 group-open:rotate-45 motion-reduce:transition-none"
         >
           +
         </span>
       </summary>
 
-      <form action={action} className="flex flex-col gap-5 border-t border-border p-4 sm:p-5">
+      <form action={action} className="flex flex-col gap-5 border-t border-border-strong p-4 sm:p-5">
         <input type="hidden" name="cancelToken" value={cancelToken} />
 
         <fieldset className="flex flex-col gap-3">
-          <legend className="font-display text-lg font-semibold text-fg">
+          <legend className={`${metaLabel} mb-1`}>
             {t("editSchedule")}
           </legend>
           <label className="flex flex-col gap-1 text-sm">
@@ -78,7 +78,7 @@ export default function EditBookingForm({
             <select
               name="targetSlotId"
               defaultValue={currentSlotId}
-              className={inputCls}
+              className={fieldClass}
             >
               {slots.map((slot) => (
                 <option key={slot.id} value={slot.id}>
@@ -93,7 +93,7 @@ export default function EditBookingForm({
         </fieldset>
 
         <fieldset className="grid gap-4 sm:grid-cols-2">
-          <legend className="col-span-full font-display text-lg font-semibold text-fg">
+          <legend className={`${metaLabel} col-span-full mb-1`}>
             {t("editDetails")}
           </legend>
           <label className="flex flex-col gap-1 text-sm">
@@ -104,7 +104,7 @@ export default function EditBookingForm({
               maxLength={200}
               autoComplete="name"
               defaultValue={initial.name}
-              className={inputCls}
+              className={fieldClass}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -115,7 +115,7 @@ export default function EditBookingForm({
               name="subject"
               maxLength={200}
               defaultValue={initial.subject}
-              className={inputCls}
+              className={fieldClass}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -125,7 +125,7 @@ export default function EditBookingForm({
               required
               maxLength={200}
               defaultValue={initial.contactValue}
-              className={inputCls}
+              className={fieldClass}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -136,7 +136,7 @@ export default function EditBookingForm({
               maxLength={200}
               autoComplete="email"
               defaultValue={initial.email}
-              className={inputCls}
+              className={fieldClass}
             />
           </label>
           <label className="col-span-full flex flex-col gap-1 text-sm">
@@ -146,20 +146,33 @@ export default function EditBookingForm({
               rows={3}
               maxLength={2000}
               defaultValue={initial.notes}
-              className={inputCls}
+              className={fieldClass}
             />
           </label>
         </fieldset>
 
-        {error && <StatusMessage kind="error">{error}</StatusMessage>}
+        {error && (
+          <p
+            role="alert"
+            className="border-l-2 border-danger bg-danger-surface px-3 py-2 text-sm text-danger"
+          >
+            {error}
+          </p>
+        )}
         {state.ok && (
-          <StatusMessage kind="success">{t("editSaved")}</StatusMessage>
+          <p
+            role="status"
+            className="border-l-2 border-success bg-success-surface px-3 py-2 text-sm text-success-strong"
+          >
+            {t("editSaved")}
+          </p>
         )}
 
         <div className="flex justify-end border-t border-border pt-4">
-          <Button type="submit" variant="primary" disabled={pending}>
+          <button type="submit" disabled={pending} className={primaryClass}>
             {pending ? t("editSaving") : t("saveBookingChanges")}
-          </Button>
+            <span aria-hidden="true">→</span>
+          </button>
         </div>
       </form>
     </details>
