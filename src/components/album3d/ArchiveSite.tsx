@@ -884,7 +884,8 @@ export default function ArchiveSite({
           ArrowLeft: () => step("column", -1),
           ArrowRight: () => step("column", 1)
         }),
-        "/": () => setIndexOpen(true)
+        // The index lists every photographer's albums, which the Dashboard's home doesn't offer.
+        ...(!studioHome && { "/": () => setIndexOpen(true) })
       };
       if (e.key === "Enter" && !isInteractive(e.target)) {
         e.preventDefault();
@@ -923,9 +924,10 @@ export default function ArchiveSite({
       empty: !browsable && !asking,
       hovered: hoverFile >= 0 ? named(hoverFile) : null,
       resting: named(selected),
-      open: openDetail
+      open: openDetail,
+      step: (direction) => step("file", direction)
     };
-  }, [studioHome, missing, browsable, asking, files, columnIndex, status, hoverFile, selected, openDetail]);
+  }, [studioHome, missing, browsable, asking, files, columnIndex, status, hoverFile, selected, openDetail, step]);
 
   // ----------------------------------------------------------------- render --
   if (files.length === 0 || !file || !column) {
@@ -1017,6 +1019,7 @@ export default function ArchiveSite({
           data-overview={overview || mode === "table"}
           data-booking={mode === "booking"}
           data-archive={mode === "archive" && !overview}
+          data-field={browsable}
         />
       )}
 
