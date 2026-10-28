@@ -147,7 +147,8 @@ export function BookingPanel({
   const full = expanded === "full";
   useEffect(() => {
     const main = ref.current;
-    if (!main || full) return;
+    // A full sheet, or a page over the backdrop, leaves the scene framed as it is.
+    if (!main || full || main.closest("[data-backdrop]")) return;
     const owner = {};
     const report = () => reportSheet(owner, main.offsetTop);
     const observer = new ResizeObserver(report);
