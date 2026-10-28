@@ -77,9 +77,9 @@ const routeBudgets = [
   // booking settings and checklist pages over by a few more. Keeping the
   // field to the photographer's own albums, with their previews popping up,
   // adds about 0.2 KB more to each, which took my archive and thirteen
-  // Dashboard pages over or to within a few bytes of their budgets. The phone home's step buttons, Expand button and clearer
-  // window add 0.2 to 0.5 KB more, which took thirteen Dashboard pages over
-  // or to their budgets.
+  // Dashboard pages over or to within a few bytes of their budgets. The phone
+  // home's step buttons, Expand button and clearer window add 0.2 to 0.5 KB
+  // more, which took thirteen Dashboard pages over or to their budgets.
   { label: "3D my archive", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/page"], limitKb: 151 },
   { label: "3D Dashboard", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/page"], limitKb: 152 },
   { label: "3D Dashboard events", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/page"], limitKb: 151 },
