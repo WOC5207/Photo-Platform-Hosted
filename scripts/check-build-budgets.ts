@@ -69,10 +69,11 @@ const routeBudgets = [
   // field, and the window its phone sheet opens on, add about half a KB to each;
   // with the title menu's two-column marker that tipped the categories,
   // preparation, credits, bookings, posters and account pages over by a few
-  // bytes. Keeping the field to the photographer's own albums, with their
-  // previews popping up, adds about 0.2 KB more to each, which took my
-  // archive and thirteen Dashboard pages over or to within a few bytes of
-  // their budgets.
+  // bytes. The offer to reduce motion when frames run slow, or when the device
+  // asks for less, tipped nine more over by under 0.2 KB. Keeping the field to
+  // the photographer's own albums, with their previews popping up, adds about
+  // 0.2 KB more to each, which took my archive and thirteen Dashboard pages
+  // over or to within a few bytes of their budgets.
   { label: "3D my archive", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/page"], limitKb: 151 },
   { label: "3D Dashboard", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/page"], limitKb: 152 },
   { label: "3D Dashboard events", route: ["/[locale]/3d/layout", "/[locale]/3d/u/[username]/studio/events/page"], limitKb: 151 },

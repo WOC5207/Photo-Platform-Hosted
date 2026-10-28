@@ -37,13 +37,19 @@ const PhotoScreen = dynamic(() => import("./PhotoScreens").then((m) => m.PhotoSc
 const StudyScreen = dynamic(() => import("./StudyScreen"));
 const ArchiveShelf = dynamic(() => import("./ArchiveShelf"));
 
-function readMotion(): MotionPreference {
+/** The visitor's Motion choice, or null before they make one. */
+function savedMotion(): MotionPreference | null {
   try {
     const saved = localStorage.getItem(MOTION_KEY);
-    return saved === "reduced" || saved === "full" ? saved : "system";
+    return saved === "reduced" || saved === "full" || saved === "system" ? saved : null;
   } catch {
-    return "system";
+    return null;
   }
+}
+
+/** Full until the visitor turns it down: slow frames or the device's own setting ask them first. */
+function readMotion(): MotionPreference {
+  return savedMotion() ?? "full";
 }
 
 function prefersReduced(preference: MotionPreference): boolean {
@@ -242,8 +248,10 @@ export default function ArchiveSite({
       : visiting ? addressPalette : viewer ? palettes[viewer.username] : undefined;
 
   const [status, setStatus] = useState<EngineStatus>("loading");
-  // Frames stayed slow at the lowest quality: offer the classic page once.
-  const [slow, setSlow] = useState(false);
+  // An offer at the foot of the scene: "reduce" when frames stayed slow at
+  // the lowest quality with full motion, "classic" when they still did with
+  // less, "device" when the device asks for less motion than the site's default.
+  const [offer, setOffer] = useState<"reduce" | "classic" | "device" | null>(null);
   const [selected, setSelected] = useState(() => {
     if (fileIndex >= 0) return fileIndex;
     if (columnIndex >= 0) return columns[columnIndex].fileIndexes[0] ?? 0;
@@ -263,7 +271,9 @@ export default function ArchiveSite({
   const [printUp, setPrintUp] = useState(false);
   // The album under the mouse on the Dashboard's home, or -1 (see the engine's setBrowse).
   const [hoverFile, setHoverFile] = useState(-1);
-  const [motion, setMotion] = useState<MotionPreference>("system");
+  const [motion, setMotion] = useState<MotionPreference>("full");
+  const motionRef = useRef(motion);
+  motionRef.current = motion;
   const [theme, setTheme] = useState<ThemePreference>("system");
   const locale = useLocale();
   const selectedRef = useRef(selected);
@@ -308,6 +318,7 @@ export default function ArchiveSite({
   useEffect(() => {
     setMotion(readMotion());
     setTheme(readTheme());
+    if (savedMotion() === null && window.matchMedia("(prefers-reduced-motion: reduce)").matches) setOffer("device");
   }, []);
 
   // Moving between photographers in album select rewrites the address, so a
@@ -587,7 +598,10 @@ export default function ArchiveSite({
           onRaised: setPrintUp,
           onStudyPick: setStudyFocus,
           onHover: setHoverFile,
-          onTrouble: (kind) => (kind === "lost" ? setStatus("lost") : setSlow(true))
+          onTrouble: (kind) => {
+            if (kind === "lost") setStatus("lost");
+            else setOffer(prefersReduced(motionRef.current) ? "classic" : "reduce");
+          }
         });
         engineRef.current = engine;
         setStatus("ready");
@@ -709,19 +723,19 @@ export default function ArchiveSite({
   const cycle = <T,>(values: readonly T[], current: T, direction: number) =>
     values[wrap(values.indexOf(current) + direction, values.length)];
   const THEMES = ["system", "light", "dark"] as const;
-  const MOTIONS = ["system", "reduced", "full"] as const;
+  const MOTIONS = ["full", "reduced", "system"] as const;
   const setThemeTo = (next: ThemePreference) => {
     applyTheme(next);
     setTheme(next);
   };
   const setMotionTo = (next: MotionPreference) => {
     try {
-      if (next === "system") localStorage.removeItem(MOTION_KEY);
-      else localStorage.setItem(MOTION_KEY, next);
+      localStorage.setItem(MOTION_KEY, next);
     } catch {
       // The choice still applies for this visit.
     }
     setMotion(next);
+    setOffer(null);
   };
   const settings: (MenuItem & { adjust: (direction: number) => void })[] = [
     {
@@ -1452,14 +1466,23 @@ export default function ArchiveSite({
         </footer>
       )}
 
-      {slow && (
+      {offer && (
         <div role="status" className="absolute bottom-24 left-1/2 z-30 flex max-sm:bottom-auto max-sm:top-[5.5rem] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-3 border border-border-strong bg-page/95 px-4 py-3 text-sm">
-          {t("slowNotice")}
-          <button type="button" onClick={() => leaveFor("classic", classicTwin(pathname))} className="font-semibold underline underline-offset-4">
-            {t("unsupportedClassic")}
+          {t(offer === "classic" ? "slowNotice" : offer === "device" ? "deviceMotionNotice" : "slowMotionNotice")}
+          <button
+            type="button"
+            onClick={() => (offer === "classic" ? leaveFor("classic", classicTwin(pathname)) : setMotionTo("reduced"))}
+            className="font-semibold underline underline-offset-4"
+          >
+            {t(offer === "classic" ? "unsupportedClassic" : "reduceMotion")}
           </button>
-          <button type="button" onClick={() => setSlow(false)} className="text-fg-muted underline underline-offset-4">
-            {t("slowKeep")}
+          {/* Kept from the device's ask, the choice is saved; kept while slow, only for this visit. */}
+          <button
+            type="button"
+            onClick={() => (offer === "device" ? setMotionTo("full") : setOffer(null))}
+            className="text-fg-muted underline underline-offset-4"
+          >
+            {t(offer === "classic" ? "slowKeep" : "keepFullMotion")}
           </button>
         </div>
       )}
