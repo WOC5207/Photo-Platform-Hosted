@@ -2224,6 +2224,7 @@
     "menuLabel": "Main menu",
     "menuTitle": "Photo archive",
     "recentlyUpdated": "Recently updated",
+    "recentHint": "The albums standing out of the archive were updated recently. Open one to browse it.",
     "menuPhotographers": "Photographers",
     "menuPhotographersSub": "{count, plural, =1 {# photographer} other {# photographers}}",
     "menuAllAlbums": "All albums",

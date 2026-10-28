@@ -39,14 +39,13 @@ export interface ArchiveFile {
   prints: ArchivePrint[];
 }
 
-/** An album on the home screen's recently updated row. */
+/** An album the home screen ejects from the field as recently updated. */
 export interface RecentAlbum {
   id: string;
   username: string;
   slug: string;
   title: string;
   owner: string;
-  thumb: string;
 }
 
 export interface ArchiveColumn {

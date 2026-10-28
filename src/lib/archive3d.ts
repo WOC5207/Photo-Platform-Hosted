@@ -82,11 +82,13 @@ function totalsOf(candidates: Candidate[]): Totals {
  *
  * The field's MAX_ALBUMS places are shared out fairly (see fairField), and
  * an address past the field brings its photographer in (loadArchiveSlice).
+ * `pinned` albums are in the field whatever their share (the home screen's
+ * recently updated ones, which eject from it).
  */
-export async function loadArchive(locale: string): Promise<Archive> {
+export async function loadArchive(locale: string, pinned: string[] = []): Promise<Archive> {
   const candidates = await prisma.event.findMany({ where: archiveWhere, orderBy: archiveOrder, select: candidateSelect });
   const events = await prisma.event.findMany({
-    where: { ...archiveWhere, id: { in: fairField(candidates, MAX_ALBUMS) } },
+    where: { ...archiveWhere, id: { in: [...new Set([...fairField(candidates, MAX_ALBUMS), ...pinned])] } },
     orderBy: archiveOrder,
     select: archiveSelect
   });
@@ -107,8 +109,7 @@ export async function loadRecentAlbums(locale: string, count = 7): Promise<Recen
       titleZh: true,
       updatedAt: true,
       owner: { select: { username: true, displayName: true } },
-      coverPhoto: { where: publicPhotoWhere, select: { id: true } },
-      photos: { where: publicPhotoWhere, orderBy: { createdAt: "desc" }, take: 1, select: { id: true, createdAt: true } }
+      photos: { where: publicPhotoWhere, orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } }
     }
   });
   const updated = (event: (typeof events)[number]) =>
@@ -121,8 +122,7 @@ export async function loadRecentAlbums(locale: string, count = 7): Promise<Recen
       username: event.owner.username,
       slug: event.slug,
       title: pickText(locale, event.titleEn, event.titleZh),
-      owner: ownerName(event.owner),
-      thumb: photoUrls(event.id, (event.coverPhoto ?? event.photos[0]).id).thumb
+      owner: ownerName(event.owner)
     }));
 }
 

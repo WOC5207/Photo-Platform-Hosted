@@ -701,6 +701,15 @@ export default function ArchiveSite({
     if (ready) engineRef.current?.setLane(lane);
   }, [lane, ready]);
 
+  // The home screen ejects the recently updated albums from the field, and a tap opens one.
+  const home = !missing && screen.kind === "title";
+  const featured = useMemo(() => recent.map((album) => files.findIndex((f) => f.id === album.id)).filter((index) => index >= 0), [recent, files]);
+  const hoveredRecent = home && hoverFile >= 0 ? recent.find((album) => album.id === files[hoverFile]?.id) : undefined;
+  useEffect(() => {
+    if (ready) engineRef.current?.setFeatured(home ? featured : []);
+    if (!home) setHoverFile(-1);
+  }, [home, featured, ready]);
+
   // The Dashboard's home lets the photographer's own albums be browsed, and a click opens one.
   const browsable = studioHome && !missing && columnIndex >= 0;
   useEffect(() => {
@@ -1176,11 +1185,15 @@ export default function ArchiveSite({
         </main>
       )}
 
-      {/* The albums most recently updated, from any photographer, each a way straight in. */}
-      {!missing && screen.kind === "title" && recent.length > 0 && (
+      {/* The albums most recently updated, from any photographer, eject from the field (see the
+          engine's setFeatured). This names them, and lists them for keyboards and screen readers. */}
+      {home && featured.length > 0 && status === "ready" && (
         <section aria-labelledby="album3d-recent" className={styles.recent}>
           <p id="album3d-recent" className={metaLabel}>{t("recentlyUpdated")}</p>
-          <ol className={styles.recentRow}>
+          <p aria-hidden="true" className={styles.recentCaption}>
+            {hoveredRecent ? `${hoveredRecent.title} · ${hoveredRecent.owner}` : t("recentHint")}
+          </p>
+          <ol className="sr-only focus-within:not-sr-only focus-within:mt-2 focus-within:block">
             {recent.map((album) => {
               const index = files.findIndex((f) => f.id === album.id);
               return (
@@ -1193,15 +1206,9 @@ export default function ArchiveSite({
                       e.preventDefault();
                       openDetail(index);
                     }}
-                    title={`${album.title} · ${album.owner}`}
-                    className="group block"
+                    className="block py-0.5 text-[0.75rem] font-bold uppercase underline-offset-2 hover:underline focus-visible:underline"
                   >
-                    <span className="block aspect-square overflow-hidden bg-control">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={album.thumb} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none" />
-                    </span>
-                    <span className="mt-1.5 block truncate text-[0.6875rem] font-bold uppercase leading-tight group-hover:text-accent-text">{album.title}</span>
-                    <span className={`font-meta block truncate text-[0.5rem] uppercase tracking-[0.1em] text-fg-subtle ${styles.recentOwner}`}>{album.owner}</span>
+                    {album.title} · {album.owner}
                   </Link>
                 </li>
               );

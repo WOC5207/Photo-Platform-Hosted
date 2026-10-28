@@ -23,9 +23,9 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 export default async function ThreeDLayout({ children }: { children: React.ReactNode }) {
   const locale = await getLocale();
-  const [{ files, columns }, recent, palettes, user] = await Promise.all([
-    loadArchive(locale),
-    loadRecentAlbums(locale),
+  const [{ files, columns, recent }, palettes, user] = await Promise.all([
+    // The recently updated albums eject from the field, so it always holds them.
+    loadRecentAlbums(locale).then(async (recent) => ({ ...(await loadArchive(locale, recent.map((album) => album.id))), recent })),
     loadOwnerPalettes(),
     getCurrentUser()
   ]);
