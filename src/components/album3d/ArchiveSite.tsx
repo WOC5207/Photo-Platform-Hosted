@@ -704,7 +704,6 @@ export default function ArchiveSite({
   // The home screen ejects the recently updated albums from the field, and a tap opens one.
   const home = !missing && screen.kind === "title";
   const featured = useMemo(() => recent.map((album) => files.findIndex((f) => f.id === album.id)).filter((index) => index >= 0), [recent, files]);
-  const hoveredRecent = home && hoverFile >= 0 ? recent.find((album) => album.id === files[hoverFile]?.id) : undefined;
   useEffect(() => {
     if (ready) engineRef.current?.setFeatured(home ? featured : []);
     if (!home) setHoverFile(-1);
@@ -1186,14 +1185,12 @@ export default function ArchiveSite({
       )}
 
       {/* The albums most recently updated, from any photographer, eject from the field (see the
-          engine's setFeatured). This names them, and lists them for keyboards and screen readers. */}
+          engine's setFeatured). For keyboards and screen readers they are listed here too, out of
+          sight until a link in the list has focus. */}
       {home && featured.length > 0 && status === "ready" && (
-        <section aria-labelledby="album3d-recent" className={styles.recent}>
+        <section aria-labelledby="album3d-recent" className={`${styles.recent} sr-only focus-within:not-sr-only`}>
           <p id="album3d-recent" className={metaLabel}>{t("recentlyUpdated")}</p>
-          <p aria-hidden="true" className={styles.recentCaption}>
-            {hoveredRecent ? `${hoveredRecent.title} · ${hoveredRecent.owner}` : t("recentHint")}
-          </p>
-          <ol className="sr-only focus-within:not-sr-only focus-within:mt-2 focus-within:block">
+          <ol className="mt-2">
             {recent.map((album) => {
               const index = files.findIndex((f) => f.id === album.id);
               return (
