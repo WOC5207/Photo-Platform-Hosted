@@ -57,10 +57,12 @@ const routeBudgets = [
   // validate the draft's credit lines with zod, whose security update to
   // 4.6.7 added about 8 KB to each. The title menu's marker following its
   // items into two columns, with the Dashboard home's album field, tipped the
-  // board over by a few bytes.
+  // board over by a few bytes. Webpack's runtime, which every page loads, names
+  // each chunk in the app, so the classic booking pages' redesign put
+  // Sharepost 8 bytes over.
   { label: "3D Cosplan", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/page"], limitKb: 157 },
   { label: "3D Cosplan board", route: ["/[locale]/3d/layout", "/[locale]/3d/cosplan/layout", "/[locale]/3d/cosplan/board/page"], limitKb: 165 },
-  { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/page"], limitKb: 156 },
+  { label: "3D Sharepost", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/page"], limitKb: 157 },
   { label: "3D Sharepost credits", route: ["/[locale]/3d/layout", "/[locale]/3d/sharepost/layout", "/[locale]/3d/sharepost/credits/page"], limitKb: 190 },
   // The 3D Dashboard's screens come with their pages. Adding photos carries
   // the classic photo wizard and its upload queue. The home's browsable album
