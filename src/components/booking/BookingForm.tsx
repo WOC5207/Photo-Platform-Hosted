@@ -18,7 +18,7 @@ import {
   metaLabel,
   primaryClass,
   secondaryClass
-} from "@/components/album3d/booking/classes";
+} from "./classes";
 import { SeatPips } from "./archive";
 import styles from "./Archive.module.css";
 

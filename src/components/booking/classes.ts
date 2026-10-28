@@ -1,6 +1,8 @@
 /**
- * The 3D site's booking type and controls, as plain class strings so the
- * classic booking pages (server components among them) can share them.
+ * The 3D booking screens' type and controls (metaLabel and the rest in
+ * album3d/booking/shared.tsx), as plain strings the classic booking pages,
+ * server components among them, can import. Kept as a copy so the 3D
+ * routes, which sit at their page-weight budgets, carry no extra module.
  */
 
 export const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle";

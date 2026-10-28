@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { metaLabel } from "@/components/album3d/booking/classes";
+import { metaLabel } from "./classes";
 import styles from "./Archive.module.css";
 
 /**

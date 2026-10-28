@@ -6,7 +6,7 @@ import {
   fieldClass,
   metaLabel,
   primaryClass
-} from "@/components/album3d/booking/classes";
+} from "./classes";
 import {
   updateMyBooking,
   type EditBookingState

@@ -11,7 +11,7 @@ import {
   fieldClass,
   metaLabel,
   primaryClass
-} from "@/components/album3d/booking/classes";
+} from "./classes";
 import styles from "./Archive.module.css";
 
 function displayName(name: string, subject: string) {

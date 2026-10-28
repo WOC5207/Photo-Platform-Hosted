@@ -7,7 +7,7 @@ import { formatDate, formatDateRange } from "@/lib/datetime";
 import { Link } from "@/i18n/navigation";
 import { getSiteSettings } from "@/lib/settings";
 import { wallClockNow } from "@/lib/timeZone";
-import { metaLabel } from "@/components/album3d/booking/classes";
+import { metaLabel } from "@/components/booking/classes";
 import {
   ArchiveHeading,
   ArchivePage,
