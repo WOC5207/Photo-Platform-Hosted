@@ -13,6 +13,7 @@ import { Link, usePathname } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
 import SiteModeSwitch from "@/components/SiteModeSwitch";
+import { usePresence } from "@/hooks/usePresence";
 
 export type ManagementWorkspace = "site" | "platform";
 
@@ -570,6 +571,7 @@ export default function ManagementShell({
   const closeDrawer = () => {
     setDrawerOpen(false);
   };
+  const drawer = usePresence(drawerOpen);
 
   return (
     <div
@@ -649,13 +651,13 @@ export default function ManagementShell({
           />
         </header>
 
-        {drawerOpen && (
-          <div className="fixed inset-0 z-40 lg:hidden">
+        {drawer.present && (
+          <div className="fixed inset-0 z-40 lg:hidden" data-leaving={drawer.leaving || undefined} inert={drawer.leaving}>
             <button
               type="button"
               aria-label={labels.close}
               onClick={closeDrawer}
-              className="absolute inset-0 bg-black/55"
+              className="dialog-overlay absolute inset-0 bg-black/55"
             />
             <div
               ref={drawerRef}
@@ -663,7 +665,7 @@ export default function ManagementShell({
               role="dialog"
               aria-modal="true"
               aria-label={labels.menu}
-              className="absolute inset-y-0 left-0 flex w-[min(20rem,calc(100vw-3rem))] flex-col border-r border-border bg-page p-4 shadow-[0_24px_80px_rgb(0_0_0/0.28)]"
+              className="drawer-panel absolute inset-y-0 left-0 flex w-[min(20rem,calc(100vw-3rem))] flex-col border-r border-border bg-page p-4 shadow-[0_24px_80px_rgb(0_0_0/0.28)]"
             >
               <div className="flex items-center justify-between gap-3 px-2 py-1">
                 <Brand

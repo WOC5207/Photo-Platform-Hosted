@@ -1301,7 +1301,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
 
   // --------------------------------------------------------------- sizing --
   let snapCamera = true;
+  // The canvas's place on the page, read once and kept while a pointer moves:
+  // reading it on every pointer event can force a layout mid-drag. Forgotten
+  // on resize, scroll, and each new pointer, the times it can have moved.
+  let rectCache: DOMRect | null = null;
+  const canvasRect = () => (rectCache ??= canvas.getBoundingClientRect());
+  const forgetRect = () => {
+    rectCache = null;
+  };
   function resize() {
+    forgetRect();
     const rect = canvas.parentElement?.getBoundingClientRect();
     width = Math.max(1, Math.round(rect?.width ?? canvas.clientWidth));
     height = Math.max(1, Math.round(rect?.height ?? canvas.clientHeight));
@@ -1325,6 +1334,12 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   // When things started moving, and whether a frame came slow since.
   let movingSince = -1;
   let slowMove = false;
+  // Whether the tier's ratio is held for a move that just ended, and the timer
+  // that sharpens the picture once things stay still.
+  let lowered = false;
+  let sharpenTimer = 0;
+  /** How long things stay still before the picture is redrawn sharp. */
+  const SHARPEN_MS = 250;
   function setPixels(ratio: number) {
     if (renderer.getPixelRatio() === ratio) return;
     renderer.setPixelRatio(ratio);
@@ -1655,12 +1670,17 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     else if (mode === "stage" && stage) moving = stage.step(dt);
     else if (mode === "study") moving = stepStudy(dt);
     else moving = stepField(dt);
-    // The tier's pixel ratio holds while things move; the frame things come
-    // to rest on is drawn at the screen's own, so a still poster, cover or
-    // print is never left upscaled and soft. A short move (a hover, a step)
-    // keeps the screen's own, unless its frames come slow, so the picture
-    // doesn't soften and sharpen again on every touch.
-    const active = moving || wipe < 1 || carry !== null || fieldDrag !== null;
+    // The tier's pixel ratio holds while things move, and a still poster,
+    // cover or print is redrawn at the screen's own once things have stayed
+    // still for SHARPEN_MS, so it is never left upscaled and soft. A finger
+    // carrying the stage drops to the tier from its first frame, so a swipe
+    // never starts on the most expensive frames; the wait before sharpening
+    // means swipes in quick succession don't resize the buffers between them.
+    // A short move without a finger (a hover, a step) keeps the screen's own,
+    // unless its frames come slow, so the picture doesn't soften and sharpen
+    // again on every touch.
+    const held = carry !== null || fieldDrag !== null || dragged.size > 0;
+    const active = moving || wipe < 1 || held;
     if (!active) {
       movingSince = -1;
       slowMove = false;
@@ -1668,7 +1688,22 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       if (movingSince < 0) movingSince = now;
       if (ms > 26) slowMove = true;
     }
-    setPixels(active && (slowMove || now - movingSince >= 150) ? tierPixels() : restPixels());
+    if (active && (held || slowMove || now - movingSince >= 150)) {
+      window.clearTimeout(sharpenTimer);
+      sharpenTimer = 0;
+      lowered = true;
+      setPixels(tierPixels());
+    } else if (lowered) {
+      if (!sharpenTimer) {
+        sharpenTimer = window.setTimeout(() => {
+          sharpenTimer = 0;
+          lowered = false;
+          invalidate();
+        }, SHARPEN_MS);
+      }
+    } else {
+      setPixels(restPixels());
+    }
     renderer.render(...view());
     rendered = true;
     if (wipe < 1) {
@@ -1689,6 +1724,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let samples = 0;
   let sampleMs = 0;
   let slowReported = false;
+  // A tier dropped for one slow stretch (a tab coming back, a big texture
+  // upload) comes back after FAST_RUNS fast measurements in a row, under the
+  // better tier's limit with room to spare (85% of it: a 60 Hz screen's frames
+  // are 16.7 ms, so tier 0's 20 ms leaves 17). A tier that drops again after
+  // coming back stays, so a device on the edge doesn't flip between the two.
+  const FAST_RUNS = 5;
+  const firstTier = tier;
+  let fastRuns = 0;
+  let cameBack = false;
+  let recovered = false;
   // Shader compiles and texture uploads stall the first frames of a stage.
   let settleUntil = performance.now() + 2000;
   /** Average frame times while things move; a slow run drops a tier. */
@@ -1703,8 +1748,21 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (samples < 40 && (samples < 6 || sampleMs < 1500)) return;
     const average = sampleMs / samples;
     samples = sampleMs = 0;
-    if (average <= TIER_SLOW_MS[tier]) return;
+    if (average <= TIER_SLOW_MS[tier]) {
+      fastRuns = tier > firstTier && !recovered && average < TIER_SLOW_MS[tier - 1] * 0.85 ? fastRuns + 1 : 0;
+      if (fastRuns < FAST_RUNS) return;
+      fastRuns = 0;
+      cameBack = true;
+      tier -= 1;
+      canvas.dataset.tier = String(tier);
+      setShadows(tier === 0);
+      resize();
+      settleUntil = now + 500;
+      return;
+    }
+    fastRuns = 0;
     if (tier < 2) {
+      recovered = cameBack;
       tier += 1;
       canvas.dataset.tier = String(tier);
       setShadows(false);
@@ -1819,7 +1877,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let hoverFrame = 0;
 
   function pick(clientX: number, clientY: number): { cell: Cell; selected: boolean } | null {
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRect();
     pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(pointer, camera);
     const targets: Object3D[] = [cards];
@@ -1836,7 +1894,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   /** Whether a point on the canvas lies on the selected card. */
   function onSelected(clientX: number, clientY: number) {
     if (!selected) return false;
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRect();
     pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(pointer, camera);
     return raycaster.intersectObject(selected.group, true).length > 0;
@@ -1845,7 +1903,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   /** Taps and swipes on the carousel and the light table. */
   function stagePointerUp(e: PointerEvent, dx: number, dy: number, elapsed: number) {
     if (e.type === "pointercancel") return;
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRect();
     const tap = Math.hypot(dx, dy) < 8 && elapsed < 600;
     if (mode === "carousel" && carousel) {
       if (tap) {
@@ -1884,7 +1942,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (e.pointerType !== "mouse" || hoverFrame) return;
     hoverFrame = requestAnimationFrame(() => {
       hoverFrame = 0;
-      const rect = canvas.getBoundingClientRect();
+      const rect = canvasRect();
       if (mode === "carousel" && carousel) {
         carousel.setPointer(((e.clientX - rect.left) / rect.width) * 2 - 1, ((e.clientY - rect.top) / rect.height) * 2 - 1);
         const index = carousel.pick(e.clientX, e.clientY, rect);
@@ -2064,7 +2122,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   function onPointerDown(e: PointerEvent) {
-    if (mode === "stage" && stageDrag?.({ phase: "down", id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() })) {
+    forgetRect();
+    if (mode === "stage" && stageDrag?.({ phase: "down", id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvasRect() })) {
       dragged.add(e.pointerId);
       canvas.setPointerCapture(e.pointerId);
       return;
@@ -2080,7 +2139,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
 
   function onPointerMove(e: PointerEvent) {
     if (dragged.has(e.pointerId)) {
-      stageDrag?.({ phase: "move", id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() });
+      stageDrag?.({ phase: "move", id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvasRect() });
       return;
     }
     if (mode === "carousel" || mode === "table" || mode === "stage") {
@@ -2131,7 +2190,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   function onPointerUp(e: PointerEvent) {
     if (dragged.delete(e.pointerId)) {
       const phase = e.type === "pointercancel" ? "cancel" : "up";
-      stageDrag?.({ phase, id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() });
+      stageDrag?.({ phase, id: e.pointerId, clientX: e.clientX, clientY: e.clientY, rect: canvasRect() });
       return;
     }
     if (carryUp(e) || fieldUp(e)) return;
@@ -2144,7 +2203,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (mode === "study") {
       // A tap (not an orbit) on a print brings it forward.
       if (Math.hypot(dx, dy) >= 6 || elapsed > 600 || !studyCassette) return;
-      const rect = canvas.getBoundingClientRect();
+      const rect = canvasRect();
       pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(pointer, studyCamera);
       const prints = studyCassette.parts.prints;
@@ -2212,7 +2271,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   function onWheel(e: WheelEvent) {
     if (mode === "study") return;
     e.preventDefault();
-    if (mode === "stage" && stageDrag?.({ phase: "wheel", deltaY: e.deltaY, clientX: e.clientX, clientY: e.clientY, rect: canvas.getBoundingClientRect() })) return;
+    if (mode === "stage" && stageDrag?.({ phase: "wheel", deltaY: e.deltaY, clientX: e.clientX, clientY: e.clientY, rect: canvasRect() })) return;
     if (carry || fieldDrag) return;
     if (mode === "carousel" || mode === "table" || mode === "stage") {
       if (mode === "table" && tableRaised) return;
@@ -2251,6 +2310,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   canvas.addEventListener("pointercancel", onPointerUp);
   canvas.addEventListener("pointerleave", onPointerLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
+  canvas.addEventListener("pointerenter", forgetRect);
+  window.addEventListener("scroll", forgetRect, { capture: true, passive: true });
   const observer = new ResizeObserver(resize);
   if (canvas.parentElement) observer.observe(canvas.parentElement);
   // A phone's bottom sheet growing or shrinking changes the room the scenes frame into.
@@ -2426,6 +2487,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       disposed = true;
       cancelAnimationFrame(raf);
       clearTimeout(lostTimer);
+      clearTimeout(sharpenTimer);
       clearTimeout(openTimer);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
@@ -2442,6 +2504,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       canvas.removeEventListener("pointercancel", onPointerUp);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("wheel", onWheel);
+      canvas.removeEventListener("pointerenter", forgetRect);
+      window.removeEventListener("scroll", forgetRect, { capture: true });
       controls.stopListenToKeyEvents();
       controls.dispose();
       selected?.dispose();

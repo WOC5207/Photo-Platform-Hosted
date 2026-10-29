@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { reportSheet } from "../types";
 import { useTranslations } from "next-intl";
 import { StageContext, type Stage } from "../StageContext";
@@ -11,6 +11,7 @@ import type { Reel } from "../reel";
 import type { Rack } from "../rack";
 import type { StageDrag, StageInput } from "../engine";
 import { GameMenu } from "../hud";
+import { lessMotion } from "@/lib/motion";
 import styles from "./Booking.module.css";
 
 /** Pieces shared by the 3D site's booking board, schedule and prize draw screens. */
@@ -159,6 +160,26 @@ export function BookingPanel({
       reportSheet(owner, null);
     };
   }, [full]);
+  // Raising or lowering the sheet moves its content at once (the window
+  // gives up or takes back its room); the content then slides from where it
+  // was on screen with a transform only, beside the sheet's colour (see
+  // .panel[data-window]::before), RhineLabUI's 300 ms easing out.
+  const body = useRef<HTMLDivElement>(null);
+  const bodyTop = useRef<number | null>(null);
+  const windowed = view !== undefined && view !== null;
+  useLayoutEffect(() => {
+    const sheet = body.current;
+    const was = bodyTop.current;
+    bodyTop.current = sheet?.offsetTop ?? null;
+    if (!sheet || was === null || was === sheet.offsetTop || lessMotion()) return;
+    // A slide still under way starts the next one from where it has got to.
+    const sliding = new DOMMatrix(getComputedStyle(sheet).transform).m42;
+    sheet.getAnimations().forEach((animation) => animation.cancel());
+    sheet.animate([{ transform: `translateY(${was + sliding - sheet.offsetTop}px)` }, { transform: "none" }], {
+      duration: 300,
+      easing: "cubic-bezier(0.22, 1, 0.36, 1)"
+    });
+  }, [raised, windowed]);
   return (
     <main ref={ref} id="main-content" tabIndex={-1} className={`${styles.panel} outline-none`} data-expanded={expanded} data-window={view ? "" : undefined} data-raised={view && raised ? "" : undefined}>
       {view ? (
@@ -166,7 +187,9 @@ export function BookingPanel({
           <div className={styles.window} inert={raised}>
             {view}
           </div>
-          <div className={styles.sheetBody}>{children}</div>
+          <div ref={body} className={styles.sheetBody}>
+            {children}
+          </div>
         </>
       ) : (
         children

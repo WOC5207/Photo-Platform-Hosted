@@ -96,7 +96,7 @@ export function GameMenu({
       {marker && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute left-0 top-0 z-10 h-9 w-[3px] bg-fg transition-transform duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+          className="pointer-events-none absolute left-0 top-0 z-10 h-9 w-[3px] bg-fg transition-transform duration-180 ease-out motion-reduce:transition-none"
           style={{ transform: `translate(${marker.x}px, ${marker.y - 18}px)`, transitionProperty: marker.glide ? undefined : "none" }}
         />
       )}
