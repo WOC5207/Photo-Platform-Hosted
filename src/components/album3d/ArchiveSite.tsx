@@ -27,6 +27,8 @@ type MotionPreference = "system" | "reduced" | "full";
 type ThemePreference = "system" | "light" | "dark";
 
 const MOTION_KEY = "album3d-motion";
+/** How long the slow-device or reduced-motion offer stays up untouched. */
+const OFFER_MS = 10_000;
 /** How long a screen's panel takes to fade out before the next page is asked for (--motion-exit). */
 const LEAVE_MS = 200;
 
@@ -271,6 +273,15 @@ export default function ArchiveSite({
   // the lowest quality with full motion, "classic" when they still did with
   // less, "device" when the device asks for less motion than the site's default.
   const [offer, setOffer] = useState<"reduce" | "classic" | "device" | null>(null);
+  // The offer sits over the first of a screen's content on phones, so it
+  // goes by itself after a while unless a finger, the mouse or focus is on it.
+  const [offerHeld, setOfferHeld] = useState(false);
+  useEffect(() => {
+    if (!offer) setOfferHeld(false);
+    if (!offer || offerHeld) return;
+    const timer = window.setTimeout(() => setOffer(null), OFFER_MS);
+    return () => window.clearTimeout(timer);
+  }, [offer, offerHeld]);
   const [selected, setSelected] = useState(() => {
     if (fileIndex >= 0) return fileIndex;
     if (columnIndex >= 0) return columns[columnIndex].fileIndexes[0] ?? 0;
@@ -1095,7 +1106,7 @@ export default function ArchiveSite({
               <button
                 type="button"
                 onClick={() => setIndexOpen(true)}
-                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:min-h-10 max-sm:min-w-9 max-sm:px-0"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:px-0"
               >
                 <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <circle cx="9.5" cy="6.5" r="4.5" />
@@ -1111,20 +1122,40 @@ export default function ArchiveSite({
                 href={screenPath({ kind: "studio", username: viewer.username, page: "home" })}
                 scroll={false}
                 aria-label={t("signedInAs", { name: viewer.name })}
-                className="relative inline-flex min-h-11 min-w-11 max-w-40 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:min-h-10 max-sm:min-w-9 max-sm:px-0"
+                className="relative inline-flex min-h-11 min-w-11 max-w-40 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:px-0"
               >
                 {/* On phones the name gives way to an account mark with the signed-in dot on its shoulder, so the header's controls all fit. */}
                 <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 shrink-0 sm:hidden" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <circle cx="8" cy="5.5" r="3" />
                   <path d="M2.5 14.5c.8-3 2.9-4.5 5.5-4.5s4.7 1.5 5.5 4.5" />
                 </svg>
-                <i aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-success max-sm:absolute max-sm:right-1.5 max-sm:top-2.5" />
+                <i aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-success max-sm:absolute max-sm:right-2.5 max-sm:top-3" />
                 <span className="truncate max-sm:sr-only">{viewer.name}</span>
               </Link>
             )}
             <SiteModeSwitch current="3d" compact caption={styles.switchCaption} />
-            <LanguageSwitcher compact />
-            <ThemeToggle label={tc("toggleTheme")} compact />
+            {/* Phones keep the header to one row of 44 px controls: language
+                and theme are in Settings, which one button opens. The plain
+                page shown without WebGL has no Settings, so it keeps them. */}
+            <span className={fallback ? "contents" : "contents max-sm:hidden"}>
+              <LanguageSwitcher compact />
+              <ThemeToggle label={tc("toggleTheme")} compact />
+            </span>
+            {!fallback && screen.kind !== "settings" && (
+              <Link
+                href={screenPath({ kind: "settings" })}
+                scroll={false}
+                aria-label={t("menuSettings")}
+                title={t("menuSettings")}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-accent-text sm:hidden"
+              >
+                <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M3 5.5h8M15 5.5h2M3 14.5h2M9 14.5h8" />
+                  <circle cx="13" cy="5.5" r="2" />
+                  <circle cx="7" cy="14.5" r="2" />
+                </svg>
+              </Link>
+            )}
           </nav>
         </header>
       )}
@@ -1594,12 +1625,19 @@ export default function ArchiveSite({
       )}
 
       {offer && (
-        <div role="status" className="absolute bottom-24 left-1/2 z-30 flex max-sm:bottom-auto max-sm:top-[5.5rem] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-3 border border-border-strong bg-page/95 px-4 py-3 text-sm">
-          {t(offer === "classic" ? "slowNotice" : offer === "device" ? "deviceMotionNotice" : "slowMotionNotice")}
+        <div
+          role="status"
+          onPointerEnter={() => setOfferHeld(true)}
+          onPointerLeave={() => setOfferHeld(false)}
+          onFocus={() => setOfferHeld(true)}
+          onBlur={() => setOfferHeld(false)}
+          className="absolute bottom-24 left-1/2 z-30 flex max-sm:bottom-auto max-sm:top-[5.5rem] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-x-3 gap-y-2 border border-border-strong bg-page/95 px-4 py-3 text-sm"
+        >
+          <span className="basis-full sm:basis-auto">{t(offer === "classic" ? "slowNotice" : offer === "device" ? "deviceMotionNotice" : "slowMotionNotice")}</span>
           <button
             type="button"
             onClick={() => (offer === "classic" ? leaveFor("classic", classicTwin(pathname)) : setMotionTo("reduced"))}
-            className="font-semibold underline underline-offset-4"
+            className="inline-flex min-h-11 items-center bg-fg px-4 font-semibold text-page transition hover:bg-accent-text"
           >
             {t(offer === "classic" ? "unsupportedClassic" : "reduceMotion")}
           </button>
@@ -1607,7 +1645,7 @@ export default function ArchiveSite({
           <button
             type="button"
             onClick={() => (offer === "device" ? setMotionTo("full") : setOffer(null))}
-            className="text-fg-muted underline underline-offset-4"
+            className="inline-flex min-h-11 items-center border border-border-strong px-4 text-fg-muted transition hover:border-fg hover:text-fg"
           >
             {t(offer === "classic" ? "slowKeep" : "keepFullMotion")}
           </button>

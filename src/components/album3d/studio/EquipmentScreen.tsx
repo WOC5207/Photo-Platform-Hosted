@@ -143,7 +143,7 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
 
   return (
     <>
-      <BookingPanel expanded>
+      <BookingPanel expanded work>
         <StudioHeading trail={t("studioEquipment")} title={t("studioEquipment")} />
 
         <Link href={path({ kind: "studio", username, page: "equipmentNew" })} scroll={false} className={`${primaryClass} mt-6 w-full`}>

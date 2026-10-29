@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { reportSheet } from "../types";
 import { useTranslations } from "next-intl";
 import { StageContext, type Stage } from "../StageContext";
@@ -119,6 +119,65 @@ export function isInteractive(target: EventTarget | null): boolean {
 }
 
 /**
+ * The photographer's Expand or Collapse on a phone's Dashboard sheet, kept
+ * for the visit so the next screen opens the same way: "up" (the sheet
+ * raised over the scene), "down", or null before they choose.
+ */
+type SheetChoice = "up" | "down" | null;
+const SHEET_KEY = "album3d-sheet";
+let sheetChoice: SheetChoice | undefined;
+const sheetListeners = new Set<() => void>();
+
+function readSheetChoice(): SheetChoice {
+  if (sheetChoice === undefined) {
+    try {
+      const saved = sessionStorage.getItem(SHEET_KEY);
+      sheetChoice = saved === "up" || saved === "down" ? saved : null;
+    } catch {
+      sheetChoice = null;
+    }
+  }
+  return sheetChoice;
+}
+
+export function setSheetChoice(next: "up" | "down") {
+  sheetChoice = next;
+  try {
+    sessionStorage.setItem(SHEET_KEY, next);
+  } catch {
+    // The choice still holds until the page reloads.
+  }
+  sheetListeners.forEach((listener) => listener());
+}
+
+export function useSheetChoice(): SheetChoice {
+  return useSyncExternalStore(
+    (listener) => {
+      sheetListeners.add(listener);
+      return () => sheetListeners.delete(listener);
+    },
+    readSheetChoice,
+    () => null
+  );
+}
+
+/** The phone sheet's Expand / Collapse button (hidden on wider screens, see .raise). */
+export function SheetToggle({ up, onToggle, downLabel }: { up: boolean; onToggle: () => void; downLabel?: string }) {
+  const t = useTranslations("album3d");
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={up}
+      className={`${styles.raise} font-meta sticky top-0 z-10 -mb-11 ml-auto flex min-h-11 items-center gap-2 border border-border-strong bg-page/85 px-3 text-[0.625rem] uppercase tracking-[0.12em] text-fg-muted transition hover:border-fg hover:text-fg`}
+    >
+      {up ? (downLabel ?? t("studioSheetLower")) : t("studioSheetExpand")}
+      <span aria-hidden="true" className="text-sm leading-none">{up ? "↓" : "↑"}</span>
+    </button>
+  );
+}
+
+/**
  * The left-hand (bottom, on phones) panel the booking screens draw in. On
  * phones an expanded panel is a taller sheet that still leaves the scene a
  * strip above it; "cover" takes the whole screen below the header, for a
@@ -131,9 +190,10 @@ export function BookingPanel({
   expanded = false,
   view,
   raised = false,
+  work = false,
   children
 }: {
-  expanded?: boolean | "cover" | "full";
+  expanded?: boolean | "cover" | "full" | "work";
   /**
    * On phones a full sheet can open on a window onto the scene, holding this,
    * which scrolls away as the sheet goes up (see .window). Wider screens have
@@ -142,10 +202,33 @@ export function BookingPanel({
   view?: ReactNode;
   /** The window closed: the sheet takes the whole screen, and the scene shows through it (see .panel[data-raised]). */
   raised?: boolean;
+  /**
+   * A Dashboard work screen (a list to get through, not a scene to look at):
+   * on phones it opens expanded, leaving the scene a slim strip under the
+   * header, until the photographer collapses it to `expanded`'s sheet. Their
+   * choice holds across screens for the visit (see useSheetChoice).
+   */
+  work?: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
+  const choice = useSheetChoice();
+  const workUp = work && choice !== "down";
+  const collapsedCap = expanded === true ? 0.52 : 0.46;
+  if (workUp) expanded = "work";
   const full = expanded === "full";
+  // A work screen short enough to fit its collapsed sheet (46dvh, or 52dvh
+  // expanded; see Booking.module.css) has nothing to expand, so no button.
+  const [fits, setFits] = useState(false);
+  useEffect(() => {
+    const main = ref.current;
+    if (!main || !work) return;
+    const check = () => setFits(main.scrollHeight <= window.innerHeight * collapsedCap);
+    const observer = new ResizeObserver(check);
+    observer.observe(main);
+    check();
+    return () => observer.disconnect();
+  }, [work, collapsedCap]);
   useEffect(() => {
     const main = ref.current;
     // A full sheet, or a page over the backdrop, leaves the scene framed as it is.
@@ -192,7 +275,10 @@ export function BookingPanel({
           </div>
         </>
       ) : (
-        children
+        <>
+          {work && !fits && <SheetToggle up={workUp} onToggle={() => setSheetChoice(workUp ? "down" : "up")} />}
+          {children}
+        </>
       )}
     </main>
   );

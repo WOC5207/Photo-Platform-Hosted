@@ -79,13 +79,14 @@ export default function BookingsScreen({ bookings }: { bookings: StudioBookings 
 
   return (
     <>
-      <BookingPanel>
+      <BookingPanel work>
         <StudioHeading trail={t("studioBookings")} title={t("studioBookings")} />
         {!bookings.bookingEnabled && <p role="status" className="mt-5 text-sm text-fg-muted">{ts("groupBookingHint")}</p>}
         <Link href={path({ kind: "studio", username, page: "new" })} scroll={false} className={`${primaryClass} mt-6 w-full`}>
           {tw("newEvent")}
           <span aria-hidden="true" className="text-lg">+</span>
         </Link>
+        <p className="mt-2 text-xs text-fg-subtle">{t("studioBookingsNewHint")}</p>
         {events.length === 0 ? (
           <p className="mt-6 max-w-md text-sm text-fg-muted">{tb("emptyDescription")}</p>
         ) : (

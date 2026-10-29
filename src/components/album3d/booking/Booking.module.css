@@ -54,6 +54,11 @@
   .panel[data-expanded="cover"] {
     max-height: calc(100dvh - 96px);
   }
+  /* A Dashboard work screen, expanded: the scene keeps the slimmest strip it
+     frames into under the header (18% of the screen, see stageBand). */
+  .panel[data-expanded="work"] {
+    max-height: calc(82dvh - 80px);
+  }
   /* The whole screen below the header, scrolling inside itself; the scene
      stays framed as it is and shows through the same translucent sheet. */
   .panel[data-expanded="full"] {
