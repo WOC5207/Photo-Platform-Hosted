@@ -13,6 +13,9 @@ const securityHeaders = [
   {
     key: "Content-Security-Policy",
     value: [
+      // Everything not named below loads from this origin only, so injected
+      // markup can neither pull in nor send data to another host.
+      "default-src 'self'",
       "base-uri 'self'",
       "form-action 'self'",
       "object-src 'none'",
@@ -22,8 +25,20 @@ const securityHeaders = [
       // every page dynamic; this still blocks injected <script src> from
       // anywhere else. Dev mode needs eval for fast refresh.
       `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
+      // React's style props and Next's injected styles are inline.
+      "style-src 'self' 'unsafe-inline'",
+      // Upload previews, canvas exports and QR codes are blob: or data:
+      // images; Cosplan's character search shows Bangumi's own thumbnails.
+      "img-src 'self' data: blob: https://lain.bgm.tv",
+      "font-src 'self' data:",
+      "media-src 'self' blob:",
+      // Same-origin API calls; dev mode's fast refresh needs its websocket.
+      `connect-src 'self'${process.env.NODE_ENV === "development" ? " ws: wss:" : ""}`,
+      // The QR label printer writes its pages into a same-origin iframe.
+      "frame-src 'self' blob:",
       // The equipment QR scanner runs its decoder in a blob: worker.
-      "worker-src 'self' blob:"
+      "worker-src 'self' blob:",
+      "manifest-src 'self'"
     ].join("; ")
   },
   { key: "X-Frame-Options", value: "DENY" },
