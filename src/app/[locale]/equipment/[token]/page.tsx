@@ -65,7 +65,9 @@ export default async function EquipmentLabelPage({
         <p className="mt-3 text-sm text-fg-subtle">
           {equipment.category.name}{equipment.brand ? ` · ${equipment.brand}` : ""}
         </p>
-        {equipment.serialNumber && <p className="mt-4 break-words text-sm">{t("serialShort")}: {equipment.serialNumber}</p>}
+        {/* Only the owner sees the serial: anyone holding the gear can scan
+            its sticker, and a serial is what registers or resells an item. */}
+        {isOwner && equipment.serialNumber && <p className="mt-4 break-words text-sm">{t("serialShort")}: {equipment.serialNumber}</p>}
         {equipment.photoToken && <img src={`/api/equipment/${equipment.qrToken}/photo`} alt={displayName} className="mt-6 max-h-80 w-full rounded-lg object-contain bg-control" />}
         {isOwner && (
           <EquipmentQrOwnerControls

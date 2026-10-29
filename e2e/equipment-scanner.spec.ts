@@ -57,7 +57,7 @@ test("scanner resolves images, adds items, updates inventory and protects owners
     const publicPage = await anonymous.newPage();
     await publicPage.goto(url);
     await expect(publicPage.getByText("qr-photographer", { exact: true })).toBeVisible();
-    await expect(publicPage.getByText(`Serial: SN-${suffix}`, { exact: true })).toBeVisible();
+    await expect(publicPage.getByText(`Serial: SN-${suffix}`, { exact: true })).toHaveCount(0);
     await expect(publicPage.getByRole("img", { name: item.name })).toBeVisible();
     await expect(publicPage.getByText("HIDDEN-INTERNAL-NOTE")).toHaveCount(0);
     await expect(publicPage.getByText("HIDDEN-STATUS-NOTE")).toHaveCount(0);
@@ -68,11 +68,12 @@ test("scanner resolves images, adds items, updates inventory and protects owners
     const foreignPage = await foreignContext.newPage();
     await foreignPage.goto(url);
     await expect(foreignPage.getByText("qr-photographer", { exact: true })).toBeVisible();
-    await expect(foreignPage.getByText(`Serial: SN-${suffix}`, { exact: true })).toBeVisible();
+    await expect(foreignPage.getByText(`Serial: SN-${suffix}`, { exact: true })).toHaveCount(0);
     await expect(foreignPage.getByRole("region", { name: "Quick inventory status" })).toHaveCount(0);
     await expect(foreignPage.getByRole("link", { name: "Edit" })).toHaveCount(0);
 
     await page.goto(url);
+    await expect(page.getByText(`Serial: SN-${suffix}`, { exact: true })).toBeVisible();
     const ownerTools = page.getByRole("region", { name: "Quick inventory status" });
     await expect(ownerTools).toBeVisible();
     await expect(ownerTools.getByText("Current status: In inventory", { exact: true })).toBeVisible();
