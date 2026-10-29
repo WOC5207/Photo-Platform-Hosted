@@ -1,4 +1,5 @@
 import { getLocale, getTranslations } from "next-intl/server";
+import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { cosplanTemplateUrl } from "@/lib/cosplanStorage";
 import { pickText } from "@/lib/content";
@@ -15,8 +16,11 @@ import { parseCosplanSlots } from "@/lib/cosplanTypes";
 export const dynamic = "force-dynamic";
 
 export default async function CosplanAdminPage() {
-  const [locale, t, templates] = await Promise.all([
-    getLocale(),
+  const locale = await getLocale();
+  // The layout's check doesn't always run again on client navigation, so the
+  // page checks for itself before reading every template.
+  await requireAdmin(locale);
+  const [t, templates] = await Promise.all([
     getTranslations("adminCosplan"),
     prisma.cosplanTemplate.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] })
   ]);
