@@ -82,7 +82,7 @@ export default function StorageScreen({ storage }: { storage: StudioStorage }) {
 
   return (
     <>
-      <BookingPanel>
+      <BookingPanel work>
         <StudioHeading trail={t("studioCrumbs.storage")} title={ts("myStorageTitle")} />
         <p className="mt-4 text-sm text-fg-muted">{ts("myStorageIntro")}</p>
 

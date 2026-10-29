@@ -54,6 +54,11 @@
   .panel[data-expanded="cover"] {
     max-height: calc(100dvh - 96px);
   }
+  /* A Dashboard work screen, expanded: the scene keeps the slimmest strip it
+     frames into under the header (18% of the screen, see stageBand). */
+  .panel[data-expanded="work"] {
+    max-height: calc(82dvh - 80px);
+  }
   /* The whole screen below the header, scrolling inside itself; the scene
      stays framed as it is and shows through the same translucent sheet. */
   .panel[data-expanded="full"] {
@@ -67,24 +72,37 @@
      box that takes no touches, so what scrolls is the content below. */
   .panel[data-window] {
     --window: 40dvh;
-    --sheet: 94%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     padding: 0;
     border-top: 0;
     pointer-events: none;
-    background: linear-gradient(
-      transparent var(--window),
-      var(--color-border-strong) var(--window) calc(var(--window) + 1px),
-      color-mix(in srgb, var(--color-page) var(--sheet), transparent) calc(var(--window) + 1px)
-    );
+    background: none;
+    isolation: isolate;
+  }
+  /* The sheet's colour, on a layer of its own so that raising and lowering
+     the sheet only moves and fades it, with no layout or repaint per frame. */
+  .panel[data-window]::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-top: 1px solid var(--color-border-strong);
+    background: var(--color-page);
+    opacity: 0.94;
+    transform: translateY(var(--window));
+    transition:
+      transform var(--motion-enter) var(--ease-out),
+      opacity var(--motion-enter) var(--ease-out);
   }
   /* Raised: the window closes and the sheet takes the whole screen below the
-     header, lighter, so the album field still shows through it. */
-  .panel[data-window][data-raised] {
-    --window: 0px;
-    --sheet: 72%;
+     header, lighter, so the album field still shows through it. The window
+     gives up its room at once and its content slides away with the sheet's
+     edge; the content below follows from where it was (see BookingPanel). */
+  .panel[data-window][data-raised]::before {
+    transform: none;
+    opacity: 0.72;
   }
   .window {
     display: flex;
@@ -95,22 +113,14 @@
     height: var(--window);
     overflow: hidden;
     padding: 8px var(--edge) 12px;
+    transition:
+      transform var(--motion-enter) var(--ease-out),
+      opacity var(--motion-exit) var(--ease-out);
   }
   .panel[data-raised] .window {
-    padding-block: 0;
+    margin-bottom: calc(-1 * var(--window));
+    transform: translateY(calc(-1 * var(--window)));
     opacity: 0;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    .panel[data-window] {
-      transition:
-        --window 0.4s cubic-bezier(0.2, 0.7, 0.2, 1),
-        --sheet 0.4s;
-    }
-    .window {
-      transition:
-        padding 0.4s cubic-bezier(0.2, 0.7, 0.2, 1),
-        opacity 0.25s;
-    }
   }
   .window :is(a, button) {
     pointer-events: auto;
@@ -126,18 +136,6 @@
     pointer-events: auto;
     padding: var(--panel-pad-top) var(--edge) max(20px, env(safe-area-inset-bottom));
   }
-}
-
-/* Registered so a phone sheet's window can slide shut (see .panel[data-raised]). */
-@property --window {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-@property --sheet {
-  syntax: "<percentage>";
-  inherits: true;
-  initial-value: 94%;
 }
 
 /* A visitor's booking pages on phones: the whole screen under the header,

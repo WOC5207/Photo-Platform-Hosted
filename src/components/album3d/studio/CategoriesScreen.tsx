@@ -64,7 +64,7 @@ export default function CategoriesScreen({ username, categories }: { username: s
 
   return (
     <>
-      <BookingPanel>
+      <BookingPanel work>
         <StudioHeading trail={t("studioEquipment")} title={te("manageCategories")} />
         <p className="mt-4 text-sm text-fg-muted">{te("categorySetupHint")}</p>
         <form action={createEquipmentCategory} className="mt-6 flex items-end gap-2">

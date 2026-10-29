@@ -148,7 +148,7 @@ export default function CreditsScreen({ credits }: { credits: StudioCredits }) {
 
   return (
     <>
-      <BookingPanel>
+      <BookingPanel work>
         <StudioHeading trail={t("studioCrumbs.credits")} title={tcr("title", { term })} />
         <p className="mt-4 text-sm text-fg-muted">{tcr("intro")}</p>
         {!credits.enabled ? (

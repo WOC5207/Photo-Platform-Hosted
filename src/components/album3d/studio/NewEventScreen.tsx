@@ -38,7 +38,8 @@ export default function NewEventScreen() {
           <input name="titleZh" maxLength={300} className={fieldClass} />
         </label>
         <p className="-mt-2 text-xs text-fg-subtle">{ta("titleHint")}</p>
-        <div className="grid grid-cols-2 gap-3">
+        {/* Side by side only where both date boxes fit; a phone stacks them. */}
+        <div className="grid gap-3 min-[420px]:grid-cols-2">
           <label className={label}>
             {ta("dateStart")}
             <input type="date" required value={first} onChange={(e) => setFirst(e.target.value)} className={fieldClass} />

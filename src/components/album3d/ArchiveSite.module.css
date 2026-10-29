@@ -48,7 +48,7 @@
 .shade::before,
 .shade::after {
   content: "";
-  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.7s var(--ease-out);
 }
 .shade::before {
   background:
@@ -376,7 +376,7 @@
   display: inline-block;
 }
 .rollIn {
-  animation: roll-in 460ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: roll-in 460ms var(--ease-out);
 }
 /* The old value, on top of the new one and out of the layout. */
 .rollOut {
@@ -385,7 +385,7 @@
   width: 100%;
   opacity: 0;
   pointer-events: none;
-  animation: roll-out 460ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: roll-out 460ms var(--ease-out);
 }
 @keyframes roll-in {
   from {
@@ -403,12 +403,6 @@
     transform: translateY(-0.55em);
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .rollIn,
-  .rollOut {
-    animation: none;
-  }
-}
 
 /* -------------------------------------------------------- screen panels -- */
 /* A screen's panel arrives with the scene's wipe and leaves before the next
@@ -416,13 +410,13 @@
    200 ms out (easing in). Panels whose parts are placed against the page
    only fade, so nothing under them shifts; the menu panels also rise. */
 .root :global(#main-content) {
-  animation: panel-fade 320ms cubic-bezier(0.22, 1, 0.36, 1) 90ms backwards;
+  animation: panel-fade var(--motion-enter) var(--ease-out) 90ms backwards;
 }
 .root :global(#main-content).menuPanel {
   animation-name: panel-rise;
 }
 .root .menuHint {
-  animation: panel-fade 320ms cubic-bezier(0.22, 1, 0.36, 1) 140ms backwards;
+  animation: panel-fade var(--motion-enter) var(--ease-out) 140ms backwards;
 }
 /* An album's details come in with the camera (see the engine's hud option). */
 .root :global(#main-content[data-follow="detail"]) {
@@ -433,7 +427,13 @@
 .root[data-leaving="true"] .menuHint {
   animation: none;
   opacity: 0;
-  transition: opacity 150ms cubic-bezier(0.4, 0, 1, 1);
+  transition:
+    opacity var(--motion-exit) var(--ease-in),
+    translate var(--motion-exit) var(--ease-in);
+}
+/* The menu panels rose 12px in; they sink 8px as they leave. */
+.root[data-leaving="true"] :global(#main-content).menuPanel {
+  translate: 0 8px;
 }
 @keyframes panel-fade {
   from {
@@ -445,20 +445,6 @@
     opacity: 0;
     translate: 0 12px;
   }
-}
-@media (prefers-reduced-motion: reduce) {
-  .root :global(#main-content),
-  .root .menuHint {
-    animation: none;
-  }
-}
-/* The site's own Motion setting, when it is Reduced, covers the page too. */
-.root[data-motion="reduced"],
-.root[data-motion="reduced"] *,
-.root[data-motion="reduced"] *::before,
-.root[data-motion="reduced"] *::after {
-  animation: none !important;
-  transition: none !important;
 }
 
 /* --------------------------------------------- compact and portrait -- */
@@ -688,7 +674,7 @@
   }
   /* An album's details no longer wait for the camera behind them. */
   .root[data-backdrop]:not([data-leaving="true"]) :global(#main-content[data-follow="detail"]) {
-    animation: panel-fade 320ms cubic-bezier(0.22, 1, 0.36, 1) 90ms backwards;
+    animation: panel-fade var(--motion-enter) var(--ease-out) 90ms backwards;
     opacity: 1;
   }
   /* Under the back button. */
@@ -788,15 +774,3 @@
   }
 }
 
-/* A theme or palette change: the page's colours ease over while the scene's spread. */
-.root[data-theming],
-.root[data-theming] :global(*),
-.root[data-theming] :global(*)::before,
-.root[data-theming] :global(*)::after {
-  transition:
-    color 0.45s,
-    background-color 0.45s,
-    border-color 0.45s,
-    fill 0.45s,
-    stroke 0.45s !important;
-}

@@ -6,6 +6,50 @@
 @custom-variant light (&:where(.light, .light *));
 /* The 3D album's desktop layout (src/components/album3d). */
 @custom-variant wide (@media (min-width: 1100px) and (min-aspect-ratio: 105/100));
+/* Motion follows one setting. The new site writes its Motion choice to
+   <html data-motion> ("full" or "reduced"); without it, as on the classic
+   site, the device's own setting decides. */
+@custom-variant motion-reduce {
+  @media (prefers-reduced-motion: reduce) {
+    &:where(:root:not([data-motion="full"]) *) {
+      @slot;
+    }
+  }
+  &:where(:root[data-motion="reduced"] *) {
+    @slot;
+  }
+}
+@custom-variant motion-safe {
+  @media (prefers-reduced-motion: no-preference) {
+    &:where(:root:not([data-motion="reduced"]) *) {
+      @slot;
+    }
+  }
+  &:where(:root[data-motion="full"] *) {
+    @slot;
+  }
+}
+
+/*
+ * Motion tokens, from RhineLabUI (https://github.com/LBEILC/RhineLabUI, MIT,
+ * src/ui-transitions.ts): what arrives eases out over 300 ms, what leaves
+ * eases in over 200 ms, markers glide in 180 ms and feedback colours change
+ * in 220 ms. Tailwind's own `transition`, `ease-out` and `ease-in` utilities
+ * use the same curves, so the classic site moves like the new one.
+ */
+@theme {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --default-transition-duration: 180ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root {
+  --motion-enter: 300ms;
+  --motion-exit: 200ms;
+  --motion-marker: 180ms;
+  --motion-feedback: 220ms;
+}
 
 @theme inline {
   --font-sans: var(--font-interface);
@@ -448,10 +492,12 @@ main {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  button:active,
-  a[role="button"]:active {
+  :root:not([data-motion="reduced"]) :is(button, a[role="button"]):active {
     transform: scale(0.97);
   }
+}
+:root[data-motion="full"] :is(button, a[role="button"]):active {
+  transform: scale(0.97);
 }
 
 /* Native date controls need the browser's dark glyph palette. */
@@ -478,19 +524,98 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :root:not([data-motion="full"]) *,
+  :root:not([data-motion="full"]) *::before,
+  :root:not([data-motion="full"]) *::after {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 
-  a:hover, button:active, a:hover img {
+  :root:not([data-motion="full"]) :is(a:hover, button:active, a:hover img) {
     transform: none !important;
     translate: none !important;
     scale: none !important;
+  }
+}
+/* The new site's Motion setting at Reduced stops the page as it stops the
+   scene, the creators' portals outside the site included. */
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  scroll-behavior: auto !important;
+  animation: none !important;
+  transition: none !important;
+}
+:root[data-motion="reduced"] :is(a:hover, button:active, a:hover img) {
+  transform: none !important;
+  translate: none !important;
+  scale: none !important;
+}
+
+/* A theme change cross-fades the page (see crossFade in src/lib/motion.ts). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--motion-enter);
+  animation-timing-function: var(--ease-out);
+}
+
+/*
+ * Dialogs and the management drawer move as the new site's surfaces do
+ * (RhineLabUI): in over 300 ms easing out, the dialog rising 12 px and the
+ * drawer sliding in from its edge, and out over 200 ms easing in, the dialog
+ * sinking 8 px (see usePresence, which keeps them for the way out).
+ */
+.dialog-overlay {
+  animation: surface-fade-in var(--motion-enter) var(--ease-out) backwards;
+}
+.dialog-panel {
+  animation: surface-rise var(--motion-enter) var(--ease-out) backwards;
+}
+.drawer-panel {
+  animation: drawer-in var(--motion-enter) var(--ease-out) backwards;
+}
+.dialog-overlay[data-leaving],
+[data-leaving] > .dialog-overlay {
+  animation: surface-fade-out var(--motion-exit) var(--ease-in) forwards;
+}
+[data-leaving] .dialog-panel {
+  animation: surface-sink var(--motion-exit) var(--ease-in) forwards;
+}
+[data-leaving] .drawer-panel {
+  animation: drawer-out var(--motion-exit) var(--ease-in) forwards;
+}
+@keyframes surface-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes surface-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes surface-rise {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+@keyframes surface-sink {
+  to {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+@keyframes drawer-in {
+  from {
+    translate: -100% 0;
+  }
+}
+@keyframes drawer-out {
+  to {
+    translate: -100% 0;
   }
 }
 
@@ -501,13 +626,13 @@ main {
  * behind, and the tool bar's marker glides between tools in 180 ms. They
  * live here rather than in a module so the boards, loaded only on phones,
  * bring no stylesheet of their own. The site's Motion setting stops them
- * as the device's does, the typing sheet's portal outside the site included.
+ * (see the data-motion rules above).
  */
 .phone-rise {
-  animation: phone-rise 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: phone-rise var(--motion-enter) var(--ease-out) backwards;
 }
 .phone-rise-late {
-  animation: phone-rise 300ms cubic-bezier(0.22, 1, 0.36, 1) 60ms backwards;
+  animation: phone-rise var(--motion-enter) var(--ease-out) 60ms backwards;
 }
 @keyframes phone-rise {
   from {
@@ -517,18 +642,6 @@ main {
 }
 .phone-marker {
   transition:
-    translate 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 180ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-@media (prefers-reduced-motion: reduce) {
-  .phone-rise,
-  .phone-rise-late {
-    animation: none;
-  }
-  .phone-marker {
-    transition: none;
-  }
-}
-:root:has([data-motion="reduced"]) :is(.phone-rise, .phone-rise-late) {
-  animation: none;
+    translate var(--motion-marker) var(--ease-out),
+    opacity var(--motion-marker) var(--ease-out);
 }

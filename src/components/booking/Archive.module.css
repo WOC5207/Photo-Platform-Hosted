@@ -8,7 +8,7 @@
 
 .page {
   --rule: color-mix(in srgb, var(--color-fg) 72%, transparent);
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease: var(--ease-out);
 }
 
 /* The heading's rule: a short square, a gap, then a hairline. */
@@ -30,7 +30,7 @@
 
 /* Each step's content rises in as the 3D panels do. */
 .rise {
-  animation: rise 300ms var(--ease) both;
+  animation: rise var(--motion-enter) var(--ease) both;
 }
 @keyframes rise {
   from {
@@ -94,7 +94,7 @@
     linear-gradient(var(--c), var(--c)) bottom left / 2px 16px no-repeat,
     linear-gradient(var(--c), var(--c)) bottom right / 16px 2px no-repeat,
     linear-gradient(var(--c), var(--c)) bottom right / 2px 16px no-repeat;
-  animation: lock 180ms var(--ease) both;
+  animation: lock var(--motion-marker) var(--ease) both;
 }
 @keyframes lock {
   from {
@@ -110,7 +110,7 @@
   padding: 0.125rem 0.375rem;
   color: var(--color-accent-text);
   rotate: -5deg;
-  animation: stamp 220ms var(--ease) both;
+  animation: stamp var(--motion-feedback) var(--ease) both;
 }
 .stamp[data-cancelled] {
   color: var(--color-danger);
@@ -131,20 +131,26 @@
 
 /* One marker glides under the current step, like RhineLabUI's tab underline. */
 .stepMarker {
-  transition: translate 180ms var(--ease);
+  transition: translate var(--motion-marker) var(--ease);
 }
 
+/* Less motion (the new site's Motion setting, else the device's; see
+   globals.css) stops these and keeps a tile still under the pointer. */
 @media (prefers-reduced-motion: reduce) {
-  .rise,
-  .tile[aria-pressed="true"]::after,
-  .stamp {
+  :global(:root:not([data-motion="full"])) .rise,
+  :global(:root:not([data-motion="full"])) .tile[aria-pressed="true"]::after,
+  :global(:root:not([data-motion="full"])) .stamp {
     animation: none;
   }
-  .tile,
-  .stepMarker {
+  :global(:root:not([data-motion="full"])) .tile,
+  :global(:root:not([data-motion="full"])) .stepMarker {
     transition: none;
   }
-  .tile:is(button, a):not(:disabled):hover {
+  :global(:root:not([data-motion="full"])) .tile:is(button, a):not(:disabled):hover {
     translate: none;
   }
 }
+:global(:root[data-motion="reduced"]) .tile:is(button, a):not(:disabled):hover {
+  translate: none;
+}
+

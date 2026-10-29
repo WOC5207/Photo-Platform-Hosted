@@ -23,7 +23,7 @@ import {
   safeExternalHttpUrl
 } from "../src/lib/externalUrl";
 import { isTrustedMutationOrigin } from "../src/lib/requestSecurity";
-import { MAX_BUCKETS_PER_SCOPE, rateLimit } from "../src/lib/rate-limit";
+import { MAX_BUCKETS_PER_SCOPE, rateLimit, refundRateLimit } from "../src/lib/rate-limit";
 import { passwordFitsHashLimit } from "../src/lib/password";
 
 function multipartRequest(files: Array<[string, Uint8Array]>, fields = true) {
@@ -123,6 +123,11 @@ async function main() {
       "203.0.113.4"
     );
     process.env.TRUSTED_PROXY_HOPS = "1";
+    // CF-Connecting-IP is only compared for a setup warning, never trusted.
+    assert.equal(
+      clientIp(new Headers({ "x-forwarded-for": "192.0.2.8, 198.51.100.7", "cf-connecting-ip": "192.0.2.8" })),
+      "198.51.100.7"
+    );
     assert.equal(
       clientIp(new Headers({ "x-forwarded-for": "not-an-ip" })),
       "unknown"
@@ -137,6 +142,17 @@ async function main() {
     }
     assert.equal(rateLimit("login-test:203.0.113.9", { limit: 10, windowMs: 60_000 }), true);
     assert.equal(rateLimit("flood-test:fresh", { limit: 1, windowMs: 60_000 }), true);
+    // A refunded attempt (a successful sign-in) leaves room for the next one;
+    // unrefunded ones (failures) fill the account's limit.
+    const account = { limit: 2, windowMs: 60_000 };
+    for (let i = 0; i < 5; i += 1) {
+      assert.equal(rateLimit("login-account-test:mika", account), true);
+      refundRateLimit("login-account-test:mika");
+    }
+    assert.equal(rateLimit("login-account-test:mika", account), true);
+    assert.equal(rateLimit("login-account-test:mika", account), true);
+    assert.equal(rateLimit("login-account-test:mika", account), false);
+    refundRateLimit("login-account-test:unknown");
 
     for (const invalid of ["", ".", "..", "../victim", "..\\victim", "a/b"]) {
       assert.throws(() => userDir(invalid), /Invalid storage owner id|escaped/);

@@ -68,7 +68,7 @@ export default function DirectorySearch({ owners }: { owners: DirectoryOwner[] }
                       src={o.thumbUrl}
                       alt=""
                       priority={index < 3}
-                      className="ui-image-frame h-full w-full object-cover transition-transform duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover:scale-[1.025]"
+                      className="ui-image-frame h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025]"
                     />
                   )}
                 </div>

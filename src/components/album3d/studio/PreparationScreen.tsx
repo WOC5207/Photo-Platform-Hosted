@@ -119,7 +119,7 @@ export default function PreparationScreen({ preparation }: { preparation: Studio
 
   return (
     <>
-      <BookingPanel>
+      <BookingPanel work>
         <StudioHeading trail={t("studioPreparation")} title={te("checklistsTitle")} />
         <p className="mt-4 text-sm text-fg-muted">{te("checklistsHint")}</p>
 

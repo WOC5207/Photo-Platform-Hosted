@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { usePresence } from "@/hooks/usePresence";
 
 const focusableSelector =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -72,7 +73,13 @@ export default function Dialog({
     };
   }, [open]);
 
-  if (!open) return null;
+  // The dialog fades and sinks on its way out (see .dialog-overlay in
+  // globals.css), still showing what it held while open.
+  const { present, leaving } = usePresence(open);
+  const shown = useRef(children);
+  if (open) shown.current = children;
+
+  if (!present) return null;
 
   // Management workspaces provide a portal root inside their theme scope.
   // Public pages and unthemed screens continue to portal directly to body.
@@ -82,7 +89,9 @@ export default function Dialog({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 ${overlayClassName}`}
+      className={`dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 ${overlayClassName}`}
+      data-leaving={leaving || undefined}
+      inert={leaving}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -93,9 +102,9 @@ export default function Dialog({
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
-        className={`max-h-[calc(100dvh-2rem)] w-full overflow-y-auto overscroll-contain rounded-2xl border border-border-strong bg-raised shadow-2xl outline-none ${panelClassName}`}
+        className={`dialog-panel max-h-[calc(100dvh-2rem)] w-full overflow-y-auto overscroll-contain rounded-2xl border border-border-strong bg-raised shadow-2xl outline-none ${panelClassName}`}
       >
-        {children}
+        {shown.current}
       </div>
     </div>,
     portalRoot

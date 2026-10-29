@@ -96,7 +96,8 @@ export default function EventScreen({
             {ta("titleZh")}
             <input name="titleZh" defaultValue={event.titleZh} maxLength={300} className={fieldClass} />
           </label>
-          <div className="grid grid-cols-2 gap-3">
+          {/* Side by side only where both date boxes fit; a phone stacks them. */}
+          <div className="grid gap-3 min-[420px]:grid-cols-2">
             <label className={label}>
               {ta("dateStart")}
               <input type="date" name="dateStart" defaultValue={event.dateStart} className={fieldClass} />

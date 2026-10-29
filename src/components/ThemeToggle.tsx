@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { crossFade } from "@/lib/motion";
 
 type Theme = "light" | "dark";
 
@@ -51,8 +52,10 @@ export default function ThemeToggle({
   function toggle() {
     const next: Theme = effectiveTheme() === "dark" ? "light" : "dark";
     const root = document.documentElement;
-    root.classList.remove("light", "dark");
-    root.classList.add(next);
+    crossFade(() => {
+      root.classList.remove("light", "dark");
+      root.classList.add(next);
+    });
     try {
       localStorage.setItem("theme", next);
     } catch {

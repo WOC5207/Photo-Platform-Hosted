@@ -77,3 +77,12 @@ export function rateLimit(
   store.set(key, { hits, expiresAt: now + windowMs });
   return true; // allowed
 }
+
+/**
+ * Takes back the most recent hit on `key`, for limits that only count
+ * failures: the attempt is counted up front, so parallel attempts can't all
+ * slip under the limit, and handed back once it turns out to have succeeded.
+ */
+export function refundRateLimit(key: string): void {
+  storeFor(key).get(key)?.hits.pop();
+}

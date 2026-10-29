@@ -30,7 +30,7 @@ export function buttonClasses({
 } = {}): string {
   return [
     "inline-flex items-center justify-center gap-2 rounded-lg border font-semibold tracking-[-0.01em]",
-    "transition-[color,background-color,border-color,opacity,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]",
+    "transition-[color,background-color,border-color,opacity,transform] duration-180 ease-out",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-page",
     "disabled:pointer-events-none disabled:opacity-45 max-sm:min-h-11",
     variants[variant],

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useVisualViewport } from "@/components/cosplan/useVisualViewport";
+import { lessMotion } from "@/lib/motion";
 
 /**
  * The poster creators on a phone held upright: the poster flat and as wide
@@ -22,14 +23,6 @@ const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
 /** The class name for a surface that rises in (300 ms, fading in over 12 px). */
 export const ENTER = "phone-rise";
 
-/**
- * Whether this device, or the site's own Motion setting, asks for less
- * motion. The classes' stylesheet checks both itself; motion run from
- * script asks here.
- */
-function motionOff() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.querySelector('[data-motion="reduced"]') !== null;
-}
 
 /** Any CSS colour as rgb(), which the guides' alpha needs. */
 export function cssColor(element: HTMLElement, name: string, fallback: string) {
@@ -102,7 +95,7 @@ export function usePosterMorph(posterRef: RefObject<HTMLElement | null>, size: {
     const now = { x: poster.offsetLeft + poster.offsetWidth / 2, y: poster.offsetTop + poster.offsetHeight / 2, width: poster.offsetWidth, height: poster.offsetHeight };
     const was = last.current;
     last.current = now;
-    if (!was || (was.x === now.x && was.y === now.y && was.width === now.width && was.height === now.height) || motionOff()) return;
+    if (!was || (was.x === now.x && was.y === now.y && was.width === now.width && was.height === now.height) || lessMotion()) return;
     // Where the poster shows right now, part way through an earlier move.
     let from = was;
     const running = poster.getAnimations();
@@ -142,7 +135,7 @@ export function useStripMotion(stripRef: RefObject<HTMLElement | null>, keys: st
     const now = new Map(items.map((item) => [item.dataset.motionKey ?? "", item.offsetLeft]));
     const was = places.current;
     places.current = now;
-    if (!was || motionOff()) return;
+    if (!was || lessMotion()) return;
     for (const item of items) {
       const from = was.get(item.dataset.motionKey ?? "");
       if (from === undefined) item.animate([{ opacity: 0, translate: "0 12px" }, { opacity: 1, translate: "0 0" }], { duration: 300, easing: EASE_OUT });

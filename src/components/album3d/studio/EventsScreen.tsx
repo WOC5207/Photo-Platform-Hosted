@@ -151,7 +151,7 @@ export default function EventsScreen({ account, events }: { account: StudioAccou
 
   return (
     <>
-      <BookingPanel>
+      <BookingPanel work>
         <StudioHeading trail={t("studioEvents")} title={t("studioEvents")} />
         <Link href={path({ kind: "studio", username, page: "new" })} scroll={false} className={`${primaryClass} mt-6 w-full`}>
           {tw("newEvent")}

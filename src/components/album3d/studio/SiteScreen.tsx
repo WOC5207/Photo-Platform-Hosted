@@ -63,7 +63,7 @@ export default function SiteScreen({ site }: { site: StudioSite }) {
 
   return (
     <>
-      <BookingPanel>
+      <BookingPanel work>
         <StudioHeading trail={t("studioCrumbs.site")} title={ts("title")} />
         <p className="mt-4 text-sm text-fg-muted">{ts("intro")}</p>
         <GameMenu label={ts("title")} items={items} focus={at} onFocus={setFocus} className="mt-6" />
