@@ -6,15 +6,16 @@ import { Link } from "@/i18n/navigation";
 import { logout3d } from "@/app/[locale]/3d/login/actions";
 import { dismissPlatformNotification } from "@/app/[locale]/dashboard/(protected)/actions";
 import { GameMenu, Rolling, pad, wrap, type MenuItem } from "../hud";
-import { BookingPanel, SheetToggle, isInteractive, metaLabel, setSheetChoice, useScreenKeys, useSheetChoice, useStage } from "../booking/shared";
+import { BookingPanel, SheetToggle, isInteractive, metaLabel, primaryClass, setSheetChoice, useScreenKeys, useSheetChoice, useStage } from "../booking/shared";
 import styles from "../booking/Booking.module.css";
 import { FieldContext, type FieldAlbum } from "../StageContext";
 import { StudioHeading, formatBytes } from "./shared";
 import type { StudioHome } from "./types";
 
 /**
- * The 3D Dashboard's menu: the photographer's numbers, the platform's
- * notices, and every section of their backend. Until they put it away, a
+ * The 3D Dashboard's menu: the photographer's numbers, "Upload photos"
+ * (pick an event, then the photo wizard), the platform's notices, and every
+ * section of their backend. Until they put it away, a
  * new photographer also gets first steps to follow, each ticked off once done.
  * The album field behind it keeps to the photographer's own albums and stays
  * live: the album under the mouse pops up with the next few behind it, and a
@@ -124,6 +125,15 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
           </dd>
         </div>
       </dl>
+
+      <Link
+        href={path({ kind: "studio", username, page: "uploadPick" })}
+        scroll={false}
+        className={`${primaryClass} mt-6 w-full`}
+      >
+        {t("studioUploadPhotos")}
+        <span aria-hidden="true" className="text-lg">↑</span>
+      </Link>
 
       {home.notices.length > 0 && (
         <ul aria-label={t("studioNotices")} className="mt-6 grid gap-2">
@@ -243,7 +253,7 @@ function FirstSteps({ home, path }: { home: StudioHome; path: ReturnType<typeof 
   }, [storageKey]);
   const steps = [
     { key: "event", done: home.events > 0, href: path({ kind: "studio", username, page: "new" }) },
-    { key: "photos", done: home.photos > 0, href: path({ kind: "studio", username, page: "events" }) },
+    { key: "photos", done: home.photos > 0, href: path({ kind: "studio", username, page: "uploadPick" }) },
     { key: "look", done: home.styled, href: path({ kind: "studio", username, page: "siteAppearance" }) },
     { key: "publish", done: home.listed, href: path({ kind: "studio", username, page: "events" }) }
   ] as const;
