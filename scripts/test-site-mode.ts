@@ -34,6 +34,7 @@ const screens = [
   "/3d/u/george/my-booking/c4n5e1",
   "/3d/u/george/studio",
   "/3d/u/george/studio/events",
+  "/3d/u/george/studio/upload",
   "/3d/u/george/studio/events/new",
   "/3d/u/george/studio/events/cmevent1",
   "/3d/u/george/studio/events/cmevent1/photos",
@@ -118,6 +119,10 @@ assert.deepEqual(climb("/3d/u/george/draw/p8z4m1").slice(0, 2), ["/3d/u/george/d
 assert.deepEqual(climb("/3d/u/george/my-booking/c4n5e1").slice(0, 2), ["/3d/u/george/my-booking/c4n5e1", "/3d/u/george/booking"]);
 
 // The Dashboard walks back to its menu, then the title screen.
+assert.deepEqual(climb("/3d/u/george/studio/upload"), ["/3d/u/george/studio/upload", "/3d/u/george/studio", "/3d"]);
+// "Upload photos" has no classic page; the classic event list is where an event is picked.
+assert.equal(classicTwin("/3d/u/george/studio/upload"), "/dashboard/events");
+assert.equal(threeDTwin("/dashboard/events"), "/3d/studio/events");
 assert.deepEqual(climb("/3d/u/george/studio/events/cmevent1/upload"), [
   "/3d/u/george/studio/events/cmevent1/upload",
   "/3d/u/george/studio/events/cmevent1",
