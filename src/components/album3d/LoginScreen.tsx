@@ -89,10 +89,10 @@ function AccountMenu({ account }: { account: LoginAccount }) {
   const [leaving, startLeaving] = useTransition();
   const items: MenuItem[] = [
     ...(account.listed
-      ? [{ key: "archive", label: t("loginArchive"), sub: `@${account.username}`, run: () => go({ kind: "photographer", username: account.username }) }]
+      ? [{ key: "archive", label: t("loginArchive"), sub: `@${account.username}`, text: ["album3d.loginArchive"], run: () => go({ kind: "photographer", username: account.username }) }]
       : []),
-    { key: "dashboard", label: t("loginDashboard"), sub: t("loginDashboardSub"), run: () => go({ kind: "studio", username: account.username, page: "home" }) },
-    { key: "signout", label: leaving ? t("loginSigningOut") : t("loginSignOut"), run: () => !leaving && startLeaving(() => logout3d()) }
+    { key: "dashboard", label: t("loginDashboard"), sub: t("loginDashboardSub"), text: ["album3d.loginDashboard", "album3d.loginDashboardSub"], run: () => go({ kind: "studio", username: account.username, page: "home" }) },
+    { key: "signout", label: leaving ? t("loginSigningOut") : t("loginSignOut"), text: ["album3d.loginSignOut"], run: () => !leaving && startLeaving(() => logout3d()) }
   ];
   const at = Math.min(focus, items.length - 1);
 

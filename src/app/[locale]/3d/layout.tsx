@@ -36,7 +36,7 @@ export default async function ThreeDLayout({ children }: { children: React.React
         columns={columns}
         recent={recent}
         palettes={palettes}
-        viewer={user ? { username: user.username, name: ownerName(user) } : null}
+        viewer={user ? { username: user.username, name: ownerName(user), admin: user.role === "admin" } : null}
       >
         {children}
       </ArchiveSite>
