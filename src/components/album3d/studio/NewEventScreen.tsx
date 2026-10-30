@@ -9,9 +9,10 @@ import { FormNote, StudioHeading, daysBetween } from "./shared";
 /**
  * A new event, as the classic "New event" form makes one: its gallery
  * (a draft until published) and its booking page and packing lists, closed
- * until the photographer opens them.
+ * until the photographer opens them. Made on the way to "Upload photos"
+ * (`forUpload`), it opens on adding photos to it rather than its details.
  */
-export default function NewEventScreen() {
+export default function NewEventScreen({ forUpload = false }: { forUpload?: boolean }) {
   const t = useTranslations("album3d");
   const ta = useTranslations("adminEvents");
   const tw = useTranslations("eventWorkspace");
@@ -24,11 +25,12 @@ export default function NewEventScreen() {
 
   return (
     <BookingPanel expanded="full">
-      <StudioHeading trail={t("studioEvents")} title={tw("newEvent")} />
+      <StudioHeading trail={forUpload ? t("studioUploadPhotos") : t("studioEvents")} title={tw("newEvent")} />
       <form action={action} aria-busy={pending} className="mt-6 grid gap-4">
         <p className="text-sm text-fg-muted">{t("studioNewHint")}</p>
         <input type="hidden" name="dates" value={JSON.stringify(days)} />
         <input type="hidden" name="visitorEditCutoffHours" value="24" />
+        {forUpload && <input type="hidden" name="then" value="upload" />}
         <label className={label}>
           {ta("titleEn")}
           <input name="titleEn" maxLength={300} className={fieldClass} />
@@ -66,7 +68,7 @@ export default function NewEventScreen() {
         </label>
         {state.error && <FormNote tone="error">{state.error === "validation" ? ta("validationError") : t("studioError")}</FormNote>}
         <button type="submit" disabled={pending || days.length === 0} className={primaryClass}>
-          {pending ? t("studioSaving") : tc("create")}
+          {pending ? t("studioSaving") : forUpload ? t("studioCreateAndUpload") : tc("create")}
           <span aria-hidden="true" className="text-lg">→</span>
         </button>
       </form>

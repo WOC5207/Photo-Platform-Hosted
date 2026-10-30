@@ -40,6 +40,7 @@ export type Screen =
  * "home" is its menu, "events" their events (drafts too), "new" creates one,
  * and "event", "photos" and "upload" are one event's details, its photos on
  * the light table, and adding photos to it (`id` names the event).
+ * "uploadPick" is the menu's "Upload photos": which event the photos go to.
  * "bookings" lists their booking events; "booking", "bookingDetails" and
  * "lottery" are one booking event's schedule, its settings and its prize
  * draw (`id` names the booking event).
@@ -65,6 +66,8 @@ const STUDIO = {
   // First-run setup, before the rest of the Dashboard opens.
   setup: ["/setup", "home"],
   events: ["/events", "home"],
+  // Classic picks the event from its list, so that is this page's twin.
+  uploadPick: ["/upload", "home", "/events"],
   new: ["/events/new", "events"],
   event: ["/events/:id", "events"],
   // The classic event page manages its photos; its /photos page adds them.

@@ -31,7 +31,9 @@ export async function createEvent3d(_prev: StudioEventState, formData: FormData)
   const result = await createEventFromForm(user, locale, formData);
   if ("error" in result) return { error: result.error };
   revalidatePath("/", "layout");
-  redirect(studioPath(locale, user, `/events/${result.galleryId}`));
+  // Made from "Upload photos", the new event goes straight on to its upload.
+  const then = formData.get("then") === "upload" ? "/upload" : "";
+  redirect(studioPath(locale, user, `/events/${result.galleryId}${then}`));
 }
 
 export async function deleteEvent3d(formData: FormData): Promise<void> {
