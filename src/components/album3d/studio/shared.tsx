@@ -38,9 +38,9 @@ export function StudioHeading({ trail, title, text, children }: { trail: string;
       <p className={metaLabel}>
         {t("studioTitle")} <span aria-hidden="true" className="mx-2">／</span> {trail}
       </p>
-      <h1 className="mt-3 flex items-start gap-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[3.25rem]">
+      <h1 className="relative mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[3.25rem]">
         {title}
-        <EditTextButton keys={text} shown={title} className="h-10 w-10" />
+        <EditTextButton keys={text} shown={title} className="absolute bottom-full right-0 h-9 w-9" />
       </h1>
       {children}
       <div aria-hidden="true" className={styles.calloutRule} />

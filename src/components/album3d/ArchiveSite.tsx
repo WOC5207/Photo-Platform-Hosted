@@ -1037,7 +1037,8 @@ export default function ArchiveSite({
   const altTitle = file.altTitle && file.altTitle !== file.title ? file.altTitle : "";
   const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle";
   const square = "grid h-11 w-11 shrink-0 place-items-center text-2xl transition hover:bg-accent-surface";
-  const editHeading = "h-10 w-10";
+  // Above the heading's right end, so the heading keeps its line breaks in editing mode.
+  const editHeading = "absolute bottom-full right-0 h-9 w-9";
   const albumsHere = screen.kind === "albumSelect" || (inAlbum && !missing);
 
   // Where the visitor is, as a trail of links back up the screens.
@@ -1226,7 +1227,7 @@ export default function ArchiveSite({
           <p className={metaLabel}>
             {t("archiveLabel")} <span aria-hidden="true" className="mx-2">／</span> {t("menuSettings")}
           </p>
-          <h1 className="mt-3 flex items-start gap-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[4.5rem]">
+          <h1 className="relative mt-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[4.5rem]">
             {t("settingsTitle")}
             <EditTextButton keys={["album3d.settingsTitle"]} shown={t("settingsTitle")} className={editHeading} />
           </h1>
@@ -1266,7 +1267,7 @@ export default function ArchiveSite({
           <p className={metaLabel}>
             {t("archiveLabel")} <span aria-hidden="true" className="mx-2">／</span> {t("menuLabel")}
           </p>
-          <h1 className="mt-3 flex items-start gap-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[4.5rem]">
+          <h1 className="relative mt-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[4.5rem]">
             {t("menuTitle")}
             <EditTextButton keys={["album3d.menuTitle"]} shown={t("menuTitle")} className={editHeading} />
           </h1>
@@ -1310,7 +1311,7 @@ export default function ArchiveSite({
           <p className={metaLabel}>
             {t("photographerCount", { current: pad(menuFocus + 1), total: pad(columns.length) })}
           </p>
-          <h1 className="mt-3 flex items-start gap-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[3.75rem]">
+          <h1 className="relative mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[3.75rem]">
             {t("rosterTitle")}
             <EditTextButton keys={["album3d.rosterTitle"]} shown={t("rosterTitle")} className={editHeading} />
           </h1>

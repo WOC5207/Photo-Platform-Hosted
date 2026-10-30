@@ -130,7 +130,8 @@ export default function TextEditor({ keys, shown, onClose }: { keys: string[]; s
           {message}
         </p>
       )}
-      <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+      {/* Pinned to the bottom, so Save stays in reach while a phone scrolls the fields. */}
+      <div className="sticky -bottom-5 -mb-5 mt-6 flex flex-wrap items-center justify-end gap-3 bg-surface pb-5 pt-3 sm:-bottom-6 sm:-mb-6 sm:pb-6">
         {texts && (
           <button
             type="button"
