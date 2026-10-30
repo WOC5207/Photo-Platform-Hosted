@@ -1668,6 +1668,9 @@ export default function ArchiveSite({
           <span className="flex items-center gap-2">
             <i aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success" />
             {t("connected")}
+            {process.env.NEXT_PUBLIC_SITE_VERSION && (
+              <span className="ml-2 normal-case">{process.env.NEXT_PUBLIC_SITE_VERSION}</span>
+            )}
           </span>
         </footer>
       )}

@@ -25,6 +25,9 @@ FROM node:26-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# The v3.0.N shown in the 3D site's status line. .git is not in the build
+# context, so the NAS image workflow reads it from the merge commit.
+ARG SITE_VERSION=""
 # NEXT_STANDALONE=1 makes next.config.ts emit the standalone server bundle
 # that the runtime stage below copies from .next/standalone.
 ENV NEXT_TELEMETRY_DISABLED=1 \
