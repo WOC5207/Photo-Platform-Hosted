@@ -304,6 +304,19 @@ model Invite {
   @@index([issuedById])
 }
 
+// Platform admins' own wording for interface text, one row per message key and
+// language (key is the path into messages/<locale>.json, e.g.
+// "album3d.menuCosplan"). Laid over the built-in messages for every visitor;
+// deleting the row brings the built-in text back. See lib/textOverrides.ts.
+model TextOverride {
+  key       String
+  locale    String
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@id([key, locale])
+}
+
 // One platform-wide row controlled by administrators. The registration notice
 // appears before the account form for every usable invite link.
 model PlatformSettings {

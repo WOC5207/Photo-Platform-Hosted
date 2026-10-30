@@ -11,6 +11,7 @@ import SiteModeSwitch, { useLeaveFor } from "@/components/SiteModeSwitch";
 import { classicTwin, parentScreen, parseScreen, screenPath, type Screen } from "@/lib/siteMode";
 import { crossFade } from "@/lib/motion";
 import { GameMenu, Hints, MENU_SCREENS, Roll, Rolling, pad, wrap, type MenuItem } from "./hud";
+import { EDIT_TEXT_KEY, EditTextButton, EditTextProvider } from "./editText";
 import { AlbumPhotosContext } from "./AlbumPhotosFeed";
 import { FieldContext, StageContext, type FieldAlbum, type FieldPick } from "./StageContext";
 import { archiveSlice } from "@/app/[locale]/3d/actions";
@@ -161,8 +162,8 @@ export default function ArchiveSite({
   recent: RecentAlbum[];
   /** Photographers' saved site colours, by username. */
   palettes: Record<string, OwnerPalette>;
-  /** The signed-in photographer, if any. */
-  viewer: { username: string; name: string } | null;
+  /** The signed-in photographer, if any. Platform admins can reword menu text in editing mode. */
+  viewer: { username: string; name: string; admin: boolean } | null;
   children?: ReactNode;
 }) {
   const t = useTranslations("album3d");
@@ -305,6 +306,9 @@ export default function ArchiveSite({
   const motionRef = useRef(motion);
   motionRef.current = motion;
   const [theme, setTheme] = useState<ThemePreference>("system");
+  // Editing mode, which Settings offers platform admins. Kept for the browser, like Motion.
+  const [editingText, setEditingText] = useState(false);
+  const canEditText = Boolean(viewer?.admin);
   const locale = useLocale();
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -348,6 +352,11 @@ export default function ArchiveSite({
   useEffect(() => {
     setMotion(readMotion());
     setTheme(readTheme());
+    try {
+      setEditingText(localStorage.getItem(EDIT_TEXT_KEY) === "on");
+    } catch {
+      // Editing mode starts off.
+    }
     if (savedMotion() === null && window.matchMedia("(prefers-reduced-motion: reduce)").matches) setOffer("device");
   }, []);
 
@@ -760,13 +769,20 @@ export default function ArchiveSite({
       key: "photographers",
       label: t("menuPhotographers"),
       sub: t("menuPhotographersSub", { count: columns.length }),
+      text: ["album3d.menuPhotographers", "album3d.menuPhotographersSub"],
       run: () => go({ kind: "photographers" })
     },
-    { key: "cosplan", label: t("menuCosplan"), sub: t("menuCosplanSub"), run: () => go({ kind: "cosplan" }) },
-    { key: "poster", label: t("menuPoster"), sub: t("menuPosterSub"), run: () => go({ kind: "sharepost" }) },
+    { key: "cosplan", label: t("menuCosplan"), sub: t("menuCosplanSub"), text: ["album3d.menuCosplan", "album3d.menuCosplanSub"], run: () => go({ kind: "cosplan" }) },
+    { key: "poster", label: t("menuPoster"), sub: t("menuPosterSub"), text: ["album3d.menuPoster", "album3d.menuPosterSub"], run: () => go({ kind: "sharepost" }) },
     // Signed in, this opens the account's menu: their archive, Dashboard and sign out.
-    { key: "login", label: t("menuMySite"), sub: viewer ? `@${viewer.username}` : t("menuLoginSub"), run: () => go({ kind: "login" }) },
-    { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), run: () => go({ kind: "settings" }) }
+    {
+      key: "login",
+      label: t("menuMySite"),
+      sub: viewer ? `@${viewer.username}` : t("menuLoginSub"),
+      text: ["album3d.menuMySite", "album3d.menuLoginSub"],
+      run: () => go({ kind: "login" })
+    },
+    { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), text: ["album3d.menuSettings", "album3d.menuSettingsSub"], run: () => go({ kind: "settings" }) }
   ];
 
   // Settings change in place: Enter or → steps forward, ← steps back.
@@ -792,6 +808,7 @@ export default function ArchiveSite({
       key: "language",
       label: t("settingLanguage"),
       sub: t("settingLanguageSub"),
+      text: ["album3d.settingLanguage", "album3d.settingLanguageSub"],
       value: locale === "zh" ? "中文" : "English",
       adjust: () => router.replace(pathname, { locale: locale === "zh" ? "en" : "zh", scroll: false }),
       run: () => undefined
@@ -800,6 +817,7 @@ export default function ArchiveSite({
       key: "theme",
       label: t("settingTheme"),
       sub: t("settingThemeSub"),
+      text: ["album3d.settingTheme", "album3d.settingThemeSub"],
       value: t(`theme_${theme}`),
       adjust: (direction) => setThemeTo(cycle(THEMES, theme, direction)),
       run: () => undefined
@@ -808,10 +826,31 @@ export default function ArchiveSite({
       key: "motion",
       label: t("settingMotion"),
       sub: t("settingMotionSub"),
+      text: ["album3d.settingMotion", "album3d.settingMotionSub"],
       value: t(`motion_${motion}`),
       adjust: (direction) => setMotionTo(cycle(MOTIONS, motion, direction)),
       run: () => undefined
-    }
+    },
+    ...(canEditText
+      ? [
+          {
+            key: "editText",
+            label: t("settingEditText"),
+            sub: t("settingEditTextSub"),
+            text: ["album3d.settingEditText", "album3d.settingEditTextSub"],
+            value: t(editingText ? "studioOn" : "studioOff"),
+            adjust: () => {
+              try {
+                localStorage.setItem(EDIT_TEXT_KEY, editingText ? "off" : "on");
+              } catch {
+                // The choice still applies for this visit.
+              }
+              setEditingText(!editingText);
+            },
+            run: () => undefined
+          }
+        ]
+      : [])
   ];
   for (const item of settings) item.run = () => item.adjust(1);
 
@@ -831,6 +870,7 @@ export default function ArchiveSite({
           key: "albums",
           label: t("menuAlbums"),
           sub: t("menuAllAlbumsSub", { count: here.fileIndexes.length }),
+          text: ["album3d.menuAlbums", "album3d.menuAllAlbumsSub"],
           run: () => go({ kind: "albumSelect", username: here.username })
         },
         ...(here.bookingEnabled
@@ -839,6 +879,7 @@ export default function ArchiveSite({
                 key: "booking",
                 label: t("menuBooking"),
                 sub: t("menuBookingSub"),
+                text: ["album3d.menuBooking", "album3d.menuBookingSub"],
                 run: () => go({ kind: "booking", username: here.username })
               }
             ]
@@ -996,6 +1037,8 @@ export default function ArchiveSite({
   const altTitle = file.altTitle && file.altTitle !== file.title ? file.altTitle : "";
   const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle";
   const square = "grid h-11 w-11 shrink-0 place-items-center text-2xl transition hover:bg-accent-surface";
+  // Above the heading's right end, so the heading keeps its line breaks in editing mode.
+  const editHeading = "absolute bottom-full right-0 h-9 w-9";
   const albumsHere = screen.kind === "albumSelect" || (inAlbum && !missing);
 
   // Where the visitor is, as a trail of links back up the screens.
@@ -1054,6 +1097,8 @@ export default function ArchiveSite({
       data-leaving={leaving}
       data-backdrop={backdrop || undefined}
     >
+      {/* Inside the root, so the editor takes the page's palette. */}
+      <EditTextProvider editing={canEditText && editingText}>
       <div
         aria-hidden="true"
         className={`${styles.stage} absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${ready ? "opacity-100" : "opacity-0"}`}
@@ -1182,8 +1227,9 @@ export default function ArchiveSite({
           <p className={metaLabel}>
             {t("archiveLabel")} <span aria-hidden="true" className="mx-2">／</span> {t("menuSettings")}
           </p>
-          <h1 className="mt-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[4.5rem]">
+          <h1 className="relative mt-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[4.5rem]">
             {t("settingsTitle")}
+            <EditTextButton keys={["album3d.settingsTitle"]} shown={t("settingsTitle")} className={editHeading} />
           </h1>
           <div aria-hidden="true" className={styles.calloutRule} />
           <GameMenu label={t("settingsTitle")} items={settings} focus={menuFocus} onFocus={setMenuFocus} className="mt-8 wide:mt-12" />
@@ -1221,8 +1267,9 @@ export default function ArchiveSite({
           <p className={metaLabel}>
             {t("archiveLabel")} <span aria-hidden="true" className="mx-2">／</span> {t("menuLabel")}
           </p>
-          <h1 className="mt-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[4.5rem]">
+          <h1 className="relative mt-3 text-[2.5rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[4.5rem]">
             {t("menuTitle")}
+            <EditTextButton keys={["album3d.menuTitle"]} shown={t("menuTitle")} className={editHeading} />
           </h1>
           <div aria-hidden="true" className={styles.calloutRule} />
           <GameMenu label={t("menuLabel")} items={titleMenu} focus={menuFocus} onFocus={setMenuFocus} className="mt-8 wide:mt-12" />
@@ -1264,8 +1311,9 @@ export default function ArchiveSite({
           <p className={metaLabel}>
             {t("photographerCount", { current: pad(menuFocus + 1), total: pad(columns.length) })}
           </p>
-          <h1 className="mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[3.75rem]">
+          <h1 className="relative mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] wide:text-[3.75rem]">
             {t("rosterTitle")}
+            <EditTextButton keys={["album3d.rosterTitle"]} shown={t("rosterTitle")} className={editHeading} />
           </h1>
           <div aria-hidden="true" className={styles.calloutRule} />
           <div className={`${styles.roster} mt-8 wide:mt-10`}>
@@ -1620,6 +1668,9 @@ export default function ArchiveSite({
           <span className="flex items-center gap-2">
             <i aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success" />
             {t("connected")}
+            {process.env.NEXT_PUBLIC_SITE_VERSION && (
+              <span className="ml-2 normal-case">{process.env.NEXT_PUBLIC_SITE_VERSION}</span>
+            )}
           </span>
         </footer>
       )}
@@ -1716,6 +1767,7 @@ export default function ArchiveSite({
       )}
       {children}
       </div>
+      </EditTextProvider>
     </div>
     </FieldContext.Provider>
     </StageContext.Provider>

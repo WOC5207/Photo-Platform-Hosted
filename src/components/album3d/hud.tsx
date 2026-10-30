@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Screen } from "@/lib/siteMode";
+import { EditTextButton } from "./editText";
 import styles from "./ArchiveSite.module.css";
 
 /** HUD pieces shared by the 3D site's screens. */
@@ -53,6 +54,8 @@ export interface MenuItem {
   value?: string;
   /** Leaves the 3D site, so it shows an outward arrow. */
   external?: boolean;
+  /** The message keys behind the label and subtitle, which editing mode lets platform admins reword. */
+  text?: string[];
   run: () => void;
 }
 
@@ -103,14 +106,14 @@ export function GameMenu({
       {items.map((item, i) => {
         const active = i === focus;
         return (
-          <li key={item.key} className="relative min-w-0" onMouseEnter={() => onFocus(i)}>
+          <li key={item.key} className="relative flex min-w-0" onMouseEnter={() => onFocus(i)}>
             <button
               type="button"
               data-menu-item={i}
               aria-current={active ? "true" : undefined}
               onFocus={() => onFocus(i)}
               onClick={item.run}
-              className={`flex min-h-14 w-full items-center gap-4 py-2 pr-3 text-left transition-[background-color,color,padding] duration-200 motion-reduce:transition-none ${
+              className={`flex min-h-14 min-w-0 flex-1 items-center gap-4 py-2 pr-3 text-left transition-[background-color,color,padding] duration-200 motion-reduce:transition-none ${
                 active ? "bg-fg/[0.06] pl-7 text-fg" : "pl-5 text-fg-muted hover:text-fg"
               }`}
             >
@@ -138,6 +141,7 @@ export function GameMenu({
                 </span>
               )}
             </button>
+            <EditTextButton keys={item.text} shown={item.label} className="w-11" />
           </li>
         );
       })}

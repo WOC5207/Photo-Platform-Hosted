@@ -58,6 +58,7 @@ export default function SiteScreen({ site }: { site: StudioSite }) {
     key: page,
     label: t(`studioCrumbs.${page}`),
     sub: t(`studioSub.${page}`),
+    text: [`album3d.studioCrumbs.${page}`, `album3d.studioSub.${page}`],
     run: () => open(i)
   }));
 

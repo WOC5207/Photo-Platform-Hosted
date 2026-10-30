@@ -39,36 +39,44 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
       key: "events",
       label: t("studioEvents"),
       sub: t("studioEventsSub", { count: home.events, drafts: home.drafts }),
+      text: ["album3d.studioEvents", "album3d.studioEventsSub"],
       run: () => go({ kind: "studio", username, page: "events" })
     },
     {
       key: "bookings",
       label: t("studioBookings"),
       sub: t("studioBookingsSub"),
+      text: ["album3d.studioBookings", "album3d.studioBookingsSub"],
       run: () => go({ kind: "studio", username, page: "bookings" })
     },
     {
       key: "preparation",
       label: t("studioPreparation"),
       sub: t("studioPreparationSub"),
+      text: ["album3d.studioPreparation", "album3d.studioPreparationSub"],
       run: () => go({ kind: "studio", username, page: "preparation" })
     },
     {
       key: "equipment",
       label: ta("equipment"),
       sub: t("studioEquipmentSub"),
+      text: ["admin.equipment", "album3d.studioEquipmentSub"],
       run: () => go({ kind: "studio", username, page: "equipment" })
     },
     ...(["posters", "credits", "site", "storage", "account"] as const).map((page) => ({
       key: page,
       label: page === "posters" ? ta("sharingPosters") : page === "credits" ? ta("credits", { term: home.creditTerm }) : t(`studioCrumbs.${page}`),
       sub: page === "storage" ? t("studioStorage", { used: formatBytes(home.usedBytes), total: formatBytes(home.quotaBytes) }) : t(`studioSub.${page}`),
+      text: [
+        page === "posters" ? "admin.sharingPosters" : page === "credits" ? "admin.credits" : `album3d.studioCrumbs.${page}`,
+        page === "storage" ? "album3d.studioStorage" : `album3d.studioSub.${page}`
+      ],
       run: () => go({ kind: "studio", username, page })
     })),
     ...(home.listed
-      ? [{ key: "archive", label: t("loginArchive"), sub: `@${username}`, run: () => go({ kind: "photographer", username }) }]
+      ? [{ key: "archive", label: t("loginArchive"), sub: `@${username}`, text: ["album3d.loginArchive"], run: () => go({ kind: "photographer", username }) }]
       : []),
-    { key: "signout", label: leaving ? t("loginSigningOut") : t("loginSignOut"), run: () => !leaving && startLeaving(() => logout3d()) }
+    { key: "signout", label: leaving ? t("loginSigningOut") : t("loginSignOut"), text: ["album3d.loginSignOut"], run: () => !leaving && startLeaving(() => logout3d()) }
   ];
   const at = Math.min(focus, items.length - 1);
 
@@ -93,7 +101,7 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
       {field?.live && (
         <SheetToggle up={raised} onToggle={() => setSheetChoice(raised ? "down" : "up")} downLabel={t("studioSheetCollapse")} />
       )}
-      <StudioHeading trail={`@${username}`} title={t("studioTitle")} />
+      <StudioHeading trail={`@${username}`} title={t("studioTitle")} text={["album3d.studioTitle"]} />
       <dl className="mt-6 flex flex-wrap gap-x-10 gap-y-4">
         {[
           [t("statAlbums"), home.events],

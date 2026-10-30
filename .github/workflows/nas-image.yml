@@ -34,6 +34,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.RELEASE_SHA }}
+          # History back to the newest merged pull request, whose merge
+          # message starts its body with the v3.0.N version.
+          fetch-depth: 200
+      - name: Read the site version
+        id: version
+        shell: bash
+        run: |
+          version=$(git log --format=%B -n 200 | grep -m1 -oE '^v[0-9]+\.[0-9]+\.[0-9]+' || true)
+          echo "Site version: ${version:-none}"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -63,6 +73,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: SITE_VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha
           # The image is pushed before the cache upload, so a failed cache
           # write (GitHub's cache service sometimes answers "error writing

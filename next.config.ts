@@ -1,7 +1,26 @@
+import { execFileSync } from "node:child_process";
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
+
+// The site version is the v3.0.N that starts each pull request's title, which
+// GitHub copies into the merge commit's message. The NAS image build has no
+// .git folder, so its workflow reads the version and passes SITE_VERSION;
+// a local build reads the newest merged one from git history. Empty when
+// neither is available, and the page then shows no version.
+function siteVersion(): string {
+  if (process.env.SITE_VERSION) return process.env.SITE_VERSION;
+  try {
+    const log = execFileSync("git", ["log", "--format=%B", "-n", "200"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+    return log.match(/^v\d+\.\d+\.\d+\b/m)?.[0] ?? "";
+  } catch {
+    return "";
+  }
+}
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -47,6 +66,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  env: { NEXT_PUBLIC_SITE_VERSION: siteVersion() },
   // Standalone output (with its file-tracing .nft.json files) is only needed
   // to build the small Docker runtime image — the Dockerfile sets
   // NEXT_STANDALONE=1. Enabling it locally breaks `next dev`/`next start` on

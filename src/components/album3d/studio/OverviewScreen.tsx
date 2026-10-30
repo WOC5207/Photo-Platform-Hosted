@@ -34,6 +34,7 @@ export default function OverviewScreen({ overview }: { overview: OwnerOverview }
             key: "next",
             label: t("overviewOpenNext"),
             sub: next.title,
+            text: ["album3d.overviewOpenNext"],
             run: next.bookingId ? studio("booking", next.bookingId) : studio("event", next.eventId ?? "")
           }
         ]
@@ -42,6 +43,7 @@ export default function OverviewScreen({ overview }: { overview: OwnerOverview }
       key: "bookings",
       label: t("studioBookings"),
       sub: t("overviewBookingsSub", { sessions: overview.sessions, fresh: overview.newBookings }),
+      text: ["album3d.studioBookings", "album3d.overviewBookingsSub"],
       run: studio("bookings")
     },
     ...(next?.bookingId
@@ -50,6 +52,7 @@ export default function OverviewScreen({ overview }: { overview: OwnerOverview }
             key: "packing",
             label: t("studioPreparation"),
             sub: t("overviewPackSub", { event: next.title }),
+            text: ["album3d.studioPreparation", "album3d.overviewPackSub"],
             run: () => router.push(`${path({ kind: "studio", username, page: "preparation" })}?event=${encodeURIComponent(next.bookingId ?? "")}`, { scroll: false })
           }
         ]
@@ -58,9 +61,10 @@ export default function OverviewScreen({ overview }: { overview: OwnerOverview }
       key: "albums",
       label: t("menuAlbums"),
       sub: t("menuAllAlbumsSub", { count: overview.albums }),
+      text: ["album3d.menuAlbums", "album3d.menuAllAlbumsSub"],
       run: () => go({ kind: "albumSelect", username })
     },
-    { key: "dashboard", label: t("loginDashboard"), sub: t("overviewDashboardSub"), run: studio("home") }
+    { key: "dashboard", label: t("loginDashboard"), sub: t("overviewDashboardSub"), text: ["album3d.loginDashboard", "album3d.overviewDashboardSub"], run: studio("home") }
   ];
   const at = Math.min(focus, items.length - 1);
 

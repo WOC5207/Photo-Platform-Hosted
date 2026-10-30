@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import styles from "../ArchiveSite.module.css";
 import { metaLabel } from "../booking/shared";
+import { EditTextButton } from "../editText";
 
 /** Pieces shared by the 3D Dashboard's screens. */
 
@@ -30,15 +31,16 @@ export function daysBetween(first: string, last: string): string[] {
 }
 
 /** The meta line, title and callout rule every Dashboard panel opens with. */
-export function StudioHeading({ trail, title, children }: { trail: string; title: string; children?: ReactNode }) {
+export function StudioHeading({ trail, title, text, children }: { trail: string; title: string; text?: string[]; children?: ReactNode }) {
   const t = useTranslations("album3d");
   return (
     <>
       <p className={metaLabel}>
         {t("studioTitle")} <span aria-hidden="true" className="mx-2">／</span> {trail}
       </p>
-      <h1 className="mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[3.25rem]">
+      <h1 className="relative mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[3.25rem]">
         {title}
+        <EditTextButton keys={text} shown={title} className="absolute bottom-full right-0 h-9 w-9" />
       </h1>
       {children}
       <div aria-hidden="true" className={styles.calloutRule} />

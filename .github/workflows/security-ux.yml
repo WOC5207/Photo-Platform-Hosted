@@ -125,6 +125,7 @@ jobs:
       - run: npm run test:theme
       - run: npm run test:site-mode
       - run: npm run test:archive-field
+      - run: npm run test:text-overrides
       - run: npm run test:sharing-posters
       - run: npm run test:subject-detection
       - run: npm run test:onboarding-tour
