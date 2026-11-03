@@ -23,6 +23,7 @@ import {
   notifyBookingCreated,
   notifyBookingsCreated,
   notifyBookingStatusChanged,
+  notifyBookingRescheduled,
   notifyBookingUpdated,
   type BookingNotification
 } from "../src/lib/notify";
@@ -361,6 +362,59 @@ async function testNotifyBookingUpdated() {
 }
 
 /**
+ * The photographer moved a booked slot: only the visitor hears about it, in
+ * their language, with the new time and the old one side by side.
+ */
+async function testNotifyBookingRescheduled() {
+  const reset = withSmtpConfigured();
+  const moved = {
+    slotStart: new Date("2026-08-01T16:00:00Z"),
+    slotEnd: new Date("2026-08-01T16:30:00Z"),
+    previousSlotStart: new Date("2026-08-01T14:00:00Z"),
+    previousSlotEnd: new Date("2026-08-01T15:00:00Z")
+  };
+
+  const en = fakeTransport();
+  await notifyBookingRescheduled(
+    bookingInfo({ ...moved, visitorEmail: "v@test", ownerEmail: "o@test", locale: "en" }),
+    en.transport
+  );
+  const enMsg = en.sent[0];
+  report(
+    "rescheduled: the visitor alone gets the new time and the previous one",
+    en.sent.length === 1 &&
+      enMsg?.to === "v@test" &&
+      enMsg.subject === "Your booking time changed" &&
+      enMsg.text.includes("New time: 2026-08-01 16:00–16:30") &&
+      enMsg.text.includes("Previous time: 2026-08-01 14:00–15:00") &&
+      enMsg.html?.includes("16:00–16:30") === true,
+    `sent=${en.sent.length} subject=${enMsg?.subject}`
+  );
+
+  const zh = fakeTransport();
+  await notifyBookingRescheduled(bookingInfo({ ...moved, visitorEmail: "v@test", locale: "zh" }), zh.transport);
+  const zhMsg = zh.sent[0];
+  report(
+    "rescheduled: a zh booking hears about the move in Chinese",
+    !!zhMsg &&
+      zhMsg.subject === "您的预约时间已变更" &&
+      zhMsg.text.includes("新时间: 2026-08-01 16:00–16:30") &&
+      zhMsg.text.includes("原时间: 2026-08-01 14:00–15:00") &&
+      !zhMsg.text.includes("Previous time"),
+    `subject=${zhMsg?.subject}`
+  );
+
+  const none = fakeTransport();
+  await notifyBookingRescheduled(bookingInfo({ ...moved, ownerEmail: "o@test" }), none.transport);
+  report(
+    "rescheduled: no visitor address, no email (never the owner instead)",
+    none.sent.length === 0,
+    `sent=${none.sent.length}`
+  );
+  reset();
+}
+
+/**
  * The visitor's email is written in the *one* language they booked in (carried
  * on `locale`), not both — a zh booking never leaks English and vice versa.
  * This is the verify-can-fail canary for the localisation: revert visitorMessage
@@ -502,6 +556,7 @@ async function main() {
   await testNotifyBookingCreated();
   await testNotifyBookingsCreatedIsConsolidated();
   await testNotifyBookingUpdated();
+  await testNotifyBookingRescheduled();
   await testVisitorEmailLanguage();
   await testVisitorEmailHtml();
   await testNotifyAnnouncement();

@@ -256,6 +256,7 @@ export async function loadMyBooking(
     end: formatTime(slot.endTime),
     range: formatSlotRange(slot.startTime, slot.endTime),
     slotDescription: pickText(locale, slot.descriptionEn, slot.descriptionZh),
+    rescheduled: !cancelled && !!slot.rescheduledAt && slot.rescheduledAt > booking.createdAt,
     price: priceText(slot.pricePerPerson),
     name: booking.name,
     subject: booking.subject,

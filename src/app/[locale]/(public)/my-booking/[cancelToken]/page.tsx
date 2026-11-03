@@ -149,6 +149,9 @@ export default async function MyBookingPage({
     })) ?? [];
 
   const eventTitle = pickText(locale, event.titleEn, event.titleZh);
+  // The photographer moved the slot after this visitor booked it.
+  const rescheduledAt = booking.timeSlot.rescheduledAt;
+  const rescheduled = !!rescheduledAt && rescheduledAt > booking.createdAt;
   const slotRange = formatSlotRange(
     booking.timeSlot.startTime,
     booking.timeSlot.endTime
@@ -171,6 +174,11 @@ export default async function MyBookingPage({
           {cancelled && (
             <p className="border-l-2 border-danger bg-danger-surface px-3 py-2 text-sm leading-6 text-danger">
               {t("bookingCancelledNotice")}
+            </p>
+          )}
+          {!cancelled && rescheduled && (
+            <p role="status" className="border-l-2 border-accent bg-accent-surface px-3 py-2 text-sm leading-6 text-accent-text">
+              {t("slotRescheduledNotice")}
             </p>
           )}
           <LocalTimeRule marker={t("eventLocalTimeMarker")}>

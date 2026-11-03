@@ -31,6 +31,10 @@ export interface BookingNotification {
   eventTitle: string;
   slotStart: Date;
   slotEnd: Date;
+  // The slot's time before the photographer moved it; only the "rescheduled"
+  // email reads these, to show the old time beside the new one.
+  previousSlotStart?: Date;
+  previousSlotEnd?: Date;
   pricePerPerson?: string;
   manageUrl: string; // visitor's cancel/view link
   // The owner's dashboard link for this booking's event — the "View in
@@ -94,7 +98,9 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     confirmed: "Confirmed",
     cancelled: "Cancelled",
     manage: "Manage or cancel your booking",
-    view: "View booking"
+    view: "View booking",
+    newTime: "New time",
+    previousTime: "Previous time"
   },
   zh: {
     event: "活动",
@@ -105,13 +111,17 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     confirmed: "已确认",
     cancelled: "已取消",
     manage: "管理或取消预约",
-    view: "查看预约"
+    view: "查看预约",
+    newTime: "新时间",
+    previousTime: "原时间"
   }
 };
 
 // Per-kind heading / subject line / greeting, keyed by language.
+type VisitorKind = "confirmed" | "cancelled" | "updated" | "link" | "rescheduled";
+
 const VISITOR_KIND: Record<
-  "confirmed" | "cancelled" | "updated" | "link",
+  VisitorKind,
   Record<Lang, { subject: string; heading: string; intro: (name: string) => string }>
 > = {
   confirmed: {
@@ -161,6 +171,19 @@ const VISITOR_KIND: Record<
       subject: "预约已更新",
       heading: "预约已更新",
       intro: (n) => `${n} 您好，您的预约修改已保存。`
+    }
+  },
+  rescheduled: {
+    en: {
+      subject: "Your booking time changed",
+      heading: "Booking time changed",
+      intro: (n) =>
+        `Hi ${n}, the photographer moved your booking to a new time. Your booking is still confirmed.`
+    },
+    zh: {
+      subject: "您的预约时间已变更",
+      heading: "预约时间已变更",
+      intro: (n) => `${n} 您好，摄影师调整了您的预约时间，您的预约仍然有效。`
     }
   }
 };
@@ -260,7 +283,7 @@ function actionHtml(action: {
 /** Build a visitor booking email in the language used for the reservation. */
 function visitorMessage(
   info: BookingNotification,
-  kind: "confirmed" | "cancelled" | "updated" | "link",
+  kind: VisitorKind,
   cancelled: boolean = kind === "cancelled"
 ): MailMessage {
   const lang = langOf(info.locale);
@@ -270,10 +293,22 @@ function visitorMessage(
   const statusText = cancelled ? s.cancelled : s.confirmed;
   const statusColor = cancelled ? STATUS_CANCELLED_COLOR : STATUS_CONFIRMED_COLOR;
 
-  const rows: EmailRow[] = [
-    { label: s.event, value: info.eventTitle },
-    { label: s.time, value: slot }
-  ];
+  const rows: EmailRow[] = [{ label: s.event, value: info.eventTitle }];
+  if (kind === "rescheduled" && info.previousSlotStart && info.previousSlotEnd) {
+    rows.push(
+      { label: s.newTime, value: slot, color: STATUS_CONFIRMED_COLOR },
+      {
+        label: s.previousTime,
+        value: bookingSlotLabel(
+          { slotStart: info.previousSlotStart, slotEnd: info.previousSlotEnd },
+          lang
+        ),
+        color: "#a8a29e"
+      }
+    );
+  } else {
+    rows.push({ label: s.time, value: slot });
+  }
   if (info.pricePerPerson) {
     rows.push({
       label: lang === "en" ? "Price per person" : "每人价格",
@@ -378,7 +413,7 @@ function ownerRows(info: BookingNotification, statusText: string, statusColor: s
 }
 
 function bookingSlotLabel(
-  info: BookingNotification,
+  info: Pick<BookingNotification, "slotStart" | "slotEnd">,
   language: "en" | "zh" | "bilingual" = "bilingual"
 ): string {
   const slot = formatSlotRange(info.slotStart, info.slotEnd);
@@ -596,6 +631,18 @@ export async function notifyBookingStatusChanged(
       ? visitorConfirmedMessage(info)
       : visitorCancelledMessage(info);
   await sendMail(message, transport);
+}
+
+/**
+ * Photographer moved a booked slot to a new time. Visitor only, like a status
+ * change: the photographer made the change and already sees it.
+ */
+export async function notifyBookingRescheduled(
+  info: BookingNotification,
+  transport?: MailTransport
+): Promise<void> {
+  if (!info.visitorEmail.trim()) return;
+  await sendMail(visitorMessage(info, "rescheduled"), transport);
 }
 
 // ── admin announcement ────────────────────────────────────────────────────

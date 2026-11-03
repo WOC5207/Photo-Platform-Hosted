@@ -119,6 +119,9 @@ export interface StudioSlot {
   booked: number;
   price: string;
   description: string;
+  /** Both languages of the label, for the slot editor. */
+  descriptionEn: string;
+  descriptionZh: string;
   bookings: StudioBooking[];
 }
 

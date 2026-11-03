@@ -136,6 +136,7 @@ jobs:
       - run: npm run test:security:db
       - run: npm run test:moderation:db
       - run: npm run test:bookingorg
+      - run: npm run test:slot-edit
       # Next salts server action IDs with this key; a random one per build
       # makes the gzip sizes test:build-budget checks vary by up to 0.2 KB
       # between runs of the same code. The key only reaches this job's test

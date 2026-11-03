@@ -14,12 +14,17 @@ import {
 } from "@/lib/ownership";
 import { pickText } from "@/lib/content";
 import { config } from "@/lib/config";
-import { notifyBookingStatusChanged } from "@/lib/notify";
+import {
+  notifyBookingRescheduled,
+  notifyBookingStatusChanged
+} from "@/lib/notify";
 import {
   addSlotBatchForOwner,
   mergeEvents,
-  splitEvent
+  splitEvent,
+  updateSlotForOwner
 } from "@/lib/booking";
+import { formatSlotRange } from "@/lib/datetime";
 import { getSiteSettings } from "@/lib/settings";
 import { releasePrizeTakenSinceCancel } from "@/lib/lottery";
 import { ensureDayChecklists } from "@/lib/eventWorkspace";
@@ -233,6 +238,116 @@ export async function addSlots(
 
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+const slotEditSchema = z.object({
+  slotId: z.string().min(1),
+  bookingDayId: z.string().min(1),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/),
+  capacity: z.coerce.number().int().min(1).max(1000),
+  pricePerPerson: z.string().trim().max(60),
+  descriptionEn: z.string().trim().max(120),
+  descriptionZh: z.string().trim().max(120)
+});
+
+export type SlotEditState = {
+  error?: "validation" | "invalidTime" | "belowBooked" | "overlap" | "notFound";
+  /** belowBooked: how many confirmed bookings the capacity must cover. */
+  booked?: number;
+  /** overlap: the slots in the way, as "yyyy-mm-dd HH:MM–HH:MM · label". */
+  overlaps?: string[];
+  ok?: boolean;
+  /** The time moved and these many booked visitors were emailed about it. */
+  emailed?: number;
+  /** The time moved, and these booked visitors left no email to tell. */
+  unreachable?: number;
+};
+
+/**
+ * Edit one slot: its day, time, seats, price and label. Bookings stay on the
+ * slot and move with it. When the time changes, visitors who booked it and
+ * left an email get the new time (unless the photographer unticks that), and
+ * their booking page shows a "time changed" notice either way.
+ */
+export async function editSlot(
+  _prev: SlotEditState,
+  formData: FormData
+): Promise<SlotEditState> {
+  const { user, locale } = await guard();
+  const parsed = slotEditSchema.safeParse({
+    slotId: formData.get("slotId") ?? "",
+    bookingDayId: formData.get("bookingDayId") ?? "",
+    startTime: formData.get("startTime") ?? "",
+    endTime: formData.get("endTime") ?? "",
+    capacity: formData.get("capacity") ?? "",
+    pricePerPerson: formData.get("pricePerPerson") ?? "",
+    descriptionEn: formData.get("descriptionEn") ?? "",
+    descriptionZh: formData.get("descriptionZh") ?? ""
+  });
+  if (!parsed.success) return { error: "validation" };
+
+  const settings = await getSiteSettings(user.id);
+  const result = await updateSlotForOwner(user.id, {
+    ...parsed.data,
+    // With prices off the form has no price field; keep what is stored rather
+    // than wiping it, so turning prices back on restores it.
+    pricePerPerson: settings.bookingPriceEnabled
+      ? parsed.data.pricePerPerson
+      : null,
+    allowOverlap: formData.get("allowOverlap") === "on"
+  });
+  if (!result.ok) {
+    if (result.error === "belowBooked")
+      return { error: "belowBooked", booked: result.booked };
+    if (result.error === "overlap") {
+      return {
+        error: "overlap",
+        overlaps: result.overlaps.map((o) =>
+          [
+            formatSlotRange(o.start, o.end),
+            pickText(locale, o.descriptionEn, o.descriptionZh)
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        )
+      };
+    }
+    return { error: result.error };
+  }
+
+  revalidatePath("/", "layout");
+  if (!result.timeChanged || result.confirmed.length === 0) return { ok: true };
+
+  const withEmail = result.confirmed.filter((b) => b.email.trim());
+  const unreachable = result.confirmed.length - withEmail.length;
+  if (formData.get("notifyVisitors") !== "on") return { ok: true, unreachable };
+
+  const event = result.slot.bookingEvent;
+  for (const booking of withEmail) {
+    // Each visitor in the language they booked in; fire-and-forget like the
+    // status emails, so saving never waits on SMTP.
+    notifyBookingRescheduled({
+      bookingId: booking.cancelToken,
+      name: booking.name,
+      subject: booking.subject,
+      contactMethod: booking.contactMethod,
+      contactValue: booking.contactValue,
+      eventTitle: pickText(booking.locale, event.titleEn, event.titleZh),
+      slotStart: result.slot.startTime,
+      slotEnd: result.slot.endTime,
+      previousSlotStart: result.previousStart,
+      previousSlotEnd: result.previousEnd,
+      pricePerPerson: settings.bookingPriceEnabled
+        ? result.slot.pricePerPerson
+        : "",
+      manageUrl: `${config.appBaseUrl()}/${booking.locale}/my-booking/${booking.cancelToken}`,
+      locale: booking.locale,
+      visitorEmail: booking.email,
+      ownerEmail: ""
+    }).catch(() => {});
+  }
+  return { ok: true, emailed: withEmail.length, unreachable };
 }
 
 export async function deleteSlot(formData: FormData): Promise<void> {

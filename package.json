@@ -19,6 +19,7 @@
     "test:security": "tsx --conditions=react-server scripts/test-security-remediation.ts",
     "test:security:db": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-security-db.ts",
     "test:bookingorg": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-booking-orgs.ts",
+    "test:slot-edit": "tsx --env-file-if-exists=.env --conditions=react-server scripts/test-slot-edit.ts",
     "test:email": "tsx --conditions=react-server scripts/test-email.ts",
     "test:theme": "tsx --conditions=react-server scripts/test-theme-color.ts",
     "test:site-mode": "tsx scripts/test-site-mode.ts",

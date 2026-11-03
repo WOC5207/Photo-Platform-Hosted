@@ -137,6 +137,11 @@ function Ticket({ booking, isNew, onDraw }: { booking: MyBooking; isNew: boolean
         {cancelled && (
           <p className="mt-5 border-l-2 border-danger bg-danger-surface px-3 py-2 text-sm text-danger">{tb("bookingCancelledNotice")}</p>
         )}
+        {booking.rescheduled && (
+          <p role="status" className="mt-5 border-l-2 border-accent bg-accent-surface px-3 py-2 text-sm leading-6 text-accent-text">
+            {tb("slotRescheduledNotice")}
+          </p>
+        )}
 
         <dl className="mt-5 grid gap-px border border-border-strong bg-border-strong text-sm">
           {rows.map(([label, value]) => (
