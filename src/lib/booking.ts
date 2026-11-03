@@ -192,6 +192,169 @@ export async function addSlotBatchForOwner(
   });
 }
 
+export interface SlotEditInput {
+  slotId: string;
+  /** The day to put the slot on; any day of the slot's own event. */
+  bookingDayId: string;
+  /** "HH:MM" wall-clock times on that day. An end of "00:00" means midnight. */
+  startTime: string;
+  endTime: string;
+  capacity: number;
+  /** null keeps the stored price (used while the price feature is off). */
+  pricePerPerson: string | null;
+  descriptionEn: string;
+  descriptionZh: string;
+  /** The photographer saw the overlapping slots and saves anyway. */
+  allowOverlap: boolean;
+}
+
+export interface SlotOverlap {
+  start: Date;
+  end: Date;
+  descriptionEn: string;
+  descriptionZh: string;
+}
+
+export type SlotEditResult =
+  | {
+      ok: true;
+      /** The start, end or day moved. */
+      timeChanged: boolean;
+      previousStart: Date;
+      previousEnd: Date;
+      slot: TimeSlot & { bookingEvent: BookingEvent };
+      /** Confirmed bookings on the slot after the edit. */
+      confirmed: Booking[];
+    }
+  | { ok: false; error: "notFound" | "invalidTime" }
+  | { ok: false; error: "belowBooked"; booked: number }
+  | { ok: false; error: "overlap"; overlaps: SlotOverlap[] };
+
+/**
+ * Change a slot after it was created, even when visitors already hold it.
+ * Bookings stay attached to the slot, so they follow it to its new time; the
+ * caller tells those visitors. Guards: the new range must fit inside one day,
+ * capacity cannot drop below the confirmed bookings (that would overbook the
+ * slot, which the visitor path never allows), and a range that overlaps
+ * another slot on that day needs the photographer's explicit go-ahead, since
+ * parallel slots are legitimate (two photographers) but usually a typo.
+ *
+ * The slot row lock is the same one reserveSlot and the visitor edit path
+ * take, so the confirmed count cannot change under the capacity check.
+ */
+export async function updateSlotForOwner(
+  ownerId: string,
+  input: SlotEditInput
+): Promise<SlotEditResult> {
+  return prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT s.id FROM "TimeSlot" s
+        JOIN "BookingEvent" e ON e.id = s."bookingEventId"
+       WHERE s.id = ${input.slotId} AND e."ownerId" = ${ownerId}
+         FOR UPDATE OF s
+    `;
+    if (locked.length === 0) return { ok: false, error: "notFound" } as const;
+
+    const slot = await tx.timeSlot.findUniqueOrThrow({
+      where: { id: input.slotId }
+    });
+    const day = await tx.bookingDay.findFirst({
+      where: { id: input.bookingDayId, bookingEventId: slot.bookingEventId }
+    });
+    if (!day) return { ok: false, error: "notFound" } as const;
+
+    const date = formatDate(day.date);
+    const start = parseNaiveDateTime(`${date}T${input.startTime}`);
+    const nextDayStart = new Date(day.date);
+    nextDayStart.setUTCHours(24, 0, 0, 0);
+    const end =
+      input.endTime === "00:00"
+        ? nextDayStart
+        : parseNaiveDateTime(`${date}T${input.endTime}`);
+    if (
+      !start ||
+      !end ||
+      end.getTime() <= start.getTime() ||
+      end.getTime() > nextDayStart.getTime()
+    ) {
+      return { ok: false, error: "invalidTime" } as const;
+    }
+
+    const confirmedCount = await tx.booking.count({
+      where: { timeSlotId: slot.id, status: "confirmed" }
+    });
+    if (input.capacity < confirmedCount) {
+      return { ok: false, error: "belowBooked", booked: confirmedCount } as const;
+    }
+
+    // A new day always means a new start, so this covers moving days too.
+    const timeChanged =
+      start.getTime() !== slot.startTime.getTime() ||
+      end.getTime() !== slot.endTime.getTime();
+
+    // Only a change to the time can create a new overlap. A slot that already
+    // sat beside a parallel one keeps saving its other fields.
+    if (timeChanged && !input.allowOverlap) {
+      const overlaps = await tx.timeSlot.findMany({
+        where: {
+          bookingDayId: day.id,
+          id: { not: slot.id },
+          startTime: { lt: end },
+          endTime: { gt: start }
+        },
+        orderBy: { startTime: "asc" },
+        select: {
+          startTime: true,
+          endTime: true,
+          descriptionEn: true,
+          descriptionZh: true
+        }
+      });
+      if (overlaps.length > 0) {
+        return {
+          ok: false,
+          error: "overlap",
+          overlaps: overlaps.map((o) => ({
+            start: o.startTime,
+            end: o.endTime,
+            descriptionEn: o.descriptionEn,
+            descriptionZh: o.descriptionZh
+          }))
+        } as const;
+      }
+    }
+
+    const updated = await tx.timeSlot.update({
+      where: { id: slot.id },
+      data: {
+        bookingDayId: day.id,
+        startTime: start,
+        endTime: end,
+        capacity: input.capacity,
+        ...(input.pricePerPerson === null
+          ? {}
+          : { pricePerPerson: input.pricePerPerson }),
+        descriptionEn: input.descriptionEn,
+        descriptionZh: input.descriptionZh,
+        ...(timeChanged ? { rescheduledAt: new Date() } : {})
+      },
+      include: { bookingEvent: true }
+    });
+    const confirmed = await tx.booking.findMany({
+      where: { timeSlotId: slot.id, status: "confirmed" },
+      orderBy: { createdAt: "asc" }
+    });
+    return {
+      ok: true,
+      timeChanged,
+      previousStart: slot.startTime,
+      previousEnd: slot.endTime,
+      slot: updated,
+      confirmed
+    } as const;
+  });
+}
+
 /**
  * Books one spot in a time slot if capacity allows, as a single atomic unit.
  * Lives here rather than inline in the server action so the concurrency

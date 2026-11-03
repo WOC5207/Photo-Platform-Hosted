@@ -750,6 +750,10 @@ model TimeSlot {
   // day). Set once per batch in the admin "add slots" form. Empty = no label.
   descriptionEn  String       @default("")
   descriptionZh  String       @default("")
+  // When the photographer last moved this slot to a different time after it
+  // was created. Bookings made before then show a "time changed" notice on
+  // the visitor's booking page. Null = never moved.
+  rescheduledAt  DateTime?
   bookings       Booking[]
 
   @@index([bookingDayId, startTime, id])

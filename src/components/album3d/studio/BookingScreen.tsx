@@ -8,6 +8,7 @@ import BookingStatusButton from "@/components/admin/BookingStatusButton";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import CopyButton from "@/components/admin/CopyButton";
 import SlotAdder from "@/components/admin/SlotAdder";
+import SlotEditor from "@/components/admin/SlotEditor";
 import { Hints, Rolling, pad } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
@@ -19,8 +20,8 @@ import type { StudioAccount, StudioSchedule } from "./types";
  * One booking page's schedule, as the photographer runs it: the slots hang
  * as tabs in day columns on the board, lit for the seats still free, and the
  * panel shows the focused slot's bookings (cancel, restore, send the
- * visitor's link again), deletes the slot, and adds more to the day. Changes
- * go through the classic dashboard's actions.
+ * visitor's link again), edits or deletes the slot, and adds more to the day.
+ * Changes go through the classic dashboard's actions.
  */
 export default function BookingScreen({ account, schedule }: { account: StudioAccount; schedule: StudioSchedule }) {
   const t = useTranslations("album3d");
@@ -33,9 +34,22 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
   const days = schedule.days;
   const [day, setDay] = useState(() => Math.max(0, days.findIndex((d) => d.slots.length > 0)));
   const [row, setRow] = useState(0);
+  // A saved edit can move the slot to another day or reorder its day. Keep
+  // the board (and the open editor) on it in the very render the refreshed
+  // schedule arrives, until the photographer moves on.
+  const [follow, setFollow] = useState<string | null>(null);
+  const followDay = follow ? days.findIndex((x) => x.slots.some((s) => s.id === follow)) : -1;
+  const followRow = followDay >= 0 ? days[followDay].slots.findIndex((s) => s.id === follow) : -1;
+  useEffect(() => {
+    if (followDay >= 0) {
+      setDay(followDay);
+      setRow(followRow);
+    }
+  }, [followDay, followRow]);
 
-  const focusedDay = days[day];
-  const at = Math.min(row, Math.max(0, (focusedDay?.slots.length ?? 1) - 1));
+  const shownDay = followDay >= 0 ? followDay : day;
+  const focusedDay = days[shownDay];
+  const at = followDay >= 0 ? followRow : Math.min(row, Math.max(0, (focusedDay?.slots.length ?? 1) - 1));
   const slot = focusedDay?.slots[at];
 
   // ------------------------------------------------------------- scene --
@@ -58,9 +72,9 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
   );
   const flat = useMemo(() => {
     let n = 0;
-    for (let d = 0; d < day; d++) n += days[d].slots.length;
+    for (let d = 0; d < shownDay; d++) n += days[d].slots.length;
     return n + at;
-  }, [days, day, at]);
+  }, [days, shownDay, at]);
 
   useEffect(() => {
     scene?.setTiles("slots", `studio-schedule:${schedule.id}`, tiles, days.map((d) => d.label), "");
@@ -71,6 +85,7 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
 
   // ---------------------------------------------------------- controls --
   const moveDay = (delta: number) => {
+    setFollow(null);
     if (days.length > 0) {
       setDay((d) => Math.max(0, Math.min(days.length - 1, d + delta)));
       setRow(0);
@@ -78,9 +93,11 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
   };
   const moveRow = (delta: number) => {
     const count = focusedDay?.slots.length ?? 0;
+    setFollow(null);
     if (count > 0) setRow((r) => Math.max(0, Math.min(count - 1, Math.min(r, count - 1) + delta)));
   };
   const showBookings = () => document.getElementById("studio-slot")?.focus();
+  const dayOptions = useMemo(() => days.map((d) => ({ id: d.id, label: d.label })), [days]);
 
   useScreenKeys((k, target) => {
     // A one-day schedule lays its slots across lanes: ←/→ step along them.
@@ -102,6 +119,7 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
       if (!tile) return;
       if (input.index === flat) showBookings();
       else {
+        setFollow(null);
         setDay(tile.column);
         setRow(tile.row);
       }
@@ -172,13 +190,14 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
               <button
                 key={d.id}
                 type="button"
-                aria-pressed={i === day}
+                aria-pressed={i === shownDay}
                 onClick={() => {
+                  setFollow(null);
                   setDay(i);
                   setRow(0);
                 }}
                 className={`font-meta inline-flex min-h-10 items-center px-3 text-[0.6875rem] uppercase tracking-[0.1em] transition ${
-                  i === day ? "bg-fg text-page" : "border border-border-strong hover:border-fg"
+                  i === shownDay ? "bg-fg text-page" : "border border-border-strong hover:border-fg"
                 }`}
               >
                 {d.label}
@@ -231,6 +250,23 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
                 ))}
               </ul>
             )}
+            <SlotEditor
+              key={slot.id}
+              slot={{
+                id: slot.id,
+                dayId: focusedDay.id,
+                start: slot.start,
+                end: slot.end,
+                capacity: slot.capacity,
+                booked: slot.booked,
+                price: slot.price,
+                descriptionEn: slot.descriptionEn,
+                descriptionZh: slot.descriptionZh
+              }}
+              days={dayOptions}
+              priceEnabled={schedule.priceEnabled}
+              onSaving={setFollow}
+            />
             <form action={deleteSlot} className="justify-self-start">
               <input type="hidden" name="slotId" value={slot.id} />
               <ConfirmSubmit label={tb("deleteSlot")} confirmText={tb("confirmDeleteSlot")} />

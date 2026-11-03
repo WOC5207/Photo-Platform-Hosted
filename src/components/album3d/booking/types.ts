@@ -107,6 +107,8 @@ export interface MyBooking {
   /** "yyyy-mm-dd HH:MM–HH:MM", as the classic page prints it. */
   range: string;
   slotDescription: string;
+  /** The photographer moved the slot to a new time after this booking was made. */
+  rescheduled: boolean;
   /** Display-only price text, empty when prices are hidden or unset. */
   price: string;
   name: string;

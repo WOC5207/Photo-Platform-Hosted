@@ -322,6 +322,8 @@ export async function loadStudioSchedule(user: User, id: string, locale: string)
         booked: slot.bookings.filter((b) => b.status === "confirmed").length,
         price: settings.bookingPriceEnabled ? slot.pricePerPerson : "",
         description: pickText(locale, slot.descriptionEn, slot.descriptionZh),
+        descriptionEn: slot.descriptionEn,
+        descriptionZh: slot.descriptionZh,
         bookings: slot.bookings.map((b) => ({
           id: b.id,
           status: b.status,

@@ -9,13 +9,15 @@ import { pickText } from "@/lib/content";
 import {
   formatDate,
   formatDayTab,
-  formatSlotRange
+  formatSlotRange,
+  formatTime
 } from "@/lib/datetime";
 import { formatInstantInTimeZone } from "@/lib/timeZone";
 import BookingEventForm from "@/components/admin/BookingEventForm";
 import BookingDayTabs, { type DayTab } from "@/components/admin/BookingDayTabs";
 import BookingEventSplit from "@/components/admin/BookingEventSplit";
 import SlotAdder from "@/components/admin/SlotAdder";
+import SlotEditor from "@/components/admin/SlotEditor";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import CopyButton from "@/components/admin/CopyButton";
 import BookingStatusButton from "@/components/admin/BookingStatusButton";
@@ -74,6 +76,10 @@ export default async function EditBookingEventPage({
     event.days.length > 1 &&
     !event.slotsInitialized &&
     event.days.every((day) => day.slots.length === 0);
+  const dayOptions = event.days.map((day) => ({
+    id: day.id,
+    label: formatDayTab(day.date, locale)
+  }));
   const formInitial = {
     id: event.id,
     titleEn: event.titleEn,
@@ -253,6 +259,24 @@ export default async function EditBookingEventPage({
                                   confirmText={t("confirmDeleteSlot")}
                                 />
                               </form>
+                            </div>
+
+                            <div className="mt-3">
+                              <SlotEditor
+                                slot={{
+                                  id: slot.id,
+                                  dayId: day.id,
+                                  start: formatTime(slot.startTime),
+                                  end: formatTime(slot.endTime),
+                                  capacity: slot.capacity,
+                                  booked: confirmed.length,
+                                  price: slot.pricePerPerson,
+                                  descriptionEn: slot.descriptionEn,
+                                  descriptionZh: slot.descriptionZh
+                                }}
+                                days={dayOptions}
+                                priceEnabled={settings.bookingPriceEnabled}
+                              />
                             </div>
 
                             {slot.bookings.length > 0 && (
