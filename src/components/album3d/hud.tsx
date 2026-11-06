@@ -113,33 +113,36 @@ export function GameMenu({
               aria-current={active ? "true" : undefined}
               onFocus={() => onFocus(i)}
               onClick={item.run}
-              className={`flex min-h-14 min-w-0 flex-1 items-center gap-4 py-2 pr-3 text-left transition-[background-color,color,padding] duration-200 motion-reduce:transition-none ${
-                active ? "bg-fg/[0.06] pl-7 text-fg" : "pl-5 text-fg-muted hover:text-fg"
+              className={`flex min-h-14 min-w-0 flex-1 items-center py-2 pl-5 pr-1 text-left transition-colors duration-200 motion-reduce:transition-none ${
+                active ? "bg-fg/[0.06] text-fg" : "text-fg-muted hover:text-fg"
               }`}
             >
-              <span aria-hidden="true" className="font-meta w-7 shrink-0 text-[0.6875rem] tracking-[0.14em] text-fg-subtle">
-                {pad(i + 1)}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-lg font-bold uppercase tracking-[0.02em] wide:text-[1.625rem] max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:leading-tight">{item.label}</span>
-                {item.sub && (
-                  <span className="font-meta mt-0.5 block truncate text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle max-sm:line-clamp-2 max-sm:whitespace-normal">{item.sub}</span>
+              {/* The focused item's text steps in by moving, not by padding, which laid the menu out every frame. */}
+              <span className={`mr-2 flex min-w-0 flex-1 items-center gap-4 transition-transform duration-200 motion-reduce:transition-none ${active ? "translate-x-2" : ""}`}>
+                <span aria-hidden="true" className="font-meta w-7 shrink-0 text-[0.6875rem] tracking-[0.14em] text-fg-subtle">
+                  {pad(i + 1)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-lg font-bold uppercase tracking-[0.02em] wide:text-[1.625rem] max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:leading-tight">{item.label}</span>
+                  {item.sub && (
+                    <span className="font-meta mt-0.5 block truncate text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle max-sm:line-clamp-2 max-sm:whitespace-normal">{item.sub}</span>
+                  )}
+                </span>
+                {item.value !== undefined ? (
+                  <span className="font-meta flex shrink-0 items-center gap-2 text-xs uppercase tracking-[0.12em]">
+                    <span aria-hidden="true" className={active ? "opacity-100" : "opacity-0"}>‹</span>
+                    <span className="min-w-[5.5rem] text-center">{item.value}</span>
+                    <span aria-hidden="true" className={active ? "opacity-100" : "opacity-0"}>›</span>
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className={`text-2xl transition duration-200 motion-reduce:transition-none ${active ? "translate-x-0 opacity-100" : "-translate-x-2 opacity-0"}`}
+                  >
+                    {item.external ? "↗" : "→"}
+                  </span>
                 )}
               </span>
-              {item.value !== undefined ? (
-                <span className="font-meta flex shrink-0 items-center gap-2 text-xs uppercase tracking-[0.12em]">
-                  <span aria-hidden="true" className={active ? "opacity-100" : "opacity-0"}>‹</span>
-                  <span className="min-w-[5.5rem] text-center">{item.value}</span>
-                  <span aria-hidden="true" className={active ? "opacity-100" : "opacity-0"}>›</span>
-                </span>
-              ) : (
-                <span
-                  aria-hidden="true"
-                  className={`text-2xl transition duration-200 motion-reduce:transition-none ${active ? "translate-x-0 opacity-100" : "-translate-x-2 opacity-0"}`}
-                >
-                  {item.external ? "↗" : "→"}
-                </span>
-              )}
             </button>
             <EditTextButton keys={item.text} shown={item.label} className="w-11" />
           </li>

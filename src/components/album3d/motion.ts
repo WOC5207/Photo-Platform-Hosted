@@ -53,13 +53,29 @@ export function columnStrength(lane: number, focus: number) {
   return 0.25 + 0.75 * bell(lane - focus, 0.55);
 }
 
+/**
+ * The idle drift's two waves: each card rises by amp * sin(2πt / period +
+ * row * perRow + lane * perLane). The field splits them into a row part and
+ * a lane part (by angle addition) so a frame computes each once.
+ */
+export const IDLE_WAVES = [
+  { amp: 0.075, period: 8, perRow: 0.3, perLane: -0.45 },
+  { amp: 0.027, period: 13, perRow: -0.17, perLane: 0.3 }
+] as const;
+
 /** A quiet idle drift, at most 0.102 units, slightly out of phase per card. */
 export function idleWave(row: number, lane: number, time: number) {
-  return (
-    0.075 * Math.sin((time * Math.PI * 2) / 8 + row * 0.3 - lane * 0.45) +
-    0.027 * Math.sin((time * Math.PI * 2) / 13 - row * 0.17 + lane * 0.3)
-  );
+  let y = 0;
+  for (const w of IDLE_WAVES) y += w.amp * Math.sin((time * Math.PI * 2) / w.period + row * w.perRow + lane * w.perLane);
+  return y;
 }
+
+/**
+ * What a scene's step reports: true while something moves, false at rest,
+ * "ambient" when only its idle motion moves (the field's breathing, the
+ * cards' bob), which the engine draws at a lower rate (see AMBIENT_WAIT_MS).
+ */
+export type Motion = boolean | "ambient";
 
 export interface Spring {
   value: number;

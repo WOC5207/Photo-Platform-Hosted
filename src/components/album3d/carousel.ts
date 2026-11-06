@@ -17,7 +17,7 @@ import {
   type WebGLRenderer
 } from "three";
 import { addLighting, fitText, gridTexture, loadImage, makeTexture, screenPitch } from "./kit";
-import { damp, restOn, rubber, settled, spring, wrap, type Follow } from "./motion";
+import { damp, restOn, rubber, settled, spring, wrap, type Follow, type Motion } from "./motion";
 import { sceneArea } from "./types";
 import type { EnginePalette } from "./engine";
 
@@ -49,7 +49,8 @@ export interface Carousel {
   focus(): number;
   /** The rail under a dragging finger. */
   follow: Follow;
-  step(dt: number): boolean;
+  /** "ambient" while only the cards' bob moves. */
+  step(dt: number): Motion;
   resize(width: number, height: number): void;
   setPalette(palette: EnginePalette): void;
   dispose(): void;
@@ -257,7 +258,7 @@ export function createCarousel(context: {
     camera.lookAt(aim);
   }
 
-  function step(dt: number): boolean {
+  function step(dt: number): Motion {
     clock += dt;
     const reduced = context.reduced();
     const rate = (r: number) => (reduced ? 60 : r);
@@ -274,7 +275,6 @@ export function createCarousel(context: {
     frame();
 
     const bob = reduced ? 0 : Math.sin(clock * 1.6) * 0.04;
-    if (bob) moving = true;
     faces.forEach((face, i) => {
       const k = offset(i, focusSpring.value);
       const d = Math.abs(k);
@@ -299,7 +299,7 @@ export function createCarousel(context: {
     const distance = camera.position.distanceTo(aim);
     fog.near = distance + 1;
     fog.far = distance + 16;
-    return moving;
+    return moving || (bob ? "ambient" : false);
   }
 
   const raycaster = new Raycaster();

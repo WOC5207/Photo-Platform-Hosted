@@ -173,6 +173,14 @@ export default function ArchiveSite({
   const leaveFor = useLeaveFor();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // An album's details follow the camera in through --detail, set on their
+  // panel alone: on the page's root it restyled every element each frame.
+  const detail = useRef<number | null>(null);
+  const detailPanel = useRef<HTMLElement | null>(null);
+  const followDetail = useCallback((panel: HTMLElement | null) => {
+    detailPanel.current = panel;
+    if (panel && detail.current !== null) panel.style.setProperty("--detail", String(detail.current));
+  }, []);
   const engineRef = useRef<ArchiveEngine | null>(null);
   // The field as the layout loaded it, plus any photographer an address
   // brought in since. Held for the life of the layout, as the scene is: a
@@ -632,8 +640,10 @@ export default function ArchiveSite({
           columns: columns.map((c) => c.fileIndexes),
           palette: readPalette(root),
           reducedMotion: prefersReduced(readMotion()),
-          // Not the root, whose style changes are watched for palettes.
-          hud: document.documentElement,
+          onDetail: (progress) => {
+            detail.current = progress;
+            detailPanel.current?.style.setProperty("--detail", String(progress));
+          },
           lowPower: coarse || window.innerWidth < 768,
           archiveLabel: t("archiveLabel"),
           onPick: (index) => handlers.current.choose(index),
@@ -754,6 +764,10 @@ export default function ArchiveSite({
   useEffect(() => {
     if (ready) engineRef.current?.setReducedMotion(prefersReduced(motion));
   }, [motion, ready]);
+
+  useEffect(() => {
+    if (ready) engineRef.current?.setBackdrop(backdrop);
+  }, [backdrop, ready]);
 
   useEffect(() => {
     if (ready && mode === "study") engineRef.current?.setExploded(exploded);
@@ -1547,7 +1561,7 @@ export default function ArchiveSite({
       )}
 
       {mode === "detail" && (
-        <main id="main-content" tabIndex={-1} className="outline-none" data-follow="detail">
+        <main ref={followDetail} id="main-content" tabIndex={-1} className="outline-none" data-follow="detail">
           <button
             type="button"
             onClick={back}
