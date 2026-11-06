@@ -90,8 +90,8 @@ export default function RegistrationGate({
           className="h-1.5 overflow-hidden rounded-full bg-border"
         >
           <div
-            className="h-full rounded-full bg-fg transition-[width] duration-300"
-            style={{ width: `${progress}%` }}
+            className="h-full w-full rounded-full bg-fg transition-[translate] duration-300 motion-reduce:transition-none"
+            style={{ translate: `${progress - 100}% 0` }}
           />
         </div>
         <Button

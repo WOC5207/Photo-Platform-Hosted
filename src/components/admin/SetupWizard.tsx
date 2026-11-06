@@ -96,8 +96,8 @@ export default function SetupWizard({
         </p>
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
           <div
-            className="h-full rounded-full bg-fg transition-all"
-            style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }}
+            className="h-full w-full rounded-full bg-fg transition-[translate] duration-300 ease-out motion-reduce:transition-none"
+            style={{ translate: `${((stepIndex + 1) / steps.length) * 100 - 100}% 0` }}
           />
         </div>
       </div>
