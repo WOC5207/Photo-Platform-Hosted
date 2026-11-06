@@ -38,9 +38,16 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
 
 export function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
   if (ctx.measureText(text).width <= maxWidth) return text;
-  let end = text.length;
-  while (end > 1 && ctx.measureText(`${text.slice(0, end)}…`).width > maxWidth) end -= 1;
-  return `${text.slice(0, end)}…`;
+  // The longest start that fits with an ellipsis, by halving rather than one
+  // character at a time: labels are drawn on every album step.
+  let fits = 1;
+  let over = text.length;
+  while (over - fits > 1) {
+    const mid = (fits + over) >> 1;
+    if (ctx.measureText(`${text.slice(0, mid)}…`).width > maxWidth) over = mid;
+    else fits = mid;
+  }
+  return `${text.slice(0, fits)}…`;
 }
 
 /**

@@ -2,6 +2,7 @@ import {
   ACESFilmicToneMapping,
   BoxGeometry,
   BufferAttribute,
+  CanvasTexture,
   Color,
   CylinderGeometry,
   FramebufferTexture,
@@ -44,6 +45,7 @@ import {
   DragSpeed,
   FLING_FRICTION,
   idleWave,
+  IDLE_WAVES,
   nearestOccurrence,
   selectionWave,
   settled,
@@ -53,6 +55,7 @@ import {
   stairDrop,
   wrap,
   type Follow,
+  type Motion,
   type Spring
 } from "./motion";
 
@@ -144,10 +147,11 @@ export interface EngineOptions {
   /** Phones and other coarse pointers: no shadows, smaller textures. */
   lowPower: boolean;
   /**
-   * Gets the detail view's camera progress as `--detail` (0 to 1), so the
-   * album's details can follow the camera in, as RhineLabUI's do.
+   * The detail view's camera progress (0 to 1, in hundredths) whenever it
+   * changes, so the album's details can follow the camera in, as
+   * RhineLabUI's do.
    */
-  hud?: HTMLElement;
+  onDetail?: (progress: number) => void;
   /** Printed on labels. */
   archiveLabel: string;
   onPick: (fileIndex: number) => void;
@@ -213,6 +217,11 @@ export interface ArchiveEngine {
   resetView(): void;
   setPalette(palette: EnginePalette): void;
   setReducedMotion(reduced: boolean): void;
+  /**
+   * A phone's page covers the scene, which shows only as a dimmed backdrop:
+   * its idle motion (the field's breathing, the cards' bob) holds still.
+   */
+  setBackdrop(backdrop: boolean): void;
   /** Back to the archive field from the carousel, the light table or the study. */
   showField(): void;
   /** Photographer select; `standing` raises the focused card for its own screen. */
@@ -338,7 +347,17 @@ const STUDY_HOME = new Vector3(7.2, 3.8, 12);
 const STUDY_EXPLODED = new Vector3(9.8, 4.6, 14.5);
 
 type Cell = { lane: number; row: number };
-const cellKey = (c: Cell) => `${c.lane}:${c.row}`;
+/**
+ * A cell of the endless grid as one number, so the field's per-frame layout
+ * looks cells up without building a string for each card. Lanes and rows stay
+ * well inside ±2^20 however far the field is dragged.
+ */
+const KEY_BIAS = 2 ** 20;
+const KEY_SPAN = 2 ** 21;
+const keyOf = (lane: number, row: number) => (lane + KEY_BIAS) * KEY_SPAN + (row + KEY_BIAS);
+const cellKey = (c: Cell) => keyOf(c.lane, c.row);
+const laneOf = (key: number) => Math.floor(key / KEY_SPAN) - KEY_BIAS;
+const rowOf = (key: number) => (key % KEY_SPAN) - KEY_BIAS;
 
 /** The card body: origin at the bottom centre, darkening toward its base. */
 function cardGeometry(width = CARD_W) {
@@ -369,6 +388,8 @@ interface Cassette {
   parts: { screws: Group; cover: Group; prints: Mesh[]; substrate: Group; carrier: Mesh };
   setPhoto(index: number, image: HTMLImageElement): void;
   layout(explode: number, printOffsets?: number[]): void;
+  /** Frees its geometry and pictures but keeps its materials, which keep their shader programs (see retire). */
+  release(): void;
   dispose(): void;
 }
 
@@ -412,8 +433,9 @@ function buildCassette(
   const shape = shapeFor(printAspect(file.prints[0]));
   const cardW = shape.cardW;
   const owned: { dispose(): void }[] = [];
+  const materials: { dispose(): void }[] = [];
   const own = <T extends { dispose(): void }>(thing: T) => {
-    owned.push(thing);
+    ((thing as { isMaterial?: boolean }).isMaterial ? materials : owned).push(thing);
     return thing;
   };
   const color = (css: string) => new Color().setStyle(css, SRGBColorSpace);
@@ -549,6 +571,15 @@ function buildCassette(
   }
   layout(0);
 
+  function release() {
+    for (const material of photoMaterials) {
+      material.map?.dispose();
+      material.map = null;
+    }
+    for (const thing of owned) thing.dispose();
+    owned.length = 0;
+  }
+
   return {
     group,
     parts: { screws, cover, prints: printMeshes, substrate, carrier },
@@ -561,9 +592,10 @@ function buildCassette(
       material.needsUpdate = true;
     },
     layout,
+    release,
     dispose() {
-      for (const material of photoMaterials) material.map?.dispose();
-      for (const thing of owned) thing.dispose();
+      release();
+      for (const material of materials) material.dispose();
     }
   };
 }
@@ -590,6 +622,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let rendered = false;
   let lost = false;
   let lostTimer = 0;
+  // The next idle frame's timer (see AMBIENT_WAIT_MS), and whether a phone's
+  // page covers the scene (see setBackdrop), which holds its idle motion still.
+  let ambientTimer = 0;
+  let backdrop = false;
 
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
   renderer.outputColorSpace = SRGBColorSpace;
@@ -597,6 +633,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = !lowPower;
   renderer.shadowMap.type = PCFShadowMap;
+  // Reading each new shader's error log makes the frame wait for it to link.
+  renderer.debug.checkShaderErrors = process.env.NODE_ENV !== "production";
 
   // ---------------------------------------------------------------- field --
   const field = new Scene();
@@ -631,7 +669,12 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const cardScrews = new InstancedMesh(screwGeo, screwMaterial, MAX_INSTANCES);
   cardScrews.frustumCulled = false;
   field.add(cards, cardScrews);
-  let instanceCells: Cell[] = [];
+  // The cell each card instance stands on, as of the last layout.
+  const instanceLane = new Int32Array(MAX_INSTANCES);
+  const instanceRow = new Int32Array(MAX_INSTANCES);
+  let instanceCount = 0;
+  /** The cells the field's cards stand on, for choosing standby and ejected albums. */
+  const instanceCells = () => Array.from({ length: instanceCount }, (_, i) => ({ lane: instanceLane[i], row: instanceRow[i] }));
 
   // Every other card shows its album's cover, so the
   // field reads as albums and any of them can be found by its picture. The
@@ -652,8 +695,31 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const slotReady: boolean[] = [];
   /** Each ready cell's cover, drawn whole from its top left corner, in pixels. */
   const slotSize: [number, number][] = [];
-  let atlasDirty = false;
-  let atlasUploaded = 0;
+  // Covers that arrived since the last frame. Each goes to the GPU on its own
+  // (a cell is 204 px square, 166 KB), not as the whole 2040 x 2856 sheet again.
+  const atlasPending: number[] = [];
+  const cellCanvas = document.createElement("canvas");
+  cellCanvas.width = cellCanvas.height = cell;
+  const cellContext = cellCanvas.getContext("2d") as CanvasRenderingContext2D;
+  const cellTexture = new CanvasTexture(cellCanvas);
+  const cellAt = new Vector2();
+  /** Sends arrived covers to the atlas, a few a frame, rebuilding its mipmaps once; true while more wait. */
+  function uploadCovers() {
+    if (!atlasPending.length) return false;
+    const batch = atlasPending.splice(0, 12);
+    batch.forEach((slot, i) => {
+      const x = (slot % ATLAS_COLUMNS) * cell;
+      const y = Math.floor(slot / ATLAS_COLUMNS) * cell;
+      cellContext.clearRect(0, 0, cell, cell);
+      cellContext.drawImage(atlasCanvas, x, y, cell, cell, 0, 0, cell, cell);
+      // The atlas is uploaded flipped, so its rows count from the bottom.
+      cellAt.set(x, atlasCanvas.height - y - cell);
+      atlas.generateMipmaps = i === batch.length - 1;
+      renderer.copyTextureToTexture(cellTexture, atlas, null, cellAt);
+    });
+    atlas.generateMipmaps = true;
+    return atlasPending.length > 0;
+  }
   function coverSlot(index: number): number {
     const known = slotOf.get(index);
     if (known !== undefined) {
@@ -694,7 +760,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         atlasContext.drawImage(image, x, y, w, h);
         slotSize[slot] = [w, h];
         slotReady[slot] = true;
-        atlasDirty = true;
+        if (!atlasPending.includes(slot)) atlasPending.push(slot);
         invalidate();
       })
       .catch(() => undefined);
@@ -735,15 +801,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   // over that photographer's albums.
   const columnCount = Math.max(1, columns.length);
   // A card can stand in for an ejected album whose own cards are out of view (see chooseFeatured).
-  const standIns = new Map<string, number>();
-  const fileAt = (at: Cell) => {
+  const standIns = new Map<number, number>();
+  const fileOn = (lane: number, row: number) => {
     if (standIns.size) {
-      const standIn = standIns.get(cellKey(at));
+      const standIn = standIns.get(keyOf(lane, row));
       if (standIn !== undefined) return standIn;
     }
-    const list = columns[wrap(at.lane, columnCount)] ?? [];
-    return list.length ? list[wrap(at.row - ROW_ORIGIN, list.length)] : 0;
+    const list = columns[wrap(lane, columnCount)] ?? [];
+    return list.length ? list[wrap(row - ROW_ORIGIN, list.length)] : 0;
   };
+  const fileAt = (at: Cell) => fileOn(at.lane, at.row);
   const homeCell = (index: number): Cell => {
     const file = files[index];
     const list = columns[file?.column ?? 0] ?? [];
@@ -765,8 +832,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let apartTarget = 0;
   let opened: (() => void) | null = null;
   let openTimer = 0;
-  const outgoing = new Map<string, { cell: Cell; lift: Spring }>();
-  const hoverLifts = new Map<string, number>();
+  const outgoing = new Map<number, { cell: Cell; lift: Spring }>();
+  const hoverLifts = new Map<number, number>();
   /**
    * A browsable overview's popped-up staircase (see RISE_FRONT): the card it
    * stands on, when it started, and how far each card stands. Moving onto a
@@ -775,9 +842,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let rise: Cell | null = null;
   let riseAt = 0;
   let pointedAt = 0;
-  const rises = new Map<string, Spring>();
+  const rises = new Map<number, Spring>();
   /** The standby cards (see STANDBY_LIFT), by key, with when each starts up; null until chosen. */
-  let standby: Map<string, number> | null = null;
+  let standby: Map<number, number> | null = null;
   /** The home screen's albums to eject, and whether the standby cards are those (ejected) or a photographer's. */
   let featured: number[] = [];
   let lastFeatured: number[] = [];
@@ -786,6 +853,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let pulses: { row: number; lane: number; time: number }[] = [];
   let pulseGain = 1;
   let idleGain = 0;
+  // The breathing's own time, which stands still while it is paused (see
+  // setBackdrop), so it carries on from where it was instead of jumping.
+  let idleClock = 0;
   let lastInteraction = 0;
   let detailTarget = false;
   let detail = 0;
@@ -822,13 +892,28 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const laneSpeed = new DragSpeed();
   const rowSpeed = new DragSpeed();
 
+  /**
+   * Cassettes taken off the stage. Disposing one frees its materials, and
+   * three.js then deletes their shader programs, which the next album's
+   * cassette compiles again on its first frame: four compiles, and a stalled
+   * frame, on every album step. The last few are kept, with their geometry
+   * and pictures freed, so their materials keep those programs alive.
+   */
+  const retired: Cassette[] = [];
+  function retire(cassette: Cassette | null) {
+    if (!cassette) return;
+    cassette.group.removeFromParent();
+    cassette.release();
+    retired.push(cassette);
+    while (retired.length > 3) retired.shift()?.dispose();
+  }
+
   // The selected card is a full cassette; every other card is an instance.
   let selected: Cassette | null = null;
   let selectedToken = 0;
   let sharpenSelected: (() => void) | null = null;
   function buildSelected(index: number) {
-    selected?.group.removeFromParent();
-    selected?.dispose();
+    retire(selected);
     const file = files[index];
     const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, carrierFor(file), file, file.prints.slice(0, 1), { amount: veil, color: veilColor });
     cassette.parts.carrier.castShadow = !lowPower;
@@ -959,7 +1044,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   }
 
   /** How far a card stands up now (the selected card's is its lift). */
-  function riseLift(key: string) {
+  function riseLift(key: number) {
     return rises.get(key)?.value ?? 0;
   }
 
@@ -1003,7 +1088,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const count = portrait && width < 360 ? EJECT_COUNT.narrow : portrait || width < 1100 ? EJECT_COUNT.compact : EJECT_COUNT.wide;
     // Where the field's covers show clear of its fog: on a phone, just above the title.
     const middle = { x: width * (portrait ? 0.5 : 0.62), y: height * (portrait ? 0.42 : 0.5) };
-    const free = instanceCells
+    const free = instanceCells()
       .filter((at) => cellKey(at) !== cellKey(selectedCell))
       .map((at) => ({ at, spot: ejectSpot(at) }))
       .filter((c): c is { at: Cell; spot: { x: number; y: number } } => c.spot !== null)
@@ -1043,7 +1128,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (laneLock < 0 || !lane?.length) return;
     standby = new Map();
     const wanted = [...lane].sort(() => Math.random() - 0.5).slice(0, Math.ceil(lane.length / 2));
-    const free = instanceCells.filter((at) => !locked(at.lane) && inView(at));
+    const free = instanceCells().filter((at) => !locked(at.lane) && inView(at));
     // Nearest the middle of the view first, so the albums stand where they're seen.
     free.sort((a, b) => Math.abs(a.row - selectedCell.row) - Math.abs(b.row - selectedCell.row));
     for (const index of wanted) {
@@ -1064,7 +1149,8 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       }
     }
     for (const [key, card] of rises) {
-      const [lane, row] = key.split(":").map(Number);
+      const lane = laneOf(key);
+      const row = rowOf(key);
       const selectedHere = lane === selectedCell.lane && row === selectedCell.row;
       const stair = riseHeight({ lane, row });
       const standsBy = standby?.get(key);
@@ -1142,8 +1228,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const stageContext = () => ({ renderer, palette, reduced: () => reduced, lowPower, tier: () => tier, invalidate });
 
   function buildStudy(index: number) {
-    studyCassette?.group.removeFromParent();
-    studyCassette?.dispose();
+    retire(studyCassette);
     const file = files[index];
     const token = ++studyToken;
     const cassette = buildCassette(renderer, palette, options.archiveLabel, cardMaterial, carrierFor(file), file, file.prints);
@@ -1200,8 +1285,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     controls.enabled = false;
     controls.stopListenToKeyEvents();
     studyToken += 1;
-    studyCassette?.group.removeFromParent();
-    studyCassette?.dispose();
+    retire(studyCassette);
     studyCassette = null;
     studyFile = -1;
   }
@@ -1350,10 +1434,27 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   let raf = 0;
   let last = 0;
   function invalidate() {
+    if (ambientTimer) {
+      window.clearTimeout(ambientTimer);
+      ambientTimer = 0;
+    }
+    if (!raf && !lost) raf = requestAnimationFrame(frame);
+  }
+  /**
+   * Frames where only idle motion moves (the field's breathing, the cards'
+   * bob) come at about 30 a second instead of the screen's 60 or 120: that
+   * motion moves a fraction of a pixel a frame, so it looks the same, and an
+   * idle title screen no longer keeps the phone drawing flat out. The next
+   * one waits AMBIENT_WAIT_MS, then takes the next screen refresh.
+   */
+  const AMBIENT_WAIT_MS = 24;
+  let ambientBefore = false;
+  const ambientStill = () => backdrop && width < height * 1.05;
+  function ambientFrame() {
+    ambientTimer = 0;
     if (!raf && !lost) raf = requestAnimationFrame(frame);
   }
 
-  const dummy = new Object3D();
   const worldUp = new Vector3(0, 1, 0);
   const right = new Vector3();
   const up = new Vector3();
@@ -1364,15 +1465,34 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
   const cameraPosition = new Vector3();
   const origin = new Vector3();
 
+  // The field's layout, per frame: the ridge as a row part times a lane part,
+  // and the idle waves as row and lane parts (see IDLE_WAVES), each worked out
+  // once for the rows and lanes in view rather than once per card.
+  const MAX_ROWS = 2 * 46 + 1;
+  const MAX_LANES = 2 * 8 + 1;
+  const rowRidge = new Float64Array(MAX_ROWS);
+  const laneRidge = new Float64Array(MAX_LANES);
+  const rowIdle = IDLE_WAVES.map(() => ({ sin: new Float64Array(MAX_ROWS), cos: new Float64Array(MAX_ROWS) }));
+  const laneIdle = IDLE_WAVES.map(() => ({ sin: new Float64Array(MAX_LANES), cos: new Float64Array(MAX_LANES) }));
+  const cardMatrices = cards.instanceMatrix.array as Float32Array;
+  const screwMatrices = cardScrews.instanceMatrix.array as Float32Array;
+  const faceMatrices = faces.instanceMatrix.array as Float32Array;
+  /** Sends only the instances in use to the GPU, not all MAX_INSTANCES. */
+  function upload(attribute: BufferAttribute, items: number) {
+    attribute.clearUpdateRanges();
+    attribute.addUpdateRange(0, Math.max(1, items) * attribute.itemSize);
+    attribute.needsUpdate = true;
+  }
+
   function height3(row: number, lane: number) {
     const ridge = (settlingWave(row - shoulder.value) - stairDrop(row - shoulder.value)) * columnStrength(lane, laneFocus.value);
     let ripple = 0;
     for (const p of pulses) ripple += selectionWave(Math.hypot(row - p.row, (lane - p.lane) * 2.2), clock - p.time);
-    const breathing = idleGain > 0 ? idleWave(row, lane, clock) * idleGain : 0;
+    const breathing = idleGain > 0 ? idleWave(row, lane, idleClock) * idleGain : 0;
     return ridge + MathUtils.clamp(ripple, -0.6, 0.6) * pulseGain + breathing;
   }
 
-  function stepField(dt: number): boolean {
+  function stepField(dt: number): Motion {
     let moving = false;
     const rate = (r: number) => (reduced ? 35 : r);
     const railTarget = SLOT_Z - selectedCell.row * ROW_SPACING;
@@ -1419,7 +1539,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       else moving = true;
     }
     const hoverKey = hoverCell && (!overviewTarget || ejected(hoverCell)) && laneLock < 0 ? cellKey(hoverCell) : null;
-    if (hoverKey && !hoverLifts.has(hoverKey)) hoverLifts.set(hoverKey, 0);
+    if (hoverKey !== null && !hoverLifts.has(hoverKey)) hoverLifts.set(hoverKey, 0);
     for (const [key, value] of hoverLifts) {
       const target = key === hoverKey ? HOVER_LIFT : 0;
       const next = reduced ? target : MathUtils.lerp(value, target, 1 - Math.exp(-dt * 14));
@@ -1429,14 +1549,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     }
     if (stepRises(dt)) moving = true;
 
-    pulses = pulses.filter((p) => clock - p.time < 3.2);
+    if (pulses.length && clock - pulses[0].time >= 3.2) pulses = pulses.filter((p) => clock - p.time < 3.2);
     if (pulses.length) moving = true;
     pulseGain = MathUtils.lerp(pulseGain, detailTarget ? 0 : 1, 1 - Math.exp(-dt * 8));
     // Idle breathing after 2.5 s.
     const idle = !reduced && !detailTarget && detail < 0.01 && (overviewTarget || clock - lastInteraction > 2.5);
     idleGain = MathUtils.lerp(idleGain, idle ? 1 : 0, 1 - Math.exp(-dt * (idle ? 0.8 : 4)));
-    if (idleGain > 1e-3) moving = true;
-    else idleGain = 0;
+    // Only the breathing moves: the engine draws it at the ambient rate.
+    const ambient = idleGain > 1e-3;
+    if (!ambient) idleGain = 0;
+    else idleClock += dt;
 
     const detailGoal = detailTarget
       ? smooth((lift.value - PREVIEW_LIFT) / (DETAIL_LIFT - 0.85 - PREVIEW_LIFT))
@@ -1447,7 +1569,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const shown = Math.round(detail * 100) / 100;
     if (shown !== detailShown) {
       detailShown = shown;
-      options.hud?.style.setProperty("--detail", String(shown));
+      options.onDetail?.(shown);
     }
 
     // Menus pull the camera back so the field reads as a backdrop.
@@ -1471,46 +1593,92 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const rowsHalf = Math.min(46, Math.ceil((span * 2.6) / ROW_SPACING) + 6);
     const centerLane = Math.round(trackX.value / COLUMN_SPACING);
     const centerRow = Math.round((SLOT_Z - rail.value) / ROW_SPACING);
+    const firstLane = centerLane - lanesHalf;
+    const firstRow = centerRow - rowsHalf;
+    for (let r = 0; r <= 2 * rowsHalf; r++) {
+      const row = firstRow + r;
+      rowRidge[r] = settlingWave(row - shoulder.value) - stairDrop(row - shoulder.value);
+    }
+    for (let l = 0; l <= 2 * lanesHalf; l++) laneRidge[l] = columnStrength(firstLane + l, laneFocus.value);
+    if (idleGain > 0) {
+      IDLE_WAVES.forEach((w, i) => {
+        const phase = (idleClock * Math.PI * 2) / w.period;
+        for (let r = 0; r <= 2 * rowsHalf; r++) {
+          const a = phase + (firstRow + r) * w.perRow;
+          rowIdle[i].sin[r] = Math.sin(a);
+          rowIdle[i].cos[r] = Math.cos(a);
+        }
+        for (let l = 0; l <= 2 * lanesHalf; l++) {
+          const b = (firstLane + l) * w.perLane;
+          laneIdle[i].sin[l] = Math.sin(b);
+          laneIdle[i].cos[l] = Math.cos(b);
+        }
+      });
+    }
     let count = 0;
     let faceCount = 0;
-    instanceCells = [];
     // Nearest first (the camera sits on the -x, +z side), so the depth test
     // rejects the hidden faces of the dense stack instead of shading them.
-    for (let lane = centerLane - lanesHalf; lane <= centerLane + lanesHalf; lane++) {
-      for (let row = centerRow + rowsHalf; row >= centerRow - rowsHalf && count < MAX_INSTANCES; row--) {
+    // The field's cards never turn, so each matrix is a scale and a move,
+    // written straight into the instance buffers (identity elsewhere).
+    for (let l = 0; l <= 2 * lanesHalf; l++) {
+      const lane = firstLane + l;
+      const x = lane * COLUMN_SPACING - trackX.value;
+      // Other photographers' lanes sink out of the way while one is kept to.
+      const away = locked(lane) ? isolate.value : 0;
+      for (let r = 2 * rowsHalf; r >= 0 && count < MAX_INSTANCES; r--) {
+        const row = firstRow + r;
         if (lane === selectedCell.lane && row === selectedCell.row) continue;
-        const key = `${lane}:${row}`;
-        const x = lane * COLUMN_SPACING - trackX.value;
-        // Other photographers' lanes sink out of the way while one is kept to.
-        const away = locked(lane) ? isolate.value : 0;
-        const y = BASE_Y + height3(row, lane) + (outgoing.get(key)?.lift.value ?? 0) + (hoverLifts.get(key) ?? 0) + riseLift(key) - away * 1.6;
+        const key = keyOf(lane, row);
+        // As height3, from the parts above.
+        let y = rowRidge[r] * laneRidge[l];
+        if (pulses.length) {
+          let ripple = 0;
+          for (const p of pulses) ripple += selectionWave(Math.hypot(row - p.row, (lane - p.lane) * 2.2), clock - p.time);
+          y += MathUtils.clamp(ripple, -0.6, 0.6) * pulseGain;
+        }
+        if (idleGain > 0) {
+          let breathing = 0;
+          for (let i = 0; i < IDLE_WAVES.length; i++) {
+            breathing += IDLE_WAVES[i].amp * (rowIdle[i].sin[r] * laneIdle[i].cos[l] + rowIdle[i].cos[r] * laneIdle[i].sin[l]);
+          }
+          y += breathing * idleGain;
+        }
+        const raised = rises.size ? riseLift(key) : 0;
+        y += BASE_Y - away * 1.6 + raised;
+        if (outgoing.size) y += outgoing.get(key)?.lift.value ?? 0;
+        if (hoverLifts.size) y += hoverLifts.get(key) ?? 0;
         const z = row * ROW_SPACING + rail.value;
-        const index = fileAt({ lane, row });
+        const index = fileOn(lane, row);
         const slot = coverSlot(index);
         // The card stands after its cover (see CardShape).
         const size = slot >= 0 ? slotSize[slot] : undefined;
         const aspect = printAspect(files[index]?.prints[0]) || (size ? size[0] / size[1] : 0);
         const shape = shapeFor(aspect);
-        dummy.position.set(x, y, z);
-        dummy.scale.set(shape.cardW / CARD_W, 1, 1);
-        dummy.updateMatrix();
-        cards.setMatrixAt(count, dummy.matrix);
-        dummy.scale.set(1, 1, 1);
-        dummy.position.set(x + shape.cardW / 2 - 0.24, y + CARD_H - 0.2, z + CARD_D / 2);
-        dummy.updateMatrix();
-        cardScrews.setMatrixAt(count, dummy.matrix);
-        const clear = ejecting && standby?.has(key) ? Math.min(1, riseLift(key) / EJECT_LIFT) : 0;
+        const o = count * 16;
+        cardMatrices[o] = shape.cardW / CARD_W;
+        cardMatrices[o + 12] = x;
+        cardMatrices[o + 13] = y;
+        cardMatrices[o + 14] = z;
+        screwMatrices[o + 12] = x + shape.cardW / 2 - 0.24;
+        screwMatrices[o + 13] = y + CARD_H - 0.2;
+        screwMatrices[o + 14] = z + CARD_D / 2;
+        const clear = ejecting && standby?.has(key) ? Math.min(1, raised / EJECT_LIFT) : 0;
         cardClear.setX(count, clear);
-        instanceCells.push({ lane, row });
+        instanceLane[count] = lane;
+        instanceRow[count] = row;
         count += 1;
         if (size) {
-          // Where the cassette holds its front print, at the size it holds it.
-          const fit = fitPhoto(shape, aspect);
-          dummy.position.set(x + 0.12, y + CARD_H / 2 + 0.02, z + CARD_D / 2);
-          dummy.scale.set(fit.w / PHOTO_W, fit.h / PHOTO_H, 1);
-          dummy.updateMatrix();
-          dummy.scale.set(1, 1, 1);
-          faces.setMatrixAt(faceCount, dummy.matrix);
+          // Where the cassette holds its front print, at the size it holds it (see fitPhoto).
+          const wide = aspect > shape.photoW / shape.photoH;
+          const fitW = !(aspect > 0) || wide ? shape.photoW : shape.photoH * aspect;
+          const fitH = !(aspect > 0) ? shape.photoH : wide ? shape.photoW / aspect : shape.photoH;
+          const f16 = faceCount * 16;
+          faceMatrices[f16] = fitW / PHOTO_W;
+          faceMatrices[f16 + 5] = fitH / PHOTO_H;
+          faceMatrices[f16 + 12] = x + 0.12;
+          faceMatrices[f16 + 13] = y + CARD_H / 2 + 0.02;
+          faceMatrices[f16 + 14] = z + CARD_D / 2;
           // The cover's part of its cell, inset half a pixel against bleeding from its neighbours.
           const u = ((slot % ATLAS_COLUMNS) * cell + 0.5) / atlasCanvas.width;
           const v = 1 - (Math.floor(slot / ATLAS_COLUMNS) * cell + size[1] - 0.5) / atlasCanvas.height;
@@ -1521,23 +1689,16 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
         }
       }
     }
+    instanceCount = count;
     cards.count = cardScrews.count = count;
-    cards.instanceMatrix.needsUpdate = true;
-    cardScrews.instanceMatrix.needsUpdate = true;
-    cardClear.needsUpdate = true;
+    upload(cards.instanceMatrix, count);
+    upload(cardScrews.instanceMatrix, count);
+    upload(cardClear, count);
     faces.count = faceCount;
-    faces.instanceMatrix.needsUpdate = true;
-    faceCells.needsUpdate = true;
-    faceFog.needsUpdate = true;
-    // Covers arrive one by one; upload the atlas a few times a second at most.
-    if (atlasDirty) {
-      if (clock - atlasUploaded > 0.25) {
-        atlas.needsUpdate = true;
-        atlasDirty = false;
-        atlasUploaded = clock;
-      }
-      moving = true;
-    }
+    upload(faces.instanceMatrix, faceCount);
+    upload(faceCells, faceCount);
+    upload(faceFog, faceCount);
+    if (uploadCovers()) moving = true;
     // Covers show as they are; menus veil them behind their text, the
     // raised card's photograph with them, and less where they can be browsed:
     // not at all in a phone's window, where no text sits over them and a
@@ -1599,7 +1760,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     fog.far = rendered + MathUtils.lerp(25, 12, detail) + 18 * overview + 20 * clear;
     fieldLights.key.position.set(cameraAim.x - 6, cameraAim.y + 14, cameraAim.z - 5);
     fieldLights.key.target.position.copy(cameraAim);
-    return moving;
+    return moving || (ambient ? "ambient" : false);
   }
 
   function stepStudy(dt: number): boolean {
@@ -1664,7 +1825,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     const dt = last ? Math.min(0.05, ms / 1000) : 1 / 60;
     last = now;
     clock = now / 1000;
-    let moving: boolean;
+    let moving: Motion;
     if (mode === "carousel" && carousel) moving = carousel.step(dt);
     else if (mode === "table" && table) moving = table.step(dt);
     else if (mode === "stage" && stage) moving = stage.step(dt);
@@ -1680,7 +1841,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     // unless its frames come slow, so the picture doesn't soften and sharpen
     // again on every touch.
     const held = carry !== null || fieldDrag !== null || dragged.size > 0;
-    const active = moving || wipe < 1 || held;
+    const active = moving !== false || wipe < 1 || held;
     if (!active) {
       movingSince = -1;
       slowMove = false;
@@ -1715,8 +1876,14 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       renderer.autoClear = true;
       moving = true;
     }
-    if (ms) measure(ms, now);
-    if (moving) invalidate();
+    // Idle frames come at the ambient rate, so their spacing says nothing about the device.
+    const ambient = moving === "ambient" && !held;
+    if (ms && !ambient && !ambientBefore) measure(ms, now);
+    ambientBefore = ambient;
+    if (ambient) {
+      if (ambientStill()) last = 0;
+      else ambientTimer = window.setTimeout(ambientFrame, AMBIENT_WAIT_MS);
+    } else if (moving) invalidate();
     else last = 0;
   }
 
@@ -1884,9 +2051,9 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (selected && !locked(selectedCell.lane)) targets.push(selected.group);
     const hit = raycaster.intersectObjects(targets, true)[0];
     if (!hit) return null;
-    if (hit.object === cards && hit.instanceId !== undefined) {
-      const cell = instanceCells[hit.instanceId];
-      return cell && !locked(cell.lane) ? { cell, selected: false } : null;
+    if (hit.object === cards && hit.instanceId !== undefined && hit.instanceId < instanceCount) {
+      const cell = { lane: instanceLane[hit.instanceId], row: instanceRow[hit.instanceId] };
+      return !locked(cell.lane) ? { cell, selected: false } : null;
     }
     return { cell: selectedCell, selected: true };
   }
@@ -2406,12 +2573,17 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       invalidate();
     },
     setPalette(next) {
-      // The root's style also carries the detail progress; only real colour changes count.
+      // The root's style changes for other reasons too; only real colour changes count.
       if ((Object.keys(next) as (keyof EnginePalette)[]).every((k) => next[k] === palette[k])) return;
       // A theme or colour change spreads out over the scene, unless a wipe already hides it.
       if (wipe >= 1) snapshot(true);
       palette = next;
       applyPalette();
+      invalidate();
+    },
+    setBackdrop(next) {
+      if (next === backdrop) return;
+      backdrop = next;
       invalidate();
     },
     setReducedMotion(next) {
@@ -2489,6 +2661,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       clearTimeout(lostTimer);
       clearTimeout(sharpenTimer);
       clearTimeout(openTimer);
+      clearTimeout(ambientTimer);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
       wipeTexture?.dispose();
@@ -2510,6 +2683,7 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       controls.dispose();
       selected?.dispose();
       studyCassette?.dispose();
+      for (const cassette of retired) cassette.dispose();
       carousel?.dispose();
       table?.dispose();
       for (const module of Object.values(stages)) module.dispose();

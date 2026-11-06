@@ -168,8 +168,8 @@ export default function UploadStep({
               className="h-2 overflow-hidden rounded-full bg-border"
             >
               <div
-                className="h-full rounded-full bg-accent transition-[width] duration-200"
-                style={{ width: `${queue.uploadPercent}%` }}
+                className="h-full w-full rounded-full bg-accent transition-[translate] duration-200 motion-reduce:transition-none"
+                style={{ translate: `${queue.uploadPercent - 100}% 0` }}
               />
             </div>
           </div>

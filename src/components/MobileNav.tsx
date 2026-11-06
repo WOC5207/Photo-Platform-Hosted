@@ -5,6 +5,7 @@ import { Link } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
 import ContactUsButton, { type ContactUsLabels } from "@/components/ContactUsButton";
+import { usePresence } from "@/hooks/usePresence";
 
 export interface MobileNavLabels {
   directory: string;
@@ -36,6 +37,8 @@ export default function MobileNav({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  // The menu rises in and sinks out as the site's dialogs do.
+  const { present, leaving } = usePresence(open);
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +66,7 @@ export default function MobileNav({
     "flex min-h-11 items-center rounded-lg px-3 py-2 text-fg-muted transition hover:bg-accent-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
 
   return (
-    <div ref={rootRef} onBlur={(event) => {
+    <div ref={rootRef} data-leaving={leaving || undefined} onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
     }} className="relative shrink-0 xl:hidden">
       <button
@@ -86,11 +89,12 @@ export default function MobileNav({
           <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
-      {open && (
+      {present && (
         <nav
           id="public-mobile-navigation"
           aria-label={labels.menu}
-          className="absolute right-0 top-full z-50 mt-2 flex w-52 flex-col gap-1 rounded-xl border border-border bg-raised/95 p-2 text-sm shadow-xl backdrop-blur-xl"
+          inert={leaving}
+          className="dialog-panel absolute right-0 top-full z-50 mt-2 flex w-52 flex-col gap-1 rounded-xl border border-border bg-raised/95 p-2 text-sm shadow-xl backdrop-blur-xl"
         >
           <Link href="/" onClick={() => setOpen(false)} className={linkClass}>
             {labels.directory}
