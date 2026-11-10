@@ -99,7 +99,7 @@ export default async function EquipmentPage({
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6 sm:gap-8">
       <PageHeader
         title={t("title")}
         description={t("description")}
@@ -107,8 +107,17 @@ export default async function EquipmentPage({
 
       <nav
         aria-label={t("equipmentActions")}
-        className="grid min-w-0 gap-2 sm:grid-cols-2 2xl:grid-cols-4"
+        className="grid min-w-0 grid-cols-2 gap-2 2xl:grid-cols-4"
       >
+        <Link
+          href="/dashboard/equipment/new"
+          className={buttonClasses({
+            variant: "primary",
+            className: "min-w-0 whitespace-normal text-center"
+          })}
+        >
+          {t("addEquipment")}
+        </Link>
         <Link
           href="/dashboard/equipment/qr-labels"
           className={buttonClasses({ className: "min-w-0 whitespace-normal text-center" })}
@@ -126,15 +135,6 @@ export default async function EquipmentPage({
           className={buttonClasses({ className: "min-w-0 whitespace-normal text-center" })}
         >
           {t("manageCategories")}
-        </Link>
-        <Link
-          href="/dashboard/equipment/new"
-          className={buttonClasses({
-            variant: "primary",
-            className: "min-w-0 whitespace-normal text-center"
-          })}
-        >
-          {t("addEquipment")}
         </Link>
       </nav>
 
@@ -154,10 +154,6 @@ export default async function EquipmentPage({
       )}
 
       <nav aria-label={t("browseCategories")} className="flex min-w-0 flex-col gap-3">
-        <div>
-          <h2 className="font-display text-xl font-semibold">{t("browseCategories")}</h2>
-          <p className="mt-1 text-sm text-fg-subtle">{t("browseCategoriesHint")}</p>
-        </div>
         <div className="flex flex-wrap gap-2">
           <Link
             href="/dashboard/equipment"
@@ -195,7 +191,7 @@ export default async function EquipmentPage({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h2 className="font-display text-2xl font-semibold">{t("inventoryTitle")}</h2>
-          <p className="mt-1 max-w-4xl text-sm leading-6 text-fg-subtle">{t("inventoryHint")}</p>
+          <p className="mt-1 hidden max-w-4xl text-sm leading-6 text-fg-subtle sm:block">{t("inventoryHint")}</p>
         </div>
         <Link href={reorderMode ? "/dashboard/equipment" : "/dashboard/equipment?mode=reorder"} className={buttonClasses({ variant: reorderMode ? "primary" : "secondary", size: "compact" })}>
           {reorderMode ? t("finishReorder") : t("reorderMode")}
@@ -240,7 +236,7 @@ export default async function EquipmentPage({
             {equipment.map((item) => (
               <article
                 key={item.id}
-                className="flex min-w-0 flex-col gap-4"
+                className="flex min-w-0 flex-col gap-3"
               >
                 {item.photoToken && <div className="ui-image-frame aspect-[4/3] overflow-hidden rounded-lg bg-control">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -250,17 +246,21 @@ export default async function EquipmentPage({
                   <div className="min-w-0">
                     <h3 className="truncate font-semibold text-fg">{equipmentName(item)}</h3>
                     <p className="mt-1 text-xs text-fg-subtle">
-                      {item.category.name}{item.brand ? ` · ${item.brand}` : ""}
+                      {[item.category.name, item.brand, item.serialNumber && `${t("serialShort")} ${item.serialNumber}`].filter(Boolean).join(" · ")}
                     </p>
                   </div>
                   <span className="rounded-md bg-accent-surface px-2 py-1 font-mono text-[0.625rem] font-semibold text-accent">
                     {item.qrToken.slice(0, 8).toUpperCase()}
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_CLASS[item.status]}`}>{t(STATUS_KEY[item.status])}</span>
-                  {item.statusNote && <span className="min-w-0 flex-1 text-sm text-fg-muted">{item.statusNote}</span>}
-                </div>
+                {(item.statusNote || !QUICK_EQUIPMENT_STATUSES.some((choice) => choice === item.status)) && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!QUICK_EQUIPMENT_STATUSES.some((choice) => choice === item.status) && (
+                      <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_CLASS[item.status]}`}>{t(STATUS_KEY[item.status])}</span>
+                    )}
+                    {item.statusNote && <span className="min-w-0 flex-1 text-sm text-fg-muted">{item.statusNote}</span>}
+                  </div>
+                )}
                 <StatusSegmentedControl label={`${t("setInventoryStatus")}: ${equipmentName(item)}`}>
                   {QUICK_EQUIPMENT_STATUSES.map((choice) => (
                     // One form per choice, with the status as a hidden
@@ -281,12 +281,6 @@ export default async function EquipmentPage({
                     </form>
                   ))}
                 </StatusSegmentedControl>
-                {item.serialNumber && (
-                  <p className="text-sm text-fg-muted">
-                    <span className="text-fg-subtle">{t("serialShort")}: </span>
-                    {item.serialNumber}
-                  </p>
-                )}
                 {item.notes && <p className="whitespace-pre-wrap text-sm text-fg-muted">{item.notes}</p>}
                 <details open={scanned?.id === item.id} className="group min-w-0 border-t border-border pt-3">
                   <summary className="inline-flex min-h-10 cursor-pointer list-none items-center rounded-sm text-sm font-semibold text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface">
