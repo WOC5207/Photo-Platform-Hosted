@@ -8,9 +8,9 @@ import { Group, Image as KonvaImage, Layer, Rect, Stage, Text, Transformer } fro
 import { useLocale, useTranslations } from "next-intl";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import { controlClasses } from "@/components/ui/Field";
-import { cosplanCharacterNames, normalizeCosplanLayerOrder, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTemplateSummary, type CosplanTextLayer } from "@/lib/cosplanTypes";
+import { cosplanCharacterNames, cosplanNameOutline, normalizeCosplanLayerOrder, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTemplateSummary, type CosplanTextLayer } from "@/lib/cosplanTypes";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
-import { COSPLAN_IMAGE_LIMIT as IMAGE_LIMIT, COSPLAN_TEXT_LIMIT as TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, clearDraft, composeOnTemplate, cosplanUploadError, normalizeCosplanUpload, placeCharacter, readDraft, restoreDraft, writeDraft, type CosplanCharacter, type CosplanUploadError } from "@/lib/cosplanDraft";
+import { COSPLAN_IMAGE_LIMIT as IMAGE_LIMIT, COSPLAN_TEXT_LIMIT as TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, clearDraft, composeOnTemplate, cosplanUploadError, fitCosplanSlot, normalizeCosplanUpload, placeCharacter, readDraft, restoreDraft, writeDraft, type CosplanCharacter, type CosplanUploadError } from "@/lib/cosplanDraft";
 
 const FONT_OPTIONS = ["Arial", "Georgia", "Trebuchet MS", "Noto Sans SC", "Microsoft YaHei"];
 
@@ -22,7 +22,9 @@ function CharacterNameText({ field }: { field: ReturnType<typeof cosplanCharacte
     measure.destroy();
     return fitted;
   }, [text, field.fontSize, field.height, field.width, field.bold]);
-  return <Text text={text} x={field.x} y={field.y} width={field.width} height={field.height} fontSize={fontSize} fontFamily="Arial" fontStyle={field.bold ? "bold" : "normal"} fill={field.fill} align={field.align} verticalAlign="middle" wrap="none" padding={2} listening={false} />;
+  // The same outline the 3D site's painter draws, so both downloads match.
+  const outline = cosplanNameOutline(field.fill);
+  return <Text text={text} x={field.x} y={field.y} width={field.width} height={field.height} fontSize={fontSize} fontFamily="Arial" fontStyle={field.bold ? "bold" : "normal"} fill={field.fill} stroke={outline.color} strokeWidth={fontSize * outline.width} lineJoin="round" fillAfterStrokeEnabled align={field.align} verticalAlign="middle" wrap="none" padding={2} listening={false} />;
 }
 
 type CharacterResult = { id: number; name: string; nameCn: string; thumbnailUrl: string; imageUrl: string; sourceUrl: string };
@@ -383,17 +385,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
       updateLayer(layer.id, { slotId: undefined, slot: undefined });
       return;
     }
-    const scale = Math.min(slot.width * 0.9 / layer.width, slot.height * 0.9 / layer.height, 1);
-    const width = layer.width * scale;
-    const height = layer.height * scale;
-    updateLayer(layer.id, {
-      slotId: slot.id,
-      slot: structuredClone(slot),
-      x: slot.x + (slot.width - width) / 2,
-      y: slot.y + (slot.height - height) / 2,
-      width,
-      height
-    });
+    updateLayer(layer.id, { slotId: slot.id, slot: structuredClone(slot), rotation: 0, ...fitCosplanSlot(layer, slot) });
   }
 
   function undo() {
@@ -406,7 +398,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
   }
 
   async function performSearch(page = 1) {
-    const query = search.trim(); if (query.length < 2) return;
+    const query = search.trim(); if (!query) return;
     setSearchStatus("loading");
     try {
       const response = await fetch(`/api/cosplan/characters/search?q=${encodeURIComponent(query)}&page=${page}`);
@@ -490,7 +482,7 @@ export default function CosplanEditor({ templates }: { templates: CosplanTemplat
       <ul className="grid gap-2">
         {searchResults.map((result) => (
           <li key={result.id} className="grid grid-cols-[4rem_1fr] gap-3 rounded-lg border border-border bg-surface p-2">
-            {result.thumbnailUrl ? <img src={result.thumbnailUrl} alt="" className="ui-image-frame aspect-square w-16 rounded-md object-cover" /> : <span className="ui-image-frame flex aspect-square w-16 items-center justify-center rounded-md bg-control text-center text-[0.625rem] text-fg-subtle">{t("noImage")}</span>}
+            {result.thumbnailUrl ? <img src={result.thumbnailUrl} alt="" className="ui-image-frame aspect-square w-16 rounded-md object-contain" /> : <span className="ui-image-frame flex aspect-square w-16 items-center justify-center rounded-md bg-control text-center text-[0.625rem] text-fg-subtle">{t("noImage")}</span>}
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">{result.nameCn || result.name}</p>
               {result.nameCn && <p className="truncate text-xs text-fg-subtle">{result.name}</p>}

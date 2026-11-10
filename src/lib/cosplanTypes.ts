@@ -222,6 +222,18 @@ export function scaleCosplanSlots(
 }
 
 /** One name per photo slot; the uppermost assigned character supplies the name. */
+/**
+ * The outline behind a character's name: dark around a light colour and
+ * light around a dark one, so the name reads over any character art or
+ * background. The width is a share of the drawn font size.
+ */
+export function cosplanNameOutline(fill: string): { color: string; width: number } {
+  const hex = /^#([0-9a-f]{6})$/i.exec(fill.trim())?.[1];
+  const n = hex ? Number.parseInt(hex, 16) : 0xffffff;
+  const light = (0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255 > 0.55;
+  return { color: light ? "#101010" : "#ffffff", width: 0.14 };
+}
+
 export function cosplanCharacterNames(slots: CosplanSlot[], layers: CosplanLayer[]) {
   return slots.flatMap((slot) => {
     if (!slot.nameText) return [];

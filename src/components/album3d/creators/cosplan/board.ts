@@ -1,4 +1,5 @@
 import { cosplanTextHeight } from "@/lib/cosplanCanvas";
+import { fitCosplanSlot, type CosplanSlotFit } from "@/lib/cosplanDraft";
 import type { CosplanComposition, CosplanImageLayer, CosplanLayer, CosplanSlot, CosplanTextLayer } from "@/lib/cosplanTypes";
 
 /**
@@ -89,6 +90,58 @@ export function transformLayer(layer: CosplanLayer, factor: number, turn: number
   return { x: at.x, y: at.y, width, fontSize: layer.fontSize * scale, rotation } satisfies Partial<CosplanTextLayer>;
 }
 
+/** Half the side of a selection frame's corner handle, in poster pixels. */
+export function handleReach(composition: CosplanComposition) {
+  return (Math.max(composition.width, composition.height) / 400) * 4;
+}
+
+/**
+ * Which corner of a layer's frame a poster point is on (0 top left, 1 top
+ * right, 2 bottom left, 3 bottom right), or -1. `reach` is how far from the
+ * corner still counts.
+ */
+export function cornerAt(layer: CosplanLayer, x: number, y: number, reach: number): number {
+  const box = layerBox(layer);
+  const p = local(box, x, y);
+  let found = -1;
+  let nearest = reach;
+  [[0, 0], [box.width, 0], [0, box.height], [box.width, box.height]].forEach(([cx, cy], corner) => {
+    const distance = Math.max(Math.abs(p.x - cx), Math.abs(p.y - cy));
+    if (distance <= nearest) {
+      nearest = distance;
+      found = corner;
+    }
+  });
+  return found;
+}
+
+/**
+ * The layer sized by dragging `corner` to a poster point: the opposite
+ * corner stays where it is and the shape is kept, as a corner handle does in
+ * the classic editor.
+ */
+export function resizeFromCorner(layer: CosplanLayer, corner: number, x: number, y: number): Partial<CosplanLayer> {
+  const box = layerBox(layer);
+  const p = local(box, x, y);
+  // The fixed corner, and the dragged one's place along the diagonal from it.
+  const ax = corner % 2 === 0 ? box.width : 0;
+  const ay = corner < 2 ? box.height : 0;
+  const dx = box.width - 2 * ax;
+  const dy = box.height - 2 * ay;
+  const along = ((p.x - ax) * dx + (p.y - ay) * dy) / Math.max(1, dx * dx + dy * dy);
+  const least = layer.type === "image" ? 24 / Math.min(layer.width, layer.height) : Math.max(10 / layer.fontSize, 80 / layer.width);
+  const most = layer.type === "image" ? Infinity : 500 / layer.fontSize;
+  const scale = Math.min(most, Math.max(least, along));
+  const width = box.width * scale;
+  const height = box.height * scale;
+  const lx = ax === 0 ? 0 : box.width - width;
+  const ly = ay === 0 ? 0 : box.height - height;
+  const a = radians(box.rotation);
+  const at = { x: box.x + lx * Math.cos(a) - ly * Math.sin(a), y: box.y + lx * Math.sin(a) + ly * Math.cos(a) };
+  if (layer.type === "image") return { x: at.x, y: at.y, width, height } satisfies Partial<CosplanImageLayer>;
+  return { x: at.x, y: at.y, width, fontSize: layer.fontSize * scale } satisfies Partial<CosplanTextLayer>;
+}
+
 /**
  * The layers with `layer` moved `delta` places up (+) or down among its own
  * kind (characters stay under text); null when it can't move that way.
@@ -105,12 +158,9 @@ export function restackLayers(layers: CosplanLayer[], layer: CosplanLayer, delta
   return next;
 }
 
-/** A character moved into `slot`, unturned size kept within 90% of it and centred, as placing it there does. */
-export function fitInSlot(layer: CosplanImageLayer, slot: CosplanSlot): Partial<CosplanImageLayer> {
-  const scale = Math.min((slot.width * 0.9) / layer.width, (slot.height * 0.9) / layer.height, 1);
-  const width = layer.width * scale;
-  const height = layer.height * scale;
-  return { slotId: slot.id, slot: structuredClone(slot), x: slot.x + (slot.width - width) / 2, y: slot.y + (slot.height - height) / 2, width, height };
+/** A character moved into `slot` and sized to it, set upright, as placing it there does. */
+export function fitInSlot(layer: CosplanImageLayer, slot: CosplanSlot, fit: CosplanSlotFit = "fill"): Partial<CosplanImageLayer> {
+  return { slotId: slot.id, slot: structuredClone(slot), rotation: 0, ...fitCosplanSlot(layer, slot, fit) };
 }
 
 /** The top-left corner that puts a box of this size and rotation on `middle`. */
@@ -190,7 +240,8 @@ export function paintGuides(
     ctx.lineWidth = unit * 1.6;
     ctx.strokeStyle = options.accent;
     ctx.strokeRect(0, 0, box.width, box.height);
-    const handle = unit * 5;
+    // As large as handleReach() says they are to grab.
+    const handle = unit * 8;
     ctx.fillStyle = "#fff";
     for (const [hx, hy] of [[0, 0], [box.width, 0], [0, box.height], [box.width, box.height]]) {
       ctx.fillRect(hx - handle / 2, hy - handle / 2, handle, handle);

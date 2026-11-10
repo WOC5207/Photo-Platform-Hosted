@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { createPortal } from "react-dom";
 import { useLocale, useTranslations } from "next-intl";
 import { cosplanCharacterNames, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTextLayer } from "@/lib/cosplanTypes";
-import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, cosplanUploadError, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter } from "@/lib/cosplanDraft";
+import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, cosplanUploadError, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter, type CosplanSlotFit } from "@/lib/cosplanDraft";
 import { renderCosplan, renderCosplanPart, type CosplanPart } from "@/lib/cosplanCanvas";
 import { useVisualViewport } from "@/components/cosplan/useVisualViewport";
 import { GameMenu, Hints, pad, wrap, type MenuItem } from "../../hud";
@@ -12,7 +12,7 @@ import styles from "../../ArchiveSite.module.css";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageDrag, useStageInput } from "../../booking/shared";
 import type { PosterLayerPlane } from "../../poster";
 import { LAYER_PICK, RAIL_PICK } from "../../types";
-import { fitInSlot, layerAt, layerBox, paintGuides, restackLayers, slotAt, transformLayer } from "./board";
+import { cornerAt, fitInSlot, handleReach, layerAt, layerBox, paintGuides, resizeFromCorner, restackLayers, slotAt, transformLayer } from "./board";
 import { useCosplanStudio } from "./CosplanStudio";
 
 export const FONT_OPTIONS = ["Arial", "Georgia", "Trebuchet MS", "Noto Sans SC", "Microsoft YaHei"];
@@ -118,10 +118,10 @@ export default function CosplanBoard() {
     const layers = composition && restackLayers(composition.layers, layer, delta);
     if (composition && layers) studio.apply({ ...composition, layers });
   };
-  const moveToSlot = (layer: CosplanImageLayer, slotId: string) => {
+  const moveToSlot = (layer: CosplanImageLayer, slotId: string, fit?: CosplanSlotFit) => {
     const slot = slots.find((item) => item.id === slotId);
     if (!slot) return update(layer.id, { slotId: undefined, slot: undefined });
-    update(layer.id, fitInSlot(layer, slot));
+    update(layer.id, fitInSlot(layer, slot, fit));
     setTarget({ slot: slot.id, layer: layer.id });
   };
 
@@ -173,7 +173,7 @@ export default function CosplanBoard() {
   const search = async (page = 1, event?: FormEvent) => {
     event?.preventDefault();
     const q = (page === 1 ? query : searched.query).trim();
-    if (q.length < 2) return;
+    if (!q) return;
     setSearchState("loading");
     try {
       const response = await fetch(`/api/cosplan/characters/search?q=${encodeURIComponent(q)}&page=${page}`);
@@ -215,7 +215,8 @@ export default function CosplanBoard() {
             key: `bgm-${result.id}`,
             image: Math.abs(i - resultFocus) <= 3 && result.imageUrl ? studio.image(result.imageUrl) : null,
             label: result.nameCn || result.name,
-            sub: result.nameCn ? result.name : undefined
+            sub: result.nameCn ? result.name : undefined,
+            fit: "contain" as const
           }))
         : null,
       resultFocus
@@ -380,6 +381,8 @@ export default function CosplanBoard() {
     start: { x: number; y: number };
     moved: boolean;
     pinch: { distance: number; angle: number; layer: CosplanLayer } | null;
+    /** Dragging a corner handle of the selected layer: sizes it from the opposite corner. */
+    resize: { corner: number; layer: CosplanLayer } | null;
   } | null>(null);
   const lastTap = useRef<{ id: string; at: number } | null>(null);
   // A run of wheel turns or held keys is one step to undo.
@@ -405,6 +408,19 @@ export default function CosplanBoard() {
   useStageDrag((input) => {
     if (!composition || (mode !== "board" && mode !== "arrange")) return false;
     const g = gesture.current;
+    // The selected layer's corner handle under a pointer, if any (handles can overhang the poster).
+    const handleAt = (clientX: number, clientY: number, rect: DOMRect) => {
+      const at = selected && posterXY(clientX, clientY, rect, true);
+      const corner = at && selected ? cornerAt(selected, at.x, at.y, handleReach(composition) * 1.5) : -1;
+      return at && selected && corner >= 0 ? { at, corner, layer: selected } : null;
+    };
+    if (input.phase === "hover") {
+      const handle = handleAt(input.clientX, input.clientY, input.rect);
+      if (!handle) return false;
+      // Top left and bottom right pull one way, the other two the other way.
+      input.cursor(handle.corner === 0 || handle.corner === 3 ? "nwse-resize" : "nesw-resize");
+      return true;
+    }
     if (input.phase === "wheel") {
       const at = posterXY(input.clientX, input.clientY, input.rect);
       if (!at || !selected) return false;
@@ -413,7 +429,7 @@ export default function CosplanBoard() {
       return true;
     }
     if (input.phase === "down") {
-      if (g && g.pointers.size === 1 && g.layer) {
+      if (g && g.pointers.size === 1 && g.layer && !g.resize) {
         // A second finger: pinch to size, twist to turn.
         g.pointers.set(input.id, { x: input.clientX, y: input.clientY });
         const current = composition.layers.find((layer) => layer.id === g.layer?.id) ?? g.layer;
@@ -422,10 +438,15 @@ export default function CosplanBoard() {
         g.pinch = { ...twoFingers(g.pointers), layer: current };
         return true;
       }
+      const handle = handleAt(input.clientX, input.clientY, input.rect);
+      if (handle) {
+        gesture.current = { pointers: new Map([[input.id, { x: input.clientX, y: input.clientY }]]), layer: handle.layer, start: handle.at, moved: false, pinch: null, resize: handle };
+        return true;
+      }
       const at = posterXY(input.clientX, input.clientY, input.rect);
       if (!at) return false;
       const layer = layerAt(composition, at.x, at.y);
-      gesture.current = { pointers: new Map([[input.id, { x: input.clientX, y: input.clientY }]]), layer, start: at, moved: false, pinch: null };
+      gesture.current = { pointers: new Map([[input.id, { x: input.clientX, y: input.clientY }]]), layer, start: at, moved: false, pinch: null, resize: null };
       if (layer) setTarget(layer.type === "image" && layer.slotId ? { slot: layer.slotId, layer: layer.id } : { layer: layer.id });
       return true;
     }
@@ -447,7 +468,8 @@ export default function CosplanBoard() {
       if (!at) return true;
       if (!g.moved) studio.begin();
       g.moved = true;
-      update(g.layer.id, { x: g.layer.x + at.x - g.start.x, y: g.layer.y + at.y - g.start.y }, false);
+      if (g.resize) update(g.resize.layer.id, resizeFromCorner(g.resize.layer, g.resize.corner, at.x, at.y), false);
+      else update(g.layer.id, { x: g.layer.x + at.x - g.start.x, y: g.layer.y + at.y - g.start.y }, false);
       return true;
     }
     // Up or cancel.
@@ -732,7 +754,7 @@ export default function CosplanBoard() {
               <form onSubmit={(event) => void search(1, event)} className="mt-6 flex gap-2">
                 <label className="sr-only" htmlFor="cosplan-3d-search">{tc("searchPlaceholder")}</label>
                 <input id="cosplan-3d-search" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tc("searchPlaceholder")} className={fieldClass} />
-                <button type="submit" className={secondaryClass} disabled={searchState === "loading" || query.trim().length < 2}>{searchState === "loading" ? tc("searching") : tc("search")}</button>
+                <button type="submit" className={secondaryClass} disabled={searchState === "loading" || !query.trim()}>{searchState === "loading" ? tc("searching") : tc("search")}</button>
               </form>
               <p aria-live="polite" className="mt-3 min-h-5 text-sm text-fg-muted">
                 {searchState === "error"
@@ -770,7 +792,7 @@ export default function CosplanBoard() {
               liveProps={liveProps}
               onChange={(patch) => liveUpdate(selected.id, patch)}
               onTransform={(factor, turn) => liveUpdate(selected.id, transformLayer(selected, factor, turn))}
-              onSlot={(slotId) => selected.type === "image" && moveToSlot(selected, slotId)}
+              onSlot={(slotId, fit) => selected.type === "image" && moveToSlot(selected, slotId, fit)}
               onRestack={(delta) => restack(selected, delta)}
               onDelete={() => remove(selected)}
               onDone={() => setMode("board")}
@@ -861,7 +883,7 @@ function ArrangePanel({
   liveProps: LiveProps;
   onChange: (patch: Partial<CosplanLayer>) => void;
   onTransform: (factor: number, turn: number) => void;
-  onSlot: (slotId: string) => void;
+  onSlot: (slotId: string, fit?: CosplanSlotFit) => void;
   onRestack: (delta: number) => void;
   onDelete: () => void;
   onDone: () => void;
@@ -915,6 +937,12 @@ function ArrangePanel({
               ))}
             </select>
           </label>
+        )}
+        {layer.type === "image" && layer.slotId && slots.some((slot) => slot.id === layer.slotId) && (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={secondaryClass} onClick={() => onSlot(layer.slotId!, "fill")}>{t("creatorFillSlot")}</button>
+            <button type="button" className={secondaryClass} onClick={() => onSlot(layer.slotId!, "whole")}>{t("creatorWholeInSlot")}</button>
+          </div>
         )}
         {layer.type === "image" && slots.find((slot) => slot.id === layer.slotId)?.nameText && (
           <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-fg-muted">

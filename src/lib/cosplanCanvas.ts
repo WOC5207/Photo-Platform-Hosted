@@ -1,4 +1,4 @@
-import { cosplanCharacterNames, type CosplanComposition, type CosplanImageLayer, type CosplanSlot, type CosplanTextLayer } from "./cosplanTypes";
+import { cosplanCharacterNames, cosplanNameOutline, type CosplanComposition, type CosplanImageLayer, type CosplanSlot, type CosplanTextLayer } from "./cosplanTypes";
 
 /**
  * Paints a Cosplan poster on a plain 2D canvas, for the 3D site's easel and
@@ -59,6 +59,8 @@ interface TextBox {
   height?: number;
   wrap: "word" | "none";
   verticalAlign: "top" | "middle";
+  /** A line drawn around the letters, under their fill (Konva's stroke with fillAfterStrokeEnabled). */
+  outline?: { color: string; width: number };
 }
 
 /** Konva's Text line breaking (_setTextData), without ellipsis or letter spacing. */
@@ -140,6 +142,12 @@ function drawText(ctx: CanvasRenderingContext2D, box: TextBox) {
   ctx.translate(box.padding, alignY + box.padding);
   for (const line of lines) {
     const x = box.align === "right" ? totalWidth - line.width - box.padding * 2 : box.align === "center" ? (totalWidth - line.width - box.padding * 2) / 2 : 0;
+    if (box.outline) {
+      ctx.lineJoin = "round";
+      ctx.lineWidth = box.outline.width;
+      ctx.strokeStyle = box.outline.color;
+      ctx.strokeText(line.text, x, baseline);
+    }
     ctx.fillText(line.text, x, baseline);
     if (lines.length > 1) baseline += lineHeightPx;
   }
@@ -218,8 +226,9 @@ function paintNames(ctx: CanvasRenderingContext2D, composition: CosplanCompositi
     const text = field.text.replace(/\s+/g, " ");
     ctx.save();
     const size = nameSize(ctx, text, field);
+    const outline = cosplanNameOutline(field.fill);
     ctx.translate(field.x, field.y);
-    drawText(ctx, { text, size, family: "Arial", bold: field.bold, fill: field.fill, align: field.align, lineHeight: 1, padding: 2, width: field.width, height: field.height, wrap: "none", verticalAlign: "middle" });
+    drawText(ctx, { text, size, family: "Arial", bold: field.bold, fill: field.fill, align: field.align, lineHeight: 1, padding: 2, width: field.width, height: field.height, wrap: "none", verticalAlign: "middle", outline: { color: outline.color, width: size * outline.width } });
     ctx.restore();
   }
 }

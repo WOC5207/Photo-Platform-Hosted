@@ -156,12 +156,39 @@ export function loadCosplanImage(src: string): Promise<HTMLImageElement> {
 }
 
 /** A new character layer: fitted to 90% of its slot and centred, or free on the poster. */
+/**
+ * How a character sits in a slot: "fill" covers the slot (the slot's edge
+ * trims what overhangs), "whole" shows all of the image inside it.
+ */
+export type CosplanSlotFit = "fill" | "whole";
+
+/**
+ * A character of this size sized to its slot, whatever size the image came
+ * in: small ones grow and large ones shrink. A filling image that is taller
+ * than the slot hangs from the slot's top, which keeps a standing
+ * character's head; otherwise it is centred.
+ */
+export function fitCosplanSlot(size: { width: number; height: number }, slot: CosplanSlot, fit: CosplanSlotFit = "fill") {
+  const across = slot.width / Math.max(1, size.width);
+  const down = slot.height / Math.max(1, size.height);
+  const scale = fit === "fill" ? Math.max(across, down) : Math.min(across, down);
+  const width = size.width * scale;
+  const height = size.height * scale;
+  return {
+    x: slot.x + (slot.width - width) / 2,
+    y: height > slot.height ? slot.y : slot.y + (slot.height - height) / 2,
+    width,
+    height
+  };
+}
+
 export function placeCharacter(composition: CosplanComposition, character: CosplanCharacter, slot?: CosplanSlot): CosplanImageLayer {
-  const maxWidth = slot ? slot.width * 0.9 : composition.width * 0.55;
-  const maxHeight = slot ? slot.height * 0.9 : composition.height * 0.65;
-  const ratio = Math.min(maxWidth / character.naturalWidth, maxHeight / character.naturalHeight, 1);
-  const width = character.naturalWidth * ratio;
-  const height = character.naturalHeight * ratio;
+  // Off a slot there is nothing to fill, so a free character keeps its own size within a share of the poster.
+  const ratio = Math.min((composition.width * 0.55) / character.naturalWidth, (composition.height * 0.65) / character.naturalHeight, 1);
+  const placed = slot
+    ? fitCosplanSlot({ width: character.naturalWidth, height: character.naturalHeight }, slot)
+    : { x: composition.width * 0.22, y: composition.height * 0.15, width: character.naturalWidth * ratio, height: character.naturalHeight * ratio };
+  const { width, height } = placed;
   return {
     id: crypto.randomUUID(),
     type: "image",
@@ -172,8 +199,8 @@ export function placeCharacter(composition: CosplanComposition, character: Cospl
     sourceUrl: character.sourceUrl,
     slotId: slot?.id,
     slot: slot ? structuredClone(slot) : undefined,
-    x: slot ? slot.x + (slot.width - width) / 2 : composition.width * 0.22,
-    y: slot ? slot.y + (slot.height - height) / 2 : composition.height * 0.15,
+    x: placed.x,
+    y: placed.y,
     width,
     height,
     rotation: 0,
