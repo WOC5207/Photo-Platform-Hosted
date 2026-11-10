@@ -191,7 +191,7 @@ export default function SlotSheetScreen({ sheet }: { sheet: StudioSlotSheet }) {
               </div>
             </div>
             <div>
-              <Link href={path({ kind: "studio", username, page: "booking", id: slot.bookingEventId })} scroll={false} className="font-semibold underline-offset-4 hover:underline">
+              <Link href={path({ kind: "studio", username, page: "booking", id: slot.bookingEventId })} scroll={false} className="inline-flex min-h-11 items-center font-semibold underline-offset-4 hover:underline">
                 {slot.eventTitle}
               </Link>
               <p className="text-sm text-fg-muted">

@@ -180,7 +180,7 @@ function Draw({ draw }: { draw: PrizeDraw }) {
               </button>
             </form>
             <details className="mt-4 border border-border-strong p-3">
-              <summary className="cursor-pointer text-sm font-semibold">{tl("recoveryTitle")}</summary>
+              <summary className="cursor-pointer py-3 text-sm font-semibold">{tl("recoveryTitle")}</summary>
               <form action={recoveryAction} aria-busy={recoveryPending} className="mt-3 grid gap-3">
                 <input type="hidden" name="drawToken" value={draw.token} />
                 <p className="text-xs text-fg-muted">{tl("recoveryHint")}</p>

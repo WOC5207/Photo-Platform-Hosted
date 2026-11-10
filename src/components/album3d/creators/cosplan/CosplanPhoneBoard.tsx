@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { useLocale, useTranslations } from "next-intl";
 import type { CosplanImageLayer, CosplanLayer, CosplanSlot, CosplanTextLayer } from "@/lib/cosplanTypes";
 import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, cosplanUploadError, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter, type CosplanSlotFit } from "@/lib/cosplanDraft";
-import { renderCosplan } from "@/lib/cosplanCanvas";
+import { renderCosplan, cosplanInkFor } from "@/lib/cosplanCanvas";
 import { Roll, pad } from "../../hud";
 import { fieldClass, metaLabel, secondaryClass, useStage } from "../../booking/shared";
 import { ENTER, ICONS, PhoneBack, PhoneIcon, PhoneSheet, PhoneShell, PhoneToolbar, cssColor, fitCanvas, usePosterFit, usePosterMorph, useStripMotion, type PhoneTool } from "../phone";
@@ -214,7 +214,11 @@ export default function CosplanPhoneBoard() {
       setNotice(t("creatorTextLimit", { count: COSPLAN_TEXT_LIMIT }));
       return;
     }
-    const layer: CosplanTextLayer = { id: crypto.randomUUID(), type: "text", name: tc("textLayer"), text: tc("newText"), x: composition.width * 0.12, y: composition.height * 0.1, width: composition.width * 0.76, rotation: 0, fontSize: Math.max(28, composition.width * 0.045), fill: "#ffffff", align: "center", bold: true, fontFamily: "Arial" };
+    const fontSize = Math.max(28, composition.width * 0.045);
+    const box = { x: composition.width * 0.12, y: composition.height * 0.1, width: composition.width * 0.76, height: fontSize * 1.4 };
+    // Black or white, whichever shows over the poster where the text lands.
+    const fill = cosplanInkFor(studio.images.background, composition, box);
+    const layer: CosplanTextLayer = { id: crypto.randomUUID(), type: "text", name: tc("textLayer"), text: tc("newText"), x: box.x, y: box.y, width: box.width, rotation: 0, fontSize, fill, align: "center", bold: true, fontFamily: "Arial" };
     studio.begin();
     studio.apply({ ...composition, layers: [...composition.layers, layer] }, false);
     editText(layer, true);

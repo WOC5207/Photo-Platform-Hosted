@@ -1194,7 +1194,8 @@ export default function ArchiveSite({
                 href={screenPath({ kind: "studio", username: viewer.username, page: "home" })}
                 scroll={false}
                 aria-label={t("signedInAs", { name: viewer.name })}
-                className="relative inline-flex min-h-11 min-w-11 max-w-40 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:px-0"
+                title={viewer.name}
+                className="relative inline-flex min-h-11 min-w-11 max-w-40 items-center wide:max-w-80 justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:px-0"
               >
                 {/* On phones the name gives way to an account mark with the signed-in dot on its shoulder, so the header's controls all fit. */}
                 <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 shrink-0 sm:hidden" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -1457,7 +1458,7 @@ export default function ArchiveSite({
                         )}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="line-clamp-2 font-bold uppercase leading-tight [overflow-wrap:anywhere]">{album.title}</span>
+                        <span className={`font-bold uppercase leading-tight [overflow-wrap:anywhere] ${index === selected ? "" : "line-clamp-2"}`}>{album.title}</span>
                         <span className="font-meta mt-1 block text-[0.625rem] uppercase tracking-[0.1em] text-fg-subtle">
                           {[album.dateLabel || t("noDate"), t("photos", { count: album.photoCount })].join(" · ")}
                         </span>
@@ -1478,6 +1479,7 @@ export default function ArchiveSite({
               <button
                 type="button"
                 onClick={() => openDetail(selected)}
+                title={file.title}
                 className="group flex min-h-11 w-full items-center gap-2 text-left"
               >
                 <Roll value={file.title} className="min-w-0" layer="line-clamp-2 uppercase leading-tight [overflow-wrap:anywhere]" />
@@ -1587,7 +1589,7 @@ export default function ArchiveSite({
 
           <div className={`${styles.caption} flex items-center justify-between gap-3 wide:block`}>
             <div>
-              <p className="line-clamp-2 text-[0.9375rem] leading-tight tracking-[-0.03em] [overflow-wrap:anywhere] sm:text-xl wide:max-w-[18rem] wide:text-[2.3rem]">{file.title}</p>
+              <p title={file.title} className="line-clamp-2 text-[0.9375rem] leading-tight tracking-[-0.03em] [overflow-wrap:anywhere] sm:text-xl wide:max-w-[18rem] wide:text-[2.3rem]">{file.title}</p>
               <p className="font-meta mt-1 hidden text-[0.5rem] uppercase tracking-[0.18em] text-fg-subtle sm:block wide:mt-2 wide:text-[0.625rem]">
                 {t("archiveLabel")}
               </p>

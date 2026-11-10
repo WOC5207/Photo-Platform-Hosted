@@ -217,14 +217,16 @@ export function paintGuides(
       ctx.strokeStyle = options.accent;
       ctx.stroke();
       ctx.setLineDash([]);
-      if (empty || focused) {
+      // A filled slot keeps only its outline: a tag over it hid the
+      // character and the printed name, and the panel already names the slot.
+      if (empty) {
         const label = (options.locale === "zh" ? slot.nameZh : slot.nameEn).toUpperCase();
         const size = Math.max(unit * 5, Math.min(slot.width / 9, unit * 11));
         ctx.font = `700 ${size}px ui-monospace, SFMono-Regular, Menlo, monospace`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         const x = slot.x + slot.width / 2;
-        const y = slot.y + (empty ? slot.height / 2 : slot.height - size);
+        const y = slot.y + slot.height / 2;
         const width = Math.min(slot.width - unit * 4, ctx.measureText(label).width + size);
         ctx.fillStyle = options.accent;
         ctx.fillRect(x - width / 2, y - size * 0.8, width, size * 1.6);

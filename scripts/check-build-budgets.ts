@@ -52,8 +52,10 @@ const routeBudgets = [
   // stays as a backdrop, with an album list and the light table's prints as a
   // grid; that adds about 0.8 KB to every 3D route. Editing mode, where a
   // platform admin rewords menu text in place (its editor loads when first
-  // opened), adds about 1.1 KB more to every 3D route, here and below.
-  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 146 },
+  // opened), adds about 1.1 KB more to every 3D route, here and below. The
+  // phone Back button, menu items showing the focused label in full and the
+  // "More below" bar on long panels took this page 0.3 KB over.
+  { label: "3D site", route: ["/[locale]/3d/layout", "/[locale]/3d/page"], limitKb: 147 },
   // The poster creators open from the title menu; their poster code and the
   // easel scene load with the draft, after the panel paints. Each creator's
   // steps share a studio layout that holds the draft, so it counts too. The

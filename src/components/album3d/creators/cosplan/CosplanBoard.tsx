@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useLocale, useTranslations } from "next-intl";
 import { cosplanCharacterNames, type CosplanComposition, type CosplanImageLayer, type CosplanLayer, type CosplanSlot, type CosplanTextLayer } from "@/lib/cosplanTypes";
 import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, cosplanUploadError, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter, type CosplanSlotFit } from "@/lib/cosplanDraft";
-import { renderCosplan, renderCosplanPart, type CosplanPart } from "@/lib/cosplanCanvas";
+import { renderCosplan, renderCosplanPart, type CosplanPart, cosplanInkFor } from "@/lib/cosplanCanvas";
 import { useVisualViewport } from "@/components/cosplan/useVisualViewport";
 import { GameMenu, Hints, pad, wrap, type MenuItem } from "../../hud";
 import styles from "../../ArchiveSite.module.css";
@@ -241,7 +241,11 @@ export default function CosplanBoard() {
       setNotice(t("creatorTextLimit", { count: COSPLAN_TEXT_LIMIT }));
       return;
     }
-    const layer: CosplanTextLayer = { id: crypto.randomUUID(), type: "text", name: tc("textLayer"), text: tc("newText"), x: composition.width * 0.12, y: composition.height * 0.1, width: composition.width * 0.76, rotation: 0, fontSize: Math.max(28, composition.width * 0.045), fill: "#ffffff", align: "center", bold: true, fontFamily: "Arial" };
+    const fontSize = Math.max(28, composition.width * 0.045);
+    const box = { x: composition.width * 0.12, y: composition.height * 0.1, width: composition.width * 0.76, height: fontSize * 1.4 };
+    // Black or white, whichever shows over the poster where the text lands.
+    const fill = cosplanInkFor(studio.images.background, composition, box);
+    const layer: CosplanTextLayer = { id: crypto.randomUUID(), type: "text", name: tc("textLayer"), text: tc("newText"), x: box.x, y: box.y, width: box.width, rotation: 0, fontSize, fill, align: "center", bold: true, fontFamily: "Arial" };
     studio.begin();
     studio.apply({ ...composition, layers: [...composition.layers, layer] }, false);
     editText(layer, true);

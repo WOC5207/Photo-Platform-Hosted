@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { GameMenu, Hints, Rolling, pad, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { ReelEntry } from "../reel";
-import { BookingPanel, isInteractive, metaLabel, primaryClass, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
+import { BookingPanel, isInteractive, metaLabel, primaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { StudioHeading } from "./shared";
 import type { StudioAccount, StudioEventSummary } from "./types";
 
@@ -51,6 +51,7 @@ export default function EventsScreen({ account, events }: { account: StudioAccou
   const [filter, setFilter] = useState<Filter>("all");
   const [focus, setFocus] = useState(0);
   const [action, setAction] = useState(0);
+  const list = useRef<HTMLOListElement>(null);
 
   // Oldest first along the track; events without dates wait at the far end.
   const reel = useMemo(() => {
@@ -109,6 +110,14 @@ export default function EventsScreen({ account, events }: { account: StudioAccou
   useEffect(() => {
     scene?.setFocus(at);
   }, [scene, at]);
+  const placed = useRef(false);
+  useEffect(() => {
+    if (!placed.current) {
+      placed.current = Boolean(today);
+      return;
+    }
+    list.current?.querySelector<HTMLElement>('[aria-current="true"]')?.parentElement?.scrollIntoView({ block: "nearest" });
+  }, [at, filter, today]);
 
   /** Into the event: the print is drawn up off the track on the way. */
   const enter = (index: number, page: "event" | "photos" | "upload") => {
@@ -180,7 +189,7 @@ export default function EventsScreen({ account, events }: { account: StudioAccou
             {!event ? (
               <p className="mt-6 text-sm text-fg-muted">{t("studioReelNone")}</p>
             ) : (
-              <section aria-label={event.title} aria-live="polite" className="mt-6">
+              <section aria-label={t("studioEvents")} className="mt-5">
                 <p className={metaLabel}>
                   {t("studioEventCount")}{" "}
                   <span className="text-fg">
@@ -188,28 +197,43 @@ export default function EventsScreen({ account, events }: { account: StudioAccou
                   </span>{" "}
                   / {pad(shown.length)}
                 </p>
-                <h2 className="mt-2 text-2xl font-extrabold uppercase leading-tight tracking-[-0.02em] [overflow-wrap:anywhere] wide:text-[2rem]">
-                  {event.title}
-                </h2>
-                <p className="font-meta mt-2 text-xs uppercase tracking-[0.1em] text-fg-muted">
-                  {[event.dateLabel || tw("noDate"), event.location].filter(Boolean).join(" · ")}
-                </p>
-                <p className="mt-1 text-xs">
-                  <span className={event.published ? "font-semibold text-accent-text" : "text-fg-subtle"}>
-                    {event.published ? tw("published") : tw("draft")}
-                  </span>
-                </p>
-                <GameMenu label={event.title} items={actions} focus={actionAt} onFocus={setAction} className="mt-5" />
-                <div className="mt-4 flex gap-2">
-                  <button type="button" onClick={() => move(-1)} disabled={at === 0} className={secondaryClass}>
-                    <span aria-hidden="true">←</span>
-                    {t("studioReelEarlier")}
-                  </button>
-                  <button type="button" onClick={() => move(1)} disabled={at >= shown.length - 1} className={`${secondaryClass} ml-auto`}>
-                    {t("studioReelLater")}
-                    <span aria-hidden="true">→</span>
-                  </button>
-                </div>
+                {/* Every event is listed, so a phone reaches any of them in one
+                    tap; the chosen one opens in place with what to do with it. */}
+                <ol ref={list} className="mt-2 grid gap-px border-y border-border">
+                  {shown.map((e, i) => {
+                    const active = i === at;
+                    return (
+                      <li key={e.id} className="relative">
+                        <span aria-hidden="true" className={`absolute left-0 top-0 h-full w-[3px] bg-fg ${active ? "opacity-100" : "opacity-0"}`} />
+                        <button
+                          type="button"
+                          aria-current={active ? "true" : undefined}
+                          aria-expanded={active}
+                          onClick={() => setFocus(i)}
+                          className={`flex min-h-12 w-full items-center gap-3 py-2 pr-3 text-left transition-[background-color,color,padding] motion-reduce:transition-none ${
+                            active ? "bg-fg/[0.06] pl-5 text-fg" : "pl-3 text-fg-muted hover:bg-fg/[0.03] hover:text-fg"
+                          }`}
+                        >
+                          <span aria-hidden="true" className="font-meta w-6 shrink-0 text-[0.625rem] tracking-[0.14em] text-fg-subtle">
+                            {pad(i + 1)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className={`block text-sm font-semibold uppercase tracking-[0.02em] [overflow-wrap:anywhere] ${active ? "" : "line-clamp-2"}`}>{e.title}</span>
+                            <span className="font-meta mt-0.5 block text-[0.6875rem] uppercase tracking-[0.1em] text-fg-subtle">
+                              {[e.dateLabel || tw("noDate"), e.published ? tw("published") : tw("draft")].join(" · ")}
+                            </span>
+                          </span>
+                        </button>
+                        {active && (
+                          <div className="bg-fg/[0.03] pb-3 pl-5 pr-3">
+                            {e.location && <p className="font-meta pt-1 text-xs uppercase tracking-[0.1em] text-fg-muted">{e.location}</p>}
+                            <GameMenu label={e.title} items={actions} focus={actionAt} onFocus={setAction} className="mt-2" />
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
               </section>
             )}
           </>

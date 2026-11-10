@@ -309,3 +309,30 @@ export async function exportCosplanPng(composition: CosplanComposition, images: 
     canvas.width = canvas.height = 1;
   }
 }
+
+/**
+ * Black or white, whichever reads better over the background inside `box`
+ * (poster units), so new text is never white on a light poster. White when
+ * the background can't be read (no image yet, or a tainted canvas).
+ */
+export function cosplanInkFor(background: CanvasImageSource | null | undefined, composition: CosplanComposition, box: { x: number; y: number; width: number; height: number }) {
+  if (!background || typeof document === "undefined") return "#ffffff";
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 24;
+    canvas.height = 12;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return "#ffffff";
+    const sx = composition.width ? 24 / box.width : 1;
+    const sy = composition.height ? 12 / box.height : 1;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, 24, 12);
+    ctx.drawImage(background, -box.x * sx, -box.y * sy, composition.width * sx, composition.height * sy);
+    const { data } = ctx.getImageData(0, 0, 24, 12);
+    let luma = 0;
+    for (let i = 0; i < data.length; i += 4) luma += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+    return luma / (data.length / 4) > 150 ? "#111111" : "#ffffff";
+  } catch {
+    return "#ffffff";
+  }
+}
