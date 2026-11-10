@@ -103,7 +103,7 @@ export default function SharepostPhotos() {
   const dragRef = useRef(drag);
   dragRef.current = drag;
   useStageDrag((input) => {
-    if (!scene || !studio.metrics || input.phase === "wheel") return false;
+    if (!scene || !studio.metrics || input.phase === "wheel" || input.phase === "hover") return false;
     if (input.phase === "down") {
       if (dragRef.current) return false;
       const id = photoAt(scene, studio.metrics, input.clientX, input.clientY, input.rect);

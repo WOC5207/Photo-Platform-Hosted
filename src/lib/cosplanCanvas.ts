@@ -1,4 +1,4 @@
-import { cosplanCharacterNames, type CosplanComposition, type CosplanImageLayer, type CosplanSlot, type CosplanTextLayer } from "./cosplanTypes";
+import { cosplanCharacterNames, cosplanNameOutline, type CosplanComposition, type CosplanImageLayer, type CosplanSlot, type CosplanTextLayer } from "./cosplanTypes";
 
 /**
  * Paints a Cosplan poster on a plain 2D canvas, for the 3D site's easel and
@@ -59,6 +59,8 @@ interface TextBox {
   height?: number;
   wrap: "word" | "none";
   verticalAlign: "top" | "middle";
+  /** A line drawn around the letters, under their fill (Konva's stroke with fillAfterStrokeEnabled). */
+  outline?: { color: string; width: number };
 }
 
 /** Konva's Text line breaking (_setTextData), without ellipsis or letter spacing. */
@@ -140,6 +142,12 @@ function drawText(ctx: CanvasRenderingContext2D, box: TextBox) {
   ctx.translate(box.padding, alignY + box.padding);
   for (const line of lines) {
     const x = box.align === "right" ? totalWidth - line.width - box.padding * 2 : box.align === "center" ? (totalWidth - line.width - box.padding * 2) / 2 : 0;
+    if (box.outline) {
+      ctx.lineJoin = "round";
+      ctx.lineWidth = box.outline.width;
+      ctx.strokeStyle = box.outline.color;
+      ctx.strokeText(line.text, x, baseline);
+    }
     ctx.fillText(line.text, x, baseline);
     if (lines.length > 1) baseline += lineHeightPx;
   }
@@ -218,8 +226,9 @@ function paintNames(ctx: CanvasRenderingContext2D, composition: CosplanCompositi
     const text = field.text.replace(/\s+/g, " ");
     ctx.save();
     const size = nameSize(ctx, text, field);
+    const outline = cosplanNameOutline(field.fill);
     ctx.translate(field.x, field.y);
-    drawText(ctx, { text, size, family: "Arial", bold: field.bold, fill: field.fill, align: field.align, lineHeight: 1, padding: 2, width: field.width, height: field.height, wrap: "none", verticalAlign: "middle" });
+    drawText(ctx, { text, size, family: "Arial", bold: field.bold, fill: field.fill, align: field.align, lineHeight: 1, padding: 2, width: field.width, height: field.height, wrap: "none", verticalAlign: "middle", outline: { color: outline.color, width: size * outline.width } });
     ctx.restore();
   }
 }
@@ -298,5 +307,32 @@ export async function exportCosplanPng(composition: CosplanComposition, images: 
     return await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("exportFailed"))), "image/png"));
   } finally {
     canvas.width = canvas.height = 1;
+  }
+}
+
+/**
+ * Black or white, whichever reads better over the background inside `box`
+ * (poster units), so new text is never white on a light poster. White when
+ * the background can't be read (no image yet, or a tainted canvas).
+ */
+export function cosplanInkFor(background: CanvasImageSource | null | undefined, composition: CosplanComposition, box: { x: number; y: number; width: number; height: number }) {
+  if (!background || typeof document === "undefined") return "#ffffff";
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 24;
+    canvas.height = 12;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return "#ffffff";
+    const sx = composition.width ? 24 / box.width : 1;
+    const sy = composition.height ? 12 / box.height : 1;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, 24, 12);
+    ctx.drawImage(background, -box.x * sx, -box.y * sy, composition.width * sx, composition.height * sy);
+    const { data } = ctx.getImageData(0, 0, 24, 12);
+    let luma = 0;
+    for (let i = 0; i < data.length; i += 4) luma += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+    return luma / (data.length / 4) > 150 ? "#111111" : "#ffffff";
+  } catch {
+    return "#ffffff";
   }
 }

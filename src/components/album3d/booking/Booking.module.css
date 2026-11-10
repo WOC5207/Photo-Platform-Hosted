@@ -12,6 +12,36 @@
   scrollbar-width: thin;
   padding-right: 12px;
 }
+/* More of a long panel lies below: a bar at its foot, over a short fade of
+   the page colour, scrolls on. Phones scroll the whole sheet, so they leave
+   it out. */
+.more {
+  position: sticky;
+  bottom: 0;
+  margin-top: 8px;
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-top: 1px solid var(--color-border-strong);
+  background: var(--color-page);
+  box-shadow: 0 -28px 24px -4px var(--color-page);
+  font-family: var(--font-meta, ui-monospace, monospace);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-fg-muted);
+}
+.more:hover {
+  color: var(--color-fg);
+}
+@media (max-aspect-ratio: 105/100) {
+  .more {
+    display: none;
+  }
+}
 /* Rises in with the scene's wipe (the fade and its timing are ArchiveSite.module.css's). */
 .panel:global(#main-content)[data-expanded] {
   animation-name: panel-rise;

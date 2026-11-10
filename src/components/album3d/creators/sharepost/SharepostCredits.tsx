@@ -47,7 +47,7 @@ export default function SharepostCredits() {
   // Drag the credits block along the poster.
   const drag = useRef<{ x: number; start: number; travel: number } | null>(null);
   useStageDrag((input) => {
-    if (input.phase === "wheel" || !scene || !studio.metrics || !tools) return false;
+    if (input.phase === "wheel" || input.phase === "hover" || !scene || !studio.metrics || !tools) return false;
     if (input.phase === "down") {
       const text = studio.metrics.text;
       const at = matPoint(scene, studio.metrics, input.clientX, input.clientY, input.rect);

@@ -456,15 +456,15 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
         {!booked && (
           <>
             <LocalTimeNote />
-            <p className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-fg-muted">
-              <Link href={`/book/${schedule.token}/check`} className="underline-offset-4 hover:text-fg hover:underline">
+            <p className="mt-2 flex flex-wrap gap-x-6 text-xs text-fg-muted">
+              <Link href={`/book/${schedule.token}/check`} className="inline-flex min-h-11 items-center underline-offset-4 hover:text-fg hover:underline">
                 {tb("alreadyBooked")} {tb("checkBookingButton")} ↗
               </Link>
               {schedule.drawToken && (
                 <Link
                   href={path({ kind: "draw", username: schedule.username, token: schedule.drawToken })}
                   scroll={false}
-                  className="underline-offset-4 hover:text-fg hover:underline"
+                  className="inline-flex min-h-11 items-center underline-offset-4 hover:text-fg hover:underline"
                 >
                   {t("crumbDraw")} →
                 </Link>

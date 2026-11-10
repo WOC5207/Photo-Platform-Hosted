@@ -9,7 +9,8 @@ export async function GET(request: NextRequest) {
   }
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   const page = Math.max(1, Math.min(50, Number.parseInt(request.nextUrl.searchParams.get("page") ?? "1", 10) || 1));
-  if (query.length < 2 || query.length > 80) return NextResponse.json({ error: "invalidQuery" }, { status: 400 });
+  // One character is a whole name for some characters (祀, 年, L), so only an empty search is refused.
+  if (query.length < 1 || query.length > 80) return NextResponse.json({ error: "invalidQuery" }, { status: 400 });
   try {
     const result = await searchBangumiCharacters(query, page);
     return NextResponse.json({
