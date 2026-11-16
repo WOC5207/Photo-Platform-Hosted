@@ -118,6 +118,8 @@ export default function SharingPosterCreditLayers({
   const [dragId, setDragId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAbove, setMenuAbove] = useState(false);
+  const [menuMax, setMenuMax] = useState<number | null>(null);
+  const [menuReveal, setMenuReveal] = useState(0);
   const [focusTarget, setFocusTarget] = useState<FocusTarget>(null);
   const [movedId, setMovedId] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -143,17 +145,45 @@ export default function SharingPosterCreditLayers({
 
   useEffect(() => () => endDragRef.current?.(), []);
 
-  // Open upward when the menu would run off the bottom of the screen and
-  // fits above the button; measured before paint, so it never flickers.
+  // The menu opens below the button when it fits there, else above when it
+  // fits there. "Fits" is measured against what can actually be seen: the
+  // screen, cut down to the nearest scrolling panel (the phone creator's
+  // sheet clips whatever leaves it, which hid the top of the menu when few
+  // lines stood above the button). With room on neither side it opens below
+  // with its choices two to a row, so all of them show in a short panel; it
+  // is never taller than the panel, and the panel scrolls to show all of it.
+  // Measured before paint, so it never flickers.
   useLayoutEffect(() => {
     if (!menuOpen) {
       setMenuAbove(false);
+      setMenuMax(null);
       return;
     }
-    const menu = menuRef.current?.getBoundingClientRect();
+    const menuNode = menuRef.current;
     const button = addButtonRef.current?.getBoundingClientRect();
-    if (menu && button && menu.bottom > window.innerHeight && button.top - menu.height > 0) setMenuAbove(true);
+    if (!menuNode || !button) return;
+    const menu = menuNode.getBoundingClientRect();
+    let top = 0;
+    let bottom = window.innerHeight;
+    for (let node = menuNode.parentElement; node && node !== document.body; node = node.parentElement) {
+      const overflow = getComputedStyle(node).overflowY;
+      if (overflow === "visible") continue;
+      const rect = node.getBoundingClientRect();
+      top = Math.max(top, rect.top);
+      bottom = Math.min(bottom, rect.bottom);
+    }
+    const gap = 16;
+    if (menu.height <= bottom - button.bottom - gap) return;
+    if (menu.height <= button.top - top - gap) {
+      setMenuAbove(true);
+      return;
+    }
+    setMenuMax(Math.max(160, Math.min(menu.height, bottom - top - gap)));
+    setMenuReveal((n) => n + 1);
   }, [menuOpen]);
+  useEffect(() => {
+    if (menuReveal) menuRef.current?.scrollIntoView({ block: "nearest" });
+  }, [menuReveal]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -401,14 +431,17 @@ export default function SharingPosterCreditLayers({
             role="menu"
             aria-label={t("addCreditLine")}
             onKeyDown={onMenuKeyDown}
-            className={`absolute left-0 z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border-strong bg-raised p-2 shadow-[0_18px_48px_rgb(0_0_0/0.16)] ${
+            style={menuMax ? { maxHeight: menuMax } : undefined}
+            className={`absolute left-0 z-50 w-72 max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-xl border border-border-strong bg-raised p-2 shadow-[0_18px_48px_rgb(0_0_0/0.16)] ${
+              menuMax ? "grid grid-cols-2 content-start gap-x-1" : ""
+            } ${
               menuAbove ? "bottom-[calc(100%+0.5rem)]" : "top-[calc(100%+0.5rem)]"
             }`}
           >
             {SHARING_POSTER_CREDIT_KINDS.map((kind, index) => {
               const hint = KIND_HINTS[kind];
               return (
-                <div key={kind}>
+                <div key={kind} className={kind === "custom" ? "col-span-2" : undefined}>
                   {kind === "custom" && <div role="separator" className="my-1 border-t border-border" />}
                   <button
                     ref={(element) => {
