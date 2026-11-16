@@ -115,10 +115,12 @@ export type StageInput =
  * Raw pointers and the wheel on the stage, for screens that edit what is on
  * it (the poster creators). A screen that answers true to "down" or "wheel"
  * takes that pointer, or that wheel step, and the engine's taps and swipes
- * leave it alone.
+ * leave it alone. "hover" is a mouse moving with no button down: a screen
+ * that answers true has set the pointer's shape with `cursor`.
  */
 export type StageDrag =
   | { phase: "down" | "move" | "up" | "cancel"; id: number; clientX: number; clientY: number; rect: DOMRect }
+  | { phase: "hover"; clientX: number; clientY: number; rect: DOMRect; cursor: (shape: string) => void }
   | { phase: "wheel"; deltaY: number; clientX: number; clientY: number; rect: DOMRect };
 
 /** What the engine needs from a scene module it loads on demand. */
@@ -2311,6 +2313,14 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     }
     if (mode === "carousel" || mode === "table" || mode === "stage") {
       if (carryMove(e)) return;
+      if (
+        mode === "stage" &&
+        e.pointerType === "mouse" &&
+        e.buttons === 0 &&
+        stageDrag?.({ phase: "hover", clientX: e.clientX, clientY: e.clientY, rect: canvasRect(), cursor: (shape) => (canvas.style.cursor = shape) })
+      ) {
+        return;
+      }
       return stagePointerMove(e);
     }
     if (mode !== "field") return;

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import type { CosplanImageLayer, CosplanLayer, CosplanSlot, CosplanTextLayer } from "@/lib/cosplanTypes";
-import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, cosplanUploadError, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter } from "@/lib/cosplanDraft";
-import { renderCosplan } from "@/lib/cosplanCanvas";
+import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, cosplanUploadError, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter, type CosplanSlotFit } from "@/lib/cosplanDraft";
+import { renderCosplan, cosplanInkFor } from "@/lib/cosplanCanvas";
 import { Roll, pad } from "../../hud";
 import { fieldClass, metaLabel, secondaryClass, useStage } from "../../booking/shared";
 import { ENTER, ICONS, PhoneBack, PhoneIcon, PhoneSheet, PhoneShell, PhoneToolbar, cssColor, fitCanvas, usePosterFit, usePosterMorph, useStripMotion, type PhoneTool } from "../phone";
@@ -109,14 +109,14 @@ export default function CosplanPhoneBoard() {
     const layers = composition && restackLayers(composition.layers, layer, delta);
     if (composition && layers) studio.apply({ ...composition, layers });
   };
-  const moveToSlot = (layer: CosplanImageLayer, slotId: string) => {
+  const moveToSlot = (layer: CosplanImageLayer, slotId: string, fit?: CosplanSlotFit) => {
     const slot = slots.find((item) => item.id === slotId);
     if (!slot) {
       update(layer.id, { slotId: undefined, slot: undefined });
       setTarget({ layer: layer.id });
       return;
     }
-    update(layer.id, fitInSlot(layer, slot));
+    update(layer.id, fitInSlot(layer, slot, fit));
     setTarget({ slot: slot.id, layer: layer.id });
   };
 
@@ -165,7 +165,7 @@ export default function CosplanPhoneBoard() {
   const search = async (page = 1, event?: FormEvent) => {
     event?.preventDefault();
     const q = (page === 1 ? query : searched.query).trim();
-    if (q.length < 2) return;
+    if (!q) return;
     setSearchState("loading");
     try {
       const response = await fetch(`/api/cosplan/characters/search?q=${encodeURIComponent(q)}&page=${page}`);
@@ -214,7 +214,11 @@ export default function CosplanPhoneBoard() {
       setNotice(t("creatorTextLimit", { count: COSPLAN_TEXT_LIMIT }));
       return;
     }
-    const layer: CosplanTextLayer = { id: crypto.randomUUID(), type: "text", name: tc("textLayer"), text: tc("newText"), x: composition.width * 0.12, y: composition.height * 0.1, width: composition.width * 0.76, rotation: 0, fontSize: Math.max(28, composition.width * 0.045), fill: "#ffffff", align: "center", bold: true, fontFamily: "Arial" };
+    const fontSize = Math.max(28, composition.width * 0.045);
+    const box = { x: composition.width * 0.12, y: composition.height * 0.1, width: composition.width * 0.76, height: fontSize * 1.4 };
+    // Black or white, whichever shows over the poster where the text lands.
+    const fill = cosplanInkFor(studio.images.background, composition, box);
+    const layer: CosplanTextLayer = { id: crypto.randomUUID(), type: "text", name: tc("textLayer"), text: tc("newText"), x: box.x, y: box.y, width: box.width, rotation: 0, fontSize, fill, align: "center", bold: true, fontFamily: "Arial" };
     studio.begin();
     studio.apply({ ...composition, layers: [...composition.layers, layer] }, false);
     editText(layer, true);
@@ -538,7 +542,7 @@ export default function CosplanPhoneBoard() {
               liveProps={liveProps}
               onChange={(patch) => liveUpdate(selected.id, patch)}
               onTransform={(factor, turn) => liveUpdate(selected.id, transformLayer(selected, factor, turn))}
-              onSlot={(slotId) => selected.type === "image" && moveToSlot(selected, slotId)}
+              onSlot={(slotId, fit) => selected.type === "image" && moveToSlot(selected, slotId, fit)}
               onRestack={(delta) => restack(selected, delta)}
               onEditText={() => selected.type === "text" && editText(selected)}
             />
@@ -635,7 +639,7 @@ function SearchSheet({
       <form onSubmit={(event) => onSearch(1, event)} className="sticky top-0 z-10 flex gap-2 bg-page pb-2 pt-1">
         <label className="sr-only" htmlFor="cosplan-phone-search">{tc("searchPlaceholder")}</label>
         <input id="cosplan-phone-search" type="search" enterKeyHint="search" autoComplete="off" value={query} onChange={(event) => onQuery(event.target.value)} placeholder={tc("searchPlaceholder")} className={fieldClass} />
-        <button type="submit" className={`${secondaryClass} shrink-0 px-3`} disabled={state === "loading" || query.trim().length < 2}>{state === "loading" ? tc("searching") : tc("search")}</button>
+        <button type="submit" className={`${secondaryClass} shrink-0 px-3`} disabled={state === "loading" || !query.trim()}>{state === "loading" ? tc("searching") : tc("search")}</button>
       </form>
       <p aria-live="polite" className="min-h-5 text-xs text-fg-muted">
         {state === "error"
@@ -654,7 +658,7 @@ function SearchSheet({
                 <span className="relative block aspect-[3/4] overflow-hidden border border-border-strong bg-fg/[0.06]">
                   {result.thumbnailUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={result.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover object-top" />
+                    <img src={result.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-contain" />
                   ) : (
                     <span className="grid h-full place-items-center text-[0.625rem] text-fg-subtle">{tc("noImage")}</span>
                   )}
@@ -699,7 +703,7 @@ function ArrangeSheet({
   liveProps: LiveProps;
   onChange: (patch: Partial<CosplanLayer>) => void;
   onTransform: (factor: number, turn: number) => void;
-  onSlot: (slotId: string) => void;
+  onSlot: (slotId: string, fit?: CosplanSlotFit) => void;
   onRestack: (delta: number) => void;
   onEditText: () => void;
 }) {
@@ -738,7 +742,7 @@ function ArrangeSheet({
       {layer.type === "image" && (
         <>
           {slots.length > 0 && (
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+            <div className="grid gap-2">
               <label className="grid gap-1 text-sm font-semibold text-fg-muted">
                 {tc("assignedSlot")}
                 <select value={layer.slotId ?? ""} onChange={(event) => onSlot(event.target.value)} className={fieldClass}>
@@ -748,7 +752,12 @@ function ArrangeSheet({
                   ))}
                 </select>
               </label>
-              <button type="button" disabled={!slot} onClick={() => slot && onSlot(slot.id)} className={`${small} disabled:opacity-30`}>{t("creatorFitSlot")}</button>
+              {slot && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => onSlot(slot.id, "fill")} className={small}>{t("creatorFillSlot")}</button>
+                  <button type="button" onClick={() => onSlot(slot.id, "whole")} className={small}>{t("creatorWholeInSlot")}</button>
+                </div>
+              )}
             </div>
           )}
           <label className="grid gap-1 text-sm font-semibold text-fg-muted">

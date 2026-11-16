@@ -41,6 +41,8 @@ export interface RailCard {
   image: CanvasImageSource | null;
   label: string;
   sub?: string;
+  /** "contain" shows the whole image inside the card's window; the default covers the window and crops. */
+  fit?: "cover" | "contain";
 }
 
 
@@ -373,11 +375,18 @@ export function createPosterStage(context: {
       const iw = image.naturalWidth || image.width;
       const ih = image.naturalHeight || image.height;
       if (iw > 0 && ih > 0) {
-        // Cover the image area, as a print in a card window.
         const box = (w - pad * 2) / imageH;
-        const sw = iw / ih > box ? ih * box : iw;
-        const sh = iw / ih > box ? ih : iw / box;
-        c.drawImage(image, (iw - sw) / 2, (ih - sh) / 2, sw, sh, pad, pad, w - pad * 2, imageH);
+        if (data.fit === "contain") {
+          // The whole image, so a character is chosen by its face rather than its middle.
+          const dw = iw / ih > box ? w - pad * 2 : imageH * (iw / ih);
+          const dh = iw / ih > box ? (w - pad * 2) / (iw / ih) : imageH;
+          c.drawImage(image, pad + (w - pad * 2 - dw) / 2, pad + (imageH - dh) / 2, dw, dh);
+        } else {
+          // Cover the image area, as a print in a card window.
+          const sw = iw / ih > box ? ih * box : iw;
+          const sh = iw / ih > box ? ih : iw / box;
+          c.drawImage(image, (iw - sw) / 2, (ih - sh) / 2, sw, sh, pad, pad, w - pad * 2, imageH);
+        }
       }
     }
     c.fillStyle = palette.dark ? "#f2ede6" : "#1c1a16";
@@ -396,7 +405,7 @@ export function createPosterStage(context: {
     railCards.forEach((data, i) => {
       const card = built.get(data.key);
       if (!card || Math.abs(i - railFocus) > RAIL_REACH) return;
-      const signature = `${data.label}|${data.sub ?? ""}|${data.image ? "i" : "-"}`;
+      const signature = `${data.label}|${data.sub ?? ""}|${data.image ? "i" : "-"}|${data.fit ?? ""}`;
       if (card.painted === signature && card.mesh.userData.image === data.image) return;
       card.painted = signature;
       card.mesh.userData.image = data.image;

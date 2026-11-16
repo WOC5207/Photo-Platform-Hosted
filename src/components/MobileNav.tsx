@@ -94,7 +94,7 @@ export default function MobileNav({
           id="public-mobile-navigation"
           aria-label={labels.menu}
           inert={leaving}
-          className="dialog-panel absolute right-0 top-full z-50 mt-2 flex w-52 flex-col gap-1 rounded-xl border border-border bg-raised/95 p-2 text-sm shadow-xl backdrop-blur-xl"
+          className="dialog-panel absolute right-0 top-full z-50 mt-2 flex w-52 flex-col gap-1 rounded-xl border border-border bg-raised p-2 text-sm shadow-xl"
         >
           <Link href="/" onClick={() => setOpen(false)} className={linkClass}>
             {labels.directory}

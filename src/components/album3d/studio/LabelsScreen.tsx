@@ -115,6 +115,7 @@ export default function LabelsScreen({ account, labels }: { account: StudioAccou
   const [busy, setBusy] = useState<"pdf" | "png" | "print" | null>(null);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const backgroundRef = useRef("");
+  const pickList = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
     try {
@@ -236,7 +237,10 @@ export default function LabelsScreen({ account, labels }: { account: StudioAccou
   };
   const turn = (delta: number) => {
     const next = items[Math.max(0, Math.min(items.length - 1, index + delta))];
-    if (next) setFocusId(next.id);
+    if (!next) return;
+    setFocusId(next.id);
+    // The arrows, wheel and rail keep the focused row in view.
+    requestAnimationFrame(() => pickList.current?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView({ block: "nearest" }));
   };
 
   useScreenKeys((k, target) => {
@@ -336,19 +340,45 @@ export default function LabelsScreen({ account, labels }: { account: StudioAccou
                   </select>
                 </label>
               </div>
-              {item ? (
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border border-border-strong bg-page/70 px-3 py-2">
-                  {items.length > 1 && <StepButtons onStep={turn} atStart={index === 0} atEnd={index >= items.length - 1} />}
-                  <div className="min-w-[8rem] flex-1">
+              {items.length > 0 ? (
+                <>
+                  <div className="flex items-center justify-between gap-2">
                     <p className={metaLabel}>
                       <Rolling value={pad(index + 1)} /> / {pad(items.length)}
                     </p>
-                    <p className="truncate text-sm font-semibold">{item.name}</p>
+                    {items.length > 1 && <StepButtons onStep={turn} atStart={index === 0} atEnd={index >= items.length - 1} />}
                   </div>
-                  <button type="button" aria-pressed={selected.has(item.id)} onClick={() => toggle(item.id)} className={secondaryClass}>
-                    {selected.has(item.id) ? t("studioOffSheet") : t("studioToSheet")}
-                  </button>
-                </div>
+                  {/* Every item is listed with its own tick, so a sheet is built
+                      in a few taps; the last one tapped shows on the easel. */}
+                  <ul ref={pickList} aria-label={tq("selectTitle")} className="grid gap-px border-y border-border">
+                    {items.map((g, i) => {
+                      const on = selected.has(g.id);
+                      const active = i === index;
+                      return (
+                        <li key={g.id}>
+                          <button
+                            type="button"
+                            aria-pressed={on}
+                            aria-current={active ? "true" : undefined}
+                            onClick={() => {
+                              setFocusId(g.id);
+                              toggle(g.id);
+                            }}
+                            className={`flex min-h-11 w-full items-center gap-3 px-3 py-1.5 text-left transition-colors ${active ? "bg-fg/[0.06] text-fg" : "text-fg-muted hover:bg-fg/[0.03] hover:text-fg"}`}
+                          >
+                            <span aria-hidden="true" className={`flex h-5 w-5 shrink-0 items-center justify-center border text-xs ${on ? "border-fg bg-fg text-page" : "border-border-strong"}`}>
+                              {on ? "✓" : ""}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold">{g.name}</span>
+                              <span className="font-meta block truncate text-[0.6875rem] uppercase tracking-[0.1em] text-fg-subtle">{g.category}</span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
               ) : (
                 <p className="text-sm text-fg-subtle">{tq("noMatches")}</p>
               )}
@@ -367,7 +397,7 @@ export default function LabelsScreen({ account, labels }: { account: StudioAccou
               </div>
             </>
           )}
-          <Link href={`${path({ kind: "studio", username, page: "equipmentNew" })}?for=labels`} scroll={false} className="text-sm font-semibold underline-offset-4 hover:underline">
+          <Link href={`${path({ kind: "studio", username, page: "equipmentNew" })}?for=labels`} scroll={false} className="inline-flex min-h-11 items-center text-sm font-semibold underline-offset-4 hover:underline">
             + {tq("addEquipment")}
           </Link>
         </section>

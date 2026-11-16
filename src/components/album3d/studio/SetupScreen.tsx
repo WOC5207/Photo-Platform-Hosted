@@ -110,8 +110,8 @@ export default function SetupScreen({ setup }: { setup: StudioSetup }) {
           </form>
         )}
       </section>
-      <form action={logout3d} className="mt-6">
-        <button type="submit" className="text-xs text-fg-subtle underline-offset-4 hover:text-fg hover:underline">
+      <form action={logout3d} className="mt-4">
+        <button type="submit" className="inline-flex min-h-11 items-center text-xs text-fg-subtle underline-offset-4 hover:text-fg hover:underline">
           {t("logOutInstead")}
         </button>
       </form>

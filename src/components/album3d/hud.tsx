@@ -123,15 +123,32 @@ export function GameMenu({
                   {pad(i + 1)}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-lg font-bold uppercase tracking-[0.02em] wide:text-[1.625rem] max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:leading-tight">{item.label}</span>
+                  {/* The focused item shows its whole label and line; the others are cut to keep the menu short, and an item with a value beside it wraps to two lines instead of losing its end. */}
+                  <span
+                    className={`block text-lg font-bold uppercase tracking-[0.02em] wide:text-[1.625rem] ${
+                      active
+                        ? "whitespace-normal leading-tight [overflow-wrap:anywhere]"
+                        : item.value !== undefined
+                          ? "line-clamp-2 leading-tight"
+                          : "truncate max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:leading-tight"
+                    }`}
+                  >
+                    {item.label}
+                  </span>
                   {item.sub && (
-                    <span className="font-meta mt-0.5 block truncate text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle max-sm:line-clamp-2 max-sm:whitespace-normal">{item.sub}</span>
+                    <span
+                      className={`font-meta mt-0.5 block text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle ${
+                        active ? "whitespace-normal [overflow-wrap:anywhere]" : "truncate max-sm:line-clamp-2 max-sm:whitespace-normal"
+                      }`}
+                    >
+                      {item.sub}
+                    </span>
                   )}
                 </span>
                 {item.value !== undefined ? (
                   <span className="font-meta flex shrink-0 items-center gap-2 text-xs uppercase tracking-[0.12em]">
                     <span aria-hidden="true" className={active ? "opacity-100" : "opacity-0"}>‹</span>
-                    <span className="min-w-[5.5rem] text-center">{item.value}</span>
+                    <span className="min-w-[3.5rem] text-center">{item.value}</span>
                     <span aria-hidden="true" className={active ? "opacity-100" : "opacity-0"}>›</span>
                   </span>
                 ) : (

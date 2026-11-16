@@ -67,14 +67,16 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
   const qr = useQrImage(locale, item?.qrToken ?? "");
   const list = useRef<HTMLOListElement>(null);
 
-  // Keeps the focused row in view inside the list without scrolling the panel.
+  // Brings the focused row into view when the arrows, wheel or rail move the
+  // focus; the first render leaves the panel at its top.
+  const settled = useRef(false);
   useEffect(() => {
-    const ol = list.current;
-    const row = ol?.querySelector<HTMLElement>('[aria-current="true"]')?.parentElement;
-    if (!ol || !row) return;
-    if (row.offsetTop < ol.scrollTop) ol.scrollTop = row.offsetTop;
-    else if (row.offsetTop + row.offsetHeight > ol.scrollTop + ol.clientHeight) ol.scrollTop = row.offsetTop + row.offsetHeight - ol.clientHeight;
-  }, [index, items]);
+    if (!settled.current) {
+      settled.current = true;
+      return;
+    }
+    list.current?.querySelector<HTMLElement>('[aria-current="true"]')?.parentElement?.scrollIntoView({ block: "nearest" });
+  }, [focusId]);
 
   // ------------------------------------------------------------- scene --
   useEffect(() => {
@@ -146,11 +148,11 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
       <BookingPanel expanded work>
         <StudioHeading trail={t("studioEquipment")} title={t("studioEquipment")} />
 
-        <Link href={path({ kind: "studio", username, page: "equipmentNew" })} scroll={false} className={`${primaryClass} mt-6 w-full`}>
-          {te("addEquipment")}
-          <span aria-hidden="true" className="text-lg">+</span>
-        </Link>
-        <nav aria-label={te("equipmentActions")} className="mt-2 grid grid-cols-2 gap-2">
+        <nav aria-label={te("equipmentActions")} className="mt-5 grid grid-cols-2 gap-2">
+          <Link href={path({ kind: "studio", username, page: "equipmentNew" })} scroll={false} className={`${primaryClass} text-xs`}>
+            {te("addEquipment")}
+            <span aria-hidden="true" className="text-lg leading-none">+</span>
+          </Link>
           {(
             [
               ["labels", te("printQrLabels")],
@@ -190,7 +192,19 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
               />
             </label>
             {items.length > 0 && (
-              <ol ref={list} aria-label={t("studioGearList")} className={`${styles.gearList} relative mt-3 grid gap-px border-y border-border`}>
+              <div className="mt-4 flex items-center justify-between gap-2">
+                <p className={metaLabel}>
+                  {t("studioGearCount")}{" "}
+                  <span className="text-fg">
+                    <Rolling value={pad(index + 1)} />
+                  </span>{" "}
+                  / {pad(items.length)}
+                </p>
+                {items.length > 1 && <StepButtons onStep={turn} atStart={index === 0} atEnd={index >= items.length - 1} />}
+              </div>
+            )}
+            {items.length > 0 && (
+              <ol ref={list} aria-label={t("studioGearList")} className="relative mt-2 grid gap-px border-y border-border">
                 {items.map((g, i) => {
                   const active = i === index;
                   return (
@@ -199,6 +213,7 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
                       <button
                         type="button"
                         aria-current={active ? "true" : undefined}
+                        aria-expanded={active}
                         onClick={() => setFocusId(g.id)}
                         className={`flex min-h-11 w-full items-center gap-3 py-1.5 pr-3 text-left transition-[background-color,color,padding] motion-reduce:transition-none ${
                           active ? "bg-fg/[0.06] pl-5 text-fg" : "pl-3 text-fg-muted hover:bg-fg/[0.03] hover:text-fg"
@@ -215,6 +230,62 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
                           </span>
                         </span>
                       </button>
+                      {active && item && (
+                        <div className="grid gap-3 border-l-[3px] border-fg bg-fg/[0.03] px-3 pb-4 pt-2">
+                          <p className="font-meta text-[0.6875rem] uppercase tracking-[0.12em] text-fg-subtle">
+                            {[equipmentUid(item), item.serialNumber && `${te("serialShort")} ${item.serialNumber}`].filter(Boolean).join(" · ")}
+                          </p>
+                      <div role="group" aria-label={`${te("setInventoryStatus")}: ${item.name}`} className="grid grid-cols-3 gap-1">
+                        {QUICK_EQUIPMENT_STATUSES.map((choice) => (
+                          <form key={choice} action={setEquipmentStatus} className="flex">
+                            <input type="hidden" name="id" value={item.id} />
+                            <input type="hidden" name="status" value={choice} />
+                            <button
+                              type="submit"
+                              aria-pressed={item.status === choice}
+                              disabled={item.status === choice}
+                              className={`min-h-11 flex-1 border px-2 text-xs font-semibold uppercase tracking-[0.06em] transition ${
+                                item.status === choice ? QUICK_ON[choice] : "border-border-strong hover:border-fg"
+                              }`}
+                            >
+                              {te(STATUS_KEY[choice])}
+                            </button>
+                          </form>
+                        ))}
+                      </div>
+                      {!QUICK_EQUIPMENT_STATUSES.some((s) => s === item.status) && (
+                        <p className="text-sm text-fg-muted">
+                          {te("currentStatus")}: {te(STATUS_KEY[item.status])}
+                        </p>
+                      )}
+                      {item.statusNote && <p className="border-l-2 border-accent pl-3 text-sm text-fg-muted">{item.statusNote}</p>}
+                      {item.notes && <p className="whitespace-pre-wrap text-sm text-fg-muted">{item.notes}</p>}
+                      <div className="grid grid-cols-2 gap-2">
+                        <Link href={path({ kind: "studio", username, page: "equipmentItem", id: item.id })} scroll={false} className={secondaryClass}>
+                          {te("editEquipment")}
+                          <span aria-hidden="true" className="ml-auto">→</span>
+                        </Link>
+                        <Link
+                          href={`${path({ kind: "studio", username, page: "labels" })}?selected=${encodeURIComponent(item.id)}`}
+                          scroll={false}
+                          className={secondaryClass}
+                        >
+                          {tq("printLabels", { count: 1 })}
+                          <span aria-hidden="true" className="ml-auto">→</span>
+                        </Link>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <form action={rotateEquipmentQr}>
+                          <input type="hidden" name="id" value={item.id} />
+                          <ConfirmSubmit label={te("replaceQr")} confirmText={te("replaceQrConfirm", { name: item.name })} />
+                        </form>
+                        <form action={deleteEquipment}>
+                          <input type="hidden" name="id" value={item.id} />
+                          <ConfirmSubmit label={te("deleteEquipment")} confirmText={te("deleteEquipmentConfirm", { name: item.name })} />
+                        </form>
+                      </div>
+                        </div>
+                      )}
                     </li>
                   );
                 })}
@@ -223,77 +294,7 @@ export default function EquipmentScreen({ equipment }: { equipment: StudioEquipm
           </>
         )}
 
-        {item ? (
-          <section aria-labelledby="studio-gear-title" className="mt-6 grid gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className={metaLabel}>
-                {t("studioGearCount")}{" "}
-                <span className="text-fg">
-                  <Rolling value={pad(index + 1)} />
-                </span>{" "}
-                / {pad(items.length)}
-              </p>
-              {items.length > 1 && <StepButtons onStep={turn} atStart={index === 0} atEnd={index >= items.length - 1} />}
-            </div>
-            <div>
-              <h2 id="studio-gear-title" className="text-xl font-bold uppercase tracking-[-0.01em]">
-                {item.name}
-              </h2>
-              <p className="font-meta mt-1 text-[0.6875rem] uppercase tracking-[0.12em] text-fg-subtle">
-                {[item.category, equipmentUid(item), item.serialNumber && `${te("serialShort")} ${item.serialNumber}`].filter(Boolean).join(" · ")}
-              </p>
-            </div>
-            <div role="group" aria-label={`${te("setInventoryStatus")}: ${item.name}`} className="grid grid-cols-3 gap-1">
-              {QUICK_EQUIPMENT_STATUSES.map((choice) => (
-                <form key={choice} action={setEquipmentStatus} className="flex">
-                  <input type="hidden" name="id" value={item.id} />
-                  <input type="hidden" name="status" value={choice} />
-                  <button
-                    type="submit"
-                    aria-pressed={item.status === choice}
-                    disabled={item.status === choice}
-                    className={`min-h-11 flex-1 border px-2 text-xs font-semibold uppercase tracking-[0.06em] transition ${
-                      item.status === choice ? QUICK_ON[choice] : "border-border-strong hover:border-fg"
-                    }`}
-                  >
-                    {te(STATUS_KEY[choice])}
-                  </button>
-                </form>
-              ))}
-            </div>
-            {!QUICK_EQUIPMENT_STATUSES.some((s) => s === item.status) && (
-              <p className="text-sm text-fg-muted">
-                {te("currentStatus")}: {te(STATUS_KEY[item.status])}
-              </p>
-            )}
-            {item.statusNote && <p className="border-l-2 border-accent pl-3 text-sm text-fg-muted">{item.statusNote}</p>}
-            {item.notes && <p className="whitespace-pre-wrap text-sm text-fg-muted">{item.notes}</p>}
-            <div className="grid grid-cols-2 gap-2">
-              <Link href={path({ kind: "studio", username, page: "equipmentItem", id: item.id })} scroll={false} className={secondaryClass}>
-                {te("editEquipment")}
-                <span aria-hidden="true" className="ml-auto">→</span>
-              </Link>
-              <Link
-                href={`${path({ kind: "studio", username, page: "labels" })}?selected=${encodeURIComponent(item.id)}`}
-                scroll={false}
-                className={secondaryClass}
-              >
-                {tq("printLabels", { count: 1 })}
-                <span aria-hidden="true" className="ml-auto">→</span>
-              </Link>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <form action={rotateEquipmentQr}>
-                <input type="hidden" name="id" value={item.id} />
-                <ConfirmSubmit label={te("replaceQr")} confirmText={te("replaceQrConfirm", { name: item.name })} />
-              </form>
-              <form action={deleteEquipment}>
-                <input type="hidden" name="id" value={item.id} />
-                <ConfirmSubmit label={te("deleteEquipment")} confirmText={te("deleteEquipmentConfirm", { name: item.name })} />
-              </form>
-            </div>
-          </section>
-        ) : (
+        {!item && (
           <p className="mt-6 text-sm text-fg-muted">
             {equipment.items.length === 0 ? te("emptyInventory") : te("emptyCategory", { name: equipment.categories.find((c) => c.id === category)?.name ?? "" })}
           </p>

@@ -52,6 +52,24 @@ async function bangumiFetch(url: string, init?: RequestInit): Promise<Response> 
   });
 }
 
+/**
+ * Bangumi's order, with names that are exactly the search first and names
+ * that start with it next. A one-character name such as 祀 otherwise sits
+ * among every character whose name merely contains it.
+ */
+export function rankCharacters<T extends { name: string; nameCn: string }>(items: T[], keyword: string): T[] {
+  const wanted = keyword.trim().toLocaleLowerCase();
+  if (!wanted) return items;
+  const rank = (item: T) => {
+    const names = [item.name, item.nameCn].map((name) => name.trim().toLocaleLowerCase()).filter(Boolean);
+    return names.includes(wanted) ? 0 : names.some((name) => name.startsWith(wanted)) ? 1 : 2;
+  };
+  return items
+    .map((item, index) => ({ item, index, rank: rank(item) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(({ item }) => item);
+}
+
 export async function searchBangumiCharacters(query: string, page: number) {
   const keyword = query.trim().slice(0, 80);
   const safePage = Math.max(1, Math.min(50, page));
@@ -67,7 +85,7 @@ export async function searchBangumiCharacters(query: string, page: number) {
   const payload = await response.json() as Record<string, unknown>;
   const rows = Array.isArray(payload.data) ? payload.data : [];
   const value = {
-    items: rows.map(characterFrom).filter((item): item is BangumiCharacter => Boolean(item)),
+    items: rankCharacters(rows.map(characterFrom).filter((item): item is BangumiCharacter => Boolean(item)), keyword),
     total: Number.isFinite(Number(payload.total)) ? Number(payload.total) : rows.length
   };
   searchCache.set(key, { expiresAt: Date.now() + SEARCH_TTL_MS, value });

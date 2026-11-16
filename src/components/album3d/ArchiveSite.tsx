@@ -1141,6 +1141,19 @@ export default function ArchiveSite({
       {(!studyHeader || fallback) && (
         <header className={`pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 px-[var(--edge)] pt-4 sm:gap-4 wide:pt-9 ${fallback ? "z-30 bg-page pb-3" : "z-10"}`}>
           <div className="pointer-events-auto flex items-start gap-10">
+            {/* Phones have no Esc key and no crumbs, so every screen below the
+                main menu gets a Back button beside the name. */}
+            {(screen.kind !== "title" || missing) && mode !== "detail" && (
+              <button
+                type="button"
+                onClick={back}
+                aria-label={t("back")}
+                title={t("back")}
+                className="-ml-3 -mr-10 -mt-2 inline-flex min-h-11 min-w-10 items-center justify-center text-xl transition hover:text-accent-text wide:hidden"
+              >
+                <span aria-hidden="true">←</span>
+              </button>
+            )}
             <Link href={screenPath({ kind: "title" })} className="block leading-none">
               <span className="block text-xl font-extrabold uppercase tracking-[-0.02em] max-[379px]:text-lg wide:text-4xl">{t("brandTop")}</span>
               <span className="mt-1 block text-[0.5625rem] font-semibold uppercase tracking-[0.08em] text-fg-muted wide:text-xs">{t("brandMiddle")}</span>
@@ -1181,7 +1194,8 @@ export default function ArchiveSite({
                 href={screenPath({ kind: "studio", username: viewer.username, page: "home" })}
                 scroll={false}
                 aria-label={t("signedInAs", { name: viewer.name })}
-                className="relative inline-flex min-h-11 min-w-11 max-w-40 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:px-0"
+                title={viewer.name}
+                className="relative inline-flex min-h-11 min-w-11 max-w-40 items-center wide:max-w-80 justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text max-sm:px-0"
               >
                 {/* On phones the name gives way to an account mark with the signed-in dot on its shoulder, so the header's controls all fit. */}
                 <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 shrink-0 sm:hidden" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -1444,7 +1458,7 @@ export default function ArchiveSite({
                         )}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="line-clamp-2 font-bold uppercase leading-tight [overflow-wrap:anywhere]">{album.title}</span>
+                        <span className={`font-bold uppercase leading-tight [overflow-wrap:anywhere] ${index === selected ? "" : "line-clamp-2"}`}>{album.title}</span>
                         <span className="font-meta mt-1 block text-[0.625rem] uppercase tracking-[0.1em] text-fg-subtle">
                           {[album.dateLabel || t("noDate"), t("photos", { count: album.photoCount })].join(" · ")}
                         </span>
@@ -1465,6 +1479,7 @@ export default function ArchiveSite({
               <button
                 type="button"
                 onClick={() => openDetail(selected)}
+                title={file.title}
                 className="group flex min-h-11 w-full items-center gap-2 text-left"
               >
                 <Roll value={file.title} className="min-w-0" layer="line-clamp-2 uppercase leading-tight [overflow-wrap:anywhere]" />
@@ -1574,7 +1589,7 @@ export default function ArchiveSite({
 
           <div className={`${styles.caption} flex items-center justify-between gap-3 wide:block`}>
             <div>
-              <p className="line-clamp-2 text-[0.9375rem] leading-tight tracking-[-0.03em] [overflow-wrap:anywhere] sm:text-xl wide:max-w-[18rem] wide:text-[2.3rem]">{file.title}</p>
+              <p title={file.title} className="line-clamp-2 text-[0.9375rem] leading-tight tracking-[-0.03em] [overflow-wrap:anywhere] sm:text-xl wide:max-w-[18rem] wide:text-[2.3rem]">{file.title}</p>
               <p className="font-meta mt-1 hidden text-[0.5rem] uppercase tracking-[0.18em] text-fg-subtle sm:block wide:mt-2 wide:text-[0.625rem]">
                 {t("archiveLabel")}
               </p>

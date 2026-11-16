@@ -38,13 +38,19 @@ export function TableScreen({
 }) {
   const t = useTranslations("album3d");
   const total = album?.photos.length ?? 0;
+  const [wholeTitle, setWholeTitle] = useState(false);
 
   return (
     <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
       <p className={metaLabel}>
         {owner}
       </p>
-      <h1 className="mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] max-sm:line-clamp-2 max-sm:text-[1.75rem] wide:text-[3.75rem]">
+      {/* Phones cut a long title to two lines; a tap shows the rest. */}
+      <h1
+        title={file.title}
+        onClick={() => setWholeTitle((open) => !open)}
+        className={`mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] max-sm:text-[1.75rem] wide:text-[3.75rem] ${wholeTitle ? "" : "max-sm:line-clamp-2"}`}
+      >
         {file.title}
       </h1>
       <div aria-hidden="true" className={styles.calloutRule} />

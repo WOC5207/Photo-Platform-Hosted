@@ -446,7 +446,9 @@ export default function BookingForm({
             </div>
           </fieldset>
 
-          <div className="sticky bottom-3 z-10 shadow-[0_14px_36px_-12px_rgb(0_0_0/0.35)]">
+          {/* On phones the empty tray would cover a fifth of the slot list, so it
+              arrives with the first chosen slot. */}
+          <div className={`sticky bottom-3 z-10 shadow-[0_14px_36px_-12px_rgb(0_0_0/0.35)] ${selectedSlotIds.length === 0 ? "max-sm:hidden" : ""}`}>
             <p className={`${styles.trayPlate} font-meta px-4 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.16em]`}>
               {t3("trayLabel", {
                 count: pad(selectedSlotIds.length),

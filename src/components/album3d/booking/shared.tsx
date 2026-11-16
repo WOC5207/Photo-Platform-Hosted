@@ -247,6 +247,25 @@ export function BookingPanel({
   // gives up or takes back its room); the content then slides from where it
   // was on screen with a transform only, beside the sheet's colour (see
   // .panel[data-window]::before), RhineLabUI's 300 ms easing out.
+  // On wide screens a long panel scrolls inside its column with only a thin
+  // scrollbar to say so; while more lies below, its foot fades and a button
+  // offers the rest (preparation's notes and add rows sat out of sight).
+  const t = useTranslations("album3d");
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const main = ref.current;
+    if (!main) return;
+    const check = () => setMore(main.scrollHeight - main.scrollTop - main.clientHeight > 24);
+    const observer = new ResizeObserver(check);
+    observer.observe(main);
+    for (const child of Array.from(main.children)) observer.observe(child);
+    main.addEventListener("scroll", check, { passive: true });
+    check();
+    return () => {
+      observer.disconnect();
+      main.removeEventListener("scroll", check);
+    };
+  }, []);
   const body = useRef<HTMLDivElement>(null);
   const bodyTop = useRef<number | null>(null);
   const windowed = view !== undefined && view !== null;
@@ -278,6 +297,12 @@ export function BookingPanel({
         <>
           {work && !fits && <SheetToggle up={workUp} onToggle={() => setSheetChoice(workUp ? "down" : "up")} />}
           {children}
+          {more && (
+            <button type="button" onClick={() => ref.current?.scrollBy({ top: ref.current.clientHeight * 0.7, behavior: lessMotion() ? "auto" : "smooth" })} className={styles.more}>
+              {t("panelMore")}
+              <span aria-hidden="true">↓</span>
+            </button>
+          )}
         </>
       )}
     </main>

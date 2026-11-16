@@ -143,7 +143,7 @@ export default function SharepostLayout() {
   });
   // A tap on a photograph picks it for resizing.
   useStageDrag((input) => {
-    if (input.phase === "wheel") return false;
+    if (input.phase === "wheel" || input.phase === "hover") return false;
     if (input.phase !== "down") return true;
     if (!scene || !studio.metrics || preview) return false;
     const id = photoAt(scene, studio.metrics, input.clientX, input.clientY, input.rect);
