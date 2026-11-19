@@ -92,8 +92,16 @@ export function useStageDrag(handler: (input: StageDrag) => boolean) {
   }, [engine]);
 }
 
-function isTyping(target: EventTarget | null) {
-  return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+const NON_TEXT_INPUT = new Set(["checkbox", "radio", "button", "submit", "reset", "color", "file", "image"]);
+
+export function isTyping(target: EventTarget | null, key?: string) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLInputElement) {
+    if (NON_TEXT_INPUT.has(target.type)) return false;
+    if (target.type === "range") return key !== "Escape";
+    return true;
+  }
+  return target.isContentEditable || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
 }
 
 /**
@@ -105,9 +113,14 @@ export function useScreenKeys(handler: (key: string, target: EventTarget | null,
   ref.current = handler;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target, e.key)) return;
       if (document.querySelector("[role=dialog]")) return;
-      if (ref.current(e.key, e.target, e)) e.preventDefault();
+      if (ref.current(e.key, e.target, e)) {
+        e.preventDefault();
+        if (e.key.startsWith("Arrow") && e.target instanceof HTMLElement && !e.target.hasAttribute("data-menu-item") && isInteractive(e.target)) {
+          e.target.blur();
+        }
+      }
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -124,41 +137,53 @@ export function isInteractive(target: EventTarget | null): boolean {
  * raised over the scene), "down", or null before they choose.
  */
 type SheetChoice = "up" | "down" | null;
-const SHEET_KEY = "album3d-sheet";
-let sheetChoice: SheetChoice | undefined;
+type SheetScope = "work" | "home";
+const SHEET_KEYS: Record<SheetScope, string> = { work: "album3d-sheet", home: "album3d-sheet-home" };
+const sheetChoices: Record<SheetScope, SheetChoice | undefined> = { work: undefined, home: undefined };
 const sheetListeners = new Set<() => void>();
 
-function readSheetChoice(): SheetChoice {
-  if (sheetChoice === undefined) {
+function readSheetChoice(scope: SheetScope = "work"): SheetChoice {
+  if (sheetChoices[scope] === undefined) {
     try {
-      const saved = sessionStorage.getItem(SHEET_KEY);
-      sheetChoice = saved === "up" || saved === "down" ? saved : null;
+      const saved = sessionStorage.getItem(SHEET_KEYS[scope]);
+      sheetChoices[scope] = saved === "up" || saved === "down" ? saved : null;
     } catch {
-      sheetChoice = null;
+      sheetChoices[scope] = null;
     }
   }
-  return sheetChoice;
+  return sheetChoices[scope] ?? null;
 }
 
-export function setSheetChoice(next: "up" | "down") {
-  sheetChoice = next;
+export function setSheetChoice(next: "up" | "down", scope: SheetScope = "work") {
+  sheetChoices[scope] = next;
   try {
-    sessionStorage.setItem(SHEET_KEY, next);
+    sessionStorage.setItem(SHEET_KEYS[scope], next);
   } catch {
     // The choice still holds until the page reloads.
   }
   sheetListeners.forEach((listener) => listener());
 }
 
-export function useSheetChoice(): SheetChoice {
+export function useSheetChoice(scope: SheetScope = "work"): SheetChoice {
   return useSyncExternalStore(
     (listener) => {
       sheetListeners.add(listener);
       return () => sheetListeners.delete(listener);
     },
-    readSheetChoice,
+    () => readSheetChoice(scope),
     () => null
   );
+}
+
+/** Warn before Esc/Back discards unsaved edits inside a 3D Studio form. */
+export function useDirtyGuard(dirty: boolean) {
+  const { setDirty } = useStage();
+  const tc = useTranslations("common");
+  const msg = tc("unsavedNavigationConfirm");
+  useEffect(() => {
+    setDirty?.(dirty ? msg : null);
+    return () => setDirty?.(null);
+  }, [dirty, msg, setDirty]);
 }
 
 /** The phone sheet's Expand / Collapse button (hidden on wider screens, see .raise). */
@@ -169,7 +194,7 @@ export function SheetToggle({ up, onToggle, downLabel }: { up: boolean; onToggle
       type="button"
       onClick={onToggle}
       aria-expanded={up}
-      className={`${styles.raise} font-meta sticky top-0 z-10 -mb-11 ml-auto flex min-h-11 items-center gap-2 border border-border-strong bg-page/85 px-3 text-[0.625rem] uppercase tracking-[0.12em] text-fg-muted transition hover:border-fg hover:text-fg`}
+      className={`${styles.raise} font-meta sticky top-0 z-10 mb-2 ml-auto flex min-h-10 items-center gap-2 border border-border-strong bg-page/90 px-3 text-[0.625rem] uppercase tracking-[0.12em] text-fg-muted transition hover:border-fg hover:text-fg`}
     >
       {up ? (downLabel ?? t("studioSheetLower")) : t("studioSheetExpand")}
       <span aria-hidden="true" className="text-sm leading-none">{up ? "↓" : "↑"}</span>

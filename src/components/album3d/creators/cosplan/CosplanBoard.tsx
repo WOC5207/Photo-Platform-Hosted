@@ -583,7 +583,7 @@ export default function CosplanBoard() {
       else if (k === "ArrowUp") setMenuFocus((f) => wrap(f - 1, items.length));
       else if (k === "ArrowDown") setMenuFocus((f) => wrap(f + 1, items.length));
       else if (k === "Enter" && !isInteractive(eventTarget)) items[menuAt]?.run();
-      else if (k === "Delete" && selected) remove(selected);
+      else if ((k === "Delete" || k === "Backspace") && selected) remove(selected);
       else if (k === "/") openSearch(false);
       else return false;
       return true;
@@ -606,6 +606,7 @@ export default function CosplanBoard() {
       else if (k === "+" || k === "=") burst(selected.id, transformLayer(selected, 1.05, 0));
       else if (k === "-" || k === "_") burst(selected.id, transformLayer(selected, 1 / 1.05, 0));
       else if (k === "[" || k === "]") burst(selected.id, transformLayer(selected, 1, (k === "[" ? -1 : 1) * (by === 10 ? 1 : 5)));
+      else if (k === "Delete" || k === "Backspace") remove(selected);
       else if ((k === "Enter" && !isInteractive(eventTarget)) || k === "Escape") setMode("board");
       else return false;
       return true;
@@ -618,6 +619,7 @@ export default function CosplanBoard() {
         const layer = next && composition.layers.find((item) => item.id === next.key);
         if (layer) setTarget(layer.type === "image" && layer.slotId ? { slot: layer.slotId, layer: layer.id } : { layer: layer.id });
       } else if ((k === "ArrowUp" || k === "ArrowDown") && selected) restack(selected, k === "ArrowUp" ? 1 : -1);
+      else if ((k === "Delete" || k === "Backspace") && selected) remove(selected);
       else if (k === "Enter" && selected && !isInteractive(eventTarget)) setMode("arrange");
       else if (k === "Escape" || k === "Enter") setMode("board");
       else return false;

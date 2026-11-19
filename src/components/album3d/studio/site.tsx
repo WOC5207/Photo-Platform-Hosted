@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { updateSiteSettings, type SiteSettingsSection, type SiteSettingsState } from "@/app/[locale]/dashboard/(protected)/settings/actions";
 import { wrap } from "../hud";
 import type { BoardTile } from "../board";
-import { fieldClass, isInteractive, primaryClass, useScene, useScreenKeys, useStageInput } from "../booking/shared";
+import { fieldClass, isInteractive, primaryClass, useDirtyGuard, useScene, useScreenKeys, useStageInput } from "../booking/shared";
 import { FormNote } from "./shared";
 
 /** Pieces shared by the site settings screens. */
@@ -54,12 +54,18 @@ export function useSiteBoard(id: string, tiles: BoardTile[], open?: (index: numb
  */
 export function useSiteSave() {
   const [state, action, pending] = useActionState<SiteSettingsState, FormData>(updateSiteSettings, {});
+  const [dirty, setDirty] = useState(false);
+  useDirtyGuard(dirty && !pending);
+  useEffect(() => {
+    if (state.ok) setDirty(false);
+  }, [state]);
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     startTransition(() => action(data));
   };
-  return { state, pending, submit };
+  const markDirty = () => setDirty(true);
+  return { state, pending, submit, markDirty };
 }
 
 /** The save button and what came of the last save. */

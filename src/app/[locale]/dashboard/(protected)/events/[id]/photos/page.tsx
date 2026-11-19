@@ -73,6 +73,7 @@ export default async function AddPhotosPage({
         creditTerm={creditTerm}
         subjectTerm={subjectTerm}
         moderationEnabled={platformSettings.moderationEnabled}
+        albumPublished={event.published}
       />
     </div>
   );

@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { createEquipmentCategory, deleteEquipmentCategory } from "@/app/[locale]/dashboard/(protected)/equipment/actions";
+import { useRouter } from "@/i18n/navigation";
+import { addEquipmentCategory, deleteEquipmentCategory } from "@/app/[locale]/dashboard/(protected)/equipment/actions";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import { Hints, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import type { StudioGearCategory } from "./types";
 
 /**
@@ -19,11 +20,18 @@ import type { StudioGearCategory } from "./types";
 export default function CategoriesScreen({ username, categories }: { username: string; categories: StudioGearCategory[] }) {
   const t = useTranslations("album3d");
   const te = useTranslations("equipment");
+  const router = useRouter();
   const { key, touch } = useStage();
   const scene = useScene("board");
   const [focus, setFocus] = useState(0);
+  const [adding, startAdding] = useTransition();
+  const [addError, setAddError] = useState(false);
+  const listRef = useRef<HTMLUListElement>(null);
   const at = Math.min(focus, Math.max(0, categories.length - 1));
   const category = categories[at];
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [at]);
 
   const tiles = useMemo<BoardTile[]>(
     () =>
@@ -67,22 +75,42 @@ export default function CategoriesScreen({ username, categories }: { username: s
       <BookingPanel work>
         <StudioHeading trail={t("studioEquipment")} title={te("manageCategories")} />
         <p className="mt-4 text-sm text-fg-muted">{te("categorySetupHint")}</p>
-        <form action={createEquipmentCategory} className="mt-6 flex items-end gap-2">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const formEl = e.currentTarget;
+            const data = new FormData(formEl);
+            setAddError(false);
+            startAdding(async () => {
+              const res = await addEquipmentCategory(data).catch(() => ({ id: undefined }));
+              if (!res.id) {
+                setAddError(true);
+                return;
+              }
+              formEl.reset();
+              router.refresh();
+            });
+          }}
+          aria-busy={adding}
+          className="mt-6 flex items-end gap-2"
+        >
           <label className="grid min-w-0 flex-1 gap-1 text-sm font-semibold text-fg-muted">
             {te("categoryName")}
             <input id="studio-category-name" name="name" required maxLength={100} className={fieldClass} />
           </label>
-          <button type="submit" className={secondaryClass}>
-            {te("createCategory")}
+          <button type="submit" disabled={adding} className={secondaryClass}>
+            {adding ? t("studioSaving") : te("createCategory")}
           </button>
         </form>
+        {addError && <FormNote tone="error">{t("studioCategoryError")}</FormNote>}
         {categories.length === 0 ? (
           <p className="mt-6 text-sm text-fg-subtle">{te("createCategoryFirst")}</p>
         ) : (
-          <ul aria-label={te("categorySetup")} className="mt-6 grid gap-1">
+          <ul ref={listRef} aria-label={te("categorySetup")} className="mt-6 grid gap-1">
             {categories.map((c, i) => (
               <li
                 key={c.id}
+                aria-current={i === at ? "true" : undefined}
                 className={`flex min-h-12 items-center justify-between gap-3 border px-3 text-sm transition ${
                   i === at ? "border-fg bg-page/80" : "border-border-strong"
                 }`}

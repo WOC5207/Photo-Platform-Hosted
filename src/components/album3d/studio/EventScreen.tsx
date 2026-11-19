@@ -1,13 +1,13 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { updateEvent, type EventFormState } from "@/app/[locale]/dashboard/(protected)/events/actions";
 import { deleteEvent3d } from "@/app/[locale]/3d/u/[username]/studio/actions";
 import { Hints } from "../hud";
 import styles from "../ArchiveSite.module.css";
-import { BookingPanel, fieldClass, isInteractive, primaryClass, secondaryClass, useScreenKeys, useStage, useStageInput } from "../booking/shared";
+import { BookingPanel, fieldClass, isInteractive, primaryClass, secondaryClass, useDirtyGuard, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { FormNote, StudioHeading } from "./shared";
 import { useStudioTable } from "./table";
 import type { StudioAccount, StudioEventDetail, StudioPhoto } from "./types";
@@ -33,6 +33,11 @@ export default function EventScreen({
   const { username } = account;
   const [state, action, pending] = useActionState<EventFormState, FormData>(updateEvent, {});
   const [confirming, setConfirming] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  useDirtyGuard(dirty && !pending);
+  useEffect(() => {
+    if (state.ok) setDirty(false);
+  }, [state]);
   const label = "grid gap-1 text-sm font-semibold text-fg-muted";
 
   useStudioTable(event.id, photos, 0);
@@ -81,7 +86,7 @@ export default function EventScreen({
           )}
         </div>
 
-        <form action={action} aria-busy={pending} className="mt-8 grid gap-4">
+        <form action={action} onChange={() => setDirty(true)} aria-busy={pending} className="mt-8 grid gap-4">
           <h2 className="font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle">{t("studioDetails")}</h2>
           <input type="hidden" name="id" value={event.id} />
           <label className="flex min-h-11 items-center gap-3 border border-border-strong px-3 text-sm font-semibold">
@@ -137,6 +142,7 @@ export default function EventScreen({
             <form action={deleteEvent3d} className="grid gap-3">
               <input type="hidden" name="id" value={event.id} />
               <p role="alert" className="text-sm font-semibold text-danger">{ta("confirmDeleteEvent")}</p>
+              {event.bookingId && <p className="text-sm text-fg-muted">{tw("galleryDeleteHint")}</p>}
               <div className="flex flex-wrap gap-2">
                 <button type="submit" className={`${secondaryClass} border-danger text-danger`}>{ta("deleteEvent")}</button>
                 <button type="button" onClick={() => setConfirming(false)} className={secondaryClass}>{tc("cancel")}</button>

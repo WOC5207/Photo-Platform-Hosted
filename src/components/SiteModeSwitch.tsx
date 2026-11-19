@@ -42,6 +42,7 @@ export default function SiteModeSwitch({
       type="button"
       role="switch"
       aria-checked={on}
+      title={t("siteSwitchHint")}
       onClick={() => leaveFor(on ? "classic" : "3d")}
       className={`group relative inline-flex min-h-11 items-center gap-2.5 px-2 text-sm ${compact ? `max-sm:min-w-11 max-sm:px-0 ${caption ? "max-sm:flex-col-reverse max-sm:justify-center max-sm:gap-1" : ""}` : ""} font-semibold text-fg-muted transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${className}`}
     >

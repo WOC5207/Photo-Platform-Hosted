@@ -19,6 +19,11 @@ export interface Stage {
   /** Key names for hints. "alt" is /. */
   key(name: "move" | "confirm" | "back" | "sides" | "alt"): string;
   touch: boolean;
+  /** Register an unsaved-changes confirmation message before Esc/Back navigates away. */
+  setDirty?: (message: string | null) => void;
+  /** Whether a signed-in photographer is previewing their own page as a visitor. */
+  preview?: boolean;
+  setPreview?: (next: boolean) => void;
 }
 
 export const StageContext = createContext<Stage | null>(null);

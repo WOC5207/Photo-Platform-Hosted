@@ -49,7 +49,7 @@ export default function PersonalLinksManager({
             >
               <form
                 action={updatePersonalLink}
-                className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]"
+                className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-2"
               >
                 <input type="hidden" name="id" value={link.id} />
                 <label className="flex flex-col gap-1 text-xs text-fg-subtle">
@@ -80,7 +80,7 @@ export default function PersonalLinksManager({
                     className={inputCls}
                   />
                 </label>
-                <button type="submit" className={`${btnCls} sm:col-span-4 sm:w-fit`}>
+                <button type="submit" className={`${btnCls} col-span-full w-fit`}>
                   {tc("save")}
                 </button>
               </form>
@@ -126,7 +126,7 @@ export default function PersonalLinksManager({
 
       <form
         action={formAction}
-        className="grid gap-2 rounded-xl border border-dashed border-border-strong p-3 sm:grid-cols-[1fr_1fr_1fr_auto]"
+        className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-2 rounded-xl border border-dashed border-border-strong p-3"
       >
         <label className="flex flex-col gap-1 text-xs text-fg-subtle">
           <span>{t("personalLinkLabelEn")}</span>

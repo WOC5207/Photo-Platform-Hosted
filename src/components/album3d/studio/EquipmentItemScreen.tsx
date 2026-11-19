@@ -23,6 +23,7 @@ export default function EquipmentItemScreen({ gear, categories }: { gear: Studio
   const [draft, setDraft] = useState(() => draftOf(gear));
   const [saving, startSaving] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [photo, setPhoto] = useState<"idle" | "busy" | "saved" | "tooLarge" | "quotaExceeded" | "error">("idle");
   const fileRef = useRef<HTMLInputElement>(null);
   useGearCard(draft, categories, gear.photoUrl, gear.qrToken);
@@ -30,9 +31,14 @@ export default function EquipmentItemScreen({ gear, categories }: { gear: Studio
   const save = (data: FormData) => {
     data.set("id", gear.id);
     setSaved(false);
+    setSaveError(false);
     startSaving(async () => {
-      await updateEquipment(data);
-      setSaved(true);
+      try {
+        await updateEquipment(data);
+        setSaved(true);
+      } catch {
+        setSaveError(true);
+      }
     });
   };
 
@@ -52,8 +58,9 @@ export default function EquipmentItemScreen({ gear, categories }: { gear: Studio
   }
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel work>
       <StudioHeading trail={t("studioEquipment")} title={gear.name} />
+      {saveError && <FormNote tone="error">{t("studioSaveError")}</FormNote>}
       <GearForm
         draft={draft}
         onChange={(next) => {

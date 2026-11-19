@@ -145,7 +145,7 @@ export default function PostersScreen({ posters: list }: { posters: StudioPoster
       ? [
           { key: "open", label: ts("open"), sub: poster.name, run: () => open(poster.id) },
           { key: "duplicate", label: ts("duplicate"), sub: poster.name, run: () => void duplicate(poster) },
-          { key: "delete", label: ts("delete"), sub: poster.name, run: () => void remove(poster) }
+          { key: "delete", label: ts("delete"), sub: poster.name, danger: true, run: () => void remove(poster) }
         ]
       : []),
     { key: "new", label: busy ? ts("creating") : ts("newPoster"), sub: ts("description"), run: () => void create() }

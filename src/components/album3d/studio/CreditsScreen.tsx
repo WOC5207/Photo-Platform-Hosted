@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { addCreditProfile, deleteCreditProfile, updateCreditProfile, type CreditProfileState } from "@/app/[locale]/dashboard/(protected)/credits/actions";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
@@ -8,7 +8,7 @@ import { Link } from "@/i18n/navigation";
 import { Hints, Rolling, pad, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
-import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
+import { BookingPanel, fieldClass, isInteractive, metaLabel, secondaryClass, useDirtyGuard, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { FormNote, StudioHeading } from "./shared";
 import type { StudioCreditProfile, StudioCredits } from "./types";
 
@@ -26,11 +26,40 @@ function ProfileForm({ profile, term }: { profile: StudioCreditProfile; term: st
   const tcr = useTranslations("adminCredits");
   const te = useTranslations("adminEvents");
   const [links, setLinks] = useState(() => profile.links.map((l) => row(l)));
-  const edit = (key: number, change: Partial<Row>) => setLinks(links.map((l) => (l.key === key ? { ...l, ...change } : l)));
+  const [dirty, setDirty] = useState(false);
+  const [saving, startSaving] = useTransition();
+  const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
+  useDirtyGuard(dirty && !saving);
+  const edit = (key: number, change: Partial<Row>) => {
+    setDirty(true);
+    setStatus("idle");
+    setLinks(links.map((l) => (l.key === key ? { ...l, ...change } : l)));
+  };
 
   return (
     <div className="grid gap-3 border border-border-strong bg-page/70 p-3">
-      <form action={updateCreditProfile} className="grid gap-3">
+      <form
+        onChange={() => {
+          setDirty(true);
+          setStatus("idle");
+        }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          const data = new FormData(e.currentTarget);
+          setStatus("idle");
+          startSaving(async () => {
+            try {
+              await updateCreditProfile(data);
+              setDirty(false);
+              setStatus("saved");
+            } catch {
+              setStatus("error");
+            }
+          });
+        }}
+        aria-busy={saving}
+        className="grid gap-3"
+      >
         <input type="hidden" name="id" value={profile.id} />
         <input type="hidden" name="socialLinksJson" value={JSON.stringify(links.map(({ platform, url }) => ({ platform, url })))} />
         <label className="grid gap-1 text-sm font-semibold text-fg-muted">
@@ -48,18 +77,35 @@ function ProfileForm({ profile, term }: { profile: StudioCreditProfile; term: st
                 {te("socialUrlPlaceholder")}
                 <input value={link.url} onChange={(e) => edit(link.key, { url: e.target.value })} maxLength={500} className={fieldClass} />
               </label>
-              <button type="button" aria-label={te("removeSocialLinkAria")} onClick={() => setLinks(links.filter((l) => l.key !== link.key))} className={secondaryClass}>
+              <button
+                type="button"
+                aria-label={te("removeSocialLinkAria")}
+                onClick={() => {
+                  setDirty(true);
+                  setLinks(links.filter((l) => l.key !== link.key));
+                }}
+                className={secondaryClass}
+              >
                 ×
               </button>
             </li>
           ))}
         </ul>
+        {status === "saved" && <FormNote tone="ok">{t("studioSaved")}</FormNote>}
+        {status === "error" && <FormNote tone="error">{t("studioSaveError")}</FormNote>}
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setLinks([...links, row()])} className={secondaryClass}>
+          <button
+            type="button"
+            onClick={() => {
+              setDirty(true);
+              setLinks([...links, row()]);
+            }}
+            className={secondaryClass}
+          >
             + {te("addSocialLink")}
           </button>
-          <button type="submit" className={`${secondaryClass} ml-auto`}>
-            {tc("save")}
+          <button type="submit" disabled={saving} className={`${secondaryClass} ml-auto`}>
+            {saving ? t("studioSaving") : tc("save")}
           </button>
         </div>
       </form>

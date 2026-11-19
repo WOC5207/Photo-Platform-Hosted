@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/navigation";
 import { createChecklist3d } from "@/app/[locale]/3d/u/[username]/studio/actions";
@@ -8,7 +8,7 @@ import { GameMenu, Hints, Rolling, pad, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
 import { BookingPanel, fieldClass, isInteractive, metaLabel, primaryClass, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
-import { StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import type { StudioChecklistSummary, StudioPreparation } from "./types";
 
 /**
@@ -27,6 +27,8 @@ export default function PreparationScreen({ preparation }: { preparation: Studio
   const { go, path, key, touch } = useStage();
   const scene = useScene("board");
   const [focus, setFocus] = useState(0);
+  const [creating, startCreating] = useTransition();
+  const [createError, setCreateError] = useState(false);
   const { username } = preparation.account;
   // One group per event in order of its first day, then the separate lists;
   // `lists` runs through them in that order, so an index is the same on the
@@ -187,7 +189,22 @@ export default function PreparationScreen({ preparation }: { preparation: Studio
         {!preparation.event && (
           <details className="mt-6 border-t border-border pt-4">
             <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">+ {tp("standalone")}</summary>
-            <form action={createChecklist3d} className="mt-3 grid gap-3">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const data = new FormData(e.currentTarget);
+                setCreateError(false);
+                startCreating(async () => {
+                  try {
+                    await createChecklist3d(data);
+                  } catch {
+                    setCreateError(true);
+                  }
+                });
+              }}
+              aria-busy={creating}
+              className="mt-3 grid gap-3"
+            >
               <label className="grid gap-1 text-sm font-semibold text-fg-muted">
                 {te("checklistName")}
                 <input name="name" required maxLength={160} className={fieldClass} />
@@ -200,8 +217,9 @@ export default function PreparationScreen({ preparation }: { preparation: Studio
                 {te("notes")}
                 <textarea name="notes" rows={2} maxLength={1000} className={fieldClass} />
               </label>
-              <button type="submit" className={primaryClass}>
-                {te("createChecklistButton")}
+              {createError && <FormNote tone="error">{t("studioSaveError")}</FormNote>}
+              <button type="submit" disabled={creating} className={primaryClass}>
+                {creating ? t("studioSaving") : te("createChecklistButton")}
                 <span aria-hidden="true" className="text-lg">+</span>
               </button>
             </form>

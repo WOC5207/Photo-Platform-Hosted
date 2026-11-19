@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
+import { Link, usePathname } from "@/i18n/navigation";
 import { updateBookingEvent, type BookingEventFormState } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
 import { deleteBookingEvent3d } from "@/app/[locale]/3d/u/[username]/studio/actions";
 import LotteryEnabledToggle from "@/components/admin/LotteryEnabledToggle";
-import { BookingPanel, fieldClass, metaLabel, primaryClass, secondaryClass } from "../booking/shared";
+import { BookingPanel, fieldClass, metaLabel, primaryClass, secondaryClass, useDirtyGuard, useStage } from "../booking/shared";
 import { FormNote, StudioHeading, daysBetween } from "./shared";
 import type { StudioBookingSettings } from "./types";
 
@@ -22,6 +23,8 @@ export default function BookingDetailsScreen({ booking }: { booking: StudioBooki
   const tw = useTranslations("eventWorkspace");
   const ts = useTranslations("adminSite");
   const tc = useTranslations("common");
+  const { path } = useStage();
+  const username = decodeURIComponent(usePathname().split("/")[3] ?? "");
   const [state, action, pending] = useActionState<BookingEventFormState, FormData>(updateBookingEvent, {});
   const firstDay = booking.dates[0] ?? "";
   const lastDay = booking.dates[booking.dates.length - 1] ?? "";
@@ -29,6 +32,11 @@ export default function BookingDetailsScreen({ booking }: { booking: StudioBooki
   const [last, setLast] = useState(lastDay);
   const [visitorEdits, setVisitorEdits] = useState(booking.visitorEditsEnabled);
   const [confirming, setConfirming] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  useDirtyGuard(dirty && !pending);
+  useEffect(() => {
+    if (state.ok) setDirty(false);
+  }, [state]);
   // The saved days stand until the range is changed, so days picked apart on
   // the classic calendar survive a save here.
   const changed = first !== firstDay || last !== lastDay;
@@ -49,9 +57,22 @@ export default function BookingDetailsScreen({ booking }: { booking: StudioBooki
   return (
     <BookingPanel expanded="full">
       <StudioHeading trail={booking.title} title={t("studioBookingDetails")} />
-      {!booking.bookingEnabled && <p role="status" className="mt-5 text-sm text-fg-muted">{ts("groupBookingHint")}</p>}
+      {!booking.bookingEnabled && (
+        <div role="status" className="mt-5 grid gap-2 border-l-2 border-accent bg-accent-surface p-3 text-xs text-fg-muted">
+          <p>{ts("groupBookingHint")}</p>
+          {username && (
+            <Link
+              href={path({ kind: "studio", username, page: "siteFeatures" })}
+              scroll={false}
+              className="inline-flex min-h-9 items-center font-semibold text-fg underline underline-offset-4 hover:text-accent-text"
+            >
+              {t("studioEnableInFeatures")} →
+            </Link>
+          )}
+        </div>
+      )}
 
-      <form action={action} aria-busy={pending} className="mt-6 grid gap-4">
+      <form action={action} onChange={() => setDirty(true)} aria-busy={pending} className="mt-6 grid gap-4">
         <input type="hidden" name="id" value={booking.id} />
         <input type="hidden" name="dates" value={JSON.stringify(days)} />
         <label className="flex min-h-11 items-center gap-3 border border-border-strong px-3 text-sm font-semibold">

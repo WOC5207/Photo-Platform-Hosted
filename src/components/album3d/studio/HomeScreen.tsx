@@ -30,20 +30,36 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
   const [focus, setFocus] = useState(0);
   // On phones, the menu raised over the window onto the field, as the
   // photographer last left the Dashboard's sheet (see useSheetChoice).
-  const raised = useSheetChoice() === "up";
+  const raised = useSheetChoice("home") === "up";
   const [leaving, startLeaving] = useTransition();
   const { username } = home.account;
 
   const items: MenuItem[] = [
     {
       key: "events",
+      section: t("studioGroupContent"),
       label: t("studioEvents"),
       sub: t("studioEventsSub", { count: home.events, drafts: home.drafts }),
       text: ["album3d.studioEvents", "album3d.studioEventsSub"],
       run: () => go({ kind: "studio", username, page: "events" })
     },
     {
+      key: "posters",
+      label: ta("sharingPosters"),
+      sub: t("studioSub.posters"),
+      text: ["admin.sharingPosters", "album3d.studioSub.posters"],
+      run: () => go({ kind: "studio", username, page: "posters" })
+    },
+    {
+      key: "credits",
+      label: ta("credits", { term: home.creditTerm }),
+      sub: t("studioSub.credits"),
+      text: ["admin.credits", "album3d.studioSub.credits"],
+      run: () => go({ kind: "studio", username, page: "credits" })
+    },
+    {
       key: "bookings",
+      section: t("studioGroupShoots"),
       label: t("studioBookings"),
       sub: t("studioBookingsSub"),
       text: ["album3d.studioBookings", "album3d.studioBookingsSub"],
@@ -63,16 +79,21 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
       text: ["admin.equipment", "album3d.studioEquipmentSub"],
       run: () => go({ kind: "studio", username, page: "equipment" })
     },
-    ...(["posters", "credits", "site", "storage", "account"] as const).map((page) => ({
-      key: page,
-      label: page === "posters" ? ta("sharingPosters") : page === "credits" ? ta("credits", { term: home.creditTerm }) : t(`studioCrumbs.${page}`),
-      sub: page === "storage" ? t("studioStorage", { used: formatBytes(home.usedBytes), total: formatBytes(home.quotaBytes) }) : t(`studioSub.${page}`),
-      text: [
-        page === "posters" ? "admin.sharingPosters" : page === "credits" ? "admin.credits" : `album3d.studioCrumbs.${page}`,
-        page === "storage" ? "album3d.studioStorage" : `album3d.studioSub.${page}`
-      ],
-      run: () => go({ kind: "studio", username, page })
-    })),
+    {
+      key: "site",
+      section: t("studioGroupSite"),
+      label: t("studioCrumbs.site"),
+      sub: t("studioSub.site"),
+      text: ["album3d.studioCrumbs.site", "album3d.studioSub.site"],
+      run: () => go({ kind: "studio", username, page: "site" })
+    },
+    {
+      key: "storage",
+      label: t("studioCrumbs.storage"),
+      sub: t("studioStorage", { used: formatBytes(home.usedBytes), total: formatBytes(home.quotaBytes) }),
+      text: ["album3d.studioCrumbs.storage", "album3d.studioStorage"],
+      run: () => go({ kind: "studio", username, page: "storage" })
+    },
     ...(home.listed
       ? [{ key: "archive", label: t("loginArchive"), sub: `@${username}`, text: ["album3d.loginArchive"], run: () => go({ kind: "photographer", username }) }]
       : []),
@@ -81,13 +102,8 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
   const at = Math.min(focus, items.length - 1);
 
   useScreenKeys((k, target) => {
-    const move = (delta: number) => {
-      const next = wrap(at + delta, items.length);
-      setFocus(next);
-      document.querySelector<HTMLElement>(`[data-menu-item="${next}"]`)?.scrollIntoView({ block: "nearest" });
-    };
-    if (k === "ArrowUp") move(-1);
-    else if (k === "ArrowDown") move(1);
+    if (k === "ArrowUp") setFocus(wrap(at - 1, items.length));
+    else if (k === "ArrowDown") setFocus(wrap(at + 1, items.length));
     else if (k === "Enter" && !isInteractive(target)) items[at]?.run();
     else return false;
     return true;
@@ -99,7 +115,7 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
     <>
     <BookingPanel expanded="full" view={field?.live ? <FieldWindow /> : undefined} raised={raised}>
       {field?.live && (
-        <SheetToggle up={raised} onToggle={() => setSheetChoice(raised ? "down" : "up")} downLabel={t("studioSheetCollapse")} />
+        <SheetToggle up={raised} onToggle={() => setSheetChoice(raised ? "down" : "up", "home")} downLabel={t("studioSheetCollapse")} />
       )}
       <StudioHeading trail={`@${username}`} title={t("studioTitle")} text={["album3d.studioTitle"]} />
       <dl className="mt-6 flex flex-wrap gap-x-10 gap-y-4">
@@ -127,7 +143,7 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
       </dl>
 
       <Link
-        href={path({ kind: "studio", username, page: "uploadPick" })}
+        href={home.events > 0 ? path({ kind: "studio", username, page: "uploadPick" }) : `${path({ kind: "studio", username, page: "new" })}?then=upload`}
         scroll={false}
         className={`${primaryClass} mt-6 w-full`}
       >
@@ -157,6 +173,7 @@ export default function HomeScreen({ home }: { home: StudioHome }) {
       <FirstSteps home={home} path={path} />
 
       <GameMenu label={t("studioTitle")} items={items} focus={at} onFocus={setFocus} className="mt-6 wide:mt-8" />
+      {!home.listed && <p className="mt-4 text-xs leading-5 text-fg-subtle">{t("loginArchiveHiddenHint")}</p>}
     </BookingPanel>
     <FieldCaption />
     </>
@@ -252,8 +269,8 @@ function FirstSteps({ home, path }: { home: StudioHome; path: ReturnType<typeof 
     }
   }, [storageKey]);
   const steps = [
-    { key: "event", done: home.events > 0, href: path({ kind: "studio", username, page: "new" }) },
-    { key: "photos", done: home.photos > 0, href: path({ kind: "studio", username, page: "uploadPick" }) },
+    { key: "event", done: home.events > 1 || home.photos > 0 || home.listed, href: path({ kind: "studio", username, page: "new" }) },
+    { key: "photos", done: home.photos > 0, href: home.events > 0 ? path({ kind: "studio", username, page: "uploadPick" }) : `${path({ kind: "studio", username, page: "new" })}?then=upload` },
     { key: "look", done: home.styled, href: path({ kind: "studio", username, page: "siteAppearance" }) },
     { key: "publish", done: home.listed, href: path({ kind: "studio", username, page: "events" }) }
   ] as const;

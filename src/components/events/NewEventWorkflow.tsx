@@ -1,7 +1,9 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import BookingEventForm from "@/components/admin/BookingEventForm";
+import EventForm from "@/components/admin/EventForm";
 import { Link } from "@/i18n/navigation";
 import { createBookingEvent } from "@/app/[locale]/dashboard/(protected)/bookings/actions";
+import { createGalleryEvent } from "@/app/[locale]/dashboard/(protected)/events/actions";
 import { requireUser } from "@/lib/auth";
 import { getSiteSettings } from "@/lib/settings";
 import { getPlatformSettings } from "@/lib/platformSettings";
@@ -42,30 +44,49 @@ export default async function NewEventWorkflow({ gallery }: { gallery?: { id: st
         <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">{gallery ? t("addBooking") : t("newEvent")}</h1>
       </div>
       <p className="max-w-3xl text-sm leading-6 text-fg-subtle">{gallery ? t("legacySetupHint") : t("createHint")}</p>
-      <BookingEventForm
-        action={createBookingEvent}
-        submitLabel={tc("create")}
-        showOpenToggle={false}
-        cancelHref="/dashboard/events"
-        timeZone={settings.timeZone}
-        priceDisplay={{
-          enabled: settings.bookingPriceEnabled,
-          notice: bookingPriceNotice,
-          noticeSettingsHref: user.role === "admin" ? "/admin/invites#booking-price-notice" : undefined
-        }}
-        initial={{
-          galleryEventId: gallery?.id,
-          titleEn: gallery?.titleEn ?? "",
-          titleZh: gallery?.titleZh ?? "",
-          dates: gallery?.dateStart ? [gallery.dateStart.toISOString().slice(0, 10)] : [],
-          location: gallery?.location ?? "",
-          descriptionEn: gallery?.descriptionEn ?? "",
-          descriptionZh: gallery?.descriptionZh ?? "",
-          visitorEditsEnabled: false,
-          visitorEditCutoffHours: 24,
-          open: false
-        }}
-      />
+      {!gallery && !settings.bookingEnabled ? (
+        <EventForm
+          action={createGalleryEvent}
+          submitLabel={tc("create")}
+          cancelHref="/dashboard/events"
+          initial={{
+            titleEn: "",
+            titleZh: "",
+            slug: "",
+            dateStart: "",
+            dateEnd: "",
+            location: "",
+            descriptionEn: "",
+            descriptionZh: "",
+            published: false
+          }}
+        />
+      ) : (
+        <BookingEventForm
+          action={createBookingEvent}
+          submitLabel={tc("create")}
+          showOpenToggle={false}
+          cancelHref="/dashboard/events"
+          timeZone={settings.timeZone}
+          priceDisplay={{
+            enabled: settings.bookingPriceEnabled,
+            notice: bookingPriceNotice,
+            noticeSettingsHref: user.role === "admin" ? "/admin/invites#booking-price-notice" : undefined
+          }}
+          initial={{
+            galleryEventId: gallery?.id,
+            titleEn: gallery?.titleEn ?? "",
+            titleZh: gallery?.titleZh ?? "",
+            dates: gallery?.dateStart ? [gallery.dateStart.toISOString().slice(0, 10)] : [],
+            location: gallery?.location ?? "",
+            descriptionEn: gallery?.descriptionEn ?? "",
+            descriptionZh: gallery?.descriptionZh ?? "",
+            visitorEditsEnabled: false,
+            visitorEditCutoffHours: 24,
+            open: false
+          }}
+        />
+      )}
     </div>
   );
 }

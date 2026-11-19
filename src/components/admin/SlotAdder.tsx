@@ -45,7 +45,7 @@ export default function SlotAdder({
         {t("eventLocalTimeNotice")}
       </EventLocalTimeNotice>
       <input type="hidden" name="bookingDayId" value={bookingDayId} />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-4">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-fg-muted">{t("firstSlotTime")}</span>
           <input

@@ -78,6 +78,7 @@ function SignInForm() {
         {pending ? ta("signingIn") : ta("signIn")}
         <span aria-hidden="true" className="text-lg">→</span>
       </button>
+      <p className="text-xs leading-5 text-fg-subtle">{ta("inviteOnlyHint")}</p>
     </form>
   );
 }
@@ -104,5 +105,10 @@ function AccountMenu({ account }: { account: LoginAccount }) {
     return true;
   });
 
-  return <GameMenu label={account.name} className="mt-8 wide:mt-12" focus={at} onFocus={setFocus} items={items} />;
+  return (
+    <>
+      <GameMenu label={account.name} className="mt-8 wide:mt-12" focus={at} onFocus={setFocus} items={items} />
+      {!account.listed && <p className="mt-6 max-w-md text-xs leading-5 text-fg-subtle">{t("loginArchiveHiddenHint")}</p>}
+    </>
+  );
 }

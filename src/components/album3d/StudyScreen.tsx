@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { pad } from "./hud";
+import { Link } from "@/i18n/navigation";
+import { pad, wrap } from "./hud";
 import styles from "./ArchiveSite.module.css";
 import type { ArchiveFile } from "./types";
 
@@ -12,7 +13,7 @@ const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg
  * The 360° study of one album: the scene holds the assembly, and this layer
  * carries its header, the cover and explode switches, and the album's prints
  * as a picture list. Picking one there (or tapping it in the scene) brings it
- * to the front of the stack, and it can be downloaded or its link shared.
+ * to the front of the stack, and it can be opened, downloaded or its link shared.
  */
 export default function StudyScreen({
   file,
@@ -20,6 +21,7 @@ export default function StudyScreen({
   exploded,
   touch,
   focus,
+  photoHref,
   shareUrl,
   onFocus,
   onBack,
@@ -32,7 +34,9 @@ export default function StudyScreen({
   touch: boolean;
   /** The print brought to the front. */
   focus: number;
-  /** The address of a print's own photo screen, to share. */
+  /** The address of a print's own photo screen. */
+  photoHref: (photoId: string) => string;
+  /** The full URL of a print's own photo screen, to share. */
   shareUrl: (photoId: string) => string;
   onFocus: (index: number) => void;
   onBack: () => void;
@@ -43,6 +47,23 @@ export default function StudyScreen({
   const [shared, setShared] = useState<string | null>(null);
   const at = Math.min(focus, Math.max(0, file.prints.length - 1));
   const print = file.prints[at];
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.closest?.("input, textarea, select, [contenteditable]")) return;
+      if ((e.key === "[" || e.key === "]") && file.prints.length > 1) {
+        e.preventDefault();
+        onFocus(wrap(at + (e.key === "[" ? -1 : 1), file.prints.length));
+      } else if (e.key === " " && !el?.closest?.("a, button")) {
+        e.preventDefault();
+        onExplode(!exploded);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [at, exploded, file.prints.length, onExplode, onFocus]);
 
   const share = async () => {
     if (!print) return;
@@ -109,6 +130,13 @@ export default function StudyScreen({
             ))}
           </ol>
           <div className="mt-3 grid gap-1.5">
+            <Link
+              href={photoHref(print.id)}
+              scroll={false}
+              className="inline-flex min-h-10 items-center justify-between gap-3 bg-fg px-3 text-xs font-semibold uppercase tracking-[0.08em] text-page transition hover:bg-accent-text"
+            >
+              {t("openPhoto")} <span aria-hidden="true">→</span>
+            </Link>
             <a
               href={print.download}
               download
@@ -129,6 +157,54 @@ export default function StudyScreen({
       )}
 
       <div className={`${styles.studyFooter} flex flex-col items-center gap-3 wide:flex-row wide:justify-between`}>
+        {print && (
+          <div className="flex w-full max-w-sm items-center justify-between gap-1 border border-fg/40 bg-page/90 px-1 wide:hidden">
+            {file.prints.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onFocus(wrap(at - 1, file.prints.length))}
+                aria-label={t("prevPhoto")}
+                className="grid h-10 w-10 shrink-0 place-items-center text-lg hover:bg-accent-surface"
+              >
+                ←
+              </button>
+            )}
+            <Link
+              href={photoHref(print.id)}
+              scroll={false}
+              className="inline-flex min-h-10 min-w-0 flex-1 items-center justify-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.08em] hover:text-accent-text"
+            >
+              <span className="font-meta text-fg-subtle">{pad(at + 1)} / {pad(file.prints.length)}</span>
+              <span className="truncate">{t("openPhoto")} →</span>
+            </Link>
+            <a
+              href={print.download}
+              download
+              aria-label={t("studyDownload")}
+              className="grid h-10 w-10 shrink-0 place-items-center text-sm hover:bg-accent-surface"
+            >
+              ↓
+            </a>
+            <button
+              type="button"
+              onClick={share}
+              aria-label={t("studyShare")}
+              className="grid h-10 w-10 shrink-0 place-items-center text-sm hover:bg-accent-surface"
+            >
+              ↗
+            </button>
+            {file.prints.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onFocus(wrap(at + 1, file.prints.length))}
+                aria-label={t("nextPhoto")}
+                className="grid h-10 w-10 shrink-0 place-items-center text-lg hover:bg-accent-surface"
+              >
+                →
+              </button>
+            )}
+          </div>
+        )}
         <p className="font-meta hidden w-1/4 flex-wrap gap-x-5 text-xs text-fg-subtle wide:flex">
           <span>{t("studyHintDrag")}</span>
           {touch ? <span>{t("studyHintPinch")}</span> : (

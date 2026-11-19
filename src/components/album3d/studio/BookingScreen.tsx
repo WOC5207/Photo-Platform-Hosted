@@ -137,7 +137,7 @@ export default function BookingScreen({ account, schedule }: { account: StudioAc
 
   return (
     <>
-      <BookingPanel expanded>
+      <BookingPanel work>
         <StudioHeading trail={t("studioBookings")} title={schedule.title}>
           <p className="font-meta mt-3 text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
             {[schedule.dates, schedule.location, state].filter(Boolean).join(" · ")}

@@ -6,7 +6,7 @@ import type { CosplanImageLayer, CosplanLayer, CosplanSlot, CosplanTextLayer } f
 import { COSPLAN_IMAGE_LIMIT, COSPLAN_TEXT_LIMIT, COSPLAN_UPLOAD_MAX_MB, cosplanUploadError, loadCosplanImage, normalizeCosplanUpload, placeCharacter, type CosplanCharacter, type CosplanSlotFit } from "@/lib/cosplanDraft";
 import { renderCosplan, cosplanInkFor } from "@/lib/cosplanCanvas";
 import { Roll, pad } from "../../hud";
-import { fieldClass, metaLabel, secondaryClass, useStage } from "../../booking/shared";
+import { fieldClass, metaLabel, secondaryClass, useScreenKeys, useStage } from "../../booking/shared";
 import { ENTER, ICONS, PhoneBack, PhoneIcon, PhoneSheet, PhoneShell, PhoneToolbar, cssColor, fitCanvas, usePosterFit, usePosterMorph, useStripMotion, type PhoneTool } from "../phone";
 import { fitInSlot, layerAt, layerBox, paintGuides, restackLayers, slotAt, transformLayer } from "./board";
 import { NamePanel, Range, TextPanel, type LiveProps } from "./CosplanBoard";
@@ -405,8 +405,25 @@ export default function CosplanPhoneBoard() {
     if (left < strip.scrollLeft || left + chip.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollTo({ left: left - 12, behavior: "smooth" });
   }, [targetIndex]);
 
+  const closeMode = () => {
+    if (mode === "text") finishText(false);
+    else if (mode === "name") finishName(false);
+    else setMode("board");
+  };
+  useScreenKeys((k) => {
+    if (k === "Escape" && mode !== "board") {
+      closeMode();
+      return true;
+    }
+    if ((k === "Delete" || k === "Backspace") && mode === "board" && selected) {
+      remove(selected);
+      return true;
+    }
+    return false;
+  });
+
   // -------------------------------------------------------------- render --
-  const back = <PhoneBack label={tc("backgrounds")} onClick={() => go({ kind: "cosplan" })} />;
+  const back = <PhoneBack label={tc("backgrounds")} onClick={() => (mode !== "board" ? closeMode() : go({ kind: "cosplan" }))} />;
 
   if (status === "reading" || !composition) {
     return (

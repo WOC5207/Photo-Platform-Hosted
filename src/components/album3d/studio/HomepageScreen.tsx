@@ -20,7 +20,7 @@ export default function HomepageScreen({ site }: { site: StudioSite }) {
   const t = useTranslations("album3d");
   const ts = useTranslations("adminSite");
   const locale = useLocale();
-  const { state, pending, submit } = useSiteSave();
+  const { state, pending, submit, markDirty } = useSiteSave();
   const v = site.values;
 
   const tiles = useMemo<BoardTile[]>(
@@ -66,7 +66,7 @@ export default function HomepageScreen({ site }: { site: StudioSite }) {
   return (
     <BookingPanel expanded="full">
       <StudioHeading trail={t("studioCrumbs.site")} title={ts("settingsTabHomepage")} />
-      <form onSubmit={submit} aria-busy={pending} className="mt-6 grid gap-6">
+      <form onSubmit={submit} onChange={markDirty} aria-busy={pending} className="mt-6 grid gap-6">
         <Group title={ts("groupHomepageTitle")} hint={ts("groupHomepageHint")}>
           <Pair en="homeTitleEn" zh="homeTitleZh" values={v} labels={[ts("homeTitleEn"), ts("homeTitleZh")]} max={200} />
           <Pair en="homeSubtitleEn" zh="homeSubtitleZh" values={v} labels={[ts("homeSubtitleEn"), ts("homeSubtitleZh")]} max={300} />

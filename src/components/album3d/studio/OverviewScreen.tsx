@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/navigation";
 import { GameMenu, Rolling, pad, wrap, type MenuItem } from "../hud";
-import { BookingPanel, isInteractive, metaLabel, useScreenKeys, useStage } from "../booking/shared";
+import { BookingPanel, StepButtons, isInteractive, metaLabel, useScreenKeys, useStage } from "../booking/shared";
+import { FieldContext } from "../StageContext";
 import styles from "../ArchiveSite.module.css";
 import { formatBytes } from "./shared";
 import type { OwnerOverview } from "./types";
@@ -21,7 +22,8 @@ export default function OverviewScreen({ overview }: { overview: OwnerOverview }
   const t = useTranslations("album3d");
   const ta = useTranslations("admin");
   const router = useRouter();
-  const { go, path } = useStage();
+  const { go, path, preview, setPreview } = useStage();
+  const field = useContext(FieldContext);
   const [focus, setFocus] = useState(0);
   const { username, name } = overview.account;
   const { next, shoot } = overview;
@@ -69,32 +71,40 @@ export default function OverviewScreen({ overview }: { overview: OwnerOverview }
   const at = Math.min(focus, items.length - 1);
 
   useScreenKeys((k, target) => {
-    const move = (delta: number) => {
-      const step = wrap(at + delta, items.length);
-      setFocus(step);
-      document.querySelector<HTMLElement>(`[data-menu-item="${step}"]`)?.scrollIntoView({ block: "nearest" });
-    };
-    if (k === "ArrowUp") move(-1);
-    else if (k === "ArrowDown") move(1);
+    if (k === "ArrowUp") setFocus(wrap(at - 1, items.length));
+    else if (k === "ArrowDown") setFocus(wrap(at + 1, items.length));
     else if (k === "Enter" && !isInteractive(target)) items[at]?.run();
     else return false;
     return true;
   });
+
+  if (preview) return null;
 
   const days = next ? Math.round((Date.parse(`${next.day}T00:00:00Z`) - Date.parse(`${overview.today}T00:00:00Z`)) / DAY) : 0;
   const share = overview.quotaBytes > 0 ? Math.min(1, overview.usedBytes / overview.quotaBytes) : 0;
 
   return (
     <BookingPanel>
-      <p className={metaLabel}>
-        {t("loginArchive")} <span aria-hidden="true" className="mx-2">／</span> @{username}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className={metaLabel}>
+          {t("loginArchive")} <span aria-hidden="true" className="mx-2">／</span> @{username}
+        </p>
+        {setPreview && (
+          <button
+            type="button"
+            onClick={() => setPreview(true)}
+            className="font-meta inline-flex min-h-8 items-center gap-1.5 border border-border-strong px-2.5 text-[0.625rem] uppercase tracking-[0.12em] text-fg-muted transition hover:border-fg hover:text-fg"
+          >
+            {t("overviewPreviewVisitor")} <span aria-hidden="true">↗</span>
+          </button>
+        )}
+      </div>
       <h1 className="mt-3 text-[2.25rem] font-extrabold uppercase leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere] wide:text-[3.25rem]">
         {name}
       </h1>
       <div aria-hidden="true" className={styles.calloutRule} />
 
-      <dl className="mt-6 grid grid-cols-4 gap-x-6 gap-y-4">
+      <dl className="mt-6 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
         {[
           [t("statAlbums"), overview.albums],
           [t("statPhotos"), overview.photos],
@@ -161,6 +171,27 @@ export default function OverviewScreen({ overview }: { overview: OwnerOverview }
           </p>
         )}
       </section>
+
+      {field?.resting && (
+        <div className="mt-6 flex items-stretch gap-2">
+          <button
+            type="button"
+            onClick={() => field.open(field.resting!.index)}
+            className="flex min-h-11 min-w-0 flex-1 items-center justify-between gap-3 border-l-2 border-accent bg-page/85 py-1.5 pl-3 pr-3 text-left transition hover:bg-accent-surface"
+          >
+            <span className="min-w-0">
+              <span className={`${metaLabel} block truncate`}>
+                {[field.resting.date || t("noDate"), t("photos", { count: field.resting.photos })].join(" · ")}
+              </span>
+              <span className="block truncate text-sm font-extrabold uppercase leading-tight">{field.resting.title}</span>
+            </span>
+            <span aria-hidden="true" className="text-lg text-accent-text">→</span>
+          </button>
+          <span className="flex shrink-0 bg-page/85">
+            <StepButtons onStep={field.step} atStart={overview.albums < 2} atEnd={overview.albums < 2} />
+          </span>
+        </div>
+      )}
 
       <GameMenu label={name} items={items} focus={at} onFocus={setFocus} className="mt-6" />
     </BookingPanel>

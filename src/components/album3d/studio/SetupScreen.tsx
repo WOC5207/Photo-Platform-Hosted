@@ -86,12 +86,12 @@ export default function SetupScreen({ setup }: { setup: StudioSetup }) {
         </div>
         {step === "credentials" && <CredentialsStep username={setup.username} onDone={next} />}
         {step === "brand" && (
-          <SimpleStep action={setupUpdateBrand} hint={t("brandHint")} onDone={next} onBack={back}>
+          <SimpleStep action={setupUpdateBrand} hint={ta("studioSetupBrandHint")} onDone={next} onBack={back}>
             <Pair names={["siteTitleEn", "siteTitleZh"]} values={[setup.siteTitleEn, setup.siteTitleZh]} max={120} />
           </SimpleStep>
         )}
         {step === "hometext" && (
-          <SimpleStep action={setupUpdateHomeText} hint={t("hometextHint")} onDone={next} onBack={back}>
+          <SimpleStep action={setupUpdateHomeText} hint={ta("studioSetupHomeHint")} onDone={next} onBack={back}>
             <Pair names={["homeTitleEn", "homeTitleZh"]} values={[setup.homeTitleEn, setup.homeTitleZh]} max={200} />
             <Pair names={["homeSubtitleEn", "homeSubtitleZh"]} values={[setup.homeSubtitleEn, setup.homeSubtitleZh]} max={300} />
           </SimpleStep>
@@ -104,7 +104,7 @@ export default function SetupScreen({ setup }: { setup: StudioSetup }) {
         {step === "finish" && (
           <form action={completeSetup} className="grid gap-4">
             <input type="hidden" name="site" value="3d" />
-            <p className="text-sm text-fg-muted">{t("finishHint")}</p>
+            <p className="text-sm text-fg-muted">{ta("studioSetupFinishHint")}</p>
             <p className="text-xs text-fg-subtle">{ta("studioSetupLater")}</p>
             <Nav onBack={back} label={ta("studioSetupFinish")} />
           </form>
@@ -161,12 +161,13 @@ function SimpleStep({
   onBack,
   children
 }: {
-  action: (state: { ok?: boolean }, data: FormData) => Promise<{ ok?: boolean }>;
+  action: (state: { ok?: boolean; error?: string }, data: FormData) => Promise<{ ok?: boolean; error?: string }>;
   hint: string;
   onDone: () => void;
   onBack?: () => void;
   children: ReactNode;
 }) {
+  const ta = useTranslations("album3d");
   const [state, formAction, pending] = useActionState(action, {});
   useEffect(() => {
     if (state.ok) onDone();
@@ -176,6 +177,7 @@ function SimpleStep({
     <form action={formAction} aria-busy={pending} className="grid gap-4">
       <p className="text-sm text-fg-muted">{hint}</p>
       {children}
+      {(state.error || state.ok === false) && <FormNote tone="error">{ta("studioSetupError")}</FormNote>}
       <Nav onBack={onBack} pending={pending} />
     </form>
   );
@@ -183,23 +185,26 @@ function SimpleStep({
 
 function Features({ setup }: { setup: StudioSetup }) {
   const t = useTranslations("setup");
+  const ta = useTranslations("album3d");
   const ts = useTranslations("adminSite");
   const [booking, setBooking] = useState(setup.bookingEnabled);
+  const [lottery, setLottery] = useState(setup.lotteryEnabled);
+  const [credits, setCredits] = useState(setup.creditProfilesEnabled);
   const rows = [
-    ["bookingEnabled", ts("bookingEnabledLabel"), t("bookingPreview"), setup.bookingEnabled],
-    ["lotteryEnabled", ts("lotteryEnabledLabel"), t("lotteryPreview"), setup.lotteryEnabled],
-    ["creditProfilesEnabled", ts("creditProfilesEnabledLabel", { term: setup.creditTerm }), t("creditProfilesPreview", { term: setup.creditTerm }), setup.creditProfilesEnabled]
+    ["bookingEnabled", ts("bookingEnabledLabel"), ta("studioSetupBookingHint"), booking, (checked: boolean) => { setBooking(checked); if (!checked) setLottery(false); }],
+    ["lotteryEnabled", ts("lotteryEnabledLabel"), t("lotteryPreview"), booking && lottery, setLottery],
+    ["creditProfilesEnabled", ts("creditProfilesEnabledLabel", { term: setup.creditTerm }), t("creditProfilesPreview", { term: setup.creditTerm }), credits, setCredits]
   ] as const;
   return (
     <div className="grid gap-2">
-      {rows.map(([name, label, hint, on]) => (
+      {rows.map(([name, label, hint, checked, onChange]) => (
         <label key={name} className="flex items-start gap-3 border border-border-strong p-3 text-sm has-[:checked]:border-fg has-[:disabled]:opacity-50">
           <input
             type="checkbox"
             name={name}
-            defaultChecked={on}
+            checked={checked}
             disabled={name === "lotteryEnabled" && !booking}
-            onChange={name === "bookingEnabled" ? (e) => setBooking(e.target.checked) : undefined}
+            onChange={(e) => onChange(e.target.checked)}
             className={`mt-0.5 ${checkClass}`}
           />
           <span className="grid gap-1">

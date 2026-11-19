@@ -23,6 +23,7 @@ export function TableScreen({
   username,
   album,
   focus,
+  onFocus,
   onOpen,
   onBack,
   classicHref
@@ -32,6 +33,7 @@ export function TableScreen({
   username: string;
   album: AlbumPhotos | null;
   focus: number;
+  onFocus: (index: number) => void;
   onOpen: (index: number) => void;
   onBack: () => void;
   classicHref: string;
@@ -73,14 +75,22 @@ export function TableScreen({
           </ol>
           <div className={`${styles.phoneHide} mt-6`}>
             <p className={metaLabel}>{t("lightTable")}</p>
-            <p className="mt-1 flex items-baseline gap-3">
-              <span className="text-[2.125rem] leading-none wide:text-[3rem]">
-                <Rolling value={pad(focus + 1)} />
-              </span>
-              <span aria-hidden="true" className="text-xl font-light text-fg-subtle">/</span>
-              <span className="text-sm text-fg-muted wide:text-[1.375rem]">{pad(total)}</span>
-              <span className="sr-only">{t("printCount", { current: focus + 1, total })}</span>
-            </p>
+            <div className="mt-1 flex items-center gap-4">
+              <p className="flex items-baseline gap-3">
+                <span className="text-[2.125rem] leading-none wide:text-[3rem]">
+                  <Rolling value={pad(focus + 1)} />
+                </span>
+                <span aria-hidden="true" className="text-xl font-light text-fg-subtle">/</span>
+                <span className="text-sm text-fg-muted wide:text-[1.375rem]">{pad(total)}</span>
+                <span className="sr-only">{t("printCount", { current: focus + 1, total })}</span>
+              </p>
+              {total > 1 && (
+                <span className="flex">
+                  <button type="button" onClick={() => onFocus(focus - 1)} disabled={focus <= 0} aria-label={t("prevPhoto")} className={square}>←</button>
+                  <button type="button" onClick={() => onFocus(focus + 1)} disabled={focus >= total - 1} aria-label={t("nextPhoto")} className={square}>→</button>
+                </span>
+              )}
+            </div>
           </div>
           <div className="mt-6 flex flex-wrap items-center gap-x-10 gap-y-2">
             <button
@@ -97,7 +107,7 @@ export function TableScreen({
           </div>
           {album.more > 0 && (
             <p className="mt-4 text-xs text-fg-muted">
-              <Link href={classicHref} className="underline-offset-4 hover:text-fg hover:underline">
+              <Link href={classicHref} className="inline-flex min-h-11 items-center underline-offset-4 hover:text-fg hover:underline">
                 {t("morePhotos", { count: album.more })} ↗
               </Link>
             </p>

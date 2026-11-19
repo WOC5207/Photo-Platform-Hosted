@@ -105,7 +105,13 @@ export default function SetupWizard({
       {step === "credentials" && (
         <CredentialsStep initialUsername={initialUsername} onDone={goNext} />
       )}
-      {step === "brand" && <BrandStep initial={settings} onDone={goNext} onBack={goBack} />}
+      {step === "brand" && (
+        <BrandStep
+          initial={settings}
+          onDone={goNext}
+          onBack={stepIndex > 0 ? goBack : undefined}
+        />
+      )}
       {step === "hometext" && (
         <HomeTextStep initial={settings} onDone={goNext} onBack={goBack} />
       )}
@@ -292,7 +298,7 @@ function BrandStep({
 }: {
   initial: Pick<WizardSettings, "siteTitleEn" | "siteTitleZh">;
   onDone: () => void;
-  onBack: () => void;
+  onBack?: () => void;
 }) {
   const t = useTranslations("setup");
   const ts = useTranslations("adminSite");

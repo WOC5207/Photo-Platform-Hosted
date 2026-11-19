@@ -42,7 +42,7 @@ export default function UploadScreen({
     <BookingPanel expanded="full">
       <StudioHeading trail={event.title} title={t("studioUpload")} />
       <div className="mt-6">
-        <PhotoWizard {...wizard} onPublished={published} />
+        <PhotoWizard {...wizard} albumPublished={event.published} onPublished={published} />
       </div>
     </BookingPanel>
   );

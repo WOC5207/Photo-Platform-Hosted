@@ -45,13 +45,8 @@ export default function UploadPickScreen({ account, events }: { account: StudioA
 
   useScreenKeys((k, target) => {
     if (!items.length) return false;
-    const move = (delta: number) => {
-      const next = wrap(at + delta, items.length);
-      setFocus(next);
-      document.querySelector<HTMLElement>(`[data-menu-item="${next}"]`)?.scrollIntoView({ block: "nearest" });
-    };
-    if (k === "ArrowUp") move(-1);
-    else if (k === "ArrowDown") move(1);
+    if (k === "ArrowUp") setFocus(wrap(at - 1, items.length));
+    else if (k === "ArrowDown") setFocus(wrap(at + 1, items.length));
     else if (k === "Enter" && !isInteractive(target)) items[at]?.run();
     else return false;
     return true;

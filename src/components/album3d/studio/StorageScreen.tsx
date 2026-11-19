@@ -6,7 +6,7 @@ import { Link } from "@/i18n/navigation";
 import { Hints, Rolling, pad, wrap } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
-import { BookingPanel, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
+import { BookingPanel, StepButtons, isInteractive, metaLabel, secondaryClass, useScene, useScreenKeys, useStage, useStageInput } from "../booking/shared";
 import { StudioHeading, formatBytes } from "./shared";
 import type { StudioStorage } from "./types";
 
@@ -123,13 +123,16 @@ export default function StorageScreen({ storage }: { storage: StudioStorage }) {
           </div>
           {event ? (
             <div className="grid gap-3 border border-border-strong bg-page/70 p-3">
-              <p className={metaLabel}>
-                {t("studioEvent")}{" "}
-                <span className="text-fg">
-                  <Rolling value={pad(at + 1)} />
-                </span>{" "}
-                / {pad(events.length)}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className={metaLabel}>
+                  {t("studioEvent")}{" "}
+                  <span className="text-fg">
+                    <Rolling value={pad(at + 1)} />
+                  </span>{" "}
+                  / {pad(events.length)}
+                </p>
+                {events.length > 1 && <StepButtons onStep={move} atStart={false} atEnd={false} />}
+              </div>
               <p className="font-semibold">{event.title}</p>
               <p className="text-sm text-fg-muted">
                 {formatBytes(event.bytes)} · {ts("photoCount", { count: event.photos })}
@@ -139,6 +142,25 @@ export default function StorageScreen({ storage }: { storage: StudioStorage }) {
                 {t("studioPhotos")}
                 <span aria-hidden="true" className="ml-auto">→</span>
               </Link>
+              {events.length > 1 && (
+                <ul className="mt-1 grid gap-1 border-t border-border pt-2">
+                  {events.map((item, i) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => setFocus(i)}
+                        aria-current={i === at ? "true" : undefined}
+                        className={`flex min-h-9 w-full items-center justify-between gap-2 px-2 text-left text-xs transition ${
+                          i === at ? "bg-fg/10 font-semibold text-fg" : "text-fg-muted hover:text-fg"
+                        }`}
+                      >
+                        <span className="truncate">{item.title}</span>
+                        <span className="font-meta shrink-0 text-[0.625rem]">{formatBytes(item.bytes)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           ) : (
             <p className="text-sm text-fg-subtle">{ts("noEvents")}</p>

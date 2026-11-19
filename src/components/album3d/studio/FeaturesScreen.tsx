@@ -16,7 +16,7 @@ import type { StudioSite } from "./types";
 export default function FeaturesScreen({ site }: { site: StudioSite }) {
   const t = useTranslations("album3d");
   const ts = useTranslations("adminSite");
-  const { state, pending, submit } = useSiteSave();
+  const { state, pending, submit, markDirty } = useSiteSave();
   const v = site.values;
   const notice = site.priceNotice;
   const noticeReady = Boolean(notice.title.trim() && notice.body.trim());
@@ -51,7 +51,7 @@ export default function FeaturesScreen({ site }: { site: StudioSite }) {
   return (
     <BookingPanel expanded="full">
       <StudioHeading trail={t("studioCrumbs.site")} title={ts("settingsTabFeatures")} />
-      <form onSubmit={submit} aria-busy={pending} className="mt-6 grid gap-6">
+      <form onSubmit={submit} onChange={markDirty} aria-busy={pending} className="mt-6 grid gap-6">
         <Group title={ts("groupBookingTitle")} hint={ts("groupBookingHint")}>
           <Check
             name="bookingEnabled"

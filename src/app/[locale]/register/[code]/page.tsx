@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, homePathFor } from "@/lib/auth";
 import { pickText } from "@/lib/content";
 import { getPlatformSettings } from "@/lib/platformSettings";
+import { Link } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import RegisterForm from "./RegisterForm";
 import RegistrationGate from "./RegistrationGate";
@@ -31,6 +32,8 @@ export default async function RegisterPage({
 }) {
   const { locale, code } = await params;
   const t = await getTranslations("register");
+  const ta = await getTranslations("auth");
+  const tc = await getTranslations("common");
 
   // Already signed in: creating a second account from here would silently
   // replace the current session, which is never what anyone means.
@@ -74,6 +77,7 @@ export default async function RegisterPage({
           passwordHint: t("passwordHint"),
           confirmPassword: t("confirmPassword"),
           submit: t("submit"),
+          submitting: t("submitting"),
           errorValidation: t("errorValidation"),
           errorMismatch: t("errorMismatch"),
           errorUsernameTaken: t("errorUsernameTaken"),
@@ -104,15 +108,29 @@ export default async function RegisterPage({
     ) || t("noticeDefaultBody");
 
   return (
-    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col justify-center gap-6 px-4 py-10">
-      <div className="absolute right-4 top-4">
+    <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-4 py-4">
+      <header className="flex items-center justify-between gap-3">
+        <Link
+          href="/"
+          className="inline-flex min-h-11 items-center gap-1.5 text-sm text-fg-muted underline-offset-4 hover:text-fg hover:underline"
+        >
+          <span aria-hidden="true">←</span> {tc("back")}
+        </Link>
         <LanguageSwitcher />
-      </div>
-
+      </header>
+      <main id="main-content" tabIndex={-1} className="flex flex-1 flex-col justify-center gap-6 py-8">
       {!usable ? (
-        <div className="mx-auto flex w-full max-w-md flex-col gap-2 rounded-2xl border border-border p-6 text-center">
+        <div className="mx-auto flex w-full max-w-md flex-col gap-3 rounded-2xl border border-border p-6 text-center">
           <h1 className="text-xl font-semibold">{t("invalidInvite")}</h1>
           <p className="text-sm text-fg-subtle">{t("invalidInviteHint")}</p>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-sm">
+            <Link href="/login" className="inline-flex min-h-10 items-center font-semibold text-accent underline underline-offset-4">
+              {ta("signIn")} →
+            </Link>
+            <Link href="/" className="inline-flex min-h-10 items-center text-fg-muted underline-offset-4 hover:text-fg hover:underline">
+              {tc("back")}
+            </Link>
+          </div>
         </div>
       ) : (
         platformSettings.registrationNoticeEnabled ? (
@@ -134,6 +152,7 @@ export default async function RegisterPage({
           registrationForm
         )
       )}
-    </main>
+      </main>
+    </div>
   );
 }

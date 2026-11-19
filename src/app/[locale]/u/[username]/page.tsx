@@ -218,7 +218,7 @@ export default async function HomePage({
             aria-hidden="true"
             className="font-meta mb-5 text-[0.6875rem] font-semibold tracking-[0.2em] text-accent-text"
           >
-            01 / PORTFOLIO
+            {t("portfolioKicker")}
           </span>
           <h1 className="font-display ui-balance text-5xl font-semibold leading-[0.98] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
             {heroTitle}

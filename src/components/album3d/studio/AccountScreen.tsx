@@ -1,11 +1,11 @@
 "use client";
 
-import { startTransition, useActionState, useMemo, type FormEvent } from "react";
+import { startTransition, useActionState, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import { changePassword, logoutEverywhere, updateProfile, type ChangePasswordState, type UpdateProfileState } from "@/app/[locale]/dashboard/(protected)/account/actions";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 import type { BoardTile } from "../board";
-import { BookingPanel, fieldClass, primaryClass } from "../booking/shared";
+import { BookingPanel, fieldClass, primaryClass, useDirtyGuard } from "../booking/shared";
 import { FormNote, StudioHeading } from "./shared";
 import { Group, labelClass, useSiteBoard } from "./site";
 import type { StudioSite } from "./types";
@@ -29,6 +29,11 @@ export default function AccountScreen({ site }: { site: StudioSite }) {
   const tc = useTranslations("common");
   const [profile, saveProfile, savingProfile] = useActionState<UpdateProfileState, FormData>(updateProfile, {});
   const [password, savePassword, savingPassword] = useActionState<ChangePasswordState, FormData>(changePassword, {});
+  const [dirty, setDirty] = useState(false);
+  useDirtyGuard(dirty && !savingProfile && !savingPassword);
+  useEffect(() => {
+    if (profile.ok || password.ok) setDirty(false);
+  }, [profile, password]);
   const { username } = site.account;
 
   const tiles = useMemo<BoardTile[]>(
@@ -42,7 +47,7 @@ export default function AccountScreen({ site }: { site: StudioSite }) {
   return (
     <BookingPanel expanded="full">
       <StudioHeading trail={t("studioCrumbs.site")} title={t("studioCrumbs.account")} />
-      <form onSubmit={bySubmit(saveProfile)} aria-busy={savingProfile} className="mt-6 grid gap-4">
+      <form onSubmit={bySubmit(saveProfile)} onChange={() => setDirty(true)} aria-busy={savingProfile} className="mt-6 grid gap-4">
         <label className={labelClass}>
           {tr("username")}
           <input value={username} readOnly aria-readonly="true" autoComplete="username" className={`${fieldClass} text-fg-subtle`} />

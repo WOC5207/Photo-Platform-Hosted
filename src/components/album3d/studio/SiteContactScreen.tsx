@@ -21,7 +21,7 @@ const LANGUAGES = [
 export default function SiteContactScreen({ site }: { site: StudioSite }) {
   const t = useTranslations("album3d");
   const ts = useTranslations("adminSite");
-  const { state, pending, submit } = useSiteSave();
+  const { state, pending, submit, markDirty } = useSiteSave();
   const v = site.values as unknown as Record<string, string> & { contactEnabled: boolean };
 
   const tiles = useMemo<BoardTile[]>(
@@ -45,7 +45,7 @@ export default function SiteContactScreen({ site }: { site: StudioSite }) {
     <BookingPanel expanded="full">
       <StudioHeading trail={t("studioCrumbs.site")} title={t("studioCrumbs.siteContact")} />
       <p className="mt-4 text-sm text-fg-muted">{ts("contactHint")}</p>
-      <form onSubmit={submit} aria-busy={pending} className="mt-6 grid gap-6">
+      <form onSubmit={submit} onChange={markDirty} aria-busy={pending} className="mt-6 grid gap-6">
         <Check name="contactEnabled" defaultChecked={v.contactEnabled}>
           {ts("contactEnabledLabel")}
         </Check>

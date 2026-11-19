@@ -47,7 +47,10 @@ export default function ConfirmStep({
   failedCount,
   publishPhase,
   publishedCount,
-  moderationEnabled
+  moderationEnabled,
+  albumPublished = true,
+  publishAlbum = false,
+  onPublishAlbumChange
 }: {
   queue: PendingUploadQueue;
   creditsByPhoto: Record<string, AssignedCredit[]>;
@@ -55,6 +58,9 @@ export default function ConfirmStep({
   publishPhase: PublishPhase;
   publishedCount: number;
   moderationEnabled: boolean;
+  albumPublished?: boolean;
+  publishAlbum?: boolean;
+  onPublishAlbumChange?: (next: boolean) => void;
 }) {
   const tw = useTranslations("photoWizard");
   // Show every browsable photo (including any still compressing) so the preview
@@ -141,6 +147,21 @@ export default function ConfirmStep({
           </li>
         ))}
       </ul>
+
+      {!albumPublished && onPublishAlbumChange && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-accent/35 bg-accent-surface px-3.5 py-3 text-sm">
+          <input
+            type="checkbox"
+            checked={publishAlbum}
+            onChange={(e) => onPublishAlbumChange(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+          />
+          <span className="grid gap-0.5">
+            <span className="font-semibold text-fg">{tw("publishAlbumLabel")}</span>
+            <span className="text-xs text-fg-muted">{tw("publishAlbumHint")}</span>
+          </span>
+        </label>
+      )}
 
       {publishPhase === "error" && (
         <p role="alert" className="text-sm font-medium text-danger">

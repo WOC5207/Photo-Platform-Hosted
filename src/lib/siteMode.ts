@@ -337,7 +337,12 @@ export function threeDTwin(path: string): string {
   if (parts[0] === "dashboard") return `${THREE_D_ROOT}/studio${studioFromClassic(parts.slice(1), path)}`;
   // Booking, draw and my-booking links name only their token; /3d/book/<token>
   // (and the others) look up the photographer and forward to their address.
-  if ((parts[0] === "book" || parts[0] === "draw" || parts[0] === "my-booking") && parts[1] && TOKEN.test(parts[1]) && parts.length === 2) {
+  if (
+    (parts[0] === "book" || parts[0] === "draw" || parts[0] === "my-booking") &&
+    parts[1] &&
+    TOKEN.test(parts[1]) &&
+    (parts.length === 2 || (parts[0] === "book" && parts[2] === "check" && parts.length === 3))
+  ) {
     return `${THREE_D_ROOT}/${parts[0]}/${parts[1]}`;
   }
   if (parts[0] !== "u" || !parts[1] || !SEGMENT.test(parts[1])) return THREE_D_ROOT;

@@ -14,6 +14,7 @@ import CompressionStep from "./CompressionStep";
 import CreditsStep from "./CreditsStep";
 import ConfirmStep, { buildCreditGroups, type PublishPhase } from "./ConfirmStep";
 import { btnCls, formatBytes, primaryBtnCls } from "./ui";
+import { publishEvent } from "@/app/[locale]/dashboard/(protected)/events/actions";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 
@@ -26,6 +27,7 @@ export default function PhotoWizard({
   creditTerm,
   subjectTerm,
   moderationEnabled,
+  albumPublished = true,
   onPublished
 }: {
   eventId: string;
@@ -36,6 +38,8 @@ export default function PhotoWizard({
   creditTerm: string;
   subjectTerm: string;
   moderationEnabled: boolean;
+  /** False when the target album is still a hidden draft. */
+  albumPublished?: boolean;
   /** Where to go once published; the classic event page when not given. */
   onPublished?: () => void;
 }) {
@@ -67,6 +71,7 @@ export default function PhotoWizard({
     {}
   );
   const [ackUncredited, setAckUncredited] = useState(false);
+  const [publishAlbum, setPublishAlbum] = useState(false);
   const [publishPhase, setPublishPhase] = useState<PublishPhase>("idle");
   const [publishedCount, setPublishedCount] = useState(0);
   const guidanceTimer = useRef<number | null>(null);
@@ -310,6 +315,11 @@ export default function PhotoWizard({
       setPublishPhase(failed);
       return;
     }
+    if (!albumPublished && publishAlbum) {
+      const form = new FormData();
+      form.set("id", eventId);
+      await publishEvent(form).catch(() => undefined);
+    }
     setPublishPhase("success");
     // The edit route was visited immediately before this wizard and may still
     // exist in Next's client router cache. A document-level replace guarantees
@@ -376,6 +386,9 @@ export default function PhotoWizard({
             publishPhase={publishPhase}
             publishedCount={publishedCount}
             moderationEnabled={moderationEnabled}
+            albumPublished={albumPublished}
+            publishAlbum={publishAlbum}
+            onPublishAlbumChange={setPublishAlbum}
           />
         )}
       </section>
