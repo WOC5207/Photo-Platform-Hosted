@@ -2692,6 +2692,11 @@
     "studioOtherPaletteInvalid": "{mode} mode palette fails contrast or has an invalid color — switch tabs to fix it before saving.",
     "studioRemoveConfirm": "Remove \"{name}\" from this checklist?",
     "studioGoToEquipment": "Add equipment in Equipment",
-    "studioEquipmentPhotoFailed": "Equipment item was saved, but its reference photo failed to upload. You can retry inside the item editor."
+    "studioEquipmentPhotoFailed": "Equipment item was saved, but its reference photo failed to upload. You can retry inside the item editor.",
+    "gridTwoCol": "2 cols",
+    "gridOneCol": "1 col",
+    "photoInfo": "Details",
+    "photoExpand": "Full screen",
+    "filmstripLabel": "Photo thumbnails"
   }
 }
