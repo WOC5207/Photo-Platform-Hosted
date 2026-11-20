@@ -1,9 +1,9 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
-import { createBooking3d, type BookingFormState } from "@/app/[locale]/(public)/book/actions";
+import { createBooking3d, lookupMyBooking, type BookingFormState, type BookingLookupState } from "@/app/[locale]/(public)/book/actions";
 import { Hints, pad } from "../hud";
 import styles from "../ArchiveSite.module.css";
 import type { BoardTile } from "../board";
@@ -50,11 +50,16 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
   const { go, path, key, touch } = useStage();
   const scene = useScene("board");
   const [state, formAction, pending] = useActionState<BookingFormState, FormData>(createBooking3d, {});
+  const [checkState, checkAction, checking] = useActionState<BookingLookupState, FormData>(lookupMyBooking, {});
+  const slotsRef = useRef<HTMLOListElement>(null);
   const days = schedule.days;
   const [day, setDay] = useState(() => Math.max(0, days.findIndex((d) => d.slots.some((s) => s.remaining > 0))));
   // Each day opens on its first time that can still be booked.
   const firstOpen = (index: number) => Math.max(0, days[index]?.slots.findIndex((slot) => slot.remaining > 0) ?? 0);
   const [row, setRow] = useState(() => firstOpen(day));
+  useEffect(() => {
+    slotsRef.current?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [row]);
   const [cart, setCart] = useState<string[]>([]);
   const [step, setStep] = useState<Step>("slots");
   const [subjects, setSubjects] = useState<Record<string, string>>({});
@@ -303,7 +308,7 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
                     })}
                   </div>
                 )}
-                <ol aria-label={focusedDay?.label ?? tb("chooseSlots")} className={`${styles.roster} mt-3 grid gap-1`}>
+                <ol ref={slotsRef} aria-label={focusedDay?.label ?? tb("chooseSlots")} className={`${styles.roster} mt-3 grid gap-1`}>
                   {(focusedDay?.slots ?? []).map((slot, r) => {
                     const active = r === Math.min(row, focusedDay.slots.length - 1);
                     const inCart = cart.includes(slot.id);
@@ -456,11 +461,8 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
         {!booked && (
           <>
             <LocalTimeNote />
-            <p className="mt-2 flex flex-wrap gap-x-6 text-xs text-fg-muted">
-              <Link href={`/book/${schedule.token}/check`} className="inline-flex min-h-11 items-center underline-offset-4 hover:text-fg hover:underline">
-                {tb("alreadyBooked")} {tb("checkBookingButton")} ↗
-              </Link>
-              {schedule.drawToken && (
+            {schedule.drawToken && (
+              <p className="mt-2 text-xs text-fg-muted">
                 <Link
                   href={path({ kind: "draw", username: schedule.username, token: schedule.drawToken })}
                   scroll={false}
@@ -468,8 +470,58 @@ function Schedule({ schedule, onAgain }: { schedule: BookingSchedule; onAgain: (
                 >
                   {t("crumbDraw")} →
                 </Link>
+              </p>
+            )}
+            <details className="mt-2 border-t border-border pt-3 text-xs">
+              <summary className="cursor-pointer py-2 text-fg-muted underline-offset-4 hover:text-fg hover:underline">
+                {tb("alreadyBooked")} {tb("checkBookingButton")}
+              </summary>
+              <form action={checkAction} aria-busy={checking} className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                <input type="hidden" name="eventToken" value={schedule.token} />
+                <label className="grid gap-1">
+                  <span className="text-fg-muted">{tb("nameLabel")} *</span>
+                  <input name="name" required maxLength={200} autoComplete="name" disabled={checking} className={fieldClass} />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-fg-muted">{tb("contactValue")} *</span>
+                  <input name="contactValue" required maxLength={200} disabled={checking} className={fieldClass} />
+                </label>
+                <button type="submit" disabled={checking} className={secondaryClass}>
+                  {tb("checkSubmit")} →
+                </button>
+              </form>
+              {checkState.error && (
+                <p role="alert" className="mt-2 text-danger">
+                  {tb(checkState.error === "validation" ? "checkErrorValidation" : checkState.error === "rateLimited" ? "checkErrorRateLimited" : "checkNotFound")}
+                </p>
               )}
-            </p>
+              {checkState.results && checkState.results.length > 0 && (
+                <ul className="mt-3 grid gap-2">
+                  {checkState.results.map((r) => (
+                    <li key={r.bookingId} className="flex flex-wrap items-center justify-between gap-2 border border-border-strong bg-page/70 px-3 py-2">
+                      <span>
+                        <span className="font-meta block text-[0.625rem] uppercase tracking-[0.12em] text-accent-text">{r.slotLabel}</span>
+                        <span className="font-semibold">{r.subject ? `${r.name} · ${r.subject}` : r.name}</span>
+                        {r.cancelled && <span className="ml-2 text-danger">({tb("statusCancelled")})</span>}
+                      </span>
+                      {r.cancelToken ? (
+                        <Link
+                          href={path({ kind: "myBooking", username: schedule.username, token: r.cancelToken })}
+                          scroll={false}
+                          className="inline-flex min-h-10 items-center gap-1 font-semibold underline-offset-4 hover:underline"
+                        >
+                          {tb("openBooking")} →
+                        </Link>
+                      ) : (
+                        <span className="text-fg-muted">
+                          {r.linkEmailedTo ? tb("checkLinkEmailed", { email: r.linkEmailedTo }) : tb("checkLinkUnavailable")}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
           </>
         )}
         <p aria-live="polite" className="sr-only">

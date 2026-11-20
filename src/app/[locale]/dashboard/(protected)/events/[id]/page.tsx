@@ -15,7 +15,7 @@ import { Link } from "@/i18n/navigation";
 import EventForm from "@/components/admin/EventForm";
 import PhotoManager, { type AdminPhoto } from "@/components/admin/PhotoManager";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
-import { deleteEvent, updateEvent } from "../actions";
+import { deleteEvent, publishEvent, updateEvent } from "../actions";
 import { getAdminPhotoPage } from "@/lib/adminPhotoPage";
 
 export default async function EditEventPage({
@@ -54,29 +54,35 @@ export default async function EditEventPage({
   return (
     <div className="flex flex-col gap-8">
       <EventWorkspaceHeader title={pickText(locale, event.titleEn, event.titleZh)} galleryId={event.id} bookingId={event.bookingEvent?.id} active="gallery" />
-      {event.published && <Link href={ownerBasePath(user.username) + "/gallery/" + event.slug} className="inline-flex min-h-11 items-center self-start font-semibold text-accent underline underline-offset-4">{t("viewPublic")}</Link>}
 
-      <EventForm
-        action={updateEvent}
-        submitLabel={tc("save")}
-        cancelHref="/dashboard/events"
-        initial={{
-          id: event.id,
-          titleEn: event.titleEn,
-          titleZh: event.titleZh,
-          slug: event.slug,
-          dateStart: event.dateStart ? event.dateStart.toISOString().slice(0, 10) : "",
-          dateEnd: event.dateEnd ? event.dateEnd.toISOString().slice(0, 10) : "",
-          location: event.location,
-          descriptionEn: event.descriptionEn,
-          descriptionZh: event.descriptionZh,
-          published: event.published
-        }}
-      />
+      {event.published ? (
+        <Link href={ownerBasePath(user.username) + "/gallery/" + event.slug} className="inline-flex min-h-11 items-center self-start font-semibold text-accent underline underline-offset-4">{t("viewPublic")}</Link>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-accent/35 bg-accent-surface px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-fg">{t("draftBannerTitle")}</p>
+            <p className="mt-0.5 text-xs text-fg-muted">{t("draftBannerHint")}</p>
+          </div>
+          <form
+            action={async (fd: FormData) => {
+              "use server";
+              await publishEvent(fd);
+            }}
+          >
+            <input type="hidden" name="id" value={event.id} />
+            <button
+              type="submit"
+              className="inline-flex min-h-10 items-center justify-center rounded-lg bg-fg px-4 py-2 text-sm font-semibold text-page transition hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+            >
+              {t("publishAlbumNow")}
+            </button>
+          </form>
+        </div>
+      )}
 
       <section
         id="photos"
-        className="scroll-mt-6 flex flex-col gap-4 border-t border-border pt-6"
+        className="scroll-mt-6 flex flex-col gap-4"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">{t("photos")}</h2>
@@ -97,6 +103,27 @@ export default async function EditEventPage({
           creditProfiles={creditProfiles}
           creditTerm={creditTerm}
           subjectTerm={subjectTerm}
+        />
+      </section>
+
+      <section className="border-t border-border pt-6">
+        <h2 className="mb-4 text-lg font-semibold">{t("editEvent")}</h2>
+        <EventForm
+          action={updateEvent}
+          submitLabel={tc("save")}
+          cancelHref="/dashboard/events"
+          initial={{
+            id: event.id,
+            titleEn: event.titleEn,
+            titleZh: event.titleZh,
+            slug: event.slug,
+            dateStart: event.dateStart ? event.dateStart.toISOString().slice(0, 10) : "",
+            dateEnd: event.dateEnd ? event.dateEnd.toISOString().slice(0, 10) : "",
+            location: event.location,
+            descriptionEn: event.descriptionEn,
+            descriptionZh: event.descriptionZh,
+            published: event.published
+          }}
         />
       </section>
 

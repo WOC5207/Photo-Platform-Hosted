@@ -122,17 +122,77 @@ export async function updateEvent(
       published: d.published
     }
   });
+  if (d.published && !user.tourCompletedAt) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { tourCompletedAt: new Date() }
+    });
+  }
 
   invalidatePublicMedia();
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Creates a standalone gallery album (used when booking is disabled in Classic). */
+export async function createGalleryEvent(
+  _prev: EventFormState,
+  formData: FormData
+): Promise<EventFormState> {
+  const { locale, user } = await guard();
+  const parsed = parseEventForm(formData);
+  if (!parsed.success) return { error: "validation" };
+  const d = parsed.data;
+  const range = parseDateRange(d.dateStart, d.dateEnd);
+  if (!range) return { error: "validation" };
+
+  const slug = await uniqueEventSlug(
+    user.id,
+    d.slug || slugify(d.titleEn || d.titleZh)
+  );
+  const created = await prisma.event.create({
+    data: {
+      ownerId: user.id,
+      slug,
+      titleEn: d.titleEn,
+      titleZh: d.titleZh,
+      descriptionEn: d.descriptionEn,
+      descriptionZh: d.descriptionZh,
+      location: d.location,
+      dateStart: range.dateStart,
+      dateEnd: range.dateEnd,
+      published: d.published
+    }
+  });
+  if (d.published && !user.tourCompletedAt) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { tourCompletedAt: new Date() }
+    });
+  }
   invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
-  invalidatePublicMedia();
+  revalidatePath("/", "layout");
+  redirect(`/${locale}/dashboard/events/${created.id}`);
+}
+
+/** One-click publish for a draft album (from PhotosScreen, PhotoWizard, or Classic event header). */
+export async function publishEvent(formData: FormData): Promise<{ ok?: boolean; error?: string }> {
+  const { user } = await guard();
+  const id = formData.get("id");
+  if (typeof id !== "string") return { error: "unknown" };
+  const existing = await findOwnedEvent(id, user);
+  if (!existing) return { error: "unknown" };
+
+  await prisma.event.update({
+    where: { id: existing.id },
+    data: { published: true }
+  });
+  if (!user.tourCompletedAt) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { tourCompletedAt: new Date() }
+    });
+  }
   invalidatePublicMedia();
   revalidatePath("/", "layout");
   return { ok: true };

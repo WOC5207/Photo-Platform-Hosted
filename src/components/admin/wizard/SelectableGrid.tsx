@@ -36,7 +36,7 @@ export default function SelectableGrid({
   return (
     <ul
       data-testid="wizard-photo-grid"
-      className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+      className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3"
     >
       {photos.map((photo) => {
         const isSelected = selected.has(photo.photoId);

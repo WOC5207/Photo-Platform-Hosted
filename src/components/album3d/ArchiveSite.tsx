@@ -6,9 +6,8 @@ import dynamic from "next/dynamic";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ThemeToggle from "@/components/ThemeToggle";
-import EmptyState from "@/components/ui/EmptyState";
 import SiteModeSwitch, { useLeaveFor } from "@/components/SiteModeSwitch";
-import { classicTwin, parentScreen, parseScreen, screenPath, type Screen } from "@/lib/siteMode";
+import { SHAREPOST_STEPS, classicTwin, parentScreen, parseScreen, screenPath, type Screen } from "@/lib/siteMode";
 import { crossFade } from "@/lib/motion";
 import { GameMenu, Hints, MENU_SCREENS, Roll, Rolling, pad, wrap, type MenuItem } from "./hud";
 import { EDIT_TEXT_KEY, EditTextButton, EditTextProvider } from "./editText";
@@ -128,9 +127,12 @@ function readPalette(element: HTMLElement): EnginePalette {
   };
 }
 
-function isTyping(target: EventTarget | null): boolean {
+const NON_TEXT_INPUT = new Set(["checkbox", "radio", "button", "submit", "reset", "color", "file", "image"]);
+
+function isTyping(target: EventTarget | null, key?: string): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+  if (target instanceof HTMLInputElement) return !NON_TEXT_INPUT.has(target.type) && (target.type !== "range" || key !== "Escape");
+  return target.isContentEditable || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
 }
 
 function isInteractive(target: EventTarget | null): boolean {
@@ -186,6 +188,7 @@ export default function ArchiveSite({
   // brought in since. Held for the life of the layout, as the scene is: a
   // refresh that reloads the layout doesn't move files under the scene.
   const [archive, setArchive] = useState<Archive>(() => ({ files: loadedFiles, columns: loadedColumns }));
+  const prevLoaded = useRef({ files: loadedFiles, columns: loadedColumns });
   const { files, columns } = archive;
 
   // ---------------------------------------------------------------- screen --
@@ -213,6 +216,12 @@ export default function ArchiveSite({
   const ownPastField = studioHome && columnIndex < 0;
   const sliceKey = pastField || ownPastField ? `${screen.username}/${"slug" in screen ? screen.slug : ""}` : "";
   const [answered, setAnswered] = useState<string[]>([]);
+  useEffect(() => {
+    if (prevLoaded.current.files === loadedFiles && prevLoaded.current.columns === loadedColumns) return;
+    prevLoaded.current = { files: loadedFiles, columns: loadedColumns };
+    setArchive({ files: loadedFiles, columns: loadedColumns });
+    setAnswered([]);
+  }, [loadedFiles, loadedColumns]);
   const asking = (pastField || ownPastField) && !answered.includes(sliceKey);
   useEffect(() => {
     if (!asking) return;
@@ -226,7 +235,8 @@ export default function ArchiveSite({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sliceKey]);
   const missing = pastField || (screen.kind === "photo" && albumHere !== null && photoIndex < 0);
-  const mode: Mode = missing
+  const emptyArchive = files.length === 0 && (screen.kind === "photographers" || screen.kind === "albums");
+  const mode: Mode = missing || emptyArchive
     ? "archive"
     : booking || creator || (studio && !studioHome)
       ? "booking"
@@ -237,10 +247,13 @@ export default function ArchiveSite({
       : screen.kind === "table" || screen.kind === "photo"
         ? screen.kind
         : "archive";
-  const overview = missing || studioHome || MENU_SCREENS.includes(screen.kind);
+  const [visitorPreview, setVisitorPreview] = useState(false);
+  useEffect(() => setVisitorPreview(false), [pathname]);
+  const onSetup = screen.kind === "studio" && screen.page === "setup";
+  const overview = missing || emptyArchive || studioHome || MENU_SCREENS.includes(screen.kind);
   // A photographer's own archive lays out their albums instead of the photographer cards.
-  const ownArchive = !missing && screen.kind === "photographer" && viewer?.username === screen.username;
-  const carouselScreen = !missing && !ownArchive && (screen.kind === "photographers" || screen.kind === "photographer");
+  const ownArchive = !missing && !visitorPreview && screen.kind === "photographer" && viewer?.username === screen.username;
+  const carouselScreen = !missing && !emptyArchive && !ownArchive && (screen.kind === "photographers" || screen.kind === "photographer");
   // One photographer's albums keep to their lane, so a visitor can't wander
   // into someone else's by accident. The Dashboard's home keeps to the
   // photographer's own, or to none (a column past the last) while they have
@@ -393,16 +406,29 @@ export default function ArchiveSite({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
-  // Esc and every Back button return to the previous page, as the browser's
-  // Back does. Only a page opened directly, with none of the site's pages
-  // behind it, climbs to the screen above instead. Browsers without the
-  // Navigation API fall back to the pages this visit has walked through.
+  // Esc and every Back button return to the previous 3D screen when a cross-branch
+  // jump brought the visitor here, or else climb to parentScreen(screen) so
+  // ancestor links (breadcrumbs, step bars) and classic-site entries never loop.
   const trail = useRef<string[]>([]);
   useEffect(() => {
     const steps = trail.current;
-    if (steps.length >= 2 && steps[steps.length - 2] === pathname) steps.pop();
-    else if (steps[steps.length - 1] !== pathname) steps.push(pathname);
-  }, [pathname]);
+    const idx = steps.indexOf(pathname);
+    if (idx >= 0) {
+      steps.length = idx + 1;
+      return;
+    }
+    const last = steps[steps.length - 1];
+    const lastScreen = last ? parseScreen(last) : null;
+    for (let p = lastScreen ? parentScreen(lastScreen) : null; p; p = parentScreen(p)) {
+      if (screenPath(p) === pathname) {
+        steps.pop();
+        steps.push(pathname);
+        return;
+      }
+    }
+    if (last === "/3d/login" && screen.kind === "studio") steps.pop();
+    steps.push(pathname);
+  }, [pathname, screen.kind]);
 
   // Leaving a screen fades its panel out first (RhineLabUI's surfaces take
   // 200 ms, easing in) while the next page is fetched; the next screen's
@@ -441,10 +467,26 @@ export default function ArchiveSite({
     [motion]
   );
 
+  const dirtyRef = useRef<string | null>(null);
+  const setDirty = useCallback((msg: string | null) => {
+    dirtyRef.current = msg;
+  }, []);
+  useEffect(() => {
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, []);
+
   const go = useCallback(
     (next: Screen) => {
       const href = screenPath(next);
       if (href === pathname) return;
+      if (dirtyRef.current && !window.confirm(dirtyRef.current)) return;
+      dirtyRef.current = null;
       router.prefetch(href);
       leave(() => router.push(href, { scroll: false }));
     },
@@ -452,14 +494,16 @@ export default function ArchiveSite({
   );
 
   const back = useCallback(() => {
-    const history = (window as { navigation?: { canGoBack?: boolean } }).navigation;
-    if (typeof history?.canGoBack === "boolean" ? history.canGoBack : trail.current.length >= 2) {
-      leave(() => router.back());
-      return;
+    const steps = trail.current;
+    const prev = steps.length >= 2 ? parseScreen(steps[steps.length - 2]) : null;
+    const target = prev ?? (missing ? { kind: "title" as const } : parentScreen(screen));
+    if (target) {
+      if (dirtyRef.current && !window.confirm(dirtyRef.current)) return;
+      dirtyRef.current = null;
+      if (prev) steps.pop();
+      go(target);
     }
-    const parent = missing ? { kind: "title" as const } : parentScreen(screen);
-    if (parent) go(parent);
-  }, [missing, screen, router, leave, go]);
+  }, [missing, screen, go]);
 
   // ------------------------------------------------------------- selection --
   /** Select a file; the same file again still moves to the picked card. */
@@ -556,9 +600,12 @@ export default function ArchiveSite({
       if (!albumHere || albumHere.photos.length === 0 || !("slug" in screen)) return;
       const target = Math.max(0, Math.min(albumHere.photos.length - 1, index));
       setTableFocus(target);
-      if (open) go({ kind: "photo", username: screen.username, slug: screen.slug, photoId: albumHere.photos[target].id });
+      if (!open) return;
+      const next: Screen = { kind: "photo", username: screen.username, slug: screen.slug, photoId: albumHere.photos[target].id };
+      if (screen.kind === "photo") router.replace(screenPath(next), { scroll: false });
+      else go(next);
     },
-    [albumHere, screen, go]
+    [albumHere, screen, router, go]
   );
 
   /** ← → on the photo screen walk the album without stacking history. */
@@ -616,7 +663,7 @@ export default function ArchiveSite({
   useEffect(() => {
     const canvas = canvasRef.current;
     const root = rootRef.current;
-    if (!canvas || !root || files.length === 0 || waiting) return;
+    if (!canvas || !root || waiting) return;
     // A grown archive builds a new scene; the effects that drive it wait for it to be ready again.
     setStatus("loading");
     if (!webglAvailable()) {
@@ -720,7 +767,7 @@ export default function ArchiveSite({
   useEffect(() => {
     const engine = engineRef.current;
     if (!ready || !engine) return;
-    if (carouselScreen) {
+    if (carouselScreen && columns.length > 0) {
       engine.showCarousel(Math.max(0, carouselFocus), screen.kind === "photographer");
       return;
     }
@@ -740,7 +787,7 @@ export default function ArchiveSite({
     engine.setDetail(mode === "detail");
     // albumHere changes only with tableKey.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, overview, ready, carouselScreen, carouselFocus, screen.kind, tableKey, tableFocus, photoIndex, ownArchive]);
+  }, [mode, overview, ready, carouselScreen, columns.length, carouselFocus, screen.kind, tableKey, tableFocus, photoIndex, ownArchive]);
 
   useEffect(() => {
     if (ready) engineRef.current?.setLane(lane);
@@ -749,6 +796,7 @@ export default function ArchiveSite({
   // The home screen ejects the recently updated albums from the field, and a tap opens one.
   const home = !missing && screen.kind === "title";
   const featured = useMemo(() => recent.map((album) => files.findIndex((f) => f.id === album.id)).filter((index) => index >= 0), [recent, files]);
+  const hoveredRecent = home && hoverFile >= 0 ? recent.find((album) => album.id === files[hoverFile]?.id) : undefined;
   useEffect(() => {
     if (ready) engineRef.current?.setFeatured(home ? featured : []);
     if (!home) setHoverFile(-1);
@@ -786,14 +834,25 @@ export default function ArchiveSite({
       text: ["album3d.menuPhotographers", "album3d.menuPhotographersSub"],
       run: () => go({ kind: "photographers" })
     },
+    ...(files.length > 0
+      ? [
+          {
+            key: "albums",
+            label: t("menuAllAlbums"),
+            sub: t("menuAllAlbumsSub", { count: files.length }),
+            text: ["album3d.menuAllAlbums", "album3d.menuAllAlbumsSub"],
+            run: () => go({ kind: "albums" })
+          }
+        ]
+      : []),
     { key: "cosplan", label: t("menuCosplan"), sub: t("menuCosplanSub"), text: ["album3d.menuCosplan", "album3d.menuCosplanSub"], run: () => go({ kind: "cosplan" }) },
     { key: "poster", label: t("menuPoster"), sub: t("menuPosterSub"), text: ["album3d.menuPoster", "album3d.menuPosterSub"], run: () => go({ kind: "sharepost" }) },
     // Signed in, this opens the account's menu: their archive, Dashboard and sign out.
     {
       key: "login",
-      label: t("menuMySite"),
+      label: viewer ? t("menuMySite") : t("menuSignIn"),
       sub: viewer ? `@${viewer.username}` : t("menuLoginSub"),
-      text: ["album3d.menuMySite", "album3d.menuLoginSub"],
+      text: [viewer ? "album3d.menuMySite" : "album3d.menuSignIn", "album3d.menuLoginSub"],
       run: () => go({ kind: "login" })
     },
     { key: "settings", label: t("menuSettings"), sub: t("menuSettingsSub"), text: ["album3d.menuSettings", "album3d.menuSettingsSub"], run: () => go({ kind: "settings" }) }
@@ -901,7 +960,7 @@ export default function ArchiveSite({
       ]
     : [];
 
-  const activeMenu: MenuItem[] = missing
+  const activeMenu: MenuItem[] = missing || emptyArchive
     ? []
     : screen.kind === "title"
       ? titleMenu
@@ -912,27 +971,38 @@ export default function ArchiveSite({
           : screen.kind === "photographer" && !ownArchive
             ? photographerMenu
             : [];
+  const canIndex = files.length > 0 && (mode === "archive" || carouselScreen || ownArchive) && !studio;
 
   // -------------------------------------------------------------- keyboard --
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (indexOpen || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isTyping(e.target)) return;
-      if (e.key === "Escape" || e.key === "Backspace") {
-        if (screen.kind === "title" && !missing) return;
+      if (isTyping(e.target, e.key)) return;
+      if (e.key === "Escape") {
+        if ((screen.kind === "title" && !missing) || onSetup) return;
         e.preventDefault();
         back();
         return;
       }
+      if (e.key === "/" && canIndex) {
+        e.preventDefault();
+        setIndexOpen(true);
+        return;
+      }
       // One's own archive page has its overview's menu, and the album cards take ← → (see ArchiveShelf).
       if (ownArchive) return;
+      const clearFocus = () => {
+        if (isInteractive(e.target) && !(e.target as HTMLElement | null)?.closest?.("[data-menu-item]")) {
+          (e.target as HTMLElement | null)?.blur?.();
+        }
+      };
       if (activeMenu.length > 0) {
         const move = (delta: number) => {
           e.preventDefault();
+          clearFocus();
           const next = wrap(menuFocus + delta, activeMenu.length);
           if (screen.kind === "photographers") focusPhotographer(next);
           else setMenuFocus(next);
-          document.querySelector<HTMLElement>(`[data-menu-item="${next}"]`)?.scrollIntoView({ block: "nearest" });
         };
         if (e.key === "ArrowUp") return move(-1);
         if (e.key === "ArrowDown") return move(1);
@@ -941,11 +1011,13 @@ export default function ArchiveSite({
         if (screen.kind === "photographers" && e.key === "ArrowRight") return move(1);
         if (screen.kind === "settings" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
           e.preventDefault();
+          clearFocus();
           settings[menuFocus]?.adjust(e.key === "ArrowLeft" ? -1 : 1);
           return;
         }
         if (screen.kind === "photographer" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
           e.preventDefault();
+          clearFocus();
           switchPhotographer(e.key === "ArrowLeft" ? -1 : 1);
           return;
         }
@@ -962,6 +1034,7 @@ export default function ArchiveSite({
         const moves: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columnsAcross, ArrowDown: columnsAcross };
         if (e.key in moves) {
           e.preventDefault();
+          clearFocus();
           onPrint(tableFocus + moves[e.key], false);
         } else if (e.key === "Enter" && !isInteractive(e.target)) {
           e.preventDefault();
@@ -981,16 +1054,14 @@ export default function ArchiveSite({
         openTable(screen.username, screen.slug);
         return;
       }
-      if (mode !== "archive") return;
+      if (mode !== "archive" || files.length === 0) return;
       const keys: Record<string, () => void> = {
         ArrowUp: () => step("file", -1),
         ArrowDown: () => step("file", 1),
         ...(lane < 0 && {
           ArrowLeft: () => step("column", -1),
           ArrowRight: () => step("column", 1)
-        }),
-        // The index lists every photographer's albums, which the Dashboard's home doesn't offer.
-        ...(!studioHome && { "/": () => setIndexOpen(true) })
+        })
       };
       if (e.key === "Enter" && !isInteractive(e.target)) {
         e.preventDefault();
@@ -1000,22 +1071,23 @@ export default function ArchiveSite({
       const action = keys[e.key];
       if (!action) return;
       e.preventDefault();
+      clearFocus();
       action();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [indexOpen, mode, step, back, activeMenu, settings, menuFocus, screen, missing, focusPhotographer, switchPhotographer, ownArchive, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go, openTable, lane]);
+  }, [indexOpen, canIndex, mode, files.length, step, back, activeMenu, settings, menuFocus, screen, missing, onSetup, focusPhotographer, switchPhotographer, ownArchive, openDetail, albumHere, tableFocus, onPrint, stepPhoto, go, openTable, lane]);
 
   const key = useCallback(
     (name: "move" | "confirm" | "back" | "sides" | "alt") => ({ move: "↑ ↓", confirm: "ENTER", back: "ESC", sides: "← →", alt: "/" })[name],
     []
   );
   const stage = useMemo(
-    () => ({ engine: ready ? engineRef.current : null, go, path: screenPath, back, key, touch }),
-    [ready, go, back, key, touch]
+    () => ({ engine: ready ? engineRef.current : null, go, path: screenPath, back, key, touch, setDirty, preview: visitorPreview, setPreview: setVisitorPreview }),
+    [ready, go, back, key, touch, setDirty, visitorPreview]
   );
   const fieldPick = useMemo((): FieldPick | null => {
-    if (!studioHome || missing) return null;
+    if ((!studioHome && !ownArchive) || missing) return null;
     // Only ever one of the photographer's own.
     const named = (index: number): FieldAlbum | null => {
       const album = files[index];
@@ -1023,32 +1095,27 @@ export default function ArchiveSite({
         ? { index, title: album.title, date: album.dateLabel, photos: album.photoCount }
         : null;
     };
+    const indexes = here?.fileIndexes ?? [];
     return {
       live: status !== "unsupported" && status !== "lost",
       // Still asking for the photographer's albums, so not yet known to be none.
-      empty: !browsable && !asking,
+      empty: columnIndex < 0 && !asking,
       hovered: hoverFile >= 0 ? named(hoverFile) : null,
       resting: named(selected),
       open: openDetail,
-      step: (direction) => step("file", direction)
+      step: (direction) => {
+        if (ownArchive && indexes.length > 0) {
+          const at = Math.max(0, indexes.indexOf(selected));
+          choose(indexes[wrap(at + direction, indexes.length)]);
+        } else {
+          step("file", direction);
+        }
+      }
     };
-  }, [studioHome, missing, browsable, asking, files, columnIndex, status, hoverFile, selected, openDetail, step]);
+  }, [studioHome, ownArchive, missing, asking, files, columnIndex, here, status, hoverFile, selected, openDetail, choose, step]);
 
   // ----------------------------------------------------------------- render --
-  if (files.length === 0 || !file || !column) {
-    return (
-      <AlbumPhotosContext.Provider value={setAlbum}>
-      <StageContext.Provider value={stage}>
-      <main id="main-content" className="mx-auto flex min-h-dvh max-w-3xl flex-col justify-center px-4 py-10">
-        <EmptyState title={t("empty")} description={t("emptyHint")} />
-        {children}
-      </main>
-      </StageContext.Provider>
-      </AlbumPhotosContext.Provider>
-    );
-  }
-
-  const altTitle = file.altTitle && file.altTitle !== file.title ? file.altTitle : "";
+  const altTitle = file?.altTitle && file.altTitle !== file.title ? file.altTitle : "";
   const metaLabel = "font-meta text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle";
   const square = "grid h-11 w-11 shrink-0 place-items-center text-2xl transition hover:bg-accent-surface";
   // Above the heading's right end, so the heading keeps its line breaks in editing mode.
@@ -1070,7 +1137,7 @@ export default function ArchiveSite({
     crumbs.push({ label: t("menuPhotographers"), href: screenPath({ kind: "photographers" }) });
     crumbs.push({ label: here.name, href: screenPath({ kind: "photographer", username: here.username }) });
     if (albumsHere) crumbs.push({ label: t("menuAlbums"), href: screenPath({ kind: "albumSelect", username: here.username }) });
-    if (inAlbum && "slug" in screen) crumbs.push({ label: file.title, href: screenPath({ kind: "album", username: here.username, slug: screen.slug, study: false }) });
+    if (inAlbum && "slug" in screen && file) crumbs.push({ label: file.title, href: screenPath({ kind: "album", username: here.username, slug: screen.slug, study: false }) });
     if (screen.kind === "album" && screen.study) crumbs.push({ label: t("study") });
     if (screen.kind === "table" || screen.kind === "photo") {
       crumbs.push({ label: t("lightTable"), href: screenPath({ kind: "table", username: here.username, slug: screen.slug }) });
@@ -1078,25 +1145,32 @@ export default function ArchiveSite({
     if (screen.kind === "photo" && photoIndex >= 0) crumbs.push({ label: t("printCount", { current: pad(photoIndex + 1), total: pad(albumHere?.photos.length ?? 0) }) });
   } else if (booking) {
     crumbs.push({ label: t("menuPhotographers"), href: screenPath({ kind: "photographers" }) });
-    crumbs.push({ label: `@${screen.username}`, href: screenPath({ kind: "photographer", username: screen.username }) });
+    crumbs.push({ label: `@${screen.username}`, ...(here ? { href: screenPath({ kind: "photographer", username: screen.username }) } : {}) });
   } else if (screen.kind === "photographers") crumbs.push({ label: t("menuPhotographers") });
   if (booking && !missing) {
     crumbs.push({ label: t("menuBooking"), href: screenPath({ kind: "booking", username: screen.username }) });
     if (screen.kind !== "booking") crumbs.push({ label: t(screen.kind === "draw" ? "crumbDraw" : screen.kind === "myBooking" ? "crumbMyBooking" : "crumbSchedule") });
   }
   else if (screen.kind === "settings") crumbs.push({ label: t("menuSettings") });
-  else if (screen.kind === "login") crumbs.push({ label: t("menuMySite") });
+  else if (screen.kind === "login") crumbs.push({ label: t(viewer ? "menuMySite" : "menuSignIn") });
   else if (screen.kind === "cosplan" || screen.kind === "sharepost") {
     crumbs.push({ label: t(screen.kind === "cosplan" ? "menuCosplan" : "menuPoster"), href: screenPath({ kind: screen.kind }) });
     if (screen.kind === "cosplan" && screen.step === "print") crumbs.push({ label: t("crumbBoard"), href: screenPath({ kind: "cosplan", step: "board" }) });
-    if (screen.step) crumbs.push({ label: t(STEP_CRUMBS[screen.step]) });
+    if (screen.kind === "sharepost" && screen.step) {
+      for (const step of SHAREPOST_STEPS.slice(0, SHAREPOST_STEPS.indexOf(screen.step) + 1)) {
+        crumbs.push({ label: t(STEP_CRUMBS[step]), href: screenPath({ kind: "sharepost", step }) });
+      }
+    } else if (screen.step) {
+      crumbs.push({ label: t(STEP_CRUMBS[screen.step]) });
+    }
   }
   crumbs[crumbs.length - 1].href = undefined;
 
   const studyHeader = mode === "study";
+  const phoneCreator = touch && (screen.kind === "sharepost" || (screen.kind === "cosplan" && screen.step === "board"));
   // Without WebGL a page of plain links covers the scene. The header stays
   // above it and usable; everything behind it leaves the keyboard order.
-  const fallback = (status === "unsupported" || status === "lost") && (creator || (mode !== "booking" && !studio));
+  const fallback = (status === "unsupported" || status === "lost") && !phoneCreator && (creator || (mode !== "booking" && !studio));
   // An album's address lists it first, then the rest of its photographer's; a photographer's lists theirs first.
   const fallbackRank = (f: ArchiveFile) => (f === files[fileIndex] ? 0 : f.column === columnIndex ? 1 : 2);
 
@@ -1141,32 +1215,30 @@ export default function ArchiveSite({
       {(!studyHeader || fallback) && (
         <header className={`pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 px-[var(--edge)] pt-4 sm:gap-4 wide:pt-9 ${fallback ? "z-30 bg-page pb-3" : "z-10"}`}>
           <div className="pointer-events-auto flex items-start gap-10">
-            {/* Phones have no Esc key and no crumbs, so every screen below the
-                main menu gets a Back button beside the name. */}
-            {(screen.kind !== "title" || missing) && mode !== "detail" && (
+            {(screen.kind !== "title" || missing) && mode !== "detail" && !onSetup && (
               <button
                 type="button"
                 onClick={back}
                 aria-label={t("back")}
                 title={t("back")}
-                className="-ml-3 -mr-10 -mt-2 inline-flex min-h-11 min-w-10 items-center justify-center text-xl transition hover:text-accent-text wide:hidden"
+                className="-ml-3 -mr-7 -mt-2 inline-flex min-h-11 min-w-10 items-center justify-center text-xl transition hover:text-accent-text wide:mt-0"
               >
                 <span aria-hidden="true">←</span>
               </button>
             )}
-            <Link href={screenPath({ kind: "title" })} className="block leading-none">
+            <Link href={screenPath({ kind: "title" })} scroll={false} className="block leading-none">
               <span className="block text-xl font-extrabold uppercase tracking-[-0.02em] max-[379px]:text-lg wide:text-4xl">{t("brandTop")}</span>
               <span className="mt-1 block text-[0.5625rem] font-semibold uppercase tracking-[0.08em] text-fg-muted wide:text-xs">{t("brandMiddle")}</span>
             </Link>
-            <nav aria-label={t("crumbLabel")} className="hidden pt-2 wide:block">
+            <nav aria-label={t("crumbLabel")} className="hidden pt-1.5 wide:block">
               <ol className="font-meta flex flex-wrap items-center gap-x-2 text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
                 {crumbs.map((crumb, i) => (
                   <li key={`${crumb.label}-${i}`} className="flex items-center gap-2">
                     {i > 0 && <span aria-hidden="true">/</span>}
                     {crumb.href ? (
-                      <Link href={crumb.href} className="hover:text-fg">{crumb.label}</Link>
+                      <Link href={crumb.href} scroll={false} className="inline-flex min-h-7 items-center hover:text-fg">{crumb.label}</Link>
                     ) : (
-                      <span aria-current="page" className="text-fg">{crumb.label}</span>
+                      <span aria-current="page" className="inline-flex min-h-7 items-center text-fg">{crumb.label}</span>
                     )}
                   </li>
                 ))}
@@ -1174,7 +1246,7 @@ export default function ArchiveSite({
             </nav>
           </div>
           <nav aria-label={t("headerControls")} className="pointer-events-auto flex items-center justify-end gap-1 max-[379px]:gap-0.5 sm:gap-3">
-            {mode === "archive" && !overview && (
+            {canIndex && (
               <button
                 type="button"
                 onClick={() => setIndexOpen(true)}
@@ -1189,7 +1261,7 @@ export default function ArchiveSite({
                 <kbd className="font-meta hidden border border-border-strong px-1 text-[0.625rem] font-normal sm:inline">/</kbd>
               </button>
             )}
-            {viewer && (
+            {viewer ? (
               <Link
                 href={screenPath({ kind: "studio", username: viewer.username, page: "home" })}
                 scroll={false}
@@ -1205,7 +1277,15 @@ export default function ArchiveSite({
                 <i aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-success max-sm:absolute max-sm:right-2.5 max-sm:top-3" />
                 <span className="truncate max-sm:sr-only">{viewer.name}</span>
               </Link>
-            )}
+            ) : screen.kind !== "login" ? (
+              <Link
+                href={screenPath({ kind: "login" })}
+                scroll={false}
+                className="inline-flex min-h-11 items-center px-2 text-xs font-semibold uppercase tracking-[0.1em] transition hover:text-accent-text"
+              >
+                {t("headerSignIn")}
+              </Link>
+            ) : null}
             <SiteModeSwitch current="3d" compact caption={styles.switchCaption} />
             {/* Phones keep the header to one row of 44 px controls: language
                 and theme are in Settings, which one button opens. The plain
@@ -1235,13 +1315,13 @@ export default function ArchiveSite({
 
       <div inert={fallback} className="contents">
       {/* ----------------------------------------------------- menu screens -- */}
-      {missing && !asking && (
+      {(missing || emptyArchive) && !asking && (
         <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
           <p className={metaLabel}>{t("archiveLabel")}</p>
-          <h1 className="mt-3 text-4xl font-extrabold uppercase tracking-[-0.03em] wide:text-6xl">{t("notFoundTitle")}</h1>
-          <p className="mt-3 max-w-md text-sm text-fg-muted">{t("notFoundHint")}</p>
+          <h1 className="mt-3 text-4xl font-extrabold uppercase tracking-[-0.03em] wide:text-6xl">{t(emptyArchive ? "empty" : "notFoundTitle")}</h1>
+          <p className="mt-3 max-w-md text-sm text-fg-muted">{t(emptyArchive ? "emptyHint" : "notFoundHint")}</p>
           <GameMenu
-            label={t("notFoundTitle")}
+            label={t(emptyArchive ? "empty" : "notFoundTitle")}
             className="mt-8"
             focus={0}
             onFocus={() => undefined}
@@ -1264,20 +1344,21 @@ export default function ArchiveSite({
         </main>
       )}
 
-      {mode === "table" && here && "slug" in screen && (
+      {mode === "table" && here && file && "slug" in screen && (
         <TableScreen
           file={file}
           owner={here.name}
           username={here.username}
           album={albumHere}
           focus={tableFocus}
+          onFocus={(index) => onPrint(index, false)}
           onOpen={(index) => onPrint(index, true)}
           onBack={back}
           classicHref={classicTwin(pathname)}
         />
       )}
 
-      {mode === "photo" && here && albumHere && photoIndex >= 0 && (
+      {mode === "photo" && here && file && albumHere && photoIndex >= 0 && (
         <PhotoScreen
           file={file}
           owner={here.name}
@@ -1300,17 +1381,18 @@ export default function ArchiveSite({
             <EditTextButton keys={["album3d.menuTitle"]} shown={t("menuTitle")} className={editHeading} />
           </h1>
           <div aria-hidden="true" className={styles.calloutRule} />
-          <GameMenu label={t("menuLabel")} items={titleMenu} focus={menuFocus} onFocus={setMenuFocus} className="mt-8 wide:mt-12" />
+          <GameMenu label={t("menuLabel")} items={titleMenu} focus={menuFocus} onFocus={setMenuFocus} className="mt-6 wide:mt-8" />
         </main>
       )}
 
       {/* The albums most recently updated, from any photographer, eject from the field (see the
           engine's setFeatured). For keyboards and screen readers they are listed here too, out of
-          sight until a link in the list has focus. */}
+          sight until a link in the list has focus or a card in the field is hovered. */}
       {home && featured.length > 0 && status === "ready" && (
-        <section aria-labelledby="album3d-recent" className={`${styles.recent} sr-only focus-within:not-sr-only`}>
+        <section aria-labelledby="album3d-recent" className={`${styles.recent} ${hoveredRecent ? "" : "sr-only focus-within:not-sr-only"}`}>
           <p id="album3d-recent" className={metaLabel}>{t("recentlyUpdated")}</p>
-          <ol className="mt-2">
+          {hoveredRecent && <p aria-hidden="true" className="mt-1 text-xs font-bold uppercase">{hoveredRecent.title} · {hoveredRecent.owner}</p>}
+          <ol className={`mt-2 ${hoveredRecent ? "sr-only focus-within:not-sr-only" : ""}`}>
             {recent.map((album) => {
               const index = files.findIndex((f) => f.id === album.id);
               return (
@@ -1334,7 +1416,7 @@ export default function ArchiveSite({
         </section>
       )}
 
-      {!missing && screen.kind === "photographers" && (
+      {!missing && !emptyArchive && screen.kind === "photographers" && (
         <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
           <p className={metaLabel}>
             {t("photographerCount", { current: pad(menuFocus + 1), total: pad(columns.length) })}
@@ -1356,6 +1438,15 @@ export default function ArchiveSite({
       )}
       {!missing && !ownArchive && screen.kind === "photographer" && here && (
         <main id="main-content" tabIndex={-1} className={`${styles.menuPanel} outline-none`}>
+          {visitorPreview && viewer?.username === here.username && (
+            <button
+              type="button"
+              onClick={() => setVisitorPreview(false)}
+              className="mb-3 inline-flex min-h-9 items-center gap-2 border border-accent bg-accent-surface px-3 text-xs font-semibold uppercase tracking-[0.1em] text-fg transition hover:border-fg"
+            >
+              <span aria-hidden="true">←</span> {t("overviewBackOwner")}
+            </button>
+          )}
           <div className="flex items-center gap-3">
             <p className={metaLabel}>
               {t("photographerCount", { current: pad(columnIndex + 1), total: pad(columns.length) })}
@@ -1415,13 +1506,13 @@ export default function ArchiveSite({
       )}
 
       <p aria-live="polite" aria-atomic="true" className="sr-only">
-        {mode === "archive" && !overview
+        {mode === "archive" && !overview && file && column
           ? t("announce", { title: file.title, owner: column.name, current: slot + 1, total: column.fileIndexes.length })
           : ""}
       </p>
 
       {/* -------------------------------------------------- archive screens -- */}
-      {mode === "archive" && !overview && (
+      {mode === "archive" && !overview && file && column && (
         <main id="main-content" tabIndex={-1} className="outline-none">
           <section aria-labelledby="album3d-list-title" className={styles.albumList}>
             <div className="flex items-center gap-3">
@@ -1518,7 +1609,7 @@ export default function ArchiveSite({
             </p>
           </div>
 
-          <div className={`${styles.fileNav} items-center gap-1.5 wide:gap-8`}>
+          <div className={`${styles.fileNav} flex items-center gap-1.5 wide:gap-8`}>
             <button type="button" onClick={() => step("file", -1)} aria-label={t("prevFile")} className={square}>↑</button>
             <ol className="flex h-10 items-center gap-0 wide:gap-3">
               {column.fileIndexes.slice(0, 24).map((index) => (
@@ -1575,7 +1666,7 @@ export default function ArchiveSite({
         </main>
       )}
 
-      {mode === "detail" && (
+      {mode === "detail" && file && column && (
         <main ref={followDetail} id="main-content" tabIndex={-1} className="outline-none" data-follow="detail">
           <button
             type="button"
@@ -1677,13 +1768,14 @@ export default function ArchiveSite({
         </main>
       )}
 
-      {mode === "study" && (
+      {mode === "study" && file && column && (
         <StudyScreen
           file={file}
           owner={column.name}
           exploded={exploded}
           touch={touch}
           focus={studyFocus}
+          photoHref={(photoId) => screenPath({ kind: "photo", username: column.username, slug: file.slug, photoId })}
           shareUrl={(photoId) => `${window.location.origin}/${locale}${screenPath({ kind: "photo", username: column.username, slug: file.slug, photoId })}`}
           onFocus={setStudyFocus}
           onBack={back}
@@ -1733,7 +1825,7 @@ export default function ArchiveSite({
       )}
       </div>
 
-      {(status === "unsupported" || status === "lost") && creator && (
+      {(status === "unsupported" || status === "lost") && creator && !phoneCreator && (
         // The creators can't work without the easel; the classic editor opens the same draft.
         <div className="absolute inset-0 z-20 overflow-y-auto bg-page px-4 pb-10 pt-32 sm:px-8">
           <div className="mx-auto max-w-xl">
@@ -1750,7 +1842,7 @@ export default function ArchiveSite({
         </div>
       )}
 
-      {(status === "unsupported" || status === "lost") && mode !== "booking" && !studio && (
+      {(status === "unsupported" || status === "lost") && !creator && mode !== "booking" && !studio && (
         <div className="absolute inset-0 z-20 overflow-y-auto bg-page px-4 pb-10 pt-32 sm:px-8">
           <div className="mx-auto max-w-4xl">
             <h2 className="text-xl font-bold">{t(status === "lost" ? "lostTitle" : "unsupportedTitle")}</h2>
@@ -1785,7 +1877,7 @@ export default function ArchiveSite({
           columns={columns}
           onSelect={(index) => {
             setIndexOpen(false);
-            if (mode === "archive" && !overview) choose(index);
+            if (mode === "archive" && !overview && !backdrop) choose(index);
             else openDetail(index);
           }}
           onOpen={(index) => {

@@ -16,6 +16,7 @@ export interface RegisterLabels {
   passwordHint: string;
   confirmPassword: string;
   submit: string;
+  submitting: string;
   errorValidation: string;
   errorMismatch: string;
   errorUsernameTaken: string;
@@ -78,7 +79,10 @@ export default function RegisterForm({
       <input type="hidden" name="noticeVersion" value={noticeVersion} />
 
       <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">{labels.username}</span>
+        <span className="text-sm font-medium">
+          {labels.username}
+          <span className="ml-0.5 text-accent" aria-hidden="true">*</span>
+        </span>
         <input
           id="register-username"
           name="username"
@@ -185,7 +189,7 @@ export default function RegisterForm({
         variant="primary"
         disabled={pending || Boolean(clientUsernameError)}
       >
-        {labels.submit}
+        {pending ? labels.submitting : labels.submit}
       </Button>
     </form>
   );

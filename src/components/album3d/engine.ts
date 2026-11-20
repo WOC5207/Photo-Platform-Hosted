@@ -2081,6 +2081,10 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
       } else if (Math.abs(dx) > 36 && Math.abs(dx) > Math.abs(dy) * 1.3 && elapsed < 1400) {
         options.onCard(carousel.focus() + (dx < 0 ? 1 : -1), false);
       }
+    } else if (mode === "table" && table && tableRaised) {
+      if (!tap && Math.abs(dx) > 36 && Math.abs(dx) > Math.abs(dy) * 1.3 && elapsed < 1400) {
+        options.onPrint(table.focus() + (dx < 0 ? 1 : -1), true);
+      }
     } else if (mode === "table" && table && !tableRaised) {
       // A screen that manages the prints (the Dashboard) takes the table's taps and swipes.
       if (tap) {
@@ -2451,9 +2455,12 @@ export function createArchiveEngine(canvas: HTMLCanvasElement, options: EngineOp
     if (mode === "stage" && stageDrag?.({ phase: "wheel", deltaY: e.deltaY, clientX: e.clientX, clientY: e.clientY, rect: canvasRect() })) return;
     if (carry || fieldDrag) return;
     if (mode === "carousel" || mode === "table" || mode === "stage") {
-      if (mode === "table" && tableRaised) return;
       const steps = wheelSteps(e);
       if (!steps) return;
+      if (mode === "table" && tableRaised && table) {
+        options.onPrint(table.focus() + (steps > 0 ? 1 : -1), true);
+        return;
+      }
       // Several steps land at once, so the stage takes its new focus here and the screen follows.
       const follow = follower();
       if (mode === "carousel" && carousel) {

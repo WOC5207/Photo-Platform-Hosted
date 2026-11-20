@@ -88,7 +88,7 @@ export default function SharepostPhotos() {
     else if (k === "ArrowUp") setMenuFocus((f) => wrap(f - 1, items.length));
     else if (k === "ArrowDown") setMenuFocus((f) => wrap(f + 1, items.length));
     else if (k === "Enter" && !isInteractive(target)) items[menuAt]?.run();
-    else if (k === "Delete" && focused) studio.removePhoto(focused.photoId);
+    else if ((k === "Delete" || k === "Backspace") && focused) studio.removePhoto(focused.photoId);
     else return false;
     return true;
   });

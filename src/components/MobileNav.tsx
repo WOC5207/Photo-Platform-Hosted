@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@/i18n/navigation";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import SiteModeSwitch from "@/components/SiteModeSwitch";
 import ThemeToggle from "@/components/ThemeToggle";
 import ContactUsButton, { type ContactUsLabels } from "@/components/ContactUsButton";
 import { usePresence } from "@/hooks/usePresence";
@@ -119,6 +120,9 @@ export default function MobileNav({
           <Link href={accountHref} onClick={() => setOpen(false)} className={linkClass}>
             {labels.account}
           </Link>
+          <div className="mt-1 border-t border-fg/10 pt-1">
+            <SiteModeSwitch current="classic" className="w-full justify-between px-3" />
+          </div>
           <div className="mt-1 flex items-center justify-between border-t border-fg/10 px-3 pt-2">
             <LanguageSwitcher />
             <ThemeToggle label={labels.toggleTheme} />

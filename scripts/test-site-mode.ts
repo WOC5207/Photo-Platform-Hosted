@@ -183,7 +183,7 @@ assert.equal(classicTwin("/3d/sharepost/credits"), "/sharing-poster");
 // Booking and draw links carry no username; /3d/book and /3d/draw forward.
 assert.equal(threeDTwin("/book/k3x9q2"), "/3d/book/k3x9q2");
 assert.equal(threeDTwin("/draw/p8z4m1"), "/3d/draw/p8z4m1");
-assert.equal(threeDTwin("/book/k3x9q2/check"), "/3d");
+assert.equal(threeDTwin("/book/k3x9q2/check"), "/3d/book/k3x9q2");
 assert.equal(threeDTwin("/u/george/settings"), "/3d/u/george");
 assert.equal(classicTwin("/3d/u/george/book/k3x9q2"), "/book/k3x9q2");
 assert.equal(classicTwin("/3d/u/george/draw/p8z4m1"), "/draw/p8z4m1");

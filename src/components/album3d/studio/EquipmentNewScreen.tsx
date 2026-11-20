@@ -33,6 +33,7 @@ export default function EquipmentNewScreen({
   const [draft, setDraft] = useState(blankGear);
   const [pending, startSaving] = useTransition();
   const [error, setError] = useState(false);
+  const [photoFailedId, setPhotoFailedId] = useState<string | null>(null);
   const [photo, setPhoto] = useState<File | null>(null);
   // The chosen photo goes on the card before it is uploaded (a TIFF the
   // browser can't draw just leaves the card's photo blank).
@@ -49,22 +50,41 @@ export default function EquipmentNewScreen({
     const file = data.get("photo");
     data.delete("photo");
     setError(false);
+    setPhotoFailedId(null);
     startSaving(async () => {
       const created = await createEquipment(data).catch(() => ({ id: undefined }));
       if (!created.id) {
         setError(true);
         return;
       }
-      // The item exists either way; a failed photo can be added in its editor.
-      if (file instanceof File && file.size > 0) await uploadEquipmentPhoto(created.id, file).catch(() => undefined);
+      // The item exists either way; surface a failed photo upload so the user knows.
+      if (file instanceof File && file.size > 0) {
+        const uploaded = await uploadEquipmentPhoto(created.id, file).then(() => true).catch(() => false);
+        if (!uploaded) {
+          setPhotoFailedId(created.id);
+          return;
+        }
+      }
       if (forLabels) router.push(`${path({ kind: "studio", username, page: "labels" })}?selected=${encodeURIComponent(created.id)}`);
       else go({ kind: "studio", username, page: "equipmentItem", id: created.id });
     });
   };
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel work>
       <StudioHeading trail={t("studioEquipment")} title={te("newEquipmentTitle")} />
+      {photoFailedId && (
+        <div className="mt-4 grid gap-2 border-l-2 border-danger bg-danger-surface p-3 text-xs">
+          <p className="font-semibold text-danger">{t("studioEquipmentPhotoFailed")}</p>
+          <Link
+            href={path({ kind: "studio", username, page: "equipmentItem", id: photoFailedId })}
+            scroll={false}
+            className="font-semibold text-fg underline underline-offset-4"
+          >
+            {te("openInventoryItem")} →
+          </Link>
+        </div>
+      )}
       <p className="mt-4 text-sm text-fg-muted">{te("addEquipmentHint")}</p>
       {categories.length === 0 && (
         <Link href={path({ kind: "studio", username, page: "categories" })} scroll={false} className="mt-3 inline-block text-sm font-semibold underline underline-offset-4">

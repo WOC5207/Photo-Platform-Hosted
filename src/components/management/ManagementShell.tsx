@@ -640,7 +640,7 @@ export default function ManagementShell({
               compact
             />
           </div>
-          <SiteModeSwitch current="classic" compact />
+          <SiteModeSwitch current="classic" compact caption="max-sm:text-[0.6875rem] max-sm:leading-none" />
           <ProfileMenu
             compact
             labels={labels}

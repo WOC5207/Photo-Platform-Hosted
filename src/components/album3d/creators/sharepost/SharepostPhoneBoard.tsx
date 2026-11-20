@@ -7,7 +7,7 @@ import type { SharepostStep } from "@/lib/siteMode";
 import RangeField from "@/components/sharing-posters/PosterRangeField";
 import SharingPosterCreditLayers from "@/components/sharing-posters/SharingPosterCreditLayers";
 import { Roll, Rolling, pad } from "../../hud";
-import { fieldClass, secondaryClass, useStage } from "../../booking/shared";
+import { fieldClass, secondaryClass, useScreenKeys, useStage } from "../../booking/shared";
 import { ENTER, PhoneBack, PhoneSheet, PhoneShell, PhoneToolbar, cssColor, fitCanvas, usePosterFit, usePosterMorph, useStripMotion, type PhoneTool } from "../phone";
 import { canShareFile, download, paintBlankPoster, printPoster, safeFilename, shareFile } from "../shared";
 import { useSharepostStudio } from "./SharepostStudio";
@@ -216,9 +216,27 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
     if (!(await shareFile(printed.file, name))) setNotice(ts("shareError"));
   };
 
+  const removeSelected = () => {
+    if (!selected) return;
+    studio.removePhoto(selected.photoId);
+    setPicked(photos[at + 1]?.photoId ?? photos[at - 1]?.photoId ?? null);
+    if (mode === "arrange") setMode("board");
+  };
+  useScreenKeys((k) => {
+    if (k === "Escape" && mode !== "board") {
+      setMode("board");
+      return true;
+    }
+    if ((k === "Delete" || k === "Backspace") && mode === "board" && selected) {
+      removeSelected();
+      return true;
+    }
+    return false;
+  });
+
   // -------------------------------------------------------------- render --
   const back = (
-    <PhoneBack label={t("back")} onClick={() => go(project ? { kind: "studio", username: project.username, page: "posters" } : { kind: "title" })} />
+    <PhoneBack label={t("back")} onClick={() => (mode !== "board" ? setMode("board") : go(project ? { kind: "studio", username: project.username, page: "posters" } : { kind: "title" }))} />
   );
 
   if (status !== "ready" || !composition || !tools) {
@@ -238,12 +256,6 @@ export default function SharepostPhoneBoard({ step }: { step: "photos" | Sharepo
   const toggle = (next: Mode) => setMode(mode === next ? "board" : next);
   const full = photos.length >= max;
   const addPhotos = () => (project ? toggle("add") : !full && !studio.reading && inputRef.current?.click());
-  const removeSelected = () => {
-    if (!selected) return;
-    studio.removePhoto(selected.photoId);
-    setPicked(photos[at + 1]?.photoId ?? photos[at - 1]?.photoId ?? null);
-    if (mode === "arrange") setMode("board");
-  };
   // The picked photo stays picked as it moves, even when it was only picked for being first.
   const move = (to: number) => {
     if (!selected) return;

@@ -7,6 +7,7 @@ import {
   bulkDeletePhotos,
   bulkSetPhotoCredit,
   movePhoto,
+  publishEvent,
   setCoverPhoto,
   toggleHomeHighlight
 } from "@/app/[locale]/dashboard/(protected)/events/actions";
@@ -25,7 +26,7 @@ import {
   useStage,
   useStageInput
 } from "../booking/shared";
-import { StudioHeading } from "./shared";
+import { FormNote, StudioHeading } from "./shared";
 import { useStudioTable } from "./table";
 import type { StudioAccount, StudioEventDetail, StudioPhoto } from "./types";
 
@@ -64,9 +65,12 @@ export default function PhotosScreen({
   const [picked, setPicked] = useState<string[]>([]);
   const [confirming, setConfirming] = useState<"one" | "picked" | null>(null);
   const [busy, startBusy] = useTransition();
+  const [published, setPublished] = useState(event.published);
+  const [feedback, setFeedback] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [credit, setCredit] = useState("");
   const [subject, setSubject] = useState("");
   const { username } = account;
+  useEffect(() => setPublished(event.published), [event.published]);
 
   // Picks follow their photos when the table is laid out again.
   const pickedIndexes = useMemo(
@@ -90,10 +94,20 @@ export default function PhotosScreen({
     }
   }, [photo, picked.length]);
 
-  const run = (action: (data: FormData) => Promise<void>, data: FormData, after?: () => void) =>
+  const run = (action: (data: FormData) => Promise<unknown>, data: FormData, after?: () => void) =>
     startBusy(async () => {
-      await action(data);
-      after?.();
+      setFeedback(null);
+      try {
+        const res = (await action(data)) as { error?: string } | void;
+        if (res && typeof res === "object" && res.error) {
+          setFeedback({ tone: "error", text: t("studioSaveError") });
+          return;
+        }
+        after?.();
+        setFeedback({ tone: "ok", text: tc("saved") });
+      } catch {
+        setFeedback({ tone: "error", text: t("studioSaveError") });
+      }
     });
   const togglePick = (index: number) => {
     const id = photos[index]?.id;
@@ -141,7 +155,7 @@ export default function PhotosScreen({
 
   return (
     <>
-      <BookingPanel expanded>
+      <BookingPanel work>
         <StudioHeading trail={event.title} title={t("studioPhotos")}>
           <div className="mt-3 flex items-center justify-between gap-3">
             <p className="font-meta text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
@@ -161,8 +175,25 @@ export default function PhotosScreen({
           </div>
         </StudioHeading>
 
-        <div className="mt-6 grid gap-2">
-          <Link href={path({ kind: "studio", username, page: "upload", id: event.id })} scroll={false} className={primaryClass}>
+        {!published && (
+          <div className="mt-5 grid gap-2 border-l-2 border-accent bg-accent-surface p-3">
+            <p className="text-xs font-semibold text-fg">{ta("draftBannerTitle")}</p>
+            <p className="text-xs text-fg-muted">{ta("draftBannerHint")}</p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => run(publishEvent, form([["id", event.id]]), () => setPublished(true))}
+              className={`${primaryClass} mt-1 w-full`}
+            >
+              {ta("publishAlbumNow")} <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        )}
+
+        {feedback && <FormNote tone={feedback.tone}>{feedback.text}</FormNote>}
+
+        <div className="mt-5 grid gap-2">
+          <Link href={path({ kind: "studio", username, page: "upload", id: event.id })} scroll={false} className={published ? primaryClass : secondaryClass}>
             {event.pendingCount > 0 ? ta("resumePhotos", { count: event.pendingCount }) : ta("addPhotos")}
             <span aria-hidden="true" className="text-lg">+</span>
           </Link>
@@ -207,9 +238,10 @@ export default function PhotosScreen({
                 {ta("moveDown")} →
               </button>
             </div>
+            {!photo.visible && <p className="text-xs text-fg-subtle">{t("studioScreeningDisabledHint")}</p>}
           </section>
         ) : (
-          <p className="mt-6 text-sm text-fg-muted">{ta("noPhotos")}</p>
+          <p className="mt-6 text-sm text-fg-muted">{t("studioPhotosEmpty")}</p>
         )}
 
         {targets.length > 0 && (

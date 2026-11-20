@@ -191,7 +191,7 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
 
   return (
     <>
-      <BookingPanel expanded>
+      <BookingPanel work>
         <StudioHeading trail={t("studioPreparation")} title={checklist.name}>
           <p className="font-meta mt-3 text-[0.625rem] uppercase tracking-[0.14em] text-fg-subtle">
             {[checklist.date || te("noShootDate"), checklist.eventTitle, te("itemCount", { count: checklist.items.length })].filter(Boolean).join(" · ")}
@@ -245,18 +245,18 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
                   {item.inventoryStatus && ` · ${te("inventoryStatus")}: ${te(STATUS_KEY[item.inventoryStatus])}`}
                 </p>
                 <p className="font-meta text-xs tracking-[0.1em] text-fg-subtle">UID {item.uid}</p>
-                <div role="group" aria-label={`${te("eventStatus")}: ${item.label}`} className="grid grid-cols-4 gap-1 border border-border-strong bg-page/60 p-1">
+                <div role="group" aria-label={`${te("eventStatus")}: ${item.label}`} className="grid grid-cols-2 gap-1 border border-border-strong bg-page/60 p-1">
                   {RACK_STATES.map((state, i) => (
                     <button
                       key={state}
                       type="button"
                       aria-pressed={item.state === state}
                       onClick={() => setState(item, state)}
-                      className={`min-h-11 px-1 text-[0.6875rem] font-semibold uppercase tracking-[0.04em] transition ${
+                      className={`min-h-11 px-2 text-xs font-semibold uppercase tracking-[0.04em] transition ${
                         item.state === state ? (state === "BROKEN" ? "bg-danger text-page" : state === "PLANNED" ? "bg-fg-muted text-page" : state === "RETURNED" ? "bg-success text-page" : "bg-accent text-page") : "text-fg-muted hover:bg-fg/10 hover:text-fg"
                       }`}
                     >
-                      <span className="font-meta mr-1 text-[0.5625rem] opacity-70" aria-hidden="true">
+                      <span className="font-meta mr-1 text-[0.625rem] opacity-70" aria-hidden="true">
                         {i + 1}
                       </span>
                       {te(STATE_KEY[state])}
@@ -275,9 +275,7 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
               )}
               <form action={removeChecklistItem}>
                 <input type="hidden" name="id" value={item.id} />
-                <button type="submit" className={`${secondaryClass} text-xs text-danger`}>
-                  {t("studioRemove")}
-                </button>
+                <ConfirmSubmit label={t("studioRemove")} confirmText={t("studioRemoveConfirm", { name: item.label })} />
               </form>
             </div>
           </section>
@@ -289,7 +287,18 @@ export default function ChecklistScreen({ account, checklist }: { account: Studi
           <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">+ {te("addItems")}</summary>
           <div className="mt-3 grid gap-4">
             {checklist.available.length === 0 ? (
-              <p className="text-sm text-fg-subtle">{checklist.inventoryEmpty ? tp("noEquipment") : tp("allSelected")}</p>
+              <div className="grid gap-2 text-sm text-fg-subtle">
+                <p>{checklist.inventoryEmpty ? tp("noEquipment") : tp("allSelected")}</p>
+                {checklist.inventoryEmpty && (
+                  <Link
+                    href={path({ kind: "studio", username, page: "equipment" })}
+                    scroll={false}
+                    className="inline-flex min-h-10 items-center font-semibold text-fg underline underline-offset-4 hover:text-accent-text"
+                  >
+                    {t("studioGoToEquipment")} →
+                  </Link>
+                )}
+              </div>
             ) : (
               <form action={addSelectedEquipment} className="grid gap-3">
                 <input type="hidden" name="checklistId" value={checklist.id} />

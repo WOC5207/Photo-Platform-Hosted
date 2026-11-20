@@ -108,8 +108,16 @@
 .menuPanel {
   position: absolute;
   left: var(--edge);
-  top: 22%;
+  top: clamp(112px, 16%, 180px);
+  bottom: 5.5rem;
   width: min(36rem, 38%);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 8px;
+}
+.menuPanel .calloutRule {
+  margin-top: 1.75rem;
 }
 .menuHint {
   position: absolute;
@@ -441,6 +449,7 @@
   }
   .menuPanel {
     top: 84px;
+    bottom: 84px;
     width: calc(52% - var(--edge));
   }
   .shade[data-booking="true"]::before {
@@ -476,6 +485,10 @@
     bottom: 61px;
   }
   .fileNav {
+    left: 32%;
+    bottom: 58px;
+  }
+  .fileNav > ol {
     display: none;
   }
   .columnNav {
@@ -568,6 +581,8 @@
     left: var(--edge);
     right: var(--edge);
     width: auto;
+    max-height: calc(100dvh - 104px);
+    padding-right: 0;
   }
   .menuHint {
     display: none;

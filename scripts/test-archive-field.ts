@@ -100,11 +100,16 @@ const field: Archive = {
   );
 }
 
-// A slice that adds nothing leaves the scene alone.
+// A slice that adds nothing leaves the scene alone, while a renamed slug updates in place.
 {
   const slice: Archive = { files: [file("b0", 0, 1)], columns: [column("bob", [0])] };
   assert.equal(joinSlice(field, slice), null);
   assert.equal(joinSlice(field, { files: [], columns: [] }), null);
+  const renamed: Archive = { files: [{ ...file("b0", 0, 1), slug: "b0-new", title: "Renamed" }], columns: [column("bob", [0])] };
+  const updated = joinSlice(field, renamed);
+  assert.ok(updated);
+  assert.equal(updated.files[2].slug, "b0-new");
+  assert.equal(updated.files[2].title, "Renamed");
 }
 
 console.log("archive field tests passed");

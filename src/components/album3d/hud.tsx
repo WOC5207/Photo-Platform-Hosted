@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Screen } from "@/lib/siteMode";
 import { EditTextButton } from "./editText";
 import styles from "./ArchiveSite.module.css";
@@ -50,6 +50,10 @@ export interface MenuItem {
   key: string;
   label: string;
   sub?: string;
+  /** Optional group label shown above this item. */
+  section?: string;
+  /** Styles the label as a destructive action. */
+  danger?: boolean;
   /** A setting's current value, changed with ← → or Enter. */
   value?: string;
   /** Leaves the 3D site, so it shows an outward arrow. */
@@ -79,10 +83,17 @@ export function GameMenu({
   // One focus marker glides from item to item (180 ms), like RhineLabUI's
   // tab underline, rather than each item fading its own in and out.
   const list = useRef<HTMLOListElement>(null);
+  const lastFocus = useRef(focus);
   const [marker, setMarker] = useState<{ x: number; y: number; glide: boolean } | null>(null);
   useLayoutEffect(() => {
     const ol = list.current;
     if (!ol) return;
+    const btn = ol.querySelector<HTMLElement>(`[data-menu-item="${focus}"]`);
+    if (lastFocus.current !== focus) {
+      lastFocus.current = focus;
+      btn?.scrollIntoView({ block: "nearest" });
+      if (ol.contains(document.activeElement) && document.activeElement !== btn) btn?.focus({ preventScroll: true });
+    }
     const place = () => {
       const item = ol.querySelector<HTMLElement>(`[data-menu-item="${focus}"]`)?.parentElement;
       setMarker((was) => (item ? { x: item.offsetLeft, y: item.offsetTop + item.offsetHeight / 2, glide: was !== null } : null));
@@ -106,7 +117,13 @@ export function GameMenu({
       {items.map((item, i) => {
         const active = i === focus;
         return (
-          <li key={item.key} className="relative flex min-w-0" onMouseEnter={() => onFocus(i)}>
+          <Fragment key={item.key}>
+          {item.section && (
+            <li role="presentation" className={`font-meta pl-5 text-[0.625rem] uppercase tracking-[0.16em] text-fg-subtle ${i > 0 ? "mt-4 pt-3 border-t border-border" : ""}`}>
+              {item.section}
+            </li>
+          )}
+          <li className="relative flex min-w-0" onMouseEnter={() => onFocus(i)}>
             <button
               type="button"
               data-menu-item={i}
@@ -114,7 +131,9 @@ export function GameMenu({
               onFocus={() => onFocus(i)}
               onClick={item.run}
               className={`flex min-h-14 min-w-0 flex-1 items-center py-2 pl-5 pr-1 text-left transition-colors duration-200 motion-reduce:transition-none ${
-                active ? "bg-fg/[0.06] text-fg" : "text-fg-muted hover:text-fg"
+                item.danger
+                  ? active ? "bg-danger-surface/60 text-danger" : "text-danger/80 hover:text-danger"
+                  : active ? "bg-fg/[0.06] text-fg" : "text-fg-muted hover:text-fg"
               }`}
             >
               {/* The focused item's text steps in by moving, not by padding, which laid the menu out every frame. */}
@@ -163,6 +182,7 @@ export function GameMenu({
             </button>
             <EditTextButton keys={item.text} shown={item.label} className="w-11" />
           </li>
+          </Fragment>
         );
       })}
     </ol>

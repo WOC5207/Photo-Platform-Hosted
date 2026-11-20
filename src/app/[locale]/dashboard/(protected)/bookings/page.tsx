@@ -86,12 +86,15 @@ export default async function AdminBookingsPage() {
       />
 
       {!settings.bookingEnabled && (
-        <p
+        <div
           role="status"
-          className="rounded-xl border border-accent/20 bg-accent-surface px-4 py-3 text-sm text-fg-muted"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/20 bg-accent-surface px-4 py-3 text-sm text-fg-muted"
         >
-          {ts("groupBookingHint")}
-        </p>
+          <p>{ts("groupBookingHint")}</p>
+          <Link href="/dashboard/settings?section=features" className="font-semibold text-accent underline underline-offset-4">
+            {ts("featuresSectionTitle")} →
+          </Link>
+        </div>
       )}
 
       {events.length === 0 ? (

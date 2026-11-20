@@ -31,7 +31,13 @@ export async function completeOwnerSetup(ownerId: string): Promise<boolean> {
       undefined,
       tx
     );
-    await tx.event.create({
+    const date = settings.bookingEnabled ? new Date() : null;
+    if (date) {
+      date.setUTCHours(0, 0, 0, 0);
+      date.setUTCDate(date.getUTCDate() + 14);
+    }
+
+    const starterEvent = await tx.event.create({
       data: {
         ownerId,
         slug: albumSlug,
@@ -40,24 +46,23 @@ export async function completeOwnerSetup(ownerId: string): Promise<boolean> {
         descriptionEn:
           "A draft album to get you started — add photos, then publish when ready.",
         descriptionZh: "示例相册，帮助你快速上手——添加照片后即可发布。",
+        ...(date ? { dateStart: date } : {}),
         published: false
       }
     });
 
-    if (settings.bookingEnabled) {
-      const date = new Date();
-      date.setUTCHours(0, 0, 0, 0);
-      date.setUTCDate(date.getUTCDate() + 14);
+    if (settings.bookingEnabled && date) {
       await tx.bookingEvent.create({
         data: {
           ownerId,
+          galleryEventId: starterEvent.id,
           token: randomUUID().replace(/-/g, ""),
-          titleEn: "Sample Photoshoot",
-          titleZh: "示例场照活动",
+          titleEn: "My First Album",
+          titleZh: "我的第一个相册",
           descriptionEn:
-            "A draft booking event to get you started — add time slots, then open it when ready.",
+            "A draft booking page linked to your starter album — add time slots, then open it when ready.",
           descriptionZh:
-            "示例预约活动，帮助你快速上手——添加时间段后即可开放预约。",
+            "关联到示例相册的草稿预约页——添加时间段后即可开放预约。",
           date,
           open: false,
           days: { create: { date } }

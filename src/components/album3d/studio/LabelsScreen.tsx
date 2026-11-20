@@ -308,7 +308,7 @@ export default function LabelsScreen({ account, labels }: { account: StudioAccou
 
   return (
     <>
-      <BookingPanel expanded>
+      <BookingPanel work>
         <StudioHeading trail={t("studioEquipment")} title={t("studioLabels")} />
         <p className="mt-4 text-sm text-fg-muted">{tq("description")}</p>
 

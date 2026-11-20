@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { createEvent3d, type StudioEventState } from "@/app/[locale]/3d/u/[username]/studio/actions";
-import { BookingPanel, fieldClass, primaryClass } from "../booking/shared";
+import { BookingPanel, fieldClass, primaryClass, useDirtyGuard } from "../booking/shared";
 import { FormNote, StudioHeading, daysBetween } from "./shared";
 
 /**
@@ -20,13 +20,22 @@ export default function NewEventScreen({ forUpload = false }: { forUpload?: bool
   const [state, action, pending] = useActionState<StudioEventState, FormData>(createEvent3d, {});
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
+  const [dirty, setDirty] = useState(false);
+  useDirtyGuard(dirty && !pending);
   const days = daysBetween(first, last);
+  const inverted = Boolean(first && last && last < first);
   const label = "grid gap-1 text-sm font-semibold text-fg-muted";
 
   return (
     <BookingPanel expanded="full">
       <StudioHeading trail={forUpload ? t("studioUploadPhotos") : t("studioEvents")} title={tw("newEvent")} />
-      <form action={action} aria-busy={pending} className="mt-6 grid gap-4">
+      <form
+        action={action}
+        onChange={() => setDirty(true)}
+        onSubmit={() => setDirty(false)}
+        aria-busy={pending}
+        className="mt-6 grid gap-4"
+      >
         <p className="text-sm text-fg-muted">{t("studioNewHint")}</p>
         <input type="hidden" name="dates" value={JSON.stringify(days)} />
         <input type="hidden" name="visitorEditCutoffHours" value="24" />
@@ -43,7 +52,10 @@ export default function NewEventScreen({ forUpload = false }: { forUpload?: bool
         {/* Side by side only where both date boxes fit; a phone stacks them. */}
         <div className="grid gap-3 min-[420px]:grid-cols-2">
           <label className={label}>
-            {ta("dateStart")}
+            <span>
+              {ta("dateStart")}
+              <span className="ml-0.5 text-accent" aria-hidden="true">*</span>
+            </span>
             <input type="date" required value={first} onChange={(e) => setFirst(e.target.value)} className={fieldClass} />
           </label>
           <label className={label}>
@@ -51,8 +63,8 @@ export default function NewEventScreen({ forUpload = false }: { forUpload?: bool
             <input type="date" min={first} value={last} onChange={(e) => setLast(e.target.value)} className={fieldClass} />
           </label>
         </div>
-        <p className="-mt-2 text-xs text-fg-subtle">
-          {days.length > 0 ? t("studioDays", { count: days.length }) : ta("dateRangeHint")}
+        <p className={`-mt-2 text-xs ${inverted ? "text-danger" : "text-fg-subtle"}`}>
+          {inverted ? t("studioDateOrderError") : days.length > 0 ? t("studioDays", { count: days.length }) : ta("dateRangeHint")}
         </p>
         <label className={label}>
           {ta("location")}
@@ -71,6 +83,7 @@ export default function NewEventScreen({ forUpload = false }: { forUpload?: bool
           {pending ? t("studioSaving") : forUpload ? t("studioCreateAndUpload") : tc("create")}
           <span aria-hidden="true" className="text-lg">→</span>
         </button>
+        {!first && <p className="-mt-2 text-xs text-fg-subtle">{t("studioStartDateRequired")}</p>}
       </form>
     </BookingPanel>
   );

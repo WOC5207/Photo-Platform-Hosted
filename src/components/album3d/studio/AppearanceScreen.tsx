@@ -15,7 +15,7 @@ import {
   type SiteThemeMode
 } from "@/lib/themeColor";
 import type { BoardTile } from "../board";
-import { BookingPanel, metaLabel } from "../booking/shared";
+import { BookingPanel, metaLabel, useDirtyGuard } from "../booking/shared";
 import { StudioHeading } from "./shared";
 import { Group, Pair, SaveBar, checkClass, useSiteBoard, useSiteSave } from "./site";
 import type { StudioSite } from "./types";
@@ -59,13 +59,22 @@ export default function AppearanceScreen({ site }: { site: StudioSite }) {
   }));
   const [mode, setMode] = useState<SiteThemeMode>("light");
   const [undo, setUndo] = useState<Partial<Record<SiteThemeMode, SiteThemeColors>>>({});
+  const [dirty, setDirty] = useState(false);
+  useDirtyGuard(dirty && !pending);
+  useEffect(() => {
+    if (state.ok) setDirty(false);
+  }, [state]);
   const palette = palettes[mode];
   const defaults = mode === "dark" ? DEFAULT_SITE_DARK_PALETTE : DEFAULT_SITE_PALETTE;
   const contrast = siteThemeMinimumContrast(palette, mode);
   const invalid = paletteHasInvalidValue(palette);
+  const otherMode: SiteThemeMode = mode === "light" ? "dark" : "light";
+  const otherBad = paletteHasInvalidValue(palettes[otherMode]) || siteThemeMinimumContrast(palettes[otherMode], otherMode) < 4.5;
+  const anyBad = invalid || contrast < 4.5 || otherBad;
   usePalettePreview(palette);
 
   const set = (next: SiteThemeColors, before?: SiteThemeColors) => {
+    setDirty(true);
     setPalettes((current) => ({ ...current, [mode]: next }));
     setUndo((current) => ({ ...current, [mode]: before }));
   };
@@ -88,9 +97,9 @@ export default function AppearanceScreen({ site }: { site: StudioSite }) {
   useSiteBoard(`studio-appearance:${site.account.username}`, tiles);
 
   return (
-    <BookingPanel expanded>
+    <BookingPanel work>
       <StudioHeading trail={t("studioCrumbs.site")} title={ts("settingsTabAppearance")} />
-      <form onSubmit={submit} aria-busy={pending} className="mt-6 grid gap-6">
+      <form onSubmit={submit} onChange={() => setDirty(true)} aria-busy={pending} className="mt-6 grid gap-6">
         {(["light", "dark"] as const).flatMap((m) =>
           COLOURS.map((c) => <input key={`${m}${c}`} type="hidden" name={m === "light" ? c : dark(c)} value={palettes[m][c]} />)
         )}
@@ -113,6 +122,11 @@ export default function AppearanceScreen({ site }: { site: StudioSite }) {
           <p role="status" className={`text-sm ${invalid || contrast < 4.5 ? "text-danger" : "text-success"}`}>
             {ts("paletteContrast", { ratio: contrast.toFixed(2) })} · {invalid ? ts("paletteInvalidColor") : ts(contrast < 4.5 ? "paletteContrastFail" : "paletteContrastPass")}
           </p>
+          {otherBad && (
+            <p role="alert" className="text-xs text-danger">
+              {t("studioOtherPaletteInvalid", { mode: ts(otherMode === "light" ? "paletteModeLight" : "paletteModeDark") })}
+            </p>
+          )}
         </Group>
 
         <Group title={ts("dashboardAppearanceTitle")} hint={ts("dashboardAppearanceHint")}>
@@ -126,7 +140,7 @@ export default function AppearanceScreen({ site }: { site: StudioSite }) {
             </label>
           ))}
         </Group>
-        <SaveBar section="appearance" state={state} pending={pending} disabled={invalid || contrast < 4.5} />
+        <SaveBar section="appearance" state={state} pending={pending} disabled={anyBad} />
       </form>
 
       <div className="mt-8 grid gap-6">

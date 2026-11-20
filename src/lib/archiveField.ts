@@ -54,12 +54,39 @@ export function joinSlice(archive: Archive, slice: Archive): Archive | null {
   const files = [...archive.files];
   const columns = archive.columns.map((c) => ({ ...c, fileIndexes: [...c.fileIndexes] }));
   let at = columns.findIndex((c) => c.username === incoming.username);
-  if (at < 0) at = columns.push({ ...incoming, fileIndexes: [] }) - 1;
-  const held = new Set(columns[at].fileIndexes.map((i) => files[i].id));
+  let changed = false;
+  if (at < 0) {
+    at = columns.push({ ...incoming, fileIndexes: [] }) - 1;
+    changed = true;
+  } else if (
+    columns[at].name !== incoming.name ||
+    columns[at].bookingEnabled !== incoming.bookingEnabled ||
+    columns[at].albumCount !== incoming.albumCount ||
+    columns[at].photoCount !== incoming.photoCount
+  ) {
+    columns[at] = { ...columns[at], name: incoming.name, bookingEnabled: incoming.bookingEnabled, albumCount: incoming.albumCount, photoCount: incoming.photoCount };
+    changed = true;
+  }
+  const held = new Map(columns[at].fileIndexes.map((i) => [files[i].id, i]));
   for (const file of slice.files) {
-    if (held.has(file.id)) continue;
+    const existing = held.get(file.id);
+    if (existing !== undefined) {
+      const cur = files[existing];
+      if (
+        cur.slug !== file.slug ||
+        cur.title !== file.title ||
+        cur.altTitle !== file.altTitle ||
+        cur.photoCount !== file.photoCount ||
+        cur.prints[0]?.id !== file.prints[0]?.id
+      ) {
+        files[existing] = { ...file, column: at, number: cur.number };
+        changed = true;
+      }
+      continue;
+    }
     columns[at].fileIndexes.push(files.length);
     files.push({ ...file, column: at, number: files.length + 1 });
+    changed = true;
   }
-  return files.length === archive.files.length && columns.length === archive.columns.length ? null : { files, columns };
+  return changed ? { files, columns } : null;
 }

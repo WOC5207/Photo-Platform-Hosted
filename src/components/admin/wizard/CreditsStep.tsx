@@ -180,7 +180,7 @@ export default function CreditsStep({
             key={row.key}
             className="flex flex-col gap-2 rounded-lg border border-border-strong/50 p-2"
           >
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] items-end gap-2">
               <label className="flex min-w-0 flex-col gap-1 text-xs text-fg-subtle">
                 {t("creditName", { term: creditTerm })}
                 <input

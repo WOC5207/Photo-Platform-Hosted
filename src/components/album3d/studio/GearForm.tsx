@@ -4,8 +4,7 @@ import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { addEquipmentCategory } from "@/app/[locale]/dashboard/(protected)/equipment/actions";
 import { EQUIPMENT_STATUSES, equipmentName } from "@/lib/equipment";
-import styles from "../ArchiveSite.module.css";
-import { fieldClass, primaryClass, secondaryClass, useScene } from "../booking/shared";
+import { fieldClass, primaryClass, secondaryClass, useDirtyGuard, useScene } from "../booking/shared";
 import { GEAR_CARD_ASPECT, STATUS_KEY, paintGearCard, useImages, useQrImage } from "./gear";
 import type { StudioGear, StudioGearCategory, StudioGearStatus } from "./types";
 
@@ -78,7 +77,12 @@ export function GearForm({
   const tc = useTranslations("common");
   const te = useTranslations("equipment");
   const label = "grid gap-1 text-sm font-semibold text-fg-muted";
-  const set = <K extends keyof GearDraft>(name: K, value: GearDraft[K]) => onChange({ ...draft, [name]: value });
+  const [dirty, setDirty] = useState(false);
+  useDirtyGuard(dirty && !pending);
+  const set = <K extends keyof GearDraft>(name: K, value: GearDraft[K]) => {
+    setDirty(true);
+    onChange({ ...draft, [name]: value });
+  };
 
   // "Add category" at the end of the category list opens a name field here,
   // so a missing category doesn't cost the photographer the form.
@@ -112,6 +116,7 @@ export function GearForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        setDirty(false);
         onSubmit(new FormData(e.currentTarget));
       }}
       aria-busy={pending}
@@ -215,11 +220,18 @@ export function GearForm({
         <textarea name="notes" rows={3} maxLength={2000} value={draft.notes} onChange={(e) => set("notes", e.target.value)} className={fieldClass} />
       </label>
       {children}
-      <button type="submit" disabled={pending || adding || options.length === 0} className={`${primaryClass} ${styles.traySave}`}>
+      <button type="submit" disabled={pending || adding || options.length === 0} className={`${primaryClass} w-full`}>
         {pending ? te("savingEquipment") : submitLabel}
         <span aria-hidden="true" className="text-lg">→</span>
       </button>
-      {options.length === 0 && !adding && <p className="text-sm text-fg-subtle">{te("createCategoryFirst")}</p>}
+      {options.length === 0 && !adding && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-fg-subtle">
+          <span>{te("createCategoryFirst")}</span>
+          <button type="button" onClick={() => setAdding(true)} className="font-semibold text-fg underline underline-offset-4 hover:text-accent-text">
+            {te("createCategory")} +
+          </button>
+        </div>
+      )}
     </form>
   );
 }
