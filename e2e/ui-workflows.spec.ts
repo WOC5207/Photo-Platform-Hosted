@@ -921,7 +921,7 @@ test.describe.serial("management workflows", () => {
     await expect(page.getByText("Total size after publishing")).toBeVisible();
     await expect(page.getByText("E2E credit — 1 photo")).toBeVisible();
     await expect(page.getByText("2 photos without credit")).toBeVisible();
-    const publishButton = page.getByRole("button", { name: "Publish 3 photos" });
+    const publishButton = page.getByRole("button", { name: "Add 3 photos to album" });
     await expect(publishButton).toBeEnabled();
     const publishDialogTypes: string[] = [];
     const handlePublishDialog = async (dialog: Dialog) => {
@@ -1464,7 +1464,7 @@ test.describe.serial("management workflows", () => {
       await expect(subjects).toHaveCount(2);
       await subjects.nth(0).fill("Character A");
       await subjects.nth(1).fill("Character B");
-      await page.getByLabel("CN").fill("E2E Visitor");
+      await page.getByLabel("Name").fill("E2E Visitor");
       await page.getByLabel("Contact info").fill("visitor@example.com");
       await page.getByRole("button", { name: "Confirm 2 bookings" }).click();
       await expect(
@@ -1570,7 +1570,7 @@ test.describe.serial("management workflows", () => {
       await expect(page.getByText("Changes are still available")).toBeVisible();
       await page.getByText("Edit time or details", { exact: true }).click();
       await page.getByLabel("Time").selectOption(secondSlot.id);
-      await page.getByLabel("CN").fill("Updated visitor");
+      await page.getByLabel("Name").fill("Updated visitor");
       await page.getByLabel("Subject (optional)").fill("Updated subject");
       await page.getByLabel("Contact info").fill("updated-contact");
       await page.getByRole("button", { name: "Save booking changes" }).click();

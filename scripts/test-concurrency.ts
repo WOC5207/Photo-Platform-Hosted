@@ -721,7 +721,7 @@ async function testSetupCompletionIsIdempotent() {
       where: { ownerId: setupOwner.id, titleEn: "My First Album" }
     }),
     prisma.bookingEvent.findMany({
-      where: { ownerId: setupOwner.id, titleEn: "Sample Photoshoot" },
+      where: { ownerId: setupOwner.id, titleEn: "My First Album" },
       include: { days: true }
     }),
     completeOwnerSetup(setupOwner.id)
@@ -735,10 +735,11 @@ async function testSetupCompletionIsIdempotent() {
       settings?.setupCompleted === true &&
       albums.length === 1 &&
       bookingEvents.length === 1 &&
+      bookingEvents[0].galleryEventId === albums[0].id &&
       bookingEvents[0].days.length === 1,
     `${completedAttempts} attempt(s) seeded; ${albums.length} album(s), ${
       bookingEvents.length
-    } booking event(s), ${
+    } booking event(s) (linked=${bookingEvents[0]?.galleryEventId === albums[0]?.id}), ${
       bookingEvents.reduce((sum, event) => sum + event.days.length, 0)
     } booking day(s)`
   );
