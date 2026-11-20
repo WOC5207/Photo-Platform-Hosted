@@ -184,11 +184,13 @@ export default function ArchiveSite({
     if (panel && detail.current !== null) panel.style.setProperty("--detail", String(detail.current));
   }, []);
   const engineRef = useRef<ArchiveEngine | null>(null);
+  const [engine, setEngine] = useState<ArchiveEngine | null>(null);
   // The field as the layout loaded it, plus any photographer an address
   // brought in since. Held for the life of the layout, as the scene is: a
   // refresh that reloads the layout doesn't move files under the scene.
   const [archive, setArchive] = useState<Archive>(() => ({ files: loadedFiles, columns: loadedColumns }));
-  const prevLoaded = useRef({ files: loadedFiles, columns: loadedColumns });
+  const loadedKey = useMemo(() => JSON.stringify([loadedFiles, loadedColumns]), [loadedFiles, loadedColumns]);
+  const prevLoadedKey = useRef(loadedKey);
   const { files, columns } = archive;
 
   // ---------------------------------------------------------------- screen --
@@ -217,11 +219,11 @@ export default function ArchiveSite({
   const sliceKey = pastField || ownPastField ? `${screen.username}/${"slug" in screen ? screen.slug : ""}` : "";
   const [answered, setAnswered] = useState<string[]>([]);
   useEffect(() => {
-    if (prevLoaded.current.files === loadedFiles && prevLoaded.current.columns === loadedColumns) return;
-    prevLoaded.current = { files: loadedFiles, columns: loadedColumns };
+    if (prevLoadedKey.current === loadedKey) return;
+    prevLoadedKey.current = loadedKey;
     setArchive({ files: loadedFiles, columns: loadedColumns });
     setAnswered([]);
-  }, [loadedFiles, loadedColumns]);
+  }, [loadedKey, loadedFiles, loadedColumns]);
   const asking = (pastField || ownPastField) && !answered.includes(sliceKey);
   useEffect(() => {
     if (!asking) return;
@@ -265,16 +267,14 @@ export default function ArchiveSite({
       : studioHome
         ? columnIndex >= 0 ? columnIndex : columns.length
         : -1;
-  // On phones the scene behind a visitor's pages is only a backdrop and the
-  // page takes the screen. The 360° view, a raised photo, the prize draw's
-  // deck and the creators' easel are what those pages show, so they keep it.
-  // The home screen keeps its field above the menu, and a photographer's page
-  // their card.
+  // On phones the scene behind a visitor's pages (and Studio photo manager)
+  // is only a backdrop and the page takes the screen. The 360° view, the prize
+  // draw's deck, the creators' easel, home field and photographer card keep it.
+  const studioPhotos = studio && screen.page === "photos";
   const backdrop =
     mode !== "study" &&
-    mode !== "photo" &&
     !creator &&
-    !studio &&
+    (!studio || studioPhotos) &&
     screen.kind !== "draw" &&
     screen.kind !== "title" &&
     screen.kind !== "photographer";
@@ -677,7 +677,7 @@ export default function ArchiveSite({
     import("./engine")
       .then(({ createArchiveEngine }) => {
         if (disposed) return;
-        const engine = createArchiveEngine(canvas, {
+        const next = createArchiveEngine(canvas, {
           files: files.map((f) => ({
             column: f.column,
             title: f.title,
@@ -716,7 +716,8 @@ export default function ArchiveSite({
             else setOffer(prefersReduced(motionRef.current) ? "classic" : "reduce");
           }
         });
-        engineRef.current = engine;
+        engineRef.current = next;
+        setEngine(next);
         setStatus("ready");
       })
       .catch(() => {
@@ -744,86 +745,88 @@ export default function ArchiveSite({
       observer.disconnect();
       engineRef.current?.dispose();
       engineRef.current = null;
+      setEngine(null);
     };
     // Rebuilt only when an address brings more of the archive in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [archive, waiting]);
 
+  const activeEngine = ready ? engine : null;
+
   useEffect(() => {
-    if (ready) engineRef.current?.select(selected);
-  }, [selected, ready]);
+    activeEngine?.select(selected);
+  }, [selected, activeEngine]);
 
   // The Dashboard's scenes load while the browser is idle, so none waits on its first visit.
   useEffect(() => {
-    if (!ready || !studio) return;
+    if (!activeEngine || !studio) return;
     const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 1200));
-    idle(() => engineRef.current?.prefetchStages());
-  }, [ready, studio]);
+    idle(() => activeEngine.prefetchStages());
+  }, [activeEngine, studio]);
 
   // Which stage the scene shows: the carousel for photographers, the light
   // table for an album's photos, the study, or the archive field.
   const carouselFocus = screen.kind === "photographer" ? columnIndex : menuFocus;
   const tableKey = albumHere ? `${albumHere.username}/${albumHere.slug}` : "";
   useEffect(() => {
-    const engine = engineRef.current;
-    if (!ready || !engine) return;
+    if (!activeEngine) return;
     if (carouselScreen && columns.length > 0) {
-      engine.showCarousel(Math.max(0, carouselFocus), screen.kind === "photographer");
+      activeEngine.showCarousel(Math.max(0, carouselFocus), screen.kind === "photographer");
       return;
     }
     // The album cards are ArchiveShelf's.
     if (ownArchive) return;
     if ((mode === "table" || mode === "photo") && albumHere) {
-      engine.showTable(tableKey, albumHere.photos, mode === "photo" ? Math.max(0, photoIndex) : tableFocus, mode === "photo");
+      activeEngine.showTable(tableKey, albumHere.photos, mode === "photo" ? Math.max(0, photoIndex) : tableFocus, mode === "photo");
       return;
     }
     if (mode === "table" || mode === "photo" || mode === "booking") return;
     if (mode === "study") {
-      engine.openStudy(selectedRef.current);
+      activeEngine.openStudy(selectedRef.current);
       return;
     }
-    engine.showField();
-    engine.setOverview(overview);
-    engine.setDetail(mode === "detail");
+    activeEngine.showField();
+    activeEngine.setOverview(overview);
+    activeEngine.setDetail(mode === "detail");
     // albumHere changes only with tableKey.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, overview, ready, carouselScreen, columns.length, carouselFocus, screen.kind, tableKey, tableFocus, photoIndex, ownArchive]);
+  }, [mode, overview, activeEngine, carouselScreen, columns.length, carouselFocus, screen.kind, tableKey, tableFocus, photoIndex, ownArchive]);
 
   useEffect(() => {
-    if (ready) engineRef.current?.setLane(lane);
-  }, [lane, ready]);
+    activeEngine?.setLane(lane);
+  }, [lane, activeEngine]);
 
   // The home screen ejects the recently updated albums from the field, and a tap opens one.
   const home = !missing && screen.kind === "title";
   const featured = useMemo(() => recent.map((album) => files.findIndex((f) => f.id === album.id)).filter((index) => index >= 0), [recent, files]);
   const hoveredRecent = home && hoverFile >= 0 ? recent.find((album) => album.id === files[hoverFile]?.id) : undefined;
   useEffect(() => {
-    if (ready) engineRef.current?.setFeatured(home ? featured : []);
+    activeEngine?.setFeatured(home ? featured : []);
     if (!home) setHoverFile(-1);
-  }, [home, featured, ready]);
+  }, [home, featured, activeEngine]);
 
   // The Dashboard's home lets the photographer's own albums be browsed, and a click opens one.
   const browsable = studioHome && !missing && columnIndex >= 0;
   useEffect(() => {
-    if (ready) engineRef.current?.setBrowse(browsable);
+    activeEngine?.setBrowse(browsable);
     if (!browsable) setHoverFile(-1);
-  }, [browsable, ready]);
+  }, [browsable, activeEngine]);
 
   useEffect(() => {
-    if (ready) engineRef.current?.setReducedMotion(prefersReduced(motion));
-  }, [motion, ready]);
+    activeEngine?.setReducedMotion(prefersReduced(motion));
+  }, [motion, activeEngine]);
 
   useEffect(() => {
-    if (ready) engineRef.current?.setBackdrop(backdrop);
-  }, [backdrop, ready]);
+    activeEngine?.setBackdrop(backdrop);
+  }, [backdrop, activeEngine]);
 
   useEffect(() => {
-    if (ready && mode === "study") engineRef.current?.setExploded(exploded);
-  }, [exploded, mode, ready]);
+    if (activeEngine && mode === "study") activeEngine.setExploded(exploded);
+  }, [exploded, mode, activeEngine]);
 
   useEffect(() => {
-    if (ready && mode === "study") engineRef.current?.setStudyFocus(studyFocus);
-  }, [studyFocus, mode, ready]);
+    if (activeEngine && mode === "study") activeEngine.setStudyFocus(studyFocus);
+  }, [studyFocus, mode, activeEngine]);
 
   // ------------------------------------------------------------------ menus --
   const titleMenu: MenuItem[] = [
@@ -1083,8 +1086,8 @@ export default function ArchiveSite({
     []
   );
   const stage = useMemo(
-    () => ({ engine: ready ? engineRef.current : null, go, path: screenPath, back, key, touch, setDirty, preview: visitorPreview, setPreview: setVisitorPreview }),
-    [ready, go, back, key, touch, setDirty, visitorPreview]
+    () => ({ engine: activeEngine, go, path: screenPath, back, key, touch, setDirty, preview: visitorPreview, setPreview: setVisitorPreview }),
+    [activeEngine, go, back, key, touch, setDirty, visitorPreview]
   );
   const fieldPick = useMemo((): FieldPick | null => {
     if ((!studioHome && !ownArchive) || missing) return null;

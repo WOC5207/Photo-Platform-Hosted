@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import {
@@ -29,6 +29,8 @@ import {
 import { FormNote, StudioHeading } from "./shared";
 import { useStudioTable } from "./table";
 import type { StudioAccount, StudioEventDetail, StudioPhoto } from "./types";
+
+const PhotosPhoneLoupe = lazy(() => import("./PhotosPhoneLoupe"));
 
 const form = (entries: [string, string][]) => {
   const data = new FormData();
@@ -82,7 +84,7 @@ export default function PhotosScreen({
     setFocus((current) => Math.min(current, Math.max(0, photos.length - 1)));
   }, [photos]);
 
-  useStudioTable(event.id, photos, focus, pickedIndexes);
+  const portrait = useStudioTable(event.id, photos, focus, pickedIndexes);
 
   const photo = photos[focus];
   const targets = picked.length > 0 ? picked : photo ? [photo.id] : [];
@@ -200,20 +202,47 @@ export default function PhotosScreen({
         </div>
 
         {photo ? (
-          <section aria-label={t("studioFocused")} aria-busy={busy} className="mt-6 grid gap-3">
-            <div className="flex items-start gap-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={photo.thumb} alt="" className="h-24 w-24 shrink-0 bg-control object-contain" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{photo.name}</p>
-                {status.length > 0 && <p className="font-meta mt-1 text-[0.625rem] uppercase tracking-[0.12em] text-accent-text">{status.join(" · ")}</p>}
-                <p className="mt-1 text-xs text-fg-muted">{photo.credit ? [photo.credit, photo.subject].filter(Boolean).join(" · ") : ta("photoNoCredits")}</p>
-                <label className="mt-2 flex min-h-9 items-center gap-2 text-xs font-semibold">
-                  <input type="checkbox" checked={picked.includes(photo.id)} onChange={() => togglePick(focus)} className="h-4 w-4 accent-[var(--color-accent)]" />
-                  {t("studioPick")}
-                </label>
+          <section aria-label={t("studioFocused")} aria-busy={busy} className="mt-5 grid gap-3">
+            {portrait ? (
+              <Suspense
+                fallback={
+                  <div className="flex h-[38dvh] min-h-[220px] items-center justify-center border border-border-strong bg-control/80">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={photo.med} alt={photo.name} className="h-full w-full object-contain" />
+                  </div>
+                }
+              >
+                <PhotosPhoneLoupe
+                  photos={photos}
+                  focus={focus}
+                  picked={picked}
+                  status={status}
+                  busy={busy}
+                  onFocus={(i) => {
+                    setConfirming(null);
+                    setFocus(i);
+                  }}
+                  onStep={moveFocus}
+                  onTogglePick={() => togglePick(focus)}
+                  onCover={() => run(setCoverPhoto, form([["photoId", photo.id]]))}
+                  onHighlight={() => run(toggleHomeHighlight, form([["photoId", photo.id]]))}
+                />
+              </Suspense>
+            ) : (
+              <div className="flex items-start gap-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo.thumb} alt="" className="h-24 w-24 shrink-0 bg-control object-contain" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{photo.name}</p>
+                  {status.length > 0 && <p className="font-meta mt-1 text-[0.625rem] uppercase tracking-[0.12em] text-accent-text">{status.join(" · ")}</p>}
+                  <p className="mt-1 text-xs text-fg-muted">{photo.credit ? [photo.credit, photo.subject].filter(Boolean).join(" · ") : ta("photoNoCredits")}</p>
+                  <label className="mt-2 flex min-h-9 items-center gap-2 text-xs font-semibold">
+                    <input type="checkbox" checked={picked.includes(photo.id)} onChange={() => togglePick(focus)} className="h-4 w-4 accent-[var(--color-accent)]" />
+                    {t("studioPick")}
+                  </label>
+                </div>
               </div>
-            </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"

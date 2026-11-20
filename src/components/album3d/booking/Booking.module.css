@@ -168,14 +168,17 @@
   }
 }
 
-/* A visitor's booking pages on phones: the whole screen under the header,
-   over the scene dimmed to a backdrop (see data-backdrop in ArchiveSite). */
+/* A visitor's booking pages (and Studio photo loupe) on phones: the whole screen
+   under the header, over the scene dimmed to a backdrop (see data-backdrop in ArchiveSite). */
 @media (max-aspect-ratio: 105/100) {
   :global([data-backdrop]) .panel[data-expanded] {
     top: 76px;
     max-height: none;
     background: none;
     border-top: 0;
+  }
+  :global([data-backdrop]) .raise {
+    display: none;
   }
 }
 

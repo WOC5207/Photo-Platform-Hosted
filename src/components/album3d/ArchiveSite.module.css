@@ -689,7 +689,7 @@
     display: block;
   }
   .root[data-backdrop] .phoneGrid {
-    display: grid;
+    display: block;
   }
   .root[data-backdrop] .phoneOnly {
     display: inline-flex;

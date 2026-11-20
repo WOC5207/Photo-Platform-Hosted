@@ -2692,6 +2692,11 @@
     "studioOtherPaletteInvalid": "{mode}模式的配色对比度不足或色值无效——请切换标签页修复后再保存。",
     "studioRemoveConfirm": "确定从清单中移除“{name}”吗？",
     "studioGoToEquipment": "前往器材库添加器材",
-    "studioEquipmentPhotoFailed": "器材条目已保存，但参考照片上传失败。你可以在详情页重新上传。"
+    "studioEquipmentPhotoFailed": "器材条目已保存，但参考照片上传失败。你可以在详情页重新上传。",
+    "gridTwoCol": "双列",
+    "gridOneCol": "单列",
+    "photoInfo": "详情",
+    "photoExpand": "全屏预览",
+    "filmstripLabel": "照片缩略图"
   }
 }
