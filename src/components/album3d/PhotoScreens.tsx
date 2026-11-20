@@ -365,6 +365,7 @@ export function PhotoScreen({
   if (portrait) {
     return (
       <main id="main-content" tabIndex={-1} className="outline-none">
+        <div aria-hidden="true" className="fixed inset-0 z-[5] bg-page" />
         <div
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
